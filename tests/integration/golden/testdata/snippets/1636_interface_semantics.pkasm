@@ -1,0 +1,603 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function ET.Error
+;   registers: int=1 string=2 general=2
+;   params:    (general)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]="et"
+
+0000  0:LOAD_GENERAL_CONST         1   0   0
+0001  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "et"
+0002  0:GET_STRUCT_FIELD_INT_T0    0   0   0
+0003  1:CALL_NATIVE              130   0   0    ; call native general[1] (site 0)
+0004  1:MOVE_STRING               37   0   1
+0005  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function mayFail
+;   registers: int=1 general=3 bool=1
+;   params:    (bool)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=7
+
+0000  0:LOAD_GENERAL_CONST         0   0   0
+0001  1:BOOL_TO_INT               53   0   0
+0002  0:JUMP_IF_FALSE              0   6   0    ; if ints[0] == 0 goto +6
+0003  2:ALLOC_STRUCT_LITERAL       0  14   1
+0004  0:EXT                        0   0   0
+0005  1:LOAD_INT_CONST_SMALL      75   0   7    ; ints[0] = 7
+0006  0:SET_STRUCT_FIELD_INT_T0    1   0   0
+0007  0:ADDR                       2   1   0
+0008  0:MOVE_GENERAL               0   2   1
+0009  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function Counter.Bump
+;   registers: int=1 string=1 general=2 sliceString=2
+;   params:    (general)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]="x"
+
+0000  1:INC_STRUCT_FIELD_INT     107   0   0
+0001  0:ADDR                       1   0   1
+0002  1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
+0003  0:EXT                        1   0   0
+0004  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "x"
+0005  1:APPEND_SLICE_STRING_DIRECT 173   1   0
+0006  0:EXT                        0   0   0
+0007  1:SET_STRUCT_FIELD_SLICE_STRING 199   1   1
+0008  0:EXT                        1   0   0
+0009  0:GET_STRUCT_FIELD_INT_T0    0   0   0
+0010  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function NoArg.M
+;   registers: int=1 general=1
+;   params:    (general)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0001  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function OneArg.M
+;   registers: int=2 general=1
+;   params:    (general, int)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1
+
+0000  0:ADD_INT_CONST              0   0   0    ; const = 1
+0001  3:TIER3_NOP                  0   0   0
+0002  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function TwoOut.M
+;   registers: int=2 general=3
+;   params:    (general, int)
+;   returns:   (int, general)
+; ═════════════════════════════════════════════════════════════
+
+0000  1:MOVE_INT                  35   1   0
+0001  2:TIER2_LOAD_NIL             0   9   1
+0002  0:MOVE_GENERAL               2   1   1
+0003  1:MOVE_INT                  35   0   1
+0004  0:MOVE_GENERAL               0   2   0
+0005  2:TIER2_RETURN               0  10   2    ; 2 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: string=2 general=4
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]="typed-nil"  [1]="iface-iface"  [2]="value-receiver"  [3]="signature-assert"  [4]="array-short-circuit"  [5]="struct-short-circuit"  [6]="struct-equal"  [7]="array-uncomparable"  [8]="struct-uncomparable"  [9]="\n"
+
+0000  0:LOAD_GENERAL_CONST         0   0   0
+0001  0:ALLOC_INDIRECT             1   0   3
+0002  0:EXT                        0   0   0
+0003  0:MAKE_CLOSURE               2   7   0    ; closure (func 7)
+0004  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "typed-nil"
+0005  0:MAKE_CLOSURE               3   9   0    ; closure (func 9)
+0006  1:CALL                     128   0   0    ; call closure general[2] (site 0)
+0007  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0008  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "iface-iface"
+0009  0:MAKE_CLOSURE               3  10   0    ; closure (func 10)
+0010  1:CALL                     128   1   0    ; call closure general[2] (site 1)
+0011  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0012  0:LOAD_STRING_CONST          0   2   0    ; strings[0] = "value-receiver"
+0013  0:MAKE_CLOSURE               3  11   0    ; closure (func 11)
+0014  1:CALL                     128   2   0    ; call closure general[2] (site 2)
+0015  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0016  0:LOAD_STRING_CONST          0   3   0    ; strings[0] = "signature-assert"
+0017  0:MAKE_CLOSURE               3  12   0    ; closure (func 12)
+0018  1:CALL                     128   3   0    ; call closure general[2] (site 3)
+0019  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0020  0:LOAD_STRING_CONST          0   4   0    ; strings[0] = "array-short-circuit"
+0021  0:MAKE_CLOSURE               3  13   0    ; closure (func 13)
+0022  1:CALL                     128   4   0    ; call closure general[2] (site 4)
+0023  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0024  0:LOAD_STRING_CONST          0   5   0    ; strings[0] = "struct-short-circuit"
+0025  0:MAKE_CLOSURE               3  14   0    ; closure (func 14)
+0026  1:CALL                     128   5   0    ; call closure general[2] (site 5)
+0027  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0028  0:LOAD_STRING_CONST          0   6   0    ; strings[0] = "struct-equal"
+0029  0:MAKE_CLOSURE               3  15   0    ; closure (func 15)
+0030  1:CALL                     128   6   0    ; call closure general[2] (site 6)
+0031  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0032  0:LOAD_STRING_CONST          0   7   0    ; strings[0] = "array-uncomparable"
+0033  0:MAKE_CLOSURE               3  16   0    ; closure (func 16)
+0034  1:CALL                     128   7   0    ; call closure general[2] (site 7)
+0035  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0036  0:LOAD_STRING_CONST          0   8   0    ; strings[0] = "struct-uncomparable"
+0037  0:MAKE_CLOSURE               3  17   0    ; closure (func 17)
+0038  1:CALL                     128   8   0    ; call closure general[2] (site 8)
+0039  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0040  0:DEREF                      3   1   0
+0041  0:LOAD_STRING_CONST          0   9   0    ; strings[0] = "\n"
+0042  0:STR_JOIN                   1   3   0
+0043  1:MOVE_STRING               37   0   1
+0044  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: string=5 general=3
+;   params:    (string, general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]=" "
+
+0000  0:MAKE_CLOSURE               1   8   0    ; closure (func 8)
+0001  0:DEFER                      1   0   0
+0002  0:GET_UPVALUE                1   0   3
+0003  0:LOAD_STRING_CONST          1   0   0    ; strings[1] = " "
+0004  0:CONCAT_STRING              2   0   1
+0005  1:CALL                     128   0   0    ; call closure general[0] (site 0)
+0006  2:SYNC_CLOSURE_UPVALUES      0  15   0
+0007  0:CONCAT_STRING              4   2   3
+0008  0:APPEND_STRING_FAST         2   1   4
+0009  0:SET_UPVALUE                2   0   3
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=1 string=5 general=4
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]=" panic: "
+
+0000  2:TIER2_RECOVER              0   6   0
+0001  1:NE_INTERFACE_NIL         147   0   0
+0002  0:JUMP_IF_FALSE              0   9   0    ; if ints[0] == 0 goto +9
+0003  0:GET_UPVALUE                1   0   3
+0004  0:GET_UPVALUE                0   1   2
+0005  0:LOAD_STRING_CONST          1   0   0    ; strings[1] = " panic: "
+0006  0:CONCAT_STRING              2   0   1
+0007  0:LOAD_GENERAL_CONST         2   0   0
+0008  1:CALL_NATIVE              130   0   0    ; call native general[2] (site 0)
+0009  0:CONCAT_STRING              4   2   3
+0010  0:APPEND_STRING_FAST         3   1   4
+0011  0:SET_UPVALUE                3   0   3
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=6 string=1 general=4 bool=7
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   bools:   [0]=false  [1]=true
+
+0000  1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = false
+0001  1:CALL                     128   0   0    ; call (site 0)
+0002  1:LOAD_ZERO                 79   1   3
+0003  0:LOAD_GENERAL_CONST         2   0   0
+0004  1:EQ_INTERFACE_NIL         146   0   0
+0005  1:INT_TO_BOOL               54   0   0
+0006  1:NE_INTERFACE_NIL         147   1   0
+0007  1:INT_TO_BOOL               54   1   1
+0008  1:EQ_INTERFACE_NIL         146   2   1
+0009  1:INT_TO_BOOL               54   2   2
+0010  1:EQ_INTERFACE_STRICT      212   0   1
+0011  0:EXT                        3   0   0
+0012  1:INT_TO_BOOL               54   3   3
+0013  1:NE_INTERFACE_STRICT      213   1   0
+0014  0:EXT                        4   0   0
+0015  1:INT_TO_BOOL               54   4   4
+0016  1:LOAD_BOOL_CONST          138   5   1    ; bools[5] = true
+0017  1:CALL                     128   1   0    ; call (site 1)
+0018  1:EQ_INTERFACE_NIL         146   5   3
+0019  1:INT_TO_BOOL               54   6   5
+0020  1:CALL_NATIVE              130   2   0    ; call native general[2] (site 2)
+0021  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=9 string=3 general=10 bool=5
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1
+;   strings: [0]="s"
+;   bools:   [0]=true
+
+0000  1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
+0001  1:CALL                     128   0   0    ; call (site 0)
+0002  1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
+0003  1:CALL                     128   1   0    ; call (site 1)
+0004  0:MOVE_GENERAL               2   0   0
+0005  0:LOAD_GENERAL_CONST         3   0   0
+0006  1:EQ_INTERFACE_STRICT      212   0   1
+0007  0:EXT                        0   0   0
+0008  1:INT_TO_BOOL               54   0   0
+0009  1:EQ_INTERFACE_STRICT      212   0   2
+0010  0:EXT                        1   0   0
+0011  1:INT_TO_BOOL               54   1   1
+0012  1:LOAD_INT_CONST_SMALL      75   2   1    ; ints[2] = 1
+0013  0:PACK_TYPED                 4   2   0
+0014  0:EXT                        0   0   0
+0015  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0016  0:PACK_TYPED                 5   3   0
+0017  0:EXT                        1   0   0
+0018  1:EQ_INTERFACE_STRICT      212   4   5
+0019  0:EXT                        4   0   0
+0020  1:INT_TO_BOOL               54   2   4
+0021  1:LOAD_INT_CONST_SMALL      75   5   1    ; ints[5] = 1
+0022  0:PACK_TYPED                 6   5   0
+0023  0:EXT                        0   0   0
+0024  1:LOAD_INT_CONST_SMALL      75   6   1    ; ints[6] = 1
+0025  1:MOVE_INT_TO_GENERAL       40   7   6
+0026  1:EQ_INTERFACE_STRICT      212   6   7
+0027  0:EXT                        7   0   0
+0028  1:INT_TO_BOOL               54   3   7
+0029  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "s"
+0030  0:PACK_TYPED                 8   0   2
+0031  0:EXT                        2   0   0
+0032  0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "s"
+0033  0:PACK_TYPED                 9   1   2
+0034  0:EXT                        2   0   0
+0035  1:EQ_INTERFACE_STRICT      212   8   9
+0036  0:EXT                        8   0   0
+0037  1:INT_TO_BOOL               54   4   8
+0038  1:CALL_NATIVE              130   2   0    ; call native general[3] (site 2)
+0039  1:MOVE_STRING               37   0   2
+0040  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=8 string=1 general=6
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2  [1]=0  [2]=1
+
+0000  2:MAKE_MAP                   0  12   0
+0001  0:EXT                        0   0   0
+0002  0:DEREF                      0   0   1
+0003  0:ALLOC_INDIRECT             1   0   3
+0004  0:EXT                        0   0   0
+0005  0:DEREF                      2   1   0
+0006  1:CALL                     128   0   0    ; call (site 0)
+0007  0:DEREF                      2   1   0
+0008  1:CALL                     128   1   0    ; call (site 1)
+0009  0:MOVE_GENERAL               2   1   1
+0010  0:DEREF                      3   2   0
+0011  1:CALL                     128   2   0    ; call (site 2)
+0012  1:LOAD_INT_CONST_SMALL      75   3   2    ; ints[3] = 2
+0013  0:MAKE_SLICE                 3   3   3
+0014  0:EXT                        1   0   0
+0015  2:MAKE_MAP                   0  12   4
+0016  0:EXT                        0   0   0
+0017  1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
+0018  0:INDEX_SET                  3   3   4
+0019  2:MAKE_MAP                   0  12   4
+0020  0:EXT                        0   0   0
+0021  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0022  0:INDEX_SET                  3   3   4
+0023  0:MOVE_GENERAL               2   3   1
+0024  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0025  0:INDEX                      3   2   3
+0026  1:CALL                     128   3   0    ; call (site 3)
+0027  1:MOVE_INT                  35   3   4
+0028  0:LOAD_GENERAL_CONST         3   0   0
+0029  0:DEREF                      4   1   0
+0030  0:GET_STRUCT_FIELD_INT_T0    4   4   0
+0031  0:DEREF                      5   1   0
+0032  0:GET_STRUCT_FIELD_SLICE_LEN   5   5   1
+0033  1:LOAD_INT_CONST_SMALL      75   6   1    ; ints[6] = 1
+0034  0:SLICE_INDEX_STRUCT_FIELD_INT   7   2   6
+0035  0:EXT                        0   0   0
+0036  1:CALL_NATIVE              130   4   0    ; call native general[3] (site 4)
+0037  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=7 string=2 general=6 bool=1
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=3  [1]=0  [2]=1  [3]=2
+;   strings: [0]="H"  [1]="-"  [2]=","
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0001  0:MAKE_SLICE                 0   0   0
+0002  0:EXT                        0   0   0
+0003  2:MAKE_MAP                   0  12   1
+0004  0:EXT                        1   0   0
+0005  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0006  0:INDEX_SET                  0   0   1
+0007  2:MAKE_MAP                   0  12   1
+0008  0:EXT                        2   0   0
+0009  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0010  0:INDEX_SET                  0   0   1
+0011  2:MAKE_MAP                   0  12   1
+0012  0:EXT                        3   0   0
+0013  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0014  0:INDEX_SET                  0   0   1
+0015  0:LOAD_GENERAL_CONST         1   0   0
+0016  1:LEN                       70   0   0
+0017  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0018  1:LT_INT_JUMP_FALSE        116   1   0
+0019  0:EXT                       23   0   0
+0020  0:INDEX                      2   0   1
+0021  0:MOVE_GENERAL               2   2   0
+0022  0:TYPE_ASSERT                4   2   4
+0023  0:EXT                        4   0   0
+0024  0:MOVE_GENERAL               3   4   0
+0025  1:MOVE_INT                  35   3   4
+0026  0:LOAD_GENERAL_CONST         5   1   0
+0027  1:INT_TO_BOOL               54   0   3
+0028  1:CALL_NATIVE              130   0   0    ; call native general[5] (site 0)
+0029  0:APPEND_STRING_FAST         1   1   0
+0030  1:LOAD_BOOL                 76   5   0    ; ints[5] = false
+0031  0:TYPE_ASSERT                5   2   6
+0032  0:EXT                        4   0   2
+0033  0:BIT_OR                     5   5   6
+0034  0:JUMP_IF_FALSE              5   3   0    ; if ints[5] == 0 goto +3
+0035  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "H"
+0036  0:APPEND_STRING_FAST         1   1   0
+0037  1:JUMP                      74   2   0    ; goto 2
+0038  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "-"
+0039  0:APPEND_STRING_FAST         1   1   0
+0040  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0041  0:ADD_INT                    1   1   3
+0042  1:JUMP                      74 231 255    ; goto -25
+0043  0:LOAD_STRING_CONST          0   2   0    ; strings[0] = ","
+0044  0:STR_JOIN                   1   1   0
+0045  1:MOVE_STRING               37   0   1
+0046  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=2 string=1 general=4 bool=2
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1  [1]=0  [2]=2
+
+0000  0:LOAD_GENERAL_CONST         0   0   0
+0001  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0002  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0003  1:MOVE_INT_TO_GENERAL       40   1   0
+0004  0:INDEX_SET                  0   1   1
+0005  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0006  0:MAKE_SLICE                 1   0   0
+0007  0:EXT                        0   0   0
+0008  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0009  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0010  1:MOVE_INT_TO_GENERAL       40   2   0
+0011  0:INDEX_SET                  1   1   2
+0012  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0013  0:INDEX_SET                  0   0   1
+0014  0:LOAD_GENERAL_CONST         1   1   0
+0015  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0016  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0017  1:MOVE_INT_TO_GENERAL       40   2   0
+0018  0:INDEX_SET                  1   1   2
+0019  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0020  0:MAKE_SLICE                 2   0   0
+0021  0:EXT                        0   0   0
+0022  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0023  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0024  1:MOVE_INT_TO_GENERAL       40   3   0
+0025  0:INDEX_SET                  2   1   3
+0026  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0027  0:INDEX_SET                  1   0   2
+0028  0:LOAD_GENERAL_CONST         2   2   0
+0029  0:EQ_GENERAL                 0   0   1
+0030  1:INT_TO_BOOL               54   0   0
+0031  0:NE_GENERAL                 1   0   1
+0032  1:INT_TO_BOOL               54   1   1
+0033  1:CALL_NATIVE              130   0   0    ; call native general[2] (site 0)
+0034  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=2 string=1 general=4 bool=2
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1  [1]=0  [2]=2
+
+0000  2:MAKE_MAP                   0  12   0
+0001  0:EXT                        0   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0003  0:SET_STRUCT_FIELD_INT_T0    0   0   0
+0004  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0005  0:MAKE_SLICE                 1   0   0
+0006  0:EXT                        1   0   0
+0007  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0008  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0009  1:MOVE_INT_TO_GENERAL       40   2   0
+0010  0:INDEX_SET                  1   1   2
+0011  0:SET_STRUCT_FIELD_GENERAL_T0   0   1   1
+0012  2:MAKE_MAP                   0  12   1
+0013  0:EXT                        0   0   0
+0014  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0015  0:SET_STRUCT_FIELD_INT_T0    1   0   0
+0016  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0017  0:MAKE_SLICE                 2   0   0
+0018  0:EXT                        1   0   0
+0019  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0020  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0021  1:MOVE_INT_TO_GENERAL       40   3   0
+0022  0:INDEX_SET                  2   1   3
+0023  0:SET_STRUCT_FIELD_GENERAL_T0   1   2   1
+0024  0:LOAD_GENERAL_CONST         2   0   0
+0025  0:EQ_GENERAL                 0   0   1
+0026  1:INT_TO_BOOL               54   0   0
+0027  0:NE_GENERAL                 1   0   1
+0028  1:INT_TO_BOOL               54   1   1
+0029  1:CALL_NATIVE              130   0   0    ; call native general[2] (site 0)
+0030  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=2 string=1 general=5 bool=2
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1  [1]=0
+;   strings: [0]="x"
+
+0000  2:MAKE_MAP                   0  12   0
+0001  0:EXT                        0   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0003  0:SET_STRUCT_FIELD_INT_T0    0   0   0
+0004  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "x"
+0005  1:MOVE_STRING_TO_GENERAL    44   1   0
+0006  0:SET_FIELD                  0   1   1
+0007  2:MAKE_MAP                   0  12   1
+0008  0:EXT                        0   0   0
+0009  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0010  0:SET_STRUCT_FIELD_INT_T0    1   0   0
+0011  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "x"
+0012  1:MOVE_STRING_TO_GENERAL    44   2   0
+0013  0:SET_FIELD                  1   1   2
+0014  0:LOAD_GENERAL_CONST         2   0   0
+0015  0:EQ_GENERAL                 0   0   1
+0016  1:INT_TO_BOOL               54   0   0
+0017  0:LOAD_GENERAL_CONST         3   1   0
+0018  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0019  0:INDEX_SET                  3   1   0
+0020  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0021  0:INDEX_SET                  3   1   1
+0022  0:LOAD_GENERAL_CONST         4   2   0
+0023  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0024  0:INDEX_SET                  4   1   1
+0025  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0026  0:INDEX_SET                  4   1   0
+0027  0:EQ_GENERAL                 1   3   4
+0028  1:INT_TO_BOOL               54   1   1
+0029  1:CALL_NATIVE              130   0   0    ; call native general[2] (site 0)
+0030  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=2 string=1 general=4 bool=1
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1  [1]=0
+
+0000  0:LOAD_GENERAL_CONST         0   0   0
+0001  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0002  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0003  1:MOVE_INT_TO_GENERAL       40   1   0
+0004  0:INDEX_SET                  0   1   1
+0005  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0006  0:MAKE_SLICE                 1   0   0
+0007  0:EXT                        0   0   0
+0008  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0009  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0010  1:MOVE_INT_TO_GENERAL       40   2   0
+0011  0:INDEX_SET                  1   1   2
+0012  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0013  0:INDEX_SET                  0   0   1
+0014  0:LOAD_GENERAL_CONST         1   1   0
+0015  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0016  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0017  1:MOVE_INT_TO_GENERAL       40   2   0
+0018  0:INDEX_SET                  1   1   2
+0019  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0020  0:MAKE_SLICE                 2   0   0
+0021  0:EXT                        0   0   0
+0022  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0023  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0024  1:MOVE_INT_TO_GENERAL       40   3   0
+0025  0:INDEX_SET                  2   1   3
+0026  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0027  0:INDEX_SET                  1   0   2
+0028  0:LOAD_GENERAL_CONST         2   2   0
+0029  0:EQ_GENERAL                 0   0   1
+0030  1:INT_TO_BOOL               54   0   0
+0031  1:CALL_NATIVE              130   0   0    ; call native general[2] (site 0)
+0032  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=1 string=1 general=3 bool=1
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1
+
+0000  2:MAKE_MAP                   0  12   0
+0001  0:EXT                        0   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0003  0:SET_STRUCT_FIELD_INT_T0    0   0   0
+0004  2:MAKE_MAP                   0  12   1
+0005  0:EXT                        1   0   0
+0006  0:SET_STRUCT_FIELD_GENERAL_T0   0   1   1
+0007  2:MAKE_MAP                   0  12   1
+0008  0:EXT                        0   0   0
+0009  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0010  0:SET_STRUCT_FIELD_INT_T0    1   0   0
+0011  2:MAKE_MAP                   0  12   2
+0012  0:EXT                        1   0   0
+0013  0:SET_STRUCT_FIELD_GENERAL_T0   1   2   1
+0014  0:LOAD_GENERAL_CONST         2   0   0
+0015  0:EQ_GENERAL                 0   0   1
+0016  1:INT_TO_BOOL               54   0   0
+0017  1:CALL_NATIVE              130   0   0    ; call native general[2] (site 0)
+0018  2:TIER2_RETURN               0  10   1    ; 1 values

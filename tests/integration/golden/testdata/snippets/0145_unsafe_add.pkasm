@@ -1,0 +1,43 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=2 general=6
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=11  [1]=0  [2]=22  [3]=1  [4]=33  [5]=2  [6]=8
+
+0000  0:LOAD_GENERAL_CONST         0   0   0
+0001  1:LOAD_INT_CONST_SMALL      75   0  11    ; ints[0] = 11
+0002  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0003  1:MOVE_INT_TO_GENERAL       40   1   0
+0004  0:INDEX_SET                  0   1   1
+0005  1:LOAD_INT_CONST_SMALL      75   0  22    ; ints[0] = 22
+0006  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0007  1:MOVE_INT_TO_GENERAL       40   1   0
+0008  0:INDEX_SET                  0   1   1
+0009  1:LOAD_INT_CONST_SMALL      75   0  33    ; ints[0] = 33
+0010  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0011  1:MOVE_INT_TO_GENERAL       40   1   0
+0012  0:INDEX_SET                  0   1   1
+0013  0:DEREF                      0   0   1
+0014  0:ALLOC_INDIRECT             1   0   3
+0015  0:EXT                        0   0   0
+0016  0:DEREF                      2   1   0
+0017  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0018  0:INDEX                      3   2   0
+0019  0:ADDR                       4   3   1
+0020  0:CONVERT                    5   4   0
+0021  0:EXT                        1   0   0
+0022  0:MOVE_GENERAL               2   5   1
+0023  1:LOAD_INT_CONST_SMALL      75   0   8    ; ints[0] = 8
+0024  0:UNSAFE_ADD                 3   2   0
+0025  0:CONVERT                    4   3   0
+0026  0:EXT                        2   0   0
+0027  0:DEREF                      5   4   0
+0028  1:MOVE_GENERAL_TO_INT       41   0   5
+0029  2:TIER2_RETURN               0  10   1    ; 1 values

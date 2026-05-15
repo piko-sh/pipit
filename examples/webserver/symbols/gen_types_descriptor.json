@@ -1,0 +1,5 @@
+{
+  "import_paths": [
+    "net/http"
+  ]
+}

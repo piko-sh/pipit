@@ -1,0 +1,85 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=1 string=2 general=2
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1  [1]=0
+;   strings: [0]="inner"
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0001  1:MAKE_CHANNEL              80   0   0
+0002  0:EXT                        0   0   0
+0003  0:MAKE_CLOSURE               1   1   0    ; closure (func 1)
+0004  0:GO                         1   0   0
+0005  1:CHANNEL_RECEIVE           82   0   0
+0006  0:EXT                        0   2   0
+0007  1:EQ_STRING_CONST_JUMP_FALSE 136   0   0
+0008  0:EXT                        3   0   0
+0009  3:TIER3_NOP                  0   0   0
+0010  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0011  2:TIER2_RETURN               0  10   1    ; 1 values
+0012  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0013  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: string=1 general=1
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]="outer"
+
+0000  0:MAKE_CLOSURE               0   2   0    ; closure (func 2)
+0001  0:DEFER                      0   0   0
+0002  0:MAKE_CLOSURE               0   3   0    ; closure (func 3)
+0003  0:DEFER                      0   0   0
+0004  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "outer"
+0005  1:MOVE_STRING_TO_GENERAL    44   0   0
+0006  2:TIER2_PANIC                0   5   0
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=2 string=1 general=3
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]=""
+
+0000  2:TIER2_RECOVER              0   6   0
+0001  1:NE_INTERFACE_NIL         147   0   0
+0002  0:JUMP_IF_FALSE              0   8   0    ; if ints[0] == 0 goto +8
+0003  0:TYPE_ASSERT                1   0   1
+0004  0:EXT                        0   0   0
+0005  0:UNPACK_INTERFACE           0   1   2
+0006  1:MOVE_INT                  35   0   1
+0007  0:JUMP_IF_FALSE              0   3   0    ; if ints[0] == 0 goto +3
+0008  0:GET_UPVALUE                2   0   3
+0009  0:CHAN_SEND                  2   0   2
+0010  3:TIER3_RETURN_VOID          0   0   1
+0011  0:GET_UPVALUE                0   0   3
+0012  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = ""
+0013  0:CHAN_SEND                  0   0   2
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: string=1 general=1
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]="inner"
+
+0000  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "inner"
+0001  1:MOVE_STRING_TO_GENERAL    44   0   0
+0002  2:TIER2_PANIC                0   5   0

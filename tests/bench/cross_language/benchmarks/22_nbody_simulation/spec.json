@@ -1,0 +1,14 @@
+{
+  "name": "22_nbody_simulation",
+  "description": "N-body simulation of the outer solar system (Sun + Jupiter, Saturn, Uranus, Neptune) over 50_000 integration steps. Uses the canonical Computer Language Benchmarks Game initial conditions so the energy invariant is comparable to published implementations. Hot loop is pair-wise gravitational force calculation through slice-of-struct field reads / writes (struct-of-arrays on Tengo). Exercises pipit's struct-in-typed-slice path under FP load: a workload signature no other bench in this suite covers. Allows math.Sqrt / math.sqrt as a single IEEE 754 intrinsic; bans every other math import and any SIMD or numpy-style short-cut. Output is the integer-rounded energy_before and energy_after scaled by 1e9 so canonical hashing is FP-safe.",
+  "args": [],
+  "expected_stdout_sha256": "5cef97fdd02431654f4b5e63633ca42cdb890c68e4e24e05dfbf5e204c8cbdb5",
+  "k_inner": 3,
+  "timeout_seconds": 180,
+  "source_sha256": {
+    "go/native_main.go": "8c119ceca22e7aa65af3a44a2742b0145c622eb9df50642431d979a9d3a6c40f",
+    "go/pipit_source.go": "acb6d0ef7d4fb02d3f5feee1542946245bfbb71e973b116dfa5224363a19a0d2",
+    "py/cpython.py": "02c8933cf365c614d5cba0b36450f60d771cf2aaee0189f03e1057c16c60423b",
+    "py/pypy.py": "02c8933cf365c614d5cba0b36450f60d771cf2aaee0189f03e1057c16c60423b"
+  }
+}

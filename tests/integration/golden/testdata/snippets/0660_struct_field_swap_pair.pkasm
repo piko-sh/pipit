@@ -1,0 +1,51 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function swap
+;   registers: general=1
+;   params:    (general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:SWAP_STRUCT_FIELDS_GENERAL_T0   0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=4 general=5
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1  [1]=2  [2]=10
+
+0000  2:ALLOC_STRUCT_LITERAL       0  14   0
+0001  0:EXT                        0   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0003  0:SET_STRUCT_FIELD_INT_T0    0   0   0
+0004  0:ADDR                       1   0   0
+0005  0:MOVE_GENERAL               0   1   1
+0006  2:ALLOC_STRUCT_LITERAL       0  14   1
+0007  0:EXT                        0   0   0
+0008  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0009  0:SET_STRUCT_FIELD_INT_T0    1   0   0
+0010  0:ADDR                       2   1   0
+0011  0:MOVE_GENERAL               1   2   1
+0012  2:MAKE_MAP                   0  12   2
+0013  0:EXT                        1   0   0
+0014  0:SET_STRUCT_FIELD_GENERAL_T0   2   0   1
+0015  0:SET_STRUCT_FIELD_GENERAL_T0   2   1   2
+0016  0:ADDR                       3   2   0
+0017  0:MOVE_GENERAL               2   3   1
+0018  1:CALL                     128   0   0    ; call (site 0)
+0019  1:CALL                     128   1   0    ; call (site 1)
+0020  1:CALL                     128   2   0    ; call (site 2)
+0021  0:GET_STRUCT_FIELD_GENERAL_T0   3   2   1
+0022  0:GET_STRUCT_FIELD_INT_T0    0   3   0
+0023  0:MUL_INT_CONST              2   0   2    ; const = 10
+0024  3:TIER3_NOP                  0   0   0
+0025  0:GET_STRUCT_FIELD_GENERAL_T0   4   2   2
+0026  0:GET_STRUCT_FIELD_INT_T0    3   4   0
+0027  0:ADD_INT                    0   2   3
+0028  2:TIER2_RETURN               0  10   1    ; 1 values

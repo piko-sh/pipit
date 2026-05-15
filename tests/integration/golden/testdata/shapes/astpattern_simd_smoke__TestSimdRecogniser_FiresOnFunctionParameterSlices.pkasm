@@ -1,0 +1,36 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function dotRow
+;   registers: int=1 float=1 sliceFloat=2
+;   params:    (sliceFloat, sliceFloat)
+;   returns:   (float)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   floats:  [0]=0
+
+0000  0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 0
+0001  1:LEN_SLICE_FLOAT_DIRECT    21   0   0
+0002  1:SIMD_DOT_PRODUCT_FLOAT64 151   0   0
+0003  0:EXT                        1   0   0
+0004  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function EntrypointRun
+;   registers: int=2 sliceFloat=2
+;   params:    (none)
+;   returns:   (float)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=8
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   8    ; ints[0] = 8
+0001  1:MAKE_SLICE_FLOAT          18   0   0
+0002  0:EXT                        0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   1   8    ; ints[1] = 8
+0004  1:MAKE_SLICE_FLOAT          18   1   1
+0005  0:EXT                        1   0   0
+0006  1:TAIL_CALL                129   0   0    ; tail call (site 0)

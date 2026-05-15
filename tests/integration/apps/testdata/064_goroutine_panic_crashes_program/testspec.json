@@ -1,0 +1,4 @@
+{
+  "shouldError": true,
+  "errorContains": "goroutine died"
+}

@@ -1,0 +1,33 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function origin
+;   registers: int=1 general=1
+;   params:    (none)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+
+0000  2:ALLOC_STRUCT_LITERAL       0  14   0
+0001  0:EXT                        0   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0003  0:SET_STRUCT_FIELD_INT_T0    0   0   0
+0004  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0005  0:SET_STRUCT_FIELD_INT_T0    0   0   1
+0006  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function EntrypointRun
+;   registers: int=3 general=2
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+0000  1:CALL                     128   0   0    ; call (site 0)
+0001  0:GET_STRUCT_FIELD_INT_T0    0   0   0
+0002  0:GET_STRUCT_FIELD_INT_T0    1   0   1
+0003  0:ADD_INT                    0   0   1
+0004  2:TIER2_RETURN               0  10   1    ; 1 values

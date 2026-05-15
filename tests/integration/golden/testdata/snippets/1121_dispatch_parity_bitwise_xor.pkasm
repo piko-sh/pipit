@@ -1,0 +1,18 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=3
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=255  [1]=15
+
+0000  1:LOAD_INT_CONST_SMALL      75   0 255    ; ints[0] = 255
+0001  1:LOAD_INT_CONST_SMALL      75   1  15    ; ints[1] = 15
+0002  0:BIT_XOR                    2   0   1
+0003  1:MOVE_INT                  35   0   2
+0004  2:TIER2_RETURN               0  10   1    ; 1 values

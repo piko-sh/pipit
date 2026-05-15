@@ -1,0 +1,164 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=1 string=12 general=3 bool=2 uint=1
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2  [1]=3  [2]=0
+;   strings: [0]=""  [1]="split:%v;"  [2]="a,,b,c,"  [3]=","  [4]="splitN:%v;"  [5]="a:b:c:d"  [6]=":"  [7]="trim:%q;"  [8]="  \t hello \r\n"  [9]=" \t\r\n"  [10]="trimFunc:%q;"  [11]="123abc456"  [12]="indexByte:%d;"  [13]="hello"  [14]="indexByteNot:%d;"  [15]="repeat:%q;"  [16]="ab"  [17]="repeatZero:%q;"  [18]="replaceAll:%q;"  [19]="banana"  [20]="an"  [21]="AN"  [22]="key=value"  [23]="="  [24]="cut:%q/%q/%v;"  [25]="nodelim"  [26]="cutNo:%q/%q/%v;"  [27]="contains:%v;"  [28]="ell"  [29]="eqFold:%v;"  [30]="HELLO"  [31]="toLower:%q;"  [32]="ÜBER"  [33]="toUpper:%q"
+;   uints:   [0]=108  [1]=122
+
+0000  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = ""
+0001  0:LOAD_GENERAL_CONST         0   0   0
+0002  0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "split:%v;"
+0003  0:LOAD_STRING_CONST          2   2   0    ; strings[2] = "a,,b,c,"
+0004  0:LOAD_STRING_CONST          3   3   0    ; strings[3] = ","
+0005  0:STR_SPLIT                  1   2   3
+0006  1:CALL_NATIVE              130   0   0    ; call native general[0] (site 0)
+0007  0:CONCAT_STRING              5   0   4
+0008  1:MOVE_STRING               37   0   5
+0009  0:LOAD_GENERAL_CONST         0   1   0
+0010  0:LOAD_STRING_CONST          1   4   0    ; strings[1] = "splitN:%v;"
+0011  0:LOAD_GENERAL_CONST         1   2   0
+0012  0:LOAD_STRING_CONST          2   5   0    ; strings[2] = "a:b:c:d"
+0013  0:LOAD_STRING_CONST          3   6   0    ; strings[3] = ":"
+0014  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0015  1:CALL_NATIVE              130   1   0    ; call native general[1] (site 1)
+0016  1:CALL_NATIVE              130   2   0    ; call native general[0] (site 2)
+0017  0:CONCAT_STRING              5   0   4
+0018  1:MOVE_STRING               37   0   5
+0019  0:LOAD_GENERAL_CONST         0   3   0
+0020  0:LOAD_STRING_CONST          1   7   0    ; strings[1] = "trim:%q;"
+0021  0:LOAD_STRING_CONST          2   8   0    ; strings[2] = "  \t hello \r\n"
+0022  0:LOAD_STRING_CONST          3   9   0    ; strings[3] = " \t\r\n"
+0023  0:STR_TRIM                   4   2   3
+0024  1:CALL_NATIVE              130   3   0    ; call native general[0] (site 3)
+0025  0:CONCAT_STRING              6   0   5
+0026  1:MOVE_STRING               37   0   6
+0027  0:LOAD_GENERAL_CONST         0   4   0
+0028  0:LOAD_STRING_CONST          1  10   0    ; strings[1] = "trimFunc:%q;"
+0029  0:LOAD_GENERAL_CONST         1   5   0
+0030  0:LOAD_STRING_CONST          2  11   0    ; strings[2] = "123abc456"
+0031  0:MAKE_CLOSURE               2   1   0    ; closure (func 1)
+0032  1:CALL_NATIVE              130   4   0    ; call native general[1] (site 4)
+0033  1:CALL_NATIVE              130   5   0    ; call native general[0] (site 5)
+0034  0:CONCAT_STRING              5   0   4
+0035  1:MOVE_STRING               37   0   5
+0036  0:LOAD_GENERAL_CONST         0   6   0
+0037  0:LOAD_STRING_CONST          1  12   0    ; strings[1] = "indexByte:%d;"
+0038  0:LOAD_GENERAL_CONST         1   7   0
+0039  0:LOAD_STRING_CONST          2  13   0    ; strings[2] = "hello"
+0040  1:LOAD_UINT_CONST_SMALL     99   0 108    ; uints[0] = 108
+0041  1:CALL_NATIVE              130   6   0    ; call native general[1] (site 6)
+0042  1:CALL_NATIVE              130   7   0    ; call native general[0] (site 7)
+0043  0:CONCAT_STRING              4   0   3
+0044  1:MOVE_STRING               37   0   4
+0045  0:LOAD_GENERAL_CONST         0   8   0
+0046  0:LOAD_STRING_CONST          1  14   0    ; strings[1] = "indexByteNot:%d;"
+0047  0:LOAD_GENERAL_CONST         1   9   0
+0048  0:LOAD_STRING_CONST          2  13   0    ; strings[2] = "hello"
+0049  1:LOAD_UINT_CONST_SMALL     99   0 122    ; uints[0] = 122
+0050  1:CALL_NATIVE              130   8   0    ; call native general[1] (site 8)
+0051  1:CALL_NATIVE              130   9   0    ; call native general[0] (site 9)
+0052  0:CONCAT_STRING              4   0   3
+0053  1:MOVE_STRING               37   0   4
+0054  0:LOAD_GENERAL_CONST         0  10   0
+0055  0:LOAD_STRING_CONST          1  15   0    ; strings[1] = "repeat:%q;"
+0056  0:LOAD_STRING_CONST          2  16   0    ; strings[2] = "ab"
+0057  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0058  0:STR_REPEAT                 3   2   0
+0059  1:CALL_NATIVE              130  10   0    ; call native general[0] (site 10)
+0060  0:CONCAT_STRING              5   0   4
+0061  1:MOVE_STRING               37   0   5
+0062  0:LOAD_GENERAL_CONST         0  11   0
+0063  0:LOAD_STRING_CONST          1  17   0    ; strings[1] = "repeatZero:%q;"
+0064  0:LOAD_STRING_CONST          2  16   0    ; strings[2] = "ab"
+0065  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0066  0:STR_REPEAT                 3   2   0
+0067  1:CALL_NATIVE              130  11   0    ; call native general[0] (site 11)
+0068  0:CONCAT_STRING              5   0   4
+0069  1:MOVE_STRING               37   0   5
+0070  0:LOAD_GENERAL_CONST         0  12   0
+0071  0:LOAD_STRING_CONST          1  18   0    ; strings[1] = "replaceAll:%q;"
+0072  0:LOAD_STRING_CONST          2  19   0    ; strings[2] = "banana"
+0073  0:LOAD_STRING_CONST          3  20   0    ; strings[3] = "an"
+0074  0:LOAD_STRING_CONST          4  21   0    ; strings[4] = "AN"
+0075  0:STR_REPLACE_ALL            5   2   3
+0076  0:EXT                        4   0   0
+0077  1:CALL_NATIVE              130  12   0    ; call native general[0] (site 12)
+0078  0:CONCAT_STRING              7   0   6
+0079  1:MOVE_STRING               37   0   7
+0080  0:LOAD_GENERAL_CONST         0  13   0
+0081  0:LOAD_STRING_CONST          3  22   0    ; strings[3] = "key=value"
+0082  0:LOAD_STRING_CONST          4  23   0    ; strings[4] = "="
+0083  1:CALL_NATIVE              130  13   0    ; call native general[0] (site 13)
+0084  0:LOAD_GENERAL_CONST         1  14   0
+0085  0:LOAD_STRING_CONST          5  24   0    ; strings[5] = "cut:%q/%q/%v;"
+0086  1:CALL_NATIVE              130  14   0    ; call native general[1] (site 14)
+0087  0:CONCAT_STRING              7   0   6
+0088  1:MOVE_STRING               37   0   7
+0089  0:LOAD_GENERAL_CONST         1  15   0
+0090  0:LOAD_STRING_CONST          5  25   0    ; strings[5] = "nodelim"
+0091  0:LOAD_STRING_CONST          6  23   0    ; strings[6] = "="
+0092  1:CALL_NATIVE              130  15   0    ; call native general[1] (site 15)
+0093  0:LOAD_GENERAL_CONST         2  16   0
+0094  0:LOAD_STRING_CONST          7  26   0    ; strings[7] = "cutNo:%q/%q/%v;"
+0095  1:CALL_NATIVE              130  16   0    ; call native general[2] (site 16)
+0096  0:CONCAT_STRING              9   0   8
+0097  1:MOVE_STRING               37   0   9
+0098  0:LOAD_GENERAL_CONST         2  17   0
+0099  0:LOAD_STRING_CONST          7  27   0    ; strings[7] = "contains:%v;"
+0100  0:LOAD_STRING_CONST          8  13   0    ; strings[8] = "hello"
+0101  0:LOAD_STRING_CONST          9  28   0    ; strings[9] = "ell"
+0102  0:STR_CONTAINS               1   8   9
+0103  1:CALL_NATIVE              130  17   0    ; call native general[2] (site 17)
+0104  0:CONCAT_STRING             11   0  10
+0105  1:MOVE_STRING               37   0  11
+0106  0:LOAD_GENERAL_CONST         2  18   0
+0107  0:LOAD_STRING_CONST          7  29   0    ; strings[7] = "eqFold:%v;"
+0108  0:LOAD_STRING_CONST          8  30   0    ; strings[8] = "HELLO"
+0109  0:LOAD_STRING_CONST          9  13   0    ; strings[9] = "hello"
+0110  0:STR_EQUAL_FOLD             1   8   9
+0111  1:CALL_NATIVE              130  18   0    ; call native general[2] (site 18)
+0112  0:CONCAT_STRING             11   0  10
+0113  1:MOVE_STRING               37   0  11
+0114  0:LOAD_GENERAL_CONST         2  19   0
+0115  0:LOAD_STRING_CONST          7  31   0    ; strings[7] = "toLower:%q;"
+0116  0:LOAD_STRING_CONST          8  32   0    ; strings[8] = "ÜBER"
+0117  1:STR_TO_LOWER              68   9   8
+0118  1:CALL_NATIVE              130  19   0    ; call native general[2] (site 19)
+0119  0:CONCAT_STRING             11   0  10
+0120  1:MOVE_STRING               37   0  11
+0121  0:LOAD_GENERAL_CONST         2  20   0
+0122  0:LOAD_STRING_CONST          7  33   0    ; strings[7] = "toUpper:%q"
+0123  0:LOAD_STRING_CONST          8  13   0    ; strings[8] = "hello"
+0124  1:STR_TO_UPPER              67   9   8
+0125  1:CALL_NATIVE              130  20   0    ; call native general[2] (site 20)
+0126  0:CONCAT_STRING             11   0  10
+0127  1:MOVE_STRING               37   0  11
+0128  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=6 bool=1
+;   params:    (int)
+;   returns:   (bool)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=48  [1]=57
+
+0000  1:LOAD_INT_CONST_SMALL      75   1  48    ; ints[1] = 48
+0001  0:GE_INT                     2   0   1
+0002  1:MOVE_INT                  35   3   2
+0003  0:JUMP_IF_FALSE              3   3   0    ; if ints[3] == 0 goto +3
+0004  1:LOAD_INT_CONST_SMALL      75   4  57    ; ints[4] = 57
+0005  0:LE_INT                     5   0   4
+0006  1:MOVE_INT                  35   3   5
+0007  1:INT_TO_BOOL               54   0   3
+0008  2:TIER2_RETURN               0  10   1    ; 1 values

@@ -1,0 +1,14 @@
+{
+  "name": "21_dense_layer",
+  "description": "Dense layer forward pass: output[i] = relu(sum_j(W[i][j] * input[j]) + bias[i]) over a deterministic 256x256 weight matrix and 256-element input. Inner dot-product loop matches the pipit SIMD recogniser; CPython runs scalarly so the four-runner contrast highlights the recogniser's impact.",
+  "args": [],
+  "expected_stdout_sha256": "fcadb741f08fa34f09fffb1c412667368f5c9cfe7e912465a6d429dbe634b37a",
+  "k_inner": 5,
+  "timeout_seconds": 180,
+  "source_sha256": {
+    "go/native_main.go": "8c119ceca22e7aa65af3a44a2742b0145c622eb9df50642431d979a9d3a6c40f",
+    "go/pipit_source.go": "2880070246407e0e0312620578b811fc0a776c31ae9029984ed007195a25378a",
+    "py/cpython.py": "3dee825a745ed9396c097a133377f6a7071b0e934ec776e33c818a6333a726df",
+    "py/pypy.py": "3dee825a745ed9396c097a133377f6a7071b0e934ec776e33c818a6333a726df"
+  }
+}

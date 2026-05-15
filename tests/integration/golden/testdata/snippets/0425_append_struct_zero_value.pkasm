@@ -1,0 +1,216 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function <varinit>
+;   registers: int=1 string=1 general=2
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=8  [1]=0  [2]=1  [3]=2  [4]=3  [5]=4  [6]=5  [7]=6  [8]=7
+;   strings: [0]="the"  [1]="of"  [2]="and"  [3]="to"  [4]="in"  [5]="a"  [6]="is"  [7]="it"
+
+0000  0:LOAD_INT_CONST             0   0   0    ; ints[0] = 8
+0001  0:MAKE_SLICE                 0   0   0
+0002  0:EXT                        0   0   0
+0003  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "the"
+0004  0:LOAD_INT_CONST             0   1   0    ; ints[0] = 0
+0005  1:MOVE_STRING_TO_GENERAL    44   1   0
+0006  0:INDEX_SET                  0   0   1
+0007  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "of"
+0008  0:LOAD_INT_CONST             0   2   0    ; ints[0] = 1
+0009  1:MOVE_STRING_TO_GENERAL    44   1   0
+0010  0:INDEX_SET                  0   0   1
+0011  0:LOAD_STRING_CONST          0   2   0    ; strings[0] = "and"
+0012  0:LOAD_INT_CONST             0   3   0    ; ints[0] = 2
+0013  1:MOVE_STRING_TO_GENERAL    44   1   0
+0014  0:INDEX_SET                  0   0   1
+0015  0:LOAD_STRING_CONST          0   3   0    ; strings[0] = "to"
+0016  0:LOAD_INT_CONST             0   4   0    ; ints[0] = 3
+0017  1:MOVE_STRING_TO_GENERAL    44   1   0
+0018  0:INDEX_SET                  0   0   1
+0019  0:LOAD_STRING_CONST          0   4   0    ; strings[0] = "in"
+0020  0:LOAD_INT_CONST             0   5   0    ; ints[0] = 4
+0021  1:MOVE_STRING_TO_GENERAL    44   1   0
+0022  0:INDEX_SET                  0   0   1
+0023  0:LOAD_STRING_CONST          0   5   0    ; strings[0] = "a"
+0024  0:LOAD_INT_CONST             0   6   0    ; ints[0] = 5
+0025  1:MOVE_STRING_TO_GENERAL    44   1   0
+0026  0:INDEX_SET                  0   0   1
+0027  0:LOAD_STRING_CONST          0   6   0    ; strings[0] = "is"
+0028  0:LOAD_INT_CONST             0   7   0    ; ints[0] = 6
+0029  1:MOVE_STRING_TO_GENERAL    44   1   0
+0030  0:INDEX_SET                  0   0   1
+0031  0:LOAD_STRING_CONST          0   7   0    ; strings[0] = "it"
+0032  0:LOAD_INT_CONST             0   8   0    ; ints[0] = 7
+0033  1:MOVE_STRING_TO_GENERAL    44   1   0
+0034  0:INDEX_SET                  0   0   1
+0035  0:SET_GLOBAL                 0   0   3
+0036  3:TIER3_RETURN_VOID          0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function lessForTop
+;   registers: int=3 string=2 general=2 bool=1
+;   params:    (general, general)
+;   returns:   (bool)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:GET_STRUCT_FIELD_INT_T0    0   0   0
+0001  0:GET_STRUCT_FIELD_INT_T0    1   1   0
+0002  1:NE_INT_JUMP_FALSE        121   0   1
+0003  0:EXT                        5   0   0
+0004  1:MOVE_INT                  35   0   0    ; CSE'd from PC 0
+0005  1:MOVE_INT                  35   1   1    ; CSE'd from PC 1
+0006  0:GT_INT                     2   0   1
+0007  1:INT_TO_BOOL               54   0   2
+0008  2:TIER2_RETURN               0  10   1    ; 1 values
+0009  1:GET_STRUCT_FIELD_STRING   90   0   0
+0010  0:EXT                        1   0   0
+0011  1:GET_STRUCT_FIELD_STRING   90   1   1
+0012  0:EXT                        1   0   0
+0013  0:LT_STRING                  0   0   1
+0014  1:INT_TO_BOOL               54   0   0
+0015  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=10 string=1 general=5 bool=1 uint=4
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=1048592  [2]=1048576  [3]=7  [4]=1  [5]=4  [6]=3
+;   uints:   [0]=987654321  [1]=1664525  [2]=1013904223  [3]=32
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0001  0:LOAD_INT_CONST             1   1   0    ; ints[1] = 1048592
+0002  0:MAKE_SLICE                 0   0   1
+0003  0:EXT                        0   0   0
+0004  0:LOAD_UINT_CONST            0   0   0
+0005  1:LOAD_INT_CONST_SMALL      75   4   7    ; LICM hoist of PC 17
+0006  1:LEN                       70   0   0
+0007  1:LT_INT_CONST_JUMP_FALSE  123   0   2
+0008  0:EXT                       26   0   0
+0009  3:TIER3_NOP                  0   0   0
+0010  0:LOAD_UINT_CONST            1   1   0
+0011  0:MUL_UINT                   2   0   1
+0012  0:TRUNCATE_NARROW            2  32   5
+0013  0:LOAD_UINT_CONST            3   2   0
+0014  0:ADD_UINT                   0   2   3
+0015  0:TRUNCATE_NARROW            0  32   5
+0016  0:GET_GLOBAL                 1   0   3
+0017  1:UINT_TO_INT               56   3   0
+0018  0:BIT_AND                    5   3   4
+0019  0:SLICE_GET_STRING           0   1   5
+0020  1:LEN                       70   3   0
+0021  1:GT_INT_CONST_JUMP_FALSE  127   3   0
+0022  0:EXT                        3   0   0
+0023  3:TIER3_NOP                  0   0   0
+0024  1:LOAD_UINT_CONST_SMALL     99   1  32    ; uints[1] = 32
+0025  0:APPEND_BYTE_FAST_INPLACE   0   0   1
+0026  1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
+0027  1:LEN_STRING_LT_JUMP_FALSE  78   3   0
+0028  0:EXT                        5   0   0
+0029  3:TIER3_NOP                  0   0   0
+0030  0:STRING_INDEX               1   0   3
+0031  0:APPEND_BYTE_FAST_INPLACE   0   0   1
+0032  2:TIER2_INC_INT              0   1   3
+0033  1:JUMP                      74 249 255    ; goto -7
+0034  1:JUMP                      74 227 255    ; goto -29
+0035  2:MAKE_MAP                   0  12   1
+0036  0:EXT                        1   0   0
+0037  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0038  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0039  1:LEN                       70   2   0
+0040  1:LE_INT_JUMP_FALSE        117   1   2
+0041  0:EXT                       20   0   0
+0042  1:LEN                       70   4   0
+0043  0:EQ_INT                     5   1   4
+0044  1:MOVE_INT                  35   6   5
+0045  0:JUMP_IF_TRUE               6   4   0    ; if ints[6] != 0 goto +4
+0046  0:SLICE_GET_UINT             1   0   1
+0047  1:LOAD_UINT_CONST_SMALL     99   2  32    ; uints[2] = 32
+0048  0:EQ_UINT                    7   1   2
+0049  1:MOVE_INT                  35   6   7
+0050  0:JUMP_IF_FALSE              6   9   0    ; if ints[6] == 0 goto +9
+0051  1:GT_INT_JUMP_FALSE        118   1   0
+0052  0:EXT                        5   0   0
+0053  1:SLICE_OP                 141   2   0
+0054  0:EXT                        3   0   1
+0055  1:BYTES_TO_STRING           11   0   2
+0056  1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
+0057  0:MAP_ADD_STRING_INT         1   0   4
+0058  1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
+0059  0:ADD_INT                    0   1   4
+0060  2:TIER2_INC_INT              0   1   1
+0061  1:JUMP                      74 233 255    ; goto -23
+0062  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0063  1:LOAD_INT_CONST_SMALL      75   2   4    ; ints[2] = 4
+0064  0:MAKE_SLICE                 2   1   2
+0065  0:EXT                        2   0   0
+0066  0:MOVE_GENERAL               0   2   1
+0067  1:RANGE_INIT               142   2   1
+0068  1:RANGE_NEXT               143   2   1
+0069  0:EXT                        3   0   2
+0070  0:EXT                        0   2   0
+0071  0:JUMP_IF_FALSE              1  44   0    ; if ints[1] == 0 goto +44
+0072  2:MAKE_MAP                   0  12   3
+0073  0:EXT                        3   0   0
+0074  1:SET_STRUCT_FIELD_STRING   95   3   0
+0075  0:EXT                        0   0   0
+0076  0:SET_STRUCT_FIELD_INT_T0    3   2   1
+0077  1:LEN                       70   3   0
+0078  1:LOAD_INT_CONST_SMALL      75   4   0    ; LICM hoist of PC 78
+0079  0:GT_INT                     5   3   4
+0080  1:MOVE_INT                  35   6   5
+0081  0:JUMP_IF_FALSE              6   6   0    ; if ints[6] == 0 goto +6
+0082  1:LOAD_INT_CONST_SMALL      75   7   1    ; ints[7] = 1
+0083  0:SUB_INT                    8   3   7
+0084  0:INDEX                      4   0   8
+0085  1:CALL                     128   0   0    ; call (site 0)
+0086  1:BOOL_TO_INT               53   9   0
+0087  1:MOVE_INT                  35   6   9
+0088  0:JUMP_IF_FALSE              6   2   0    ; if ints[6] == 0 goto +2
+0089  2:TIER2_DEC_INT              0   2   3
+0090  1:JUMP                      74 244 255    ; goto -12
+0091  2:MAKE_MAP                   0  12   4
+0092  0:EXT                        3   0   0
+0093  0:APPEND_INPLACE             0   0   4
+0094  1:LEN                       70   4   0
+0095  1:LOAD_INT_CONST_SMALL      75   5   1    ; ints[5] = 1
+0096  0:SUB_INT                    6   4   5
+0097  1:MOVE_INT                  35   4   6
+0098  1:LOAD_INT_CONST_SMALL      75   6   1    ; LICM hoist of PC 100
+0099  1:GT_INT_JUMP_FALSE        118   4   3
+0100  0:EXT                        5   0   0
+0101  0:SUB_INT                    7   4   6
+0102  0:INDEX                      4   0   7
+0103  0:INDEX_SET                  0   4   4
+0104  2:TIER2_DEC_INT              0   2   4
+0105  1:JUMP                      74 249 255    ; goto -7
+0106  0:INDEX_SET                  0   3   3
+0107  1:LEN                       70   4   0
+0108  1:GT_INT_CONST_JUMP_FALSE  127   4   6
+0109  0:EXT                        5   0   0
+0110  3:TIER3_NOP                  0   0   0
+0111  1:LOAD_INT_CONST_SMALL      75   4   3    ; ints[4] = 3
+0112  1:SLICE_OP                 141   4   0
+0113  0:EXT                        2   0   4
+0114  0:MOVE_GENERAL               0   4   1
+0115  1:JUMP                      74 208 255    ; goto -48
+0116  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0117  1:MOVE_INT                  35   0   1
+0118  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0119  1:LEN                       70   2   0
+0120  1:LT_INT_JUMP_FALSE        116   1   2
+0121  0:EXT                        6   0   0
+0122  0:SLICE_INDEX_STRUCT_FIELD_INT   4   0   1
+0123  0:EXT                        1   0   0
+0124  0:ADD_INT                    5   0   4
+0125  1:MOVE_INT                  35   0   5
+0126  2:TIER2_INC_INT              0   1   1
+0127  1:JUMP                      74 247 255    ; goto -9
+0128  2:TIER2_RETURN               0  10   1    ; 1 values

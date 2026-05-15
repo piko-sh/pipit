@@ -1,0 +1,5 @@
+{
+  "description": "Calls fmt.Fprint THEN buffer.Write directly. Tests if the fmt.Fprint adapter call corrupts subsequent direct method dispatch.",
+  "modulePath": "testpkg",
+  "expected": "fp-buffer=>>fprint-here|direct-here<<"
+}

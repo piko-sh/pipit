@@ -1,0 +1,46 @@
+// Copyright 2026 PolitePixels Limited
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This project stands against fascism, authoritarianism, and all forms of
+// oppression. We built this to empower people, not to enable those who would
+// strip others of their rights and dignity.
+
+//go:build integration
+
+package session_test
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestSession_MultiNameSubmitDoesNotPoison(t *testing.T) {
+	sess := newTestSession(t)
+	mustSubmit(t, sess, "var a = 1\nvar b = 2")
+	require.EqualValues(t, 3, mustSubmit(t, sess, "a + b"))
+	require.EqualValues(t, 6, mustSubmit(t, sess, "a + b + 3"))
+}
+
+func TestSession_GroupedDeclSubmit(t *testing.T) {
+	sess := newTestSession(t)
+	mustSubmit(t, sess, "const (\n\tx = 10\n\ty = 20\n)")
+	require.EqualValues(t, 30, mustSubmit(t, sess, "x + y"))
+}
+
+func TestSession_AliasedImportPersists(t *testing.T) {
+	sess := newTestSession(t)
+	mustSubmit(t, sess, `import s "strings"`)
+	require.Equal(t, "HI", mustSubmit(t, sess, `s.ToUpper("hi")`))
+}

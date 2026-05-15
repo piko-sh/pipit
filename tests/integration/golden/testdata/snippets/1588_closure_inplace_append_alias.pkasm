@@ -1,0 +1,52 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=2 string=1 general=3 sliceByte=2
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=8
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0001  1:LOAD_INT_CONST_SMALL      75   1   8    ; ints[1] = 8
+0002  1:MAKE_SLICE_HEAP          208   0   0
+0003  0:EXT                        1  12   0
+0004  0:ALLOC_INDIRECT             0   0  12
+0005  0:EXT                        0   0   0
+0006  0:MAKE_CLOSURE               1   1   0    ; closure (func 1)
+0007  1:CALL                     128   0   0    ; call closure general[1] (site 0)
+0008  2:SYNC_CLOSURE_UPVALUES      0  15   1
+0009  0:DEREF                      2   0   0
+0010  0:UNPACK_INTERFACE           1   2  12
+0011  1:SLICE_BYTE_TO_STRING     149   0   1
+0012  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: general=2 uint=1 sliceByte=2
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   uints:   [0]=120  [1]=121  [2]=122
+
+0000  0:GET_UPVALUE                0   0  12
+0001  1:BOX_SLICE_BYTE           148   0   0
+0002  0:GET_UPVALUE                0   0  12
+0003  1:LOAD_UINT_CONST_SMALL     99   0 120    ; uints[0] = 120
+0004  1:APPEND_SLICE_BYTE_DIRECT 176   1   0
+0005  0:EXT                        0   0   0
+0006  0:SET_UPVALUE                1   0  12
+0007  0:GET_UPVALUE                0   0  12
+0008  1:LOAD_UINT_CONST_SMALL     99   0 121    ; uints[0] = 121
+0009  1:APPEND_SLICE_BYTE_DIRECT 176   1   0
+0010  0:EXT                        0   0   0
+0011  0:SET_UPVALUE                1   0  12
+0012  1:LOAD_UINT_CONST_SMALL     99   0 122    ; uints[0] = 122
+0013  0:APPEND_BYTE_FAST           1   0   0
+0014  0:MOVE_GENERAL               0   1   1

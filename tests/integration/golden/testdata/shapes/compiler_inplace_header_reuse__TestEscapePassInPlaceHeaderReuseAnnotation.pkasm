@@ -1,0 +1,123 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function <varinit>
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000  3:TIER3_RETURN_VOID          0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function keep
+;   registers: general=1
+;   params:    (general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:SET_GLOBAL                 0   0   3
+
+; ═════════════════════════════════════════════════════════════
+; function build
+;   registers: int=3 general=2
+;   params:    (int)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+
+0000  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0001  0:MAKE_SLICE                 0   1   1
+0002  0:EXT                        0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0004  1:LT_INT_JUMP_FALSE        116   1   0
+0005  0:EXT                        8   0   0
+0006  2:ALLOC_STRUCT_LITERAL       0  14   1
+0007  0:EXT                        1   0   0
+0008  0:SET_STRUCT_FIELD_INT_T0    1   1   0
+0009  0:SET_STRUCT_FIELD_INT_T0    1   1   1
+0010  0:APPEND_STRUCT_FAST         0   0   1
+0011  0:EXT                        1   0   0
+0012  2:TIER2_INC_INT              0   1   1
+0013  1:JUMP                      74 246 255    ; goto -10
+0014  1:LEN                       70   1   0
+0015  1:MOVE_INT                  35   0   1
+0016  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function leak
+;   registers: int=3 general=2
+;   params:    (int)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+
+0000  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0001  0:MAKE_SLICE                 0   1   1
+0002  0:EXT                        0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0004  1:LT_INT_JUMP_FALSE        116   1   0
+0005  0:EXT                        8   0   0
+0006  2:ALLOC_STRUCT_LITERAL       0  14   1
+0007  0:EXT                        1   0   0
+0008  0:SET_STRUCT_FIELD_INT_T0    1   1   0
+0009  0:SET_STRUCT_FIELD_INT_T0    1   1   1
+0010  0:APPEND_STRUCT_FAST         0   0   1
+0011  0:EXT                        1   0   0
+0012  2:TIER2_INC_INT              0   1   1
+0013  1:JUMP                      74 246 255    ; goto -10
+0014  1:CALL                     128   0   0    ; call (site 0)
+0015  1:LEN                       70   1   0
+0016  1:MOVE_INT                  35   0   1
+0017  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function ret
+;   registers: int=3 general=2
+;   params:    (int)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+
+0000  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0001  0:MAKE_SLICE                 0   1   1
+0002  0:EXT                        0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0004  1:LT_INT_JUMP_FALSE        116   1   0
+0005  0:EXT                        8   0   0
+0006  2:ALLOC_STRUCT_LITERAL       0  14   1
+0007  0:EXT                        1   0   0
+0008  0:SET_STRUCT_FIELD_INT_T0    1   1   0
+0009  0:SET_STRUCT_FIELD_INT_T0    1   1   1
+0010  0:APPEND_STRUCT_FAST         0   0   1
+0011  0:EXT                        1   0   0
+0012  2:TIER2_INC_INT              0   1   1
+0013  1:JUMP                      74 246 255    ; goto -10
+0014  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function EntrypointRun
+;   registers: int=7 general=1
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=3
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0001  1:CALL_SCALAR              134   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   2   3    ; ints[2] = 3
+0003  1:CALL_SCALAR              134   1   0
+0004  0:ADD_INT                    4   1   3
+0005  1:LOAD_INT_CONST_SMALL      75   5   3    ; ints[5] = 3
+0006  1:CALL                     128   2   0    ; call (site 2)
+0007  1:LEN                       70   6   0
+0008  0:ADD_INT                    0   4   6
+0009  2:TIER2_RETURN               0  10   1    ; 1 values

@@ -1,0 +1,65 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function sumTo
+;   registers: int=2 general=5
+;   params:    (general)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=1
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0001  0:PACK_INTERFACE             1   0   0
+0002  0:LE_GENERAL                 1   0   1
+0003  0:JUMP_IF_FALSE              1   4   0    ; if ints[1] == 0 goto +4
+0004  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0005  0:PACK_INTERFACE             1   0   0
+0006  0:MOVE_GENERAL               0   1   0
+0007  2:TIER2_RETURN               0  10   1    ; 1 values
+0008  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0009  0:PACK_INTERFACE             1   0   0
+0010  0:SUB                        2   0   1
+0011  1:CALL                     128   0   0    ; call (site 0)
+0012  0:ADD                        4   0   3
+0013  0:MOVE_GENERAL               0   4   0
+0014  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=2
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=10
+
+0000  1:LOAD_INT_CONST_SMALL      75   0  10    ; ints[0] = 10
+0001  1:CALL_SCALAR              134   0   0
+0002  1:MOVE_INT                  35   0   1
+0003  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function sumTo[spec:int]
+;   registers: int=4
+;   params:    (int)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=1
+
+0000  1:LE_INT_CONST_JUMP_FALSE  122   0   0
+0001  0:EXT                        4   0   0
+0002  3:TIER3_NOP                  0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0004  1:MOVE_INT                  35   0   1
+0005  2:TIER2_RETURN               0  10   1    ; 1 values
+0006  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0007  0:SUB_INT                    2   0   1
+0008  1:CALL_SCALAR              134   0   0
+0009  0:ADD_INT                    0   0   3
+0010  2:TIER2_RETURN               0  10   1    ; 1 values

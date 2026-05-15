@@ -1,0 +1,2103 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function identity
+;   registers: int=1
+;   params:    (int)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+0000  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=311
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=1  [2]=2  [3]=3  [4]=4  [5]=5  [6]=6  [7]=7  [8]=8  [9]=9  [10]=10  [11]=11  [12]=12  [13]=13  [14]=14  [15]=15  [16]=16  [17]=17  [18]=18  [19]=19  [20]=20  [21]=21  [22]=22  [23]=23  [24]=24  [25]=25  [26]=26  [27]=27  [28]=28  [29]=29  [30]=30  [31]=31  [32]=32  [33]=33  [34]=34  [35]=35  [36]=36  [37]=37  [38]=38  [39]=39  [40]=40  [41]=41  [42]=42  [43]=43  [44]=44  [45]=45  [46]=46  [47]=47  [48]=48  [49]=49  [50]=50  [51]=51  [52]=52  [53]=53  [54]=54  [55]=55  [56]=56  [57]=57  [58]=58  [59]=59  [60]=60  [61]=61  [62]=62  [63]=63  [64]=64  [65]=65  [66]=66  [67]=67  [68]=68  [69]=69  [70]=70  [71]=71  [72]=72  [73]=73  [74]=74  [75]=75  [76]=76  [77]=77  [78]=78  [79]=79  [80]=80  [81]=81  [82]=82  [83]=83  [84]=84  [85]=85  [86]=86  [87]=87  [88]=88  [89]=89  [90]=90  [91]=91  [92]=92  [93]=93  [94]=94  [95]=95  [96]=96  [97]=97  [98]=98  [99]=99  [100]=100  [101]=101  [102]=102  [103]=103  [104]=104  [105]=105  [106]=106  [107]=107  [108]=108  [109]=109  [110]=110  [111]=111  [112]=112  [113]=113  [114]=114  [115]=115  [116]=116  [117]=117  [118]=118  [119]=119  [120]=120  [121]=121  [122]=122  [123]=123  [124]=124  [125]=125  [126]=126  [127]=127  [128]=128  [129]=129  [130]=130  [131]=131  [132]=132  [133]=133  [134]=134  [135]=135  [136]=136  [137]=137  [138]=138  [139]=139  [140]=140  [141]=141  [142]=142  [143]=143  [144]=144  [145]=145  [146]=146  [147]=147  [148]=148  [149]=149  [150]=150  [151]=151  [152]=152  [153]=153  [154]=154  [155]=155  [156]=156  [157]=157  [158]=158  [159]=159  [160]=160  [161]=161  [162]=162  [163]=163  [164]=164  [165]=165  [166]=166  [167]=167  [168]=168  [169]=169  [170]=170  [171]=171  [172]=172  [173]=173  [174]=174  [175]=175  [176]=176  [177]=177  [178]=178  [179]=179  [180]=180  [181]=181  [182]=182  [183]=183  [184]=184  [185]=185  [186]=186  [187]=187  [188]=188  [189]=189  [190]=190  [191]=191  [192]=192  [193]=193  [194]=194  [195]=195  [196]=196  [197]=197  [198]=198  [199]=199  [200]=200  [201]=201  [202]=202  [203]=203  [204]=204  [205]=205  [206]=206  [207]=207  [208]=208  [209]=209  [210]=210  [211]=211  [212]=212  [213]=213  [214]=214  [215]=215  [216]=216  [217]=217  [218]=218  [219]=219  [220]=220  [221]=221  [222]=222  [223]=223  [224]=224  [225]=225  [226]=226  [227]=227  [228]=228  [229]=229  [230]=230  [231]=231  [232]=232  [233]=233  [234]=234  [235]=235  [236]=236  [237]=237  [238]=238  [239]=239  [240]=240  [241]=241  [242]=242  [243]=243  [244]=244  [245]=245  [246]=246  [247]=247  [248]=248  [249]=249  [250]=250  [251]=251  [252]=252  [253]=253  [254]=254  [255]=255  [256]=256  [257]=257  [258]=258  [259]=259  [260]=260  [261]=261  [262]=262  [263]=263  [264]=264  [265]=265  [266]=266  [267]=267  [268]=268  [269]=269  [270]=270  [271]=271  [272]=272  [273]=273  [274]=274  [275]=275  [276]=276  [277]=277  [278]=278  [279]=279  [280]=280  [281]=281  [282]=282  [283]=283  [284]=284  [285]=285  [286]=286  [287]=287  [288]=288  [289]=289  [290]=290  [291]=291  [292]=292  [293]=293  [294]=294  [295]=295  [296]=296  [297]=297  [298]=298  [299]=299  [300]=1000  [301]=2000
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0001  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0002  1:LOAD_INT_CONST_SMALL      75   2   2    ; ints[2] = 2
+0003  1:LOAD_INT_CONST_SMALL      75   3   3    ; ints[3] = 3
+0004  1:LOAD_INT_CONST_SMALL      75   4   4    ; ints[4] = 4
+0005  1:LOAD_INT_CONST_SMALL      75   5   5    ; ints[5] = 5
+0006  1:LOAD_INT_CONST_SMALL      75   6   6    ; ints[6] = 6
+0007  1:LOAD_INT_CONST_SMALL      75   7   7    ; ints[7] = 7
+0008  1:LOAD_INT_CONST_SMALL      75   8   8    ; ints[8] = 8
+0009  1:LOAD_INT_CONST_SMALL      75   9   9    ; ints[9] = 9
+0010  1:LOAD_INT_CONST_SMALL      75  10  10    ; ints[10] = 10
+0011  1:LOAD_INT_CONST_SMALL      75  11  11    ; ints[11] = 11
+0012  1:LOAD_INT_CONST_SMALL      75  12  12    ; ints[12] = 12
+0013  1:LOAD_INT_CONST_SMALL      75  13  13    ; ints[13] = 13
+0014  1:LOAD_INT_CONST_SMALL      75  14  14    ; ints[14] = 14
+0015  1:LOAD_INT_CONST_SMALL      75  15  15    ; ints[15] = 15
+0016  1:LOAD_INT_CONST_SMALL      75  16  16    ; ints[16] = 16
+0017  1:LOAD_INT_CONST_SMALL      75  17  17    ; ints[17] = 17
+0018  1:LOAD_INT_CONST_SMALL      75  18  18    ; ints[18] = 18
+0019  1:LOAD_INT_CONST_SMALL      75  19  19    ; ints[19] = 19
+0020  1:LOAD_INT_CONST_SMALL      75  20  20    ; ints[20] = 20
+0021  1:LOAD_INT_CONST_SMALL      75  21  21    ; ints[21] = 21
+0022  1:LOAD_INT_CONST_SMALL      75  22  22    ; ints[22] = 22
+0023  1:LOAD_INT_CONST_SMALL      75  23  23    ; ints[23] = 23
+0024  1:LOAD_INT_CONST_SMALL      75  24  24    ; ints[24] = 24
+0025  1:LOAD_INT_CONST_SMALL      75  25  25    ; ints[25] = 25
+0026  1:LOAD_INT_CONST_SMALL      75  26  26    ; ints[26] = 26
+0027  1:LOAD_INT_CONST_SMALL      75  27  27    ; ints[27] = 27
+0028  1:LOAD_INT_CONST_SMALL      75  28  28    ; ints[28] = 28
+0029  1:LOAD_INT_CONST_SMALL      75  29  29    ; ints[29] = 29
+0030  1:LOAD_INT_CONST_SMALL      75  30  30    ; ints[30] = 30
+0031  1:LOAD_INT_CONST_SMALL      75  31  31    ; ints[31] = 31
+0032  1:LOAD_INT_CONST_SMALL      75  32  32    ; ints[32] = 32
+0033  1:LOAD_INT_CONST_SMALL      75  33  33    ; ints[33] = 33
+0034  1:LOAD_INT_CONST_SMALL      75  34  34    ; ints[34] = 34
+0035  1:LOAD_INT_CONST_SMALL      75  35  35    ; ints[35] = 35
+0036  1:LOAD_INT_CONST_SMALL      75  36  36    ; ints[36] = 36
+0037  1:LOAD_INT_CONST_SMALL      75  37  37    ; ints[37] = 37
+0038  1:LOAD_INT_CONST_SMALL      75  38  38    ; ints[38] = 38
+0039  1:LOAD_INT_CONST_SMALL      75  39  39    ; ints[39] = 39
+0040  1:LOAD_INT_CONST_SMALL      75  40  40    ; ints[40] = 40
+0041  1:LOAD_INT_CONST_SMALL      75  41  41    ; ints[41] = 41
+0042  1:LOAD_INT_CONST_SMALL      75  42  42    ; ints[42] = 42
+0043  1:LOAD_INT_CONST_SMALL      75  43  43    ; ints[43] = 43
+0044  1:LOAD_INT_CONST_SMALL      75  44  44    ; ints[44] = 44
+0045  1:LOAD_INT_CONST_SMALL      75  45  45    ; ints[45] = 45
+0046  1:LOAD_INT_CONST_SMALL      75  46  46    ; ints[46] = 46
+0047  1:LOAD_INT_CONST_SMALL      75  47  47    ; ints[47] = 47
+0048  1:LOAD_INT_CONST_SMALL      75  48  48    ; ints[48] = 48
+0049  1:LOAD_INT_CONST_SMALL      75  49  49    ; ints[49] = 49
+0050  1:LOAD_INT_CONST_SMALL      75  50  50    ; ints[50] = 50
+0051  1:LOAD_INT_CONST_SMALL      75  51  51    ; ints[51] = 51
+0052  1:LOAD_INT_CONST_SMALL      75  52  52    ; ints[52] = 52
+0053  1:LOAD_INT_CONST_SMALL      75  53  53    ; ints[53] = 53
+0054  1:LOAD_INT_CONST_SMALL      75  54  54    ; ints[54] = 54
+0055  1:LOAD_INT_CONST_SMALL      75  55  55    ; ints[55] = 55
+0056  1:LOAD_INT_CONST_SMALL      75  56  56    ; ints[56] = 56
+0057  1:LOAD_INT_CONST_SMALL      75  57  57    ; ints[57] = 57
+0058  1:LOAD_INT_CONST_SMALL      75  58  58    ; ints[58] = 58
+0059  1:LOAD_INT_CONST_SMALL      75  59  59    ; ints[59] = 59
+0060  1:LOAD_INT_CONST_SMALL      75  60  60    ; ints[60] = 60
+0061  1:LOAD_INT_CONST_SMALL      75  61  61    ; ints[61] = 61
+0062  1:LOAD_INT_CONST_SMALL      75  62  62    ; ints[62] = 62
+0063  1:LOAD_INT_CONST_SMALL      75  63  63    ; ints[63] = 63
+0064  1:LOAD_INT_CONST_SMALL      75  64  64    ; ints[64] = 64
+0065  1:LOAD_INT_CONST_SMALL      75  65  65    ; ints[65] = 65
+0066  1:LOAD_INT_CONST_SMALL      75  66  66    ; ints[66] = 66
+0067  1:LOAD_INT_CONST_SMALL      75  67  67    ; ints[67] = 67
+0068  1:LOAD_INT_CONST_SMALL      75  68  68    ; ints[68] = 68
+0069  1:LOAD_INT_CONST_SMALL      75  69  69    ; ints[69] = 69
+0070  1:LOAD_INT_CONST_SMALL      75  70  70    ; ints[70] = 70
+0071  1:LOAD_INT_CONST_SMALL      75  71  71    ; ints[71] = 71
+0072  1:LOAD_INT_CONST_SMALL      75  72  72    ; ints[72] = 72
+0073  1:LOAD_INT_CONST_SMALL      75  73  73    ; ints[73] = 73
+0074  1:LOAD_INT_CONST_SMALL      75  74  74    ; ints[74] = 74
+0075  1:LOAD_INT_CONST_SMALL      75  75  75    ; ints[75] = 75
+0076  1:LOAD_INT_CONST_SMALL      75  76  76    ; ints[76] = 76
+0077  1:LOAD_INT_CONST_SMALL      75  77  77    ; ints[77] = 77
+0078  1:LOAD_INT_CONST_SMALL      75  78  78    ; ints[78] = 78
+0079  1:LOAD_INT_CONST_SMALL      75  79  79    ; ints[79] = 79
+0080  1:LOAD_INT_CONST_SMALL      75  80  80    ; ints[80] = 80
+0081  1:LOAD_INT_CONST_SMALL      75  81  81    ; ints[81] = 81
+0082  1:LOAD_INT_CONST_SMALL      75  82  82    ; ints[82] = 82
+0083  1:LOAD_INT_CONST_SMALL      75  83  83    ; ints[83] = 83
+0084  1:LOAD_INT_CONST_SMALL      75  84  84    ; ints[84] = 84
+0085  1:LOAD_INT_CONST_SMALL      75  85  85    ; ints[85] = 85
+0086  1:LOAD_INT_CONST_SMALL      75  86  86    ; ints[86] = 86
+0087  1:LOAD_INT_CONST_SMALL      75  87  87    ; ints[87] = 87
+0088  1:LOAD_INT_CONST_SMALL      75  88  88    ; ints[88] = 88
+0089  1:LOAD_INT_CONST_SMALL      75  89  89    ; ints[89] = 89
+0090  1:LOAD_INT_CONST_SMALL      75  90  90    ; ints[90] = 90
+0091  1:LOAD_INT_CONST_SMALL      75  91  91    ; ints[91] = 91
+0092  1:LOAD_INT_CONST_SMALL      75  92  92    ; ints[92] = 92
+0093  1:LOAD_INT_CONST_SMALL      75  93  93    ; ints[93] = 93
+0094  1:LOAD_INT_CONST_SMALL      75  94  94    ; ints[94] = 94
+0095  1:LOAD_INT_CONST_SMALL      75  95  95    ; ints[95] = 95
+0096  1:LOAD_INT_CONST_SMALL      75  96  96    ; ints[96] = 96
+0097  1:LOAD_INT_CONST_SMALL      75  97  97    ; ints[97] = 97
+0098  1:LOAD_INT_CONST_SMALL      75  98  98    ; ints[98] = 98
+0099  1:LOAD_INT_CONST_SMALL      75  99  99    ; ints[99] = 99
+0100  1:LOAD_INT_CONST_SMALL      75 100 100    ; ints[100] = 100
+0101  1:LOAD_INT_CONST_SMALL      75 101 101    ; ints[101] = 101
+0102  1:LOAD_INT_CONST_SMALL      75 102 102    ; ints[102] = 102
+0103  1:LOAD_INT_CONST_SMALL      75 103 103    ; ints[103] = 103
+0104  1:LOAD_INT_CONST_SMALL      75 104 104    ; ints[104] = 104
+0105  1:LOAD_INT_CONST_SMALL      75 105 105    ; ints[105] = 105
+0106  1:LOAD_INT_CONST_SMALL      75 106 106    ; ints[106] = 106
+0107  1:LOAD_INT_CONST_SMALL      75 107 107    ; ints[107] = 107
+0108  1:LOAD_INT_CONST_SMALL      75 108 108    ; ints[108] = 108
+0109  1:LOAD_INT_CONST_SMALL      75 109 109    ; ints[109] = 109
+0110  1:LOAD_INT_CONST_SMALL      75 110 110    ; ints[110] = 110
+0111  1:LOAD_INT_CONST_SMALL      75 111 111    ; ints[111] = 111
+0112  1:LOAD_INT_CONST_SMALL      75 112 112    ; ints[112] = 112
+0113  1:LOAD_INT_CONST_SMALL      75 113 113    ; ints[113] = 113
+0114  1:LOAD_INT_CONST_SMALL      75 114 114    ; ints[114] = 114
+0115  1:LOAD_INT_CONST_SMALL      75 115 115    ; ints[115] = 115
+0116  1:LOAD_INT_CONST_SMALL      75 116 116    ; ints[116] = 116
+0117  1:LOAD_INT_CONST_SMALL      75 117 117    ; ints[117] = 117
+0118  1:LOAD_INT_CONST_SMALL      75 118 118    ; ints[118] = 118
+0119  1:LOAD_INT_CONST_SMALL      75 119 119    ; ints[119] = 119
+0120  1:LOAD_INT_CONST_SMALL      75 120 120    ; ints[120] = 120
+0121  1:LOAD_INT_CONST_SMALL      75 121 121    ; ints[121] = 121
+0122  1:LOAD_INT_CONST_SMALL      75 122 122    ; ints[122] = 122
+0123  1:LOAD_INT_CONST_SMALL      75 123 123    ; ints[123] = 123
+0124  1:LOAD_INT_CONST_SMALL      75 124 124    ; ints[124] = 124
+0125  1:LOAD_INT_CONST_SMALL      75 125 125    ; ints[125] = 125
+0126  1:LOAD_INT_CONST_SMALL      75 126 126    ; ints[126] = 126
+0127  1:LOAD_INT_CONST_SMALL      75 127 127    ; ints[127] = 127
+0128  1:LOAD_INT_CONST_SMALL      75 128 128    ; ints[128] = 128
+0129  1:LOAD_INT_CONST_SMALL      75 129 129    ; ints[129] = 129
+0130  1:LOAD_INT_CONST_SMALL      75 130 130    ; ints[130] = 130
+0131  1:LOAD_INT_CONST_SMALL      75 131 131    ; ints[131] = 131
+0132  1:LOAD_INT_CONST_SMALL      75 132 132    ; ints[132] = 132
+0133  1:LOAD_INT_CONST_SMALL      75 133 133    ; ints[133] = 133
+0134  1:LOAD_INT_CONST_SMALL      75 134 134    ; ints[134] = 134
+0135  1:LOAD_INT_CONST_SMALL      75 135 135    ; ints[135] = 135
+0136  1:LOAD_INT_CONST_SMALL      75 136 136    ; ints[136] = 136
+0137  1:LOAD_INT_CONST_SMALL      75 137 137    ; ints[137] = 137
+0138  1:LOAD_INT_CONST_SMALL      75 138 138    ; ints[138] = 138
+0139  1:LOAD_INT_CONST_SMALL      75 139 139    ; ints[139] = 139
+0140  1:LOAD_INT_CONST_SMALL      75 140 140    ; ints[140] = 140
+0141  1:LOAD_INT_CONST_SMALL      75 141 141    ; ints[141] = 141
+0142  1:LOAD_INT_CONST_SMALL      75 142 142    ; ints[142] = 142
+0143  1:LOAD_INT_CONST_SMALL      75 143 143    ; ints[143] = 143
+0144  1:LOAD_INT_CONST_SMALL      75 144 144    ; ints[144] = 144
+0145  1:LOAD_INT_CONST_SMALL      75 145 145    ; ints[145] = 145
+0146  1:LOAD_INT_CONST_SMALL      75 146 146    ; ints[146] = 146
+0147  1:LOAD_INT_CONST_SMALL      75 147 147    ; ints[147] = 147
+0148  1:LOAD_INT_CONST_SMALL      75 148 148    ; ints[148] = 148
+0149  1:LOAD_INT_CONST_SMALL      75 149 149    ; ints[149] = 149
+0150  1:LOAD_INT_CONST_SMALL      75 150 150    ; ints[150] = 150
+0151  1:LOAD_INT_CONST_SMALL      75 151 151    ; ints[151] = 151
+0152  1:LOAD_INT_CONST_SMALL      75 152 152    ; ints[152] = 152
+0153  1:LOAD_INT_CONST_SMALL      75 153 153    ; ints[153] = 153
+0154  1:LOAD_INT_CONST_SMALL      75 154 154    ; ints[154] = 154
+0155  1:LOAD_INT_CONST_SMALL      75 155 155    ; ints[155] = 155
+0156  1:LOAD_INT_CONST_SMALL      75 156 156    ; ints[156] = 156
+0157  1:LOAD_INT_CONST_SMALL      75 157 157    ; ints[157] = 157
+0158  1:LOAD_INT_CONST_SMALL      75 158 158    ; ints[158] = 158
+0159  1:LOAD_INT_CONST_SMALL      75 159 159    ; ints[159] = 159
+0160  1:LOAD_INT_CONST_SMALL      75 160 160    ; ints[160] = 160
+0161  1:LOAD_INT_CONST_SMALL      75 161 161    ; ints[161] = 161
+0162  1:LOAD_INT_CONST_SMALL      75 162 162    ; ints[162] = 162
+0163  1:LOAD_INT_CONST_SMALL      75 163 163    ; ints[163] = 163
+0164  1:LOAD_INT_CONST_SMALL      75 164 164    ; ints[164] = 164
+0165  1:LOAD_INT_CONST_SMALL      75 165 165    ; ints[165] = 165
+0166  1:LOAD_INT_CONST_SMALL      75 166 166    ; ints[166] = 166
+0167  1:LOAD_INT_CONST_SMALL      75 167 167    ; ints[167] = 167
+0168  1:LOAD_INT_CONST_SMALL      75 168 168    ; ints[168] = 168
+0169  1:LOAD_INT_CONST_SMALL      75 169 169    ; ints[169] = 169
+0170  1:LOAD_INT_CONST_SMALL      75 170 170    ; ints[170] = 170
+0171  1:LOAD_INT_CONST_SMALL      75 171 171    ; ints[171] = 171
+0172  1:LOAD_INT_CONST_SMALL      75 172 172    ; ints[172] = 172
+0173  1:LOAD_INT_CONST_SMALL      75 173 173    ; ints[173] = 173
+0174  1:LOAD_INT_CONST_SMALL      75 174 174    ; ints[174] = 174
+0175  1:LOAD_INT_CONST_SMALL      75 175 175    ; ints[175] = 175
+0176  1:LOAD_INT_CONST_SMALL      75 176 176    ; ints[176] = 176
+0177  1:LOAD_INT_CONST_SMALL      75 177 177    ; ints[177] = 177
+0178  1:LOAD_INT_CONST_SMALL      75 178 178    ; ints[178] = 178
+0179  1:LOAD_INT_CONST_SMALL      75 179 179    ; ints[179] = 179
+0180  1:LOAD_INT_CONST_SMALL      75 180 180    ; ints[180] = 180
+0181  1:LOAD_INT_CONST_SMALL      75 181 181    ; ints[181] = 181
+0182  1:LOAD_INT_CONST_SMALL      75 182 182    ; ints[182] = 182
+0183  1:LOAD_INT_CONST_SMALL      75 183 183    ; ints[183] = 183
+0184  1:LOAD_INT_CONST_SMALL      75 184 184    ; ints[184] = 184
+0185  1:LOAD_INT_CONST_SMALL      75 185 185    ; ints[185] = 185
+0186  1:LOAD_INT_CONST_SMALL      75 186 186    ; ints[186] = 186
+0187  1:LOAD_INT_CONST_SMALL      75 187 187    ; ints[187] = 187
+0188  1:LOAD_INT_CONST_SMALL      75 188 188    ; ints[188] = 188
+0189  1:LOAD_INT_CONST_SMALL      75 189 189    ; ints[189] = 189
+0190  1:LOAD_INT_CONST_SMALL      75 190 190    ; ints[190] = 190
+0191  1:LOAD_INT_CONST_SMALL      75 191 191    ; ints[191] = 191
+0192  1:LOAD_INT_CONST_SMALL      75 192 192    ; ints[192] = 192
+0193  1:LOAD_INT_CONST_SMALL      75 193 193    ; ints[193] = 193
+0194  1:LOAD_INT_CONST_SMALL      75 194 194    ; ints[194] = 194
+0195  1:LOAD_INT_CONST_SMALL      75 195 195    ; ints[195] = 195
+0196  1:LOAD_INT_CONST_SMALL      75 196 196    ; ints[196] = 196
+0197  1:LOAD_INT_CONST_SMALL      75 197 197    ; ints[197] = 197
+0198  1:LOAD_INT_CONST_SMALL      75 198 198    ; ints[198] = 198
+0199  1:LOAD_INT_CONST_SMALL      75 199 199    ; ints[199] = 199
+0200  1:LOAD_INT_CONST_SMALL      75 200 200    ; ints[200] = 200
+0201  1:LOAD_INT_CONST_SMALL      75 201 201    ; ints[201] = 201
+0202  1:LOAD_INT_CONST_SMALL      75 202 202    ; ints[202] = 202
+0203  1:LOAD_INT_CONST_SMALL      75 203 203    ; ints[203] = 203
+0204  1:LOAD_INT_CONST_SMALL      75 204 204    ; ints[204] = 204
+0205  1:LOAD_INT_CONST_SMALL      75 205 205    ; ints[205] = 205
+0206  1:LOAD_INT_CONST_SMALL      75 206 206    ; ints[206] = 206
+0207  1:LOAD_INT_CONST_SMALL      75 207 207    ; ints[207] = 207
+0208  1:LOAD_INT_CONST_SMALL      75 208 208    ; ints[208] = 208
+0209  1:LOAD_INT_CONST_SMALL      75 209 209    ; ints[209] = 209
+0210  1:LOAD_INT_CONST_SMALL      75 210 210    ; ints[210] = 210
+0211  1:LOAD_INT_CONST_SMALL      75 211 211    ; ints[211] = 211
+0212  1:LOAD_INT_CONST_SMALL      75 212 212    ; ints[212] = 212
+0213  1:LOAD_INT_CONST_SMALL      75 213 213    ; ints[213] = 213
+0214  1:LOAD_INT_CONST_SMALL      75 214 214    ; ints[214] = 214
+0215  1:LOAD_INT_CONST_SMALL      75 215 215    ; ints[215] = 215
+0216  1:LOAD_INT_CONST_SMALL      75 216 216    ; ints[216] = 216
+0217  1:LOAD_INT_CONST_SMALL      75 217 217    ; ints[217] = 217
+0218  1:LOAD_INT_CONST_SMALL      75 218 218    ; ints[218] = 218
+0219  1:LOAD_INT_CONST_SMALL      75 219 219    ; ints[219] = 219
+0220  1:LOAD_INT_CONST_SMALL      75 220 220    ; ints[220] = 220
+0221  1:LOAD_INT_CONST_SMALL      75 221 221    ; ints[221] = 221
+0222  1:LOAD_INT_CONST_SMALL      75 222 222    ; ints[222] = 222
+0223  1:LOAD_INT_CONST_SMALL      75 223 223    ; ints[223] = 223
+0224  1:LOAD_INT_CONST_SMALL      75 224 224    ; ints[224] = 224
+0225  1:LOAD_INT_CONST_SMALL      75 225 225    ; ints[225] = 225
+0226  1:LOAD_INT_CONST_SMALL      75 226 226    ; ints[226] = 226
+0227  1:LOAD_INT_CONST_SMALL      75 227 227    ; ints[227] = 227
+0228  1:LOAD_INT_CONST_SMALL      75 228 228    ; ints[228] = 228
+0229  1:LOAD_INT_CONST_SMALL      75 229 229    ; ints[229] = 229
+0230  1:LOAD_INT_CONST_SMALL      75 230 230    ; ints[230] = 230
+0231  1:LOAD_INT_CONST_SMALL      75 231 231    ; ints[231] = 231
+0232  1:LOAD_INT_CONST_SMALL      75 232 232    ; ints[232] = 232
+0233  1:LOAD_INT_CONST_SMALL      75 233 233    ; ints[233] = 233
+0234  1:LOAD_INT_CONST_SMALL      75 234 234    ; ints[234] = 234
+0235  1:LOAD_INT_CONST_SMALL      75 235 235    ; ints[235] = 235
+0236  1:LOAD_INT_CONST_SMALL      75 236 236    ; ints[236] = 236
+0237  1:LOAD_INT_CONST_SMALL      75 237 237    ; ints[237] = 237
+0238  1:LOAD_INT_CONST_SMALL      75 238 238    ; ints[238] = 238
+0239  1:LOAD_INT_CONST_SMALL      75 239 239    ; ints[239] = 239
+0240  1:LOAD_INT_CONST_SMALL      75 240 240    ; ints[240] = 240
+0241  1:LOAD_INT_CONST_SMALL      75 241 241    ; ints[241] = 241
+0242  1:LOAD_INT_CONST_SMALL      75 242 242    ; ints[242] = 242
+0243  1:LOAD_INT_CONST_SMALL      75 243 243    ; ints[243] = 243
+0244  1:LOAD_INT_CONST_SMALL      75 244 244    ; ints[244] = 244
+0245  1:LOAD_INT_CONST_SMALL      75 245 245    ; ints[245] = 245
+0246  1:LOAD_INT_CONST_SMALL      75 246 246    ; ints[246] = 246
+0247  1:SPILL                     84 246   0
+0248  0:EXT                        0   0   0
+0249  1:LOAD_INT_CONST_SMALL      75 246 247    ; ints[246] = 247
+0250  1:SPILL                     84 246   0
+0251  0:EXT                        1   0   0
+0252  1:LOAD_INT_CONST_SMALL      75 246 248    ; ints[246] = 248
+0253  1:SPILL                     84 246   0
+0254  0:EXT                        2   0   0
+0255  1:LOAD_INT_CONST_SMALL      75 246 249    ; ints[246] = 249
+0256  1:SPILL                     84 246   0
+0257  0:EXT                        3   0   0
+0258  1:LOAD_INT_CONST_SMALL      75 246 250    ; ints[246] = 250
+0259  1:SPILL                     84 246   0
+0260  0:EXT                        4   0   0
+0261  1:LOAD_INT_CONST_SMALL      75 246 251    ; ints[246] = 251
+0262  1:SPILL                     84 246   0
+0263  0:EXT                        5   0   0
+0264  1:LOAD_INT_CONST_SMALL      75 246 252    ; ints[246] = 252
+0265  1:SPILL                     84 246   0
+0266  0:EXT                        6   0   0
+0267  1:LOAD_INT_CONST_SMALL      75 246 253    ; ints[246] = 253
+0268  1:SPILL                     84 246   0
+0269  0:EXT                        7   0   0
+0270  1:LOAD_INT_CONST_SMALL      75 246 254    ; ints[246] = 254
+0271  1:SPILL                     84 246   0
+0272  0:EXT                        8   0   0
+0273  1:LOAD_INT_CONST_SMALL      75 246 255    ; ints[246] = 255
+0274  1:SPILL                     84 246   0
+0275  0:EXT                        9   0   0
+0276  0:LOAD_INT_CONST           246   0   1    ; ints[246] = 256
+0277  1:SPILL                     84 246   0
+0278  0:EXT                       10   0   0
+0279  0:LOAD_INT_CONST           246   1   1    ; ints[246] = 257
+0280  1:SPILL                     84 246   0
+0281  0:EXT                       11   0   0
+0282  0:LOAD_INT_CONST           246   2   1    ; ints[246] = 258
+0283  1:SPILL                     84 246   0
+0284  0:EXT                       12   0   0
+0285  0:LOAD_INT_CONST           246   3   1    ; ints[246] = 259
+0286  1:SPILL                     84 246   0
+0287  0:EXT                       13   0   0
+0288  0:LOAD_INT_CONST           246   4   1    ; ints[246] = 260
+0289  1:SPILL                     84 246   0
+0290  0:EXT                       14   0   0
+0291  0:LOAD_INT_CONST           246   5   1    ; ints[246] = 261
+0292  1:SPILL                     84 246   0
+0293  0:EXT                       15   0   0
+0294  0:LOAD_INT_CONST           246   6   1    ; ints[246] = 262
+0295  1:SPILL                     84 246   0
+0296  0:EXT                       16   0   0
+0297  0:LOAD_INT_CONST           246   7   1    ; ints[246] = 263
+0298  1:SPILL                     84 246   0
+0299  0:EXT                       17   0   0
+0300  0:LOAD_INT_CONST           246   8   1    ; ints[246] = 264
+0301  1:SPILL                     84 246   0
+0302  0:EXT                       18   0   0
+0303  0:LOAD_INT_CONST           246   9   1    ; ints[246] = 265
+0304  1:SPILL                     84 246   0
+0305  0:EXT                       19   0   0
+0306  0:LOAD_INT_CONST           246  10   1    ; ints[246] = 266
+0307  1:SPILL                     84 246   0
+0308  0:EXT                       20   0   0
+0309  0:LOAD_INT_CONST           246  11   1    ; ints[246] = 267
+0310  1:SPILL                     84 246   0
+0311  0:EXT                       21   0   0
+0312  0:LOAD_INT_CONST           246  12   1    ; ints[246] = 268
+0313  1:SPILL                     84 246   0
+0314  0:EXT                       22   0   0
+0315  0:LOAD_INT_CONST           246  13   1    ; ints[246] = 269
+0316  1:SPILL                     84 246   0
+0317  0:EXT                       23   0   0
+0318  0:LOAD_INT_CONST           246  14   1    ; ints[246] = 270
+0319  1:SPILL                     84 246   0
+0320  0:EXT                       24   0   0
+0321  0:LOAD_INT_CONST           246  15   1    ; ints[246] = 271
+0322  1:SPILL                     84 246   0
+0323  0:EXT                       25   0   0
+0324  0:LOAD_INT_CONST           246  16   1    ; ints[246] = 272
+0325  1:SPILL                     84 246   0
+0326  0:EXT                       26   0   0
+0327  0:LOAD_INT_CONST           246  17   1    ; ints[246] = 273
+0328  1:SPILL                     84 246   0
+0329  0:EXT                       27   0   0
+0330  0:LOAD_INT_CONST           246  18   1    ; ints[246] = 274
+0331  1:SPILL                     84 246   0
+0332  0:EXT                       28   0   0
+0333  0:LOAD_INT_CONST           246  19   1    ; ints[246] = 275
+0334  1:SPILL                     84 246   0
+0335  0:EXT                       29   0   0
+0336  0:LOAD_INT_CONST           246  20   1    ; ints[246] = 276
+0337  1:SPILL                     84 246   0
+0338  0:EXT                       30   0   0
+0339  0:LOAD_INT_CONST           246  21   1    ; ints[246] = 277
+0340  1:SPILL                     84 246   0
+0341  0:EXT                       31   0   0
+0342  0:LOAD_INT_CONST           246  22   1    ; ints[246] = 278
+0343  1:SPILL                     84 246   0
+0344  0:EXT                       32   0   0
+0345  0:LOAD_INT_CONST           246  23   1    ; ints[246] = 279
+0346  1:SPILL                     84 246   0
+0347  0:EXT                       33   0   0
+0348  0:LOAD_INT_CONST           246  24   1    ; ints[246] = 280
+0349  1:SPILL                     84 246   0
+0350  0:EXT                       34   0   0
+0351  0:LOAD_INT_CONST           246  25   1    ; ints[246] = 281
+0352  1:SPILL                     84 246   0
+0353  0:EXT                       35   0   0
+0354  0:LOAD_INT_CONST           246  26   1    ; ints[246] = 282
+0355  1:SPILL                     84 246   0
+0356  0:EXT                       36   0   0
+0357  0:LOAD_INT_CONST           246  27   1    ; ints[246] = 283
+0358  1:SPILL                     84 246   0
+0359  0:EXT                       37   0   0
+0360  0:LOAD_INT_CONST           246  28   1    ; ints[246] = 284
+0361  1:SPILL                     84 246   0
+0362  0:EXT                       38   0   0
+0363  0:LOAD_INT_CONST           246  29   1    ; ints[246] = 285
+0364  1:SPILL                     84 246   0
+0365  0:EXT                       39   0   0
+0366  0:LOAD_INT_CONST           246  30   1    ; ints[246] = 286
+0367  1:SPILL                     84 246   0
+0368  0:EXT                       40   0   0
+0369  0:LOAD_INT_CONST           246  31   1    ; ints[246] = 287
+0370  1:SPILL                     84 246   0
+0371  0:EXT                       41   0   0
+0372  0:LOAD_INT_CONST           246  32   1    ; ints[246] = 288
+0373  1:SPILL                     84 246   0
+0374  0:EXT                       42   0   0
+0375  0:LOAD_INT_CONST           246  33   1    ; ints[246] = 289
+0376  1:SPILL                     84 246   0
+0377  0:EXT                       43   0   0
+0378  0:LOAD_INT_CONST           246  34   1    ; ints[246] = 290
+0379  1:SPILL                     84 246   0
+0380  0:EXT                       44   0   0
+0381  0:LOAD_INT_CONST           246  35   1    ; ints[246] = 291
+0382  1:SPILL                     84 246   0
+0383  0:EXT                       45   0   0
+0384  0:LOAD_INT_CONST           246  36   1    ; ints[246] = 292
+0385  1:SPILL                     84 246   0
+0386  0:EXT                       46   0   0
+0387  0:LOAD_INT_CONST           246  37   1    ; ints[246] = 293
+0388  1:SPILL                     84 246   0
+0389  0:EXT                       47   0   0
+0390  0:LOAD_INT_CONST           246  38   1    ; ints[246] = 294
+0391  1:SPILL                     84 246   0
+0392  0:EXT                       48   0   0
+0393  0:LOAD_INT_CONST           246  39   1    ; ints[246] = 295
+0394  1:SPILL                     84 246   0
+0395  0:EXT                       49   0   0
+0396  0:LOAD_INT_CONST           246  40   1    ; ints[246] = 296
+0397  1:SPILL                     84 246   0
+0398  0:EXT                       50   0   0
+0399  0:LOAD_INT_CONST           246  41   1    ; ints[246] = 297
+0400  1:SPILL                     84 246   0
+0401  0:EXT                       51   0   0
+0402  0:LOAD_INT_CONST           246  42   1    ; ints[246] = 298
+0403  1:SPILL                     84 246   0
+0404  0:EXT                       52   0   0
+0405  0:LOAD_INT_CONST           246  43   1    ; ints[246] = 299
+0406  1:SPILL                     84 246   0
+0407  0:EXT                       53   0   0
+0408  0:LOAD_INT_CONST           246  44   1    ; ints[246] = 1000
+0409  1:SPILL                     84 246   0
+0410  0:EXT                       53   0   0
+0411  0:LOAD_INT_CONST           246  45   1    ; ints[246] = 2000
+0412  1:SPILL                     84 246   0
+0413  0:EXT                       52   0   0
+0414  1:LOAD_INT_CONST_SMALL      75 246 100    ; ints[246] = 100
+0415  1:RELOAD                    85 247   0
+0416  0:EXT                       51   0   0
+0417  0:ADD_INT                  248 247 246
+0418  1:SPILL                     84 248   0
+0419  0:EXT                       51   0   0
+0420  1:RELOAD                    85 246   0
+0421  0:EXT                       50   0   0
+0422  1:CALL_SCALAR              134   0   0
+0423  1:SPILL                     84 247   0
+0424  0:EXT                       50   0   0
+0425  1:RELOAD                    85 246   0
+0426  0:EXT                       49   0   0
+0427  2:TIER2_INC_INT              0   1 246
+0428  1:SPILL                     84 246   0
+0429  0:EXT                       49   0   0
+0430  1:RELOAD                    85 246   0
+0431  0:EXT                       48   0   0
+0432  2:TIER2_DEC_INT              0   2 246
+0433  1:SPILL                     84 246   0
+0434  0:EXT                       48   0   0
+0435  1:RELOAD                    85 246   0
+0436  0:EXT                       47   0   0
+0437  1:GT_INT_CONST_JUMP_FALSE  127 246   0
+0438  0:EXT                        7   0   0
+0439  3:TIER3_NOP                  0   0   0
+0440  1:LOAD_INT_CONST_SMALL      75 246   1    ; ints[246] = 1
+0441  1:RELOAD                    85 247   0
+0442  0:EXT                       47   0   0
+0443  0:ADD_INT                  248 247 246
+0444  1:SPILL                     84 248   0
+0445  0:EXT                       47   0   0
+0446  1:LOAD_INT_CONST_SMALL      75 246   0    ; ints[246] = 0
+0447  1:SPILL                     84 246   0
+0448  0:EXT                       54   0   0
+0449  1:RELOAD                    85 246   0
+0450  0:EXT                       54   0   0
+0451  1:LT_INT_CONST_JUMP_FALSE  123 246   3
+0452  0:EXT                       13   0   0
+0453  3:TIER3_NOP                  0   0   0
+0454  1:LOAD_INT_CONST_SMALL      75 249   1    ; ints[249] = 1
+0455  1:RELOAD                    85 250   0
+0456  0:EXT                       46   0   0
+0457  0:ADD_INT                  251 250 249
+0458  1:SPILL                     84 251   0
+0459  0:EXT                       46   0   0
+0460  1:RELOAD                    85 249   0
+0461  0:EXT                       54   0   0
+0462  2:TIER2_INC_INT              0   1 249
+0463  1:SPILL                     84 249   0
+0464  0:EXT                       54   0   0
+0465  1:JUMP                      74 239 255    ; goto -17
+0466  1:LOAD_INT_CONST_SMALL      75 246   0    ; ints[246] = 0
+0467  1:SPILL                     84 246   0
+0468  0:EXT                       54   0   0
+0469  1:RELOAD                    85 246   0
+0470  0:EXT                       54   0   0
+0471  0:ADD_INT                  247 246   0
+0472  1:SPILL                     84 247   0
+0473  0:EXT                       54   0   0
+0474  1:RELOAD                    85 246   0
+0475  0:EXT                       54   0   0
+0476  0:ADD_INT                  247 246   1
+0477  1:SPILL                     84 247   0
+0478  0:EXT                       54   0   0
+0479  1:RELOAD                    85 246   0
+0480  0:EXT                       54   0   0
+0481  0:ADD_INT                  247 246   2
+0482  1:SPILL                     84 247   0
+0483  0:EXT                       54   0   0
+0484  1:RELOAD                    85 246   0
+0485  0:EXT                       54   0   0
+0486  0:ADD_INT                  247 246   3
+0487  1:SPILL                     84 247   0
+0488  0:EXT                       54   0   0
+0489  1:RELOAD                    85 246   0
+0490  0:EXT                       54   0   0
+0491  0:ADD_INT                  247 246   4
+0492  1:SPILL                     84 247   0
+0493  0:EXT                       54   0   0
+0494  1:RELOAD                    85 246   0
+0495  0:EXT                       54   0   0
+0496  0:ADD_INT                  247 246   5
+0497  1:SPILL                     84 247   0
+0498  0:EXT                       54   0   0
+0499  1:RELOAD                    85 246   0
+0500  0:EXT                       54   0   0
+0501  0:ADD_INT                  247 246   6
+0502  1:SPILL                     84 247   0
+0503  0:EXT                       54   0   0
+0504  1:RELOAD                    85 246   0
+0505  0:EXT                       54   0   0
+0506  0:ADD_INT                  247 246   7
+0507  1:SPILL                     84 247   0
+0508  0:EXT                       54   0   0
+0509  1:RELOAD                    85 246   0
+0510  0:EXT                       54   0   0
+0511  0:ADD_INT                  247 246   8
+0512  1:SPILL                     84 247   0
+0513  0:EXT                       54   0   0
+0514  1:RELOAD                    85 246   0
+0515  0:EXT                       54   0   0
+0516  0:ADD_INT                  247 246   9
+0517  1:SPILL                     84 247   0
+0518  0:EXT                       54   0   0
+0519  1:RELOAD                    85 246   0
+0520  0:EXT                       54   0   0
+0521  0:ADD_INT                  247 246  10
+0522  1:SPILL                     84 247   0
+0523  0:EXT                       54   0   0
+0524  1:RELOAD                    85 246   0
+0525  0:EXT                       54   0   0
+0526  0:ADD_INT                  247 246  11
+0527  1:SPILL                     84 247   0
+0528  0:EXT                       54   0   0
+0529  1:RELOAD                    85 246   0
+0530  0:EXT                       54   0   0
+0531  0:ADD_INT                  247 246  12
+0532  1:SPILL                     84 247   0
+0533  0:EXT                       54   0   0
+0534  1:RELOAD                    85 246   0
+0535  0:EXT                       54   0   0
+0536  0:ADD_INT                  247 246  13
+0537  1:SPILL                     84 247   0
+0538  0:EXT                       54   0   0
+0539  1:RELOAD                    85 246   0
+0540  0:EXT                       54   0   0
+0541  0:ADD_INT                  247 246  14
+0542  1:SPILL                     84 247   0
+0543  0:EXT                       54   0   0
+0544  1:RELOAD                    85 246   0
+0545  0:EXT                       54   0   0
+0546  0:ADD_INT                  247 246  15
+0547  1:SPILL                     84 247   0
+0548  0:EXT                       54   0   0
+0549  1:RELOAD                    85 246   0
+0550  0:EXT                       54   0   0
+0551  0:ADD_INT                  247 246  16
+0552  1:SPILL                     84 247   0
+0553  0:EXT                       54   0   0
+0554  1:RELOAD                    85 246   0
+0555  0:EXT                       54   0   0
+0556  0:ADD_INT                  247 246  17
+0557  1:SPILL                     84 247   0
+0558  0:EXT                       54   0   0
+0559  1:RELOAD                    85 246   0
+0560  0:EXT                       54   0   0
+0561  0:ADD_INT                  247 246  18
+0562  1:SPILL                     84 247   0
+0563  0:EXT                       54   0   0
+0564  1:RELOAD                    85 246   0
+0565  0:EXT                       54   0   0
+0566  0:ADD_INT                  247 246  19
+0567  1:SPILL                     84 247   0
+0568  0:EXT                       54   0   0
+0569  1:RELOAD                    85 246   0
+0570  0:EXT                       54   0   0
+0571  0:ADD_INT                  247 246  20
+0572  1:SPILL                     84 247   0
+0573  0:EXT                       54   0   0
+0574  1:RELOAD                    85 246   0
+0575  0:EXT                       54   0   0
+0576  0:ADD_INT                  247 246  21
+0577  1:SPILL                     84 247   0
+0578  0:EXT                       54   0   0
+0579  1:RELOAD                    85 246   0
+0580  0:EXT                       54   0   0
+0581  0:ADD_INT                  247 246  22
+0582  1:SPILL                     84 247   0
+0583  0:EXT                       54   0   0
+0584  1:RELOAD                    85 246   0
+0585  0:EXT                       54   0   0
+0586  0:ADD_INT                  247 246  23
+0587  1:SPILL                     84 247   0
+0588  0:EXT                       54   0   0
+0589  1:RELOAD                    85 246   0
+0590  0:EXT                       54   0   0
+0591  0:ADD_INT                  247 246  24
+0592  1:SPILL                     84 247   0
+0593  0:EXT                       54   0   0
+0594  1:RELOAD                    85 246   0
+0595  0:EXT                       54   0   0
+0596  0:ADD_INT                  247 246  25
+0597  1:SPILL                     84 247   0
+0598  0:EXT                       54   0   0
+0599  1:RELOAD                    85 246   0
+0600  0:EXT                       54   0   0
+0601  0:ADD_INT                  247 246  26
+0602  1:SPILL                     84 247   0
+0603  0:EXT                       54   0   0
+0604  1:RELOAD                    85 246   0
+0605  0:EXT                       54   0   0
+0606  0:ADD_INT                  247 246  27
+0607  1:SPILL                     84 247   0
+0608  0:EXT                       54   0   0
+0609  1:RELOAD                    85 246   0
+0610  0:EXT                       54   0   0
+0611  0:ADD_INT                  247 246  28
+0612  1:SPILL                     84 247   0
+0613  0:EXT                       54   0   0
+0614  1:RELOAD                    85 246   0
+0615  0:EXT                       54   0   0
+0616  0:ADD_INT                  247 246  29
+0617  1:SPILL                     84 247   0
+0618  0:EXT                       54   0   0
+0619  1:RELOAD                    85 246   0
+0620  0:EXT                       54   0   0
+0621  0:ADD_INT                  247 246  30
+0622  1:SPILL                     84 247   0
+0623  0:EXT                       54   0   0
+0624  1:RELOAD                    85 246   0
+0625  0:EXT                       54   0   0
+0626  0:ADD_INT                  247 246  31
+0627  1:SPILL                     84 247   0
+0628  0:EXT                       54   0   0
+0629  1:RELOAD                    85 246   0
+0630  0:EXT                       54   0   0
+0631  0:ADD_INT                  247 246  32
+0632  1:SPILL                     84 247   0
+0633  0:EXT                       54   0   0
+0634  1:RELOAD                    85 246   0
+0635  0:EXT                       54   0   0
+0636  0:ADD_INT                  247 246  33
+0637  1:SPILL                     84 247   0
+0638  0:EXT                       54   0   0
+0639  1:RELOAD                    85 246   0
+0640  0:EXT                       54   0   0
+0641  0:ADD_INT                  247 246  34
+0642  1:SPILL                     84 247   0
+0643  0:EXT                       54   0   0
+0644  1:RELOAD                    85 246   0
+0645  0:EXT                       54   0   0
+0646  0:ADD_INT                  247 246  35
+0647  1:SPILL                     84 247   0
+0648  0:EXT                       54   0   0
+0649  1:RELOAD                    85 246   0
+0650  0:EXT                       54   0   0
+0651  0:ADD_INT                  247 246  36
+0652  1:SPILL                     84 247   0
+0653  0:EXT                       54   0   0
+0654  1:RELOAD                    85 246   0
+0655  0:EXT                       54   0   0
+0656  0:ADD_INT                  247 246  37
+0657  1:SPILL                     84 247   0
+0658  0:EXT                       54   0   0
+0659  1:RELOAD                    85 246   0
+0660  0:EXT                       54   0   0
+0661  0:ADD_INT                  247 246  38
+0662  1:SPILL                     84 247   0
+0663  0:EXT                       54   0   0
+0664  1:RELOAD                    85 246   0
+0665  0:EXT                       54   0   0
+0666  0:ADD_INT                  247 246  39
+0667  1:SPILL                     84 247   0
+0668  0:EXT                       54   0   0
+0669  1:RELOAD                    85 246   0
+0670  0:EXT                       54   0   0
+0671  0:ADD_INT                  247 246  40
+0672  1:SPILL                     84 247   0
+0673  0:EXT                       54   0   0
+0674  1:RELOAD                    85 246   0
+0675  0:EXT                       54   0   0
+0676  0:ADD_INT                  247 246  41
+0677  1:SPILL                     84 247   0
+0678  0:EXT                       54   0   0
+0679  1:RELOAD                    85 246   0
+0680  0:EXT                       54   0   0
+0681  0:ADD_INT                  247 246  42
+0682  1:SPILL                     84 247   0
+0683  0:EXT                       54   0   0
+0684  1:RELOAD                    85 246   0
+0685  0:EXT                       54   0   0
+0686  0:ADD_INT                  247 246  43
+0687  1:SPILL                     84 247   0
+0688  0:EXT                       54   0   0
+0689  1:RELOAD                    85 246   0
+0690  0:EXT                       54   0   0
+0691  0:ADD_INT                  247 246  44
+0692  1:SPILL                     84 247   0
+0693  0:EXT                       54   0   0
+0694  1:RELOAD                    85 246   0
+0695  0:EXT                       54   0   0
+0696  0:ADD_INT                  247 246  45
+0697  1:SPILL                     84 247   0
+0698  0:EXT                       54   0   0
+0699  1:RELOAD                    85 246   0
+0700  0:EXT                       54   0   0
+0701  0:ADD_INT                  247 246  46
+0702  1:SPILL                     84 247   0
+0703  0:EXT                       54   0   0
+0704  1:RELOAD                    85 246   0
+0705  0:EXT                       54   0   0
+0706  0:ADD_INT                  247 246  47
+0707  1:SPILL                     84 247   0
+0708  0:EXT                       54   0   0
+0709  1:RELOAD                    85 246   0
+0710  0:EXT                       54   0   0
+0711  0:ADD_INT                  247 246  48
+0712  1:SPILL                     84 247   0
+0713  0:EXT                       54   0   0
+0714  1:RELOAD                    85 246   0
+0715  0:EXT                       54   0   0
+0716  0:ADD_INT                  247 246  49
+0717  1:SPILL                     84 247   0
+0718  0:EXT                       54   0   0
+0719  1:RELOAD                    85 246   0
+0720  0:EXT                       54   0   0
+0721  0:ADD_INT                  247 246  50
+0722  1:SPILL                     84 247   0
+0723  0:EXT                       54   0   0
+0724  1:RELOAD                    85 246   0
+0725  0:EXT                       54   0   0
+0726  0:ADD_INT                  247 246  51
+0727  1:SPILL                     84 247   0
+0728  0:EXT                       54   0   0
+0729  1:RELOAD                    85 246   0
+0730  0:EXT                       54   0   0
+0731  0:ADD_INT                  247 246  52
+0732  1:SPILL                     84 247   0
+0733  0:EXT                       54   0   0
+0734  1:RELOAD                    85 246   0
+0735  0:EXT                       54   0   0
+0736  0:ADD_INT                  247 246  53
+0737  1:SPILL                     84 247   0
+0738  0:EXT                       54   0   0
+0739  1:RELOAD                    85 246   0
+0740  0:EXT                       54   0   0
+0741  0:ADD_INT                  247 246  54
+0742  1:SPILL                     84 247   0
+0743  0:EXT                       54   0   0
+0744  1:RELOAD                    85 246   0
+0745  0:EXT                       54   0   0
+0746  0:ADD_INT                  247 246  55
+0747  1:SPILL                     84 247   0
+0748  0:EXT                       54   0   0
+0749  1:RELOAD                    85 246   0
+0750  0:EXT                       54   0   0
+0751  0:ADD_INT                  247 246  56
+0752  1:SPILL                     84 247   0
+0753  0:EXT                       54   0   0
+0754  1:RELOAD                    85 246   0
+0755  0:EXT                       54   0   0
+0756  0:ADD_INT                  247 246  57
+0757  1:SPILL                     84 247   0
+0758  0:EXT                       54   0   0
+0759  1:RELOAD                    85 246   0
+0760  0:EXT                       54   0   0
+0761  0:ADD_INT                  247 246  58
+0762  1:SPILL                     84 247   0
+0763  0:EXT                       54   0   0
+0764  1:RELOAD                    85 246   0
+0765  0:EXT                       54   0   0
+0766  0:ADD_INT                  247 246  59
+0767  1:SPILL                     84 247   0
+0768  0:EXT                       54   0   0
+0769  1:RELOAD                    85 246   0
+0770  0:EXT                       54   0   0
+0771  0:ADD_INT                  247 246  60
+0772  1:SPILL                     84 247   0
+0773  0:EXT                       54   0   0
+0774  1:RELOAD                    85 246   0
+0775  0:EXT                       54   0   0
+0776  0:ADD_INT                  247 246  61
+0777  1:SPILL                     84 247   0
+0778  0:EXT                       54   0   0
+0779  1:RELOAD                    85 246   0
+0780  0:EXT                       54   0   0
+0781  0:ADD_INT                  247 246  62
+0782  1:SPILL                     84 247   0
+0783  0:EXT                       54   0   0
+0784  1:RELOAD                    85 246   0
+0785  0:EXT                       54   0   0
+0786  0:ADD_INT                  247 246  63
+0787  1:SPILL                     84 247   0
+0788  0:EXT                       54   0   0
+0789  1:RELOAD                    85 246   0
+0790  0:EXT                       54   0   0
+0791  0:ADD_INT                  247 246  64
+0792  1:SPILL                     84 247   0
+0793  0:EXT                       54   0   0
+0794  1:RELOAD                    85 246   0
+0795  0:EXT                       54   0   0
+0796  0:ADD_INT                  247 246  65
+0797  1:SPILL                     84 247   0
+0798  0:EXT                       54   0   0
+0799  1:RELOAD                    85 246   0
+0800  0:EXT                       54   0   0
+0801  0:ADD_INT                  247 246  66
+0802  1:SPILL                     84 247   0
+0803  0:EXT                       54   0   0
+0804  1:RELOAD                    85 246   0
+0805  0:EXT                       54   0   0
+0806  0:ADD_INT                  247 246  67
+0807  1:SPILL                     84 247   0
+0808  0:EXT                       54   0   0
+0809  1:RELOAD                    85 246   0
+0810  0:EXT                       54   0   0
+0811  0:ADD_INT                  247 246  68
+0812  1:SPILL                     84 247   0
+0813  0:EXT                       54   0   0
+0814  1:RELOAD                    85 246   0
+0815  0:EXT                       54   0   0
+0816  0:ADD_INT                  247 246  69
+0817  1:SPILL                     84 247   0
+0818  0:EXT                       54   0   0
+0819  1:RELOAD                    85 246   0
+0820  0:EXT                       54   0   0
+0821  0:ADD_INT                  247 246  70
+0822  1:SPILL                     84 247   0
+0823  0:EXT                       54   0   0
+0824  1:RELOAD                    85 246   0
+0825  0:EXT                       54   0   0
+0826  0:ADD_INT                  247 246  71
+0827  1:SPILL                     84 247   0
+0828  0:EXT                       54   0   0
+0829  1:RELOAD                    85 246   0
+0830  0:EXT                       54   0   0
+0831  0:ADD_INT                  247 246  72
+0832  1:SPILL                     84 247   0
+0833  0:EXT                       54   0   0
+0834  1:RELOAD                    85 246   0
+0835  0:EXT                       54   0   0
+0836  0:ADD_INT                  247 246  73
+0837  1:SPILL                     84 247   0
+0838  0:EXT                       54   0   0
+0839  1:RELOAD                    85 246   0
+0840  0:EXT                       54   0   0
+0841  0:ADD_INT                  247 246  74
+0842  1:SPILL                     84 247   0
+0843  0:EXT                       54   0   0
+0844  1:RELOAD                    85 246   0
+0845  0:EXT                       54   0   0
+0846  0:ADD_INT                  247 246  75
+0847  1:SPILL                     84 247   0
+0848  0:EXT                       54   0   0
+0849  1:RELOAD                    85 246   0
+0850  0:EXT                       54   0   0
+0851  0:ADD_INT                  247 246  76
+0852  1:SPILL                     84 247   0
+0853  0:EXT                       54   0   0
+0854  1:RELOAD                    85 246   0
+0855  0:EXT                       54   0   0
+0856  0:ADD_INT                  247 246  77
+0857  1:SPILL                     84 247   0
+0858  0:EXT                       54   0   0
+0859  1:RELOAD                    85 246   0
+0860  0:EXT                       54   0   0
+0861  0:ADD_INT                  247 246  78
+0862  1:SPILL                     84 247   0
+0863  0:EXT                       54   0   0
+0864  1:RELOAD                    85 246   0
+0865  0:EXT                       54   0   0
+0866  0:ADD_INT                  247 246  79
+0867  1:SPILL                     84 247   0
+0868  0:EXT                       54   0   0
+0869  1:RELOAD                    85 246   0
+0870  0:EXT                       54   0   0
+0871  0:ADD_INT                  247 246  80
+0872  1:SPILL                     84 247   0
+0873  0:EXT                       54   0   0
+0874  1:RELOAD                    85 246   0
+0875  0:EXT                       54   0   0
+0876  0:ADD_INT                  247 246  81
+0877  1:SPILL                     84 247   0
+0878  0:EXT                       54   0   0
+0879  1:RELOAD                    85 246   0
+0880  0:EXT                       54   0   0
+0881  0:ADD_INT                  247 246  82
+0882  1:SPILL                     84 247   0
+0883  0:EXT                       54   0   0
+0884  1:RELOAD                    85 246   0
+0885  0:EXT                       54   0   0
+0886  0:ADD_INT                  247 246  83
+0887  1:SPILL                     84 247   0
+0888  0:EXT                       54   0   0
+0889  1:RELOAD                    85 246   0
+0890  0:EXT                       54   0   0
+0891  0:ADD_INT                  247 246  84
+0892  1:SPILL                     84 247   0
+0893  0:EXT                       54   0   0
+0894  1:RELOAD                    85 246   0
+0895  0:EXT                       54   0   0
+0896  0:ADD_INT                  247 246  85
+0897  1:SPILL                     84 247   0
+0898  0:EXT                       54   0   0
+0899  1:RELOAD                    85 246   0
+0900  0:EXT                       54   0   0
+0901  0:ADD_INT                  247 246  86
+0902  1:SPILL                     84 247   0
+0903  0:EXT                       54   0   0
+0904  1:RELOAD                    85 246   0
+0905  0:EXT                       54   0   0
+0906  0:ADD_INT                  247 246  87
+0907  1:SPILL                     84 247   0
+0908  0:EXT                       54   0   0
+0909  1:RELOAD                    85 246   0
+0910  0:EXT                       54   0   0
+0911  0:ADD_INT                  247 246  88
+0912  1:SPILL                     84 247   0
+0913  0:EXT                       54   0   0
+0914  1:RELOAD                    85 246   0
+0915  0:EXT                       54   0   0
+0916  0:ADD_INT                  247 246  89
+0917  1:SPILL                     84 247   0
+0918  0:EXT                       54   0   0
+0919  1:RELOAD                    85 246   0
+0920  0:EXT                       54   0   0
+0921  0:ADD_INT                  247 246  90
+0922  1:SPILL                     84 247   0
+0923  0:EXT                       54   0   0
+0924  1:RELOAD                    85 246   0
+0925  0:EXT                       54   0   0
+0926  0:ADD_INT                  247 246  91
+0927  1:SPILL                     84 247   0
+0928  0:EXT                       54   0   0
+0929  1:RELOAD                    85 246   0
+0930  0:EXT                       54   0   0
+0931  0:ADD_INT                  247 246  92
+0932  1:SPILL                     84 247   0
+0933  0:EXT                       54   0   0
+0934  1:RELOAD                    85 246   0
+0935  0:EXT                       54   0   0
+0936  0:ADD_INT                  247 246  93
+0937  1:SPILL                     84 247   0
+0938  0:EXT                       54   0   0
+0939  1:RELOAD                    85 246   0
+0940  0:EXT                       54   0   0
+0941  0:ADD_INT                  247 246  94
+0942  1:SPILL                     84 247   0
+0943  0:EXT                       54   0   0
+0944  1:RELOAD                    85 246   0
+0945  0:EXT                       54   0   0
+0946  0:ADD_INT                  247 246  95
+0947  1:SPILL                     84 247   0
+0948  0:EXT                       54   0   0
+0949  1:RELOAD                    85 246   0
+0950  0:EXT                       54   0   0
+0951  0:ADD_INT                  247 246  96
+0952  1:SPILL                     84 247   0
+0953  0:EXT                       54   0   0
+0954  1:RELOAD                    85 246   0
+0955  0:EXT                       54   0   0
+0956  0:ADD_INT                  247 246  97
+0957  1:SPILL                     84 247   0
+0958  0:EXT                       54   0   0
+0959  1:RELOAD                    85 246   0
+0960  0:EXT                       54   0   0
+0961  0:ADD_INT                  247 246  98
+0962  1:SPILL                     84 247   0
+0963  0:EXT                       54   0   0
+0964  1:RELOAD                    85 246   0
+0965  0:EXT                       54   0   0
+0966  0:ADD_INT                  247 246  99
+0967  1:SPILL                     84 247   0
+0968  0:EXT                       54   0   0
+0969  1:RELOAD                    85 246   0
+0970  0:EXT                       54   0   0
+0971  0:ADD_INT                  247 246 100
+0972  1:SPILL                     84 247   0
+0973  0:EXT                       54   0   0
+0974  1:RELOAD                    85 246   0
+0975  0:EXT                       54   0   0
+0976  0:ADD_INT                  247 246 101
+0977  1:SPILL                     84 247   0
+0978  0:EXT                       54   0   0
+0979  1:RELOAD                    85 246   0
+0980  0:EXT                       54   0   0
+0981  0:ADD_INT                  247 246 102
+0982  1:SPILL                     84 247   0
+0983  0:EXT                       54   0   0
+0984  1:RELOAD                    85 246   0
+0985  0:EXT                       54   0   0
+0986  0:ADD_INT                  247 246 103
+0987  1:SPILL                     84 247   0
+0988  0:EXT                       54   0   0
+0989  1:RELOAD                    85 246   0
+0990  0:EXT                       54   0   0
+0991  0:ADD_INT                  247 246 104
+0992  1:SPILL                     84 247   0
+0993  0:EXT                       54   0   0
+0994  1:RELOAD                    85 246   0
+0995  0:EXT                       54   0   0
+0996  0:ADD_INT                  247 246 105
+0997  1:SPILL                     84 247   0
+0998  0:EXT                       54   0   0
+0999  1:RELOAD                    85 246   0
+1000  0:EXT                       54   0   0
+1001  0:ADD_INT                  247 246 106
+1002  1:SPILL                     84 247   0
+1003  0:EXT                       54   0   0
+1004  1:RELOAD                    85 246   0
+1005  0:EXT                       54   0   0
+1006  0:ADD_INT                  247 246 107
+1007  1:SPILL                     84 247   0
+1008  0:EXT                       54   0   0
+1009  1:RELOAD                    85 246   0
+1010  0:EXT                       54   0   0
+1011  0:ADD_INT                  247 246 108
+1012  1:SPILL                     84 247   0
+1013  0:EXT                       54   0   0
+1014  1:RELOAD                    85 246   0
+1015  0:EXT                       54   0   0
+1016  0:ADD_INT                  247 246 109
+1017  1:SPILL                     84 247   0
+1018  0:EXT                       54   0   0
+1019  1:RELOAD                    85 246   0
+1020  0:EXT                       54   0   0
+1021  0:ADD_INT                  247 246 110
+1022  1:SPILL                     84 247   0
+1023  0:EXT                       54   0   0
+1024  1:RELOAD                    85 246   0
+1025  0:EXT                       54   0   0
+1026  0:ADD_INT                  247 246 111
+1027  1:SPILL                     84 247   0
+1028  0:EXT                       54   0   0
+1029  1:RELOAD                    85 246   0
+1030  0:EXT                       54   0   0
+1031  0:ADD_INT                  247 246 112
+1032  1:SPILL                     84 247   0
+1033  0:EXT                       54   0   0
+1034  1:RELOAD                    85 246   0
+1035  0:EXT                       54   0   0
+1036  0:ADD_INT                  247 246 113
+1037  1:SPILL                     84 247   0
+1038  0:EXT                       54   0   0
+1039  1:RELOAD                    85 246   0
+1040  0:EXT                       54   0   0
+1041  0:ADD_INT                  247 246 114
+1042  1:SPILL                     84 247   0
+1043  0:EXT                       54   0   0
+1044  1:RELOAD                    85 246   0
+1045  0:EXT                       54   0   0
+1046  0:ADD_INT                  247 246 115
+1047  1:SPILL                     84 247   0
+1048  0:EXT                       54   0   0
+1049  1:RELOAD                    85 246   0
+1050  0:EXT                       54   0   0
+1051  0:ADD_INT                  247 246 116
+1052  1:SPILL                     84 247   0
+1053  0:EXT                       54   0   0
+1054  1:RELOAD                    85 246   0
+1055  0:EXT                       54   0   0
+1056  0:ADD_INT                  247 246 117
+1057  1:SPILL                     84 247   0
+1058  0:EXT                       54   0   0
+1059  1:RELOAD                    85 246   0
+1060  0:EXT                       54   0   0
+1061  0:ADD_INT                  247 246 118
+1062  1:SPILL                     84 247   0
+1063  0:EXT                       54   0   0
+1064  1:RELOAD                    85 246   0
+1065  0:EXT                       54   0   0
+1066  0:ADD_INT                  247 246 119
+1067  1:SPILL                     84 247   0
+1068  0:EXT                       54   0   0
+1069  1:RELOAD                    85 246   0
+1070  0:EXT                       54   0   0
+1071  0:ADD_INT                  247 246 120
+1072  1:SPILL                     84 247   0
+1073  0:EXT                       54   0   0
+1074  1:RELOAD                    85 246   0
+1075  0:EXT                       54   0   0
+1076  0:ADD_INT                  247 246 121
+1077  1:SPILL                     84 247   0
+1078  0:EXT                       54   0   0
+1079  1:RELOAD                    85 246   0
+1080  0:EXT                       54   0   0
+1081  0:ADD_INT                  247 246 122
+1082  1:SPILL                     84 247   0
+1083  0:EXT                       54   0   0
+1084  1:RELOAD                    85 246   0
+1085  0:EXT                       54   0   0
+1086  0:ADD_INT                  247 246 123
+1087  1:SPILL                     84 247   0
+1088  0:EXT                       54   0   0
+1089  1:RELOAD                    85 246   0
+1090  0:EXT                       54   0   0
+1091  0:ADD_INT                  247 246 124
+1092  1:SPILL                     84 247   0
+1093  0:EXT                       54   0   0
+1094  1:RELOAD                    85 246   0
+1095  0:EXT                       54   0   0
+1096  0:ADD_INT                  247 246 125
+1097  1:SPILL                     84 247   0
+1098  0:EXT                       54   0   0
+1099  1:RELOAD                    85 246   0
+1100  0:EXT                       54   0   0
+1101  0:ADD_INT                  247 246 126
+1102  1:SPILL                     84 247   0
+1103  0:EXT                       54   0   0
+1104  1:RELOAD                    85 246   0
+1105  0:EXT                       54   0   0
+1106  0:ADD_INT                  247 246 127
+1107  1:SPILL                     84 247   0
+1108  0:EXT                       54   0   0
+1109  1:RELOAD                    85 246   0
+1110  0:EXT                       54   0   0
+1111  0:ADD_INT                  247 246 128
+1112  1:SPILL                     84 247   0
+1113  0:EXT                       54   0   0
+1114  1:RELOAD                    85 246   0
+1115  0:EXT                       54   0   0
+1116  0:ADD_INT                  247 246 129
+1117  1:SPILL                     84 247   0
+1118  0:EXT                       54   0   0
+1119  1:RELOAD                    85 246   0
+1120  0:EXT                       54   0   0
+1121  0:ADD_INT                  247 246 130
+1122  1:SPILL                     84 247   0
+1123  0:EXT                       54   0   0
+1124  1:RELOAD                    85 246   0
+1125  0:EXT                       54   0   0
+1126  0:ADD_INT                  247 246 131
+1127  1:SPILL                     84 247   0
+1128  0:EXT                       54   0   0
+1129  1:RELOAD                    85 246   0
+1130  0:EXT                       54   0   0
+1131  0:ADD_INT                  247 246 132
+1132  1:SPILL                     84 247   0
+1133  0:EXT                       54   0   0
+1134  1:RELOAD                    85 246   0
+1135  0:EXT                       54   0   0
+1136  0:ADD_INT                  247 246 133
+1137  1:SPILL                     84 247   0
+1138  0:EXT                       54   0   0
+1139  1:RELOAD                    85 246   0
+1140  0:EXT                       54   0   0
+1141  0:ADD_INT                  247 246 134
+1142  1:SPILL                     84 247   0
+1143  0:EXT                       54   0   0
+1144  1:RELOAD                    85 246   0
+1145  0:EXT                       54   0   0
+1146  0:ADD_INT                  247 246 135
+1147  1:SPILL                     84 247   0
+1148  0:EXT                       54   0   0
+1149  1:RELOAD                    85 246   0
+1150  0:EXT                       54   0   0
+1151  0:ADD_INT                  247 246 136
+1152  1:SPILL                     84 247   0
+1153  0:EXT                       54   0   0
+1154  1:RELOAD                    85 246   0
+1155  0:EXT                       54   0   0
+1156  0:ADD_INT                  247 246 137
+1157  1:SPILL                     84 247   0
+1158  0:EXT                       54   0   0
+1159  1:RELOAD                    85 246   0
+1160  0:EXT                       54   0   0
+1161  0:ADD_INT                  247 246 138
+1162  1:SPILL                     84 247   0
+1163  0:EXT                       54   0   0
+1164  1:RELOAD                    85 246   0
+1165  0:EXT                       54   0   0
+1166  0:ADD_INT                  247 246 139
+1167  1:SPILL                     84 247   0
+1168  0:EXT                       54   0   0
+1169  1:RELOAD                    85 246   0
+1170  0:EXT                       54   0   0
+1171  0:ADD_INT                  247 246 140
+1172  1:SPILL                     84 247   0
+1173  0:EXT                       54   0   0
+1174  1:RELOAD                    85 246   0
+1175  0:EXT                       54   0   0
+1176  0:ADD_INT                  247 246 141
+1177  1:SPILL                     84 247   0
+1178  0:EXT                       54   0   0
+1179  1:RELOAD                    85 246   0
+1180  0:EXT                       54   0   0
+1181  0:ADD_INT                  247 246 142
+1182  1:SPILL                     84 247   0
+1183  0:EXT                       54   0   0
+1184  1:RELOAD                    85 246   0
+1185  0:EXT                       54   0   0
+1186  0:ADD_INT                  247 246 143
+1187  1:SPILL                     84 247   0
+1188  0:EXT                       54   0   0
+1189  1:RELOAD                    85 246   0
+1190  0:EXT                       54   0   0
+1191  0:ADD_INT                  247 246 144
+1192  1:SPILL                     84 247   0
+1193  0:EXT                       54   0   0
+1194  1:RELOAD                    85 246   0
+1195  0:EXT                       54   0   0
+1196  0:ADD_INT                  247 246 145
+1197  1:SPILL                     84 247   0
+1198  0:EXT                       54   0   0
+1199  1:RELOAD                    85 246   0
+1200  0:EXT                       54   0   0
+1201  0:ADD_INT                  247 246 146
+1202  1:SPILL                     84 247   0
+1203  0:EXT                       54   0   0
+1204  1:RELOAD                    85 246   0
+1205  0:EXT                       54   0   0
+1206  0:ADD_INT                  247 246 147
+1207  1:SPILL                     84 247   0
+1208  0:EXT                       54   0   0
+1209  1:RELOAD                    85 246   0
+1210  0:EXT                       54   0   0
+1211  0:ADD_INT                  247 246 148
+1212  1:SPILL                     84 247   0
+1213  0:EXT                       54   0   0
+1214  1:RELOAD                    85 246   0
+1215  0:EXT                       54   0   0
+1216  0:ADD_INT                  247 246 149
+1217  1:SPILL                     84 247   0
+1218  0:EXT                       54   0   0
+1219  1:RELOAD                    85 246   0
+1220  0:EXT                       54   0   0
+1221  0:ADD_INT                  247 246 150
+1222  1:SPILL                     84 247   0
+1223  0:EXT                       54   0   0
+1224  1:RELOAD                    85 246   0
+1225  0:EXT                       54   0   0
+1226  0:ADD_INT                  247 246 151
+1227  1:SPILL                     84 247   0
+1228  0:EXT                       54   0   0
+1229  1:RELOAD                    85 246   0
+1230  0:EXT                       54   0   0
+1231  0:ADD_INT                  247 246 152
+1232  1:SPILL                     84 247   0
+1233  0:EXT                       54   0   0
+1234  1:RELOAD                    85 246   0
+1235  0:EXT                       54   0   0
+1236  0:ADD_INT                  247 246 153
+1237  1:SPILL                     84 247   0
+1238  0:EXT                       54   0   0
+1239  1:RELOAD                    85 246   0
+1240  0:EXT                       54   0   0
+1241  0:ADD_INT                  247 246 154
+1242  1:SPILL                     84 247   0
+1243  0:EXT                       54   0   0
+1244  1:RELOAD                    85 246   0
+1245  0:EXT                       54   0   0
+1246  0:ADD_INT                  247 246 155
+1247  1:SPILL                     84 247   0
+1248  0:EXT                       54   0   0
+1249  1:RELOAD                    85 246   0
+1250  0:EXT                       54   0   0
+1251  0:ADD_INT                  247 246 156
+1252  1:SPILL                     84 247   0
+1253  0:EXT                       54   0   0
+1254  1:RELOAD                    85 246   0
+1255  0:EXT                       54   0   0
+1256  0:ADD_INT                  247 246 157
+1257  1:SPILL                     84 247   0
+1258  0:EXT                       54   0   0
+1259  1:RELOAD                    85 246   0
+1260  0:EXT                       54   0   0
+1261  0:ADD_INT                  247 246 158
+1262  1:SPILL                     84 247   0
+1263  0:EXT                       54   0   0
+1264  1:RELOAD                    85 246   0
+1265  0:EXT                       54   0   0
+1266  0:ADD_INT                  247 246 159
+1267  1:SPILL                     84 247   0
+1268  0:EXT                       54   0   0
+1269  1:RELOAD                    85 246   0
+1270  0:EXT                       54   0   0
+1271  0:ADD_INT                  247 246 160
+1272  1:SPILL                     84 247   0
+1273  0:EXT                       54   0   0
+1274  1:RELOAD                    85 246   0
+1275  0:EXT                       54   0   0
+1276  0:ADD_INT                  247 246 161
+1277  1:SPILL                     84 247   0
+1278  0:EXT                       54   0   0
+1279  1:RELOAD                    85 246   0
+1280  0:EXT                       54   0   0
+1281  0:ADD_INT                  247 246 162
+1282  1:SPILL                     84 247   0
+1283  0:EXT                       54   0   0
+1284  1:RELOAD                    85 246   0
+1285  0:EXT                       54   0   0
+1286  0:ADD_INT                  247 246 163
+1287  1:SPILL                     84 247   0
+1288  0:EXT                       54   0   0
+1289  1:RELOAD                    85 246   0
+1290  0:EXT                       54   0   0
+1291  0:ADD_INT                  247 246 164
+1292  1:SPILL                     84 247   0
+1293  0:EXT                       54   0   0
+1294  1:RELOAD                    85 246   0
+1295  0:EXT                       54   0   0
+1296  0:ADD_INT                  247 246 165
+1297  1:SPILL                     84 247   0
+1298  0:EXT                       54   0   0
+1299  1:RELOAD                    85 246   0
+1300  0:EXT                       54   0   0
+1301  0:ADD_INT                  247 246 166
+1302  1:SPILL                     84 247   0
+1303  0:EXT                       54   0   0
+1304  1:RELOAD                    85 246   0
+1305  0:EXT                       54   0   0
+1306  0:ADD_INT                  247 246 167
+1307  1:SPILL                     84 247   0
+1308  0:EXT                       54   0   0
+1309  1:RELOAD                    85 246   0
+1310  0:EXT                       54   0   0
+1311  0:ADD_INT                  247 246 168
+1312  1:SPILL                     84 247   0
+1313  0:EXT                       54   0   0
+1314  1:RELOAD                    85 246   0
+1315  0:EXT                       54   0   0
+1316  0:ADD_INT                  247 246 169
+1317  1:SPILL                     84 247   0
+1318  0:EXT                       54   0   0
+1319  1:RELOAD                    85 246   0
+1320  0:EXT                       54   0   0
+1321  0:ADD_INT                  247 246 170
+1322  1:SPILL                     84 247   0
+1323  0:EXT                       54   0   0
+1324  1:RELOAD                    85 246   0
+1325  0:EXT                       54   0   0
+1326  0:ADD_INT                  247 246 171
+1327  1:SPILL                     84 247   0
+1328  0:EXT                       54   0   0
+1329  1:RELOAD                    85 246   0
+1330  0:EXT                       54   0   0
+1331  0:ADD_INT                  247 246 172
+1332  1:SPILL                     84 247   0
+1333  0:EXT                       54   0   0
+1334  1:RELOAD                    85 246   0
+1335  0:EXT                       54   0   0
+1336  0:ADD_INT                  247 246 173
+1337  1:SPILL                     84 247   0
+1338  0:EXT                       54   0   0
+1339  1:RELOAD                    85 246   0
+1340  0:EXT                       54   0   0
+1341  0:ADD_INT                  247 246 174
+1342  1:SPILL                     84 247   0
+1343  0:EXT                       54   0   0
+1344  1:RELOAD                    85 246   0
+1345  0:EXT                       54   0   0
+1346  0:ADD_INT                  247 246 175
+1347  1:SPILL                     84 247   0
+1348  0:EXT                       54   0   0
+1349  1:RELOAD                    85 246   0
+1350  0:EXT                       54   0   0
+1351  0:ADD_INT                  247 246 176
+1352  1:SPILL                     84 247   0
+1353  0:EXT                       54   0   0
+1354  1:RELOAD                    85 246   0
+1355  0:EXT                       54   0   0
+1356  0:ADD_INT                  247 246 177
+1357  1:SPILL                     84 247   0
+1358  0:EXT                       54   0   0
+1359  1:RELOAD                    85 246   0
+1360  0:EXT                       54   0   0
+1361  0:ADD_INT                  247 246 178
+1362  1:SPILL                     84 247   0
+1363  0:EXT                       54   0   0
+1364  1:RELOAD                    85 246   0
+1365  0:EXT                       54   0   0
+1366  0:ADD_INT                  247 246 179
+1367  1:SPILL                     84 247   0
+1368  0:EXT                       54   0   0
+1369  1:RELOAD                    85 246   0
+1370  0:EXT                       54   0   0
+1371  0:ADD_INT                  247 246 180
+1372  1:SPILL                     84 247   0
+1373  0:EXT                       54   0   0
+1374  1:RELOAD                    85 246   0
+1375  0:EXT                       54   0   0
+1376  0:ADD_INT                  247 246 181
+1377  1:SPILL                     84 247   0
+1378  0:EXT                       54   0   0
+1379  1:RELOAD                    85 246   0
+1380  0:EXT                       54   0   0
+1381  0:ADD_INT                  247 246 182
+1382  1:SPILL                     84 247   0
+1383  0:EXT                       54   0   0
+1384  1:RELOAD                    85 246   0
+1385  0:EXT                       54   0   0
+1386  0:ADD_INT                  247 246 183
+1387  1:SPILL                     84 247   0
+1388  0:EXT                       54   0   0
+1389  1:RELOAD                    85 246   0
+1390  0:EXT                       54   0   0
+1391  0:ADD_INT                  247 246 184
+1392  1:SPILL                     84 247   0
+1393  0:EXT                       54   0   0
+1394  1:RELOAD                    85 246   0
+1395  0:EXT                       54   0   0
+1396  0:ADD_INT                  247 246 185
+1397  1:SPILL                     84 247   0
+1398  0:EXT                       54   0   0
+1399  1:RELOAD                    85 246   0
+1400  0:EXT                       54   0   0
+1401  0:ADD_INT                  247 246 186
+1402  1:SPILL                     84 247   0
+1403  0:EXT                       54   0   0
+1404  1:RELOAD                    85 246   0
+1405  0:EXT                       54   0   0
+1406  0:ADD_INT                  247 246 187
+1407  1:SPILL                     84 247   0
+1408  0:EXT                       54   0   0
+1409  1:RELOAD                    85 246   0
+1410  0:EXT                       54   0   0
+1411  0:ADD_INT                  247 246 188
+1412  1:SPILL                     84 247   0
+1413  0:EXT                       54   0   0
+1414  1:RELOAD                    85 246   0
+1415  0:EXT                       54   0   0
+1416  0:ADD_INT                  247 246 189
+1417  1:SPILL                     84 247   0
+1418  0:EXT                       54   0   0
+1419  1:RELOAD                    85 246   0
+1420  0:EXT                       54   0   0
+1421  0:ADD_INT                  247 246 190
+1422  1:SPILL                     84 247   0
+1423  0:EXT                       54   0   0
+1424  1:RELOAD                    85 246   0
+1425  0:EXT                       54   0   0
+1426  0:ADD_INT                  247 246 191
+1427  1:SPILL                     84 247   0
+1428  0:EXT                       54   0   0
+1429  1:RELOAD                    85 246   0
+1430  0:EXT                       54   0   0
+1431  0:ADD_INT                  247 246 192
+1432  1:SPILL                     84 247   0
+1433  0:EXT                       54   0   0
+1434  1:RELOAD                    85 246   0
+1435  0:EXT                       54   0   0
+1436  0:ADD_INT                  247 246 193
+1437  1:SPILL                     84 247   0
+1438  0:EXT                       54   0   0
+1439  1:RELOAD                    85 246   0
+1440  0:EXT                       54   0   0
+1441  0:ADD_INT                  247 246 194
+1442  1:SPILL                     84 247   0
+1443  0:EXT                       54   0   0
+1444  1:RELOAD                    85 246   0
+1445  0:EXT                       54   0   0
+1446  0:ADD_INT                  247 246 195
+1447  1:SPILL                     84 247   0
+1448  0:EXT                       54   0   0
+1449  1:RELOAD                    85 246   0
+1450  0:EXT                       54   0   0
+1451  0:ADD_INT                  247 246 196
+1452  1:SPILL                     84 247   0
+1453  0:EXT                       54   0   0
+1454  1:RELOAD                    85 246   0
+1455  0:EXT                       54   0   0
+1456  0:ADD_INT                  247 246 197
+1457  1:SPILL                     84 247   0
+1458  0:EXT                       54   0   0
+1459  1:RELOAD                    85 246   0
+1460  0:EXT                       54   0   0
+1461  0:ADD_INT                  247 246 198
+1462  1:SPILL                     84 247   0
+1463  0:EXT                       54   0   0
+1464  1:RELOAD                    85 246   0
+1465  0:EXT                       54   0   0
+1466  0:ADD_INT                  247 246 199
+1467  1:SPILL                     84 247   0
+1468  0:EXT                       54   0   0
+1469  1:RELOAD                    85 246   0
+1470  0:EXT                       54   0   0
+1471  0:ADD_INT                  247 246 200
+1472  1:SPILL                     84 247   0
+1473  0:EXT                       54   0   0
+1474  1:RELOAD                    85 246   0
+1475  0:EXT                       54   0   0
+1476  0:ADD_INT                  247 246 201
+1477  1:SPILL                     84 247   0
+1478  0:EXT                       54   0   0
+1479  1:RELOAD                    85 246   0
+1480  0:EXT                       54   0   0
+1481  0:ADD_INT                  247 246 202
+1482  1:SPILL                     84 247   0
+1483  0:EXT                       54   0   0
+1484  1:RELOAD                    85 246   0
+1485  0:EXT                       54   0   0
+1486  0:ADD_INT                  247 246 203
+1487  1:SPILL                     84 247   0
+1488  0:EXT                       54   0   0
+1489  1:RELOAD                    85 246   0
+1490  0:EXT                       54   0   0
+1491  0:ADD_INT                  247 246 204
+1492  1:SPILL                     84 247   0
+1493  0:EXT                       54   0   0
+1494  1:RELOAD                    85 246   0
+1495  0:EXT                       54   0   0
+1496  0:ADD_INT                  247 246 205
+1497  1:SPILL                     84 247   0
+1498  0:EXT                       54   0   0
+1499  1:RELOAD                    85 246   0
+1500  0:EXT                       54   0   0
+1501  0:ADD_INT                  247 246 206
+1502  1:SPILL                     84 247   0
+1503  0:EXT                       54   0   0
+1504  1:RELOAD                    85 246   0
+1505  0:EXT                       54   0   0
+1506  0:ADD_INT                  247 246 207
+1507  1:SPILL                     84 247   0
+1508  0:EXT                       54   0   0
+1509  1:RELOAD                    85 246   0
+1510  0:EXT                       54   0   0
+1511  0:ADD_INT                  247 246 208
+1512  1:SPILL                     84 247   0
+1513  0:EXT                       54   0   0
+1514  1:RELOAD                    85 246   0
+1515  0:EXT                       54   0   0
+1516  0:ADD_INT                  247 246 209
+1517  1:SPILL                     84 247   0
+1518  0:EXT                       54   0   0
+1519  1:RELOAD                    85 246   0
+1520  0:EXT                       54   0   0
+1521  0:ADD_INT                  247 246 210
+1522  1:SPILL                     84 247   0
+1523  0:EXT                       54   0   0
+1524  1:RELOAD                    85 246   0
+1525  0:EXT                       54   0   0
+1526  0:ADD_INT                  247 246 211
+1527  1:SPILL                     84 247   0
+1528  0:EXT                       54   0   0
+1529  1:RELOAD                    85 246   0
+1530  0:EXT                       54   0   0
+1531  0:ADD_INT                  247 246 212
+1532  1:SPILL                     84 247   0
+1533  0:EXT                       54   0   0
+1534  1:RELOAD                    85 246   0
+1535  0:EXT                       54   0   0
+1536  0:ADD_INT                  247 246 213
+1537  1:SPILL                     84 247   0
+1538  0:EXT                       54   0   0
+1539  1:RELOAD                    85 246   0
+1540  0:EXT                       54   0   0
+1541  0:ADD_INT                  247 246 214
+1542  1:SPILL                     84 247   0
+1543  0:EXT                       54   0   0
+1544  1:RELOAD                    85 246   0
+1545  0:EXT                       54   0   0
+1546  0:ADD_INT                  247 246 215
+1547  1:SPILL                     84 247   0
+1548  0:EXT                       54   0   0
+1549  1:RELOAD                    85 246   0
+1550  0:EXT                       54   0   0
+1551  0:ADD_INT                  247 246 216
+1552  1:SPILL                     84 247   0
+1553  0:EXT                       54   0   0
+1554  1:RELOAD                    85 246   0
+1555  0:EXT                       54   0   0
+1556  0:ADD_INT                  247 246 217
+1557  1:SPILL                     84 247   0
+1558  0:EXT                       54   0   0
+1559  1:RELOAD                    85 246   0
+1560  0:EXT                       54   0   0
+1561  0:ADD_INT                  247 246 218
+1562  1:SPILL                     84 247   0
+1563  0:EXT                       54   0   0
+1564  1:RELOAD                    85 246   0
+1565  0:EXT                       54   0   0
+1566  0:ADD_INT                  247 246 219
+1567  1:SPILL                     84 247   0
+1568  0:EXT                       54   0   0
+1569  1:RELOAD                    85 246   0
+1570  0:EXT                       54   0   0
+1571  0:ADD_INT                  247 246 220
+1572  1:SPILL                     84 247   0
+1573  0:EXT                       54   0   0
+1574  1:RELOAD                    85 246   0
+1575  0:EXT                       54   0   0
+1576  0:ADD_INT                  247 246 221
+1577  1:SPILL                     84 247   0
+1578  0:EXT                       54   0   0
+1579  1:RELOAD                    85 246   0
+1580  0:EXT                       54   0   0
+1581  0:ADD_INT                  247 246 222
+1582  1:SPILL                     84 247   0
+1583  0:EXT                       54   0   0
+1584  1:RELOAD                    85 246   0
+1585  0:EXT                       54   0   0
+1586  0:ADD_INT                  247 246 223
+1587  1:SPILL                     84 247   0
+1588  0:EXT                       54   0   0
+1589  1:RELOAD                    85 246   0
+1590  0:EXT                       54   0   0
+1591  0:ADD_INT                  247 246 224
+1592  1:SPILL                     84 247   0
+1593  0:EXT                       54   0   0
+1594  1:RELOAD                    85 246   0
+1595  0:EXT                       54   0   0
+1596  0:ADD_INT                  247 246 225
+1597  1:SPILL                     84 247   0
+1598  0:EXT                       54   0   0
+1599  1:RELOAD                    85 246   0
+1600  0:EXT                       54   0   0
+1601  0:ADD_INT                  247 246 226
+1602  1:SPILL                     84 247   0
+1603  0:EXT                       54   0   0
+1604  1:RELOAD                    85 246   0
+1605  0:EXT                       54   0   0
+1606  0:ADD_INT                  247 246 227
+1607  1:SPILL                     84 247   0
+1608  0:EXT                       54   0   0
+1609  1:RELOAD                    85 246   0
+1610  0:EXT                       54   0   0
+1611  0:ADD_INT                  247 246 228
+1612  1:SPILL                     84 247   0
+1613  0:EXT                       54   0   0
+1614  1:RELOAD                    85 246   0
+1615  0:EXT                       54   0   0
+1616  0:ADD_INT                  247 246 229
+1617  1:SPILL                     84 247   0
+1618  0:EXT                       54   0   0
+1619  1:RELOAD                    85 246   0
+1620  0:EXT                       54   0   0
+1621  0:ADD_INT                  247 246 230
+1622  1:SPILL                     84 247   0
+1623  0:EXT                       54   0   0
+1624  1:RELOAD                    85 246   0
+1625  0:EXT                       54   0   0
+1626  0:ADD_INT                  247 246 231
+1627  1:SPILL                     84 247   0
+1628  0:EXT                       54   0   0
+1629  1:RELOAD                    85 246   0
+1630  0:EXT                       54   0   0
+1631  0:ADD_INT                  247 246 232
+1632  1:SPILL                     84 247   0
+1633  0:EXT                       54   0   0
+1634  1:RELOAD                    85 246   0
+1635  0:EXT                       54   0   0
+1636  0:ADD_INT                  247 246 233
+1637  1:SPILL                     84 247   0
+1638  0:EXT                       54   0   0
+1639  1:RELOAD                    85 246   0
+1640  0:EXT                       54   0   0
+1641  0:ADD_INT                  247 246 234
+1642  1:SPILL                     84 247   0
+1643  0:EXT                       54   0   0
+1644  1:RELOAD                    85 246   0
+1645  0:EXT                       54   0   0
+1646  0:ADD_INT                  247 246 235
+1647  1:SPILL                     84 247   0
+1648  0:EXT                       54   0   0
+1649  1:RELOAD                    85 246   0
+1650  0:EXT                       54   0   0
+1651  0:ADD_INT                  247 246 236
+1652  1:SPILL                     84 247   0
+1653  0:EXT                       54   0   0
+1654  1:RELOAD                    85 246   0
+1655  0:EXT                       54   0   0
+1656  0:ADD_INT                  247 246 237
+1657  1:SPILL                     84 247   0
+1658  0:EXT                       54   0   0
+1659  1:RELOAD                    85 246   0
+1660  0:EXT                       54   0   0
+1661  0:ADD_INT                  247 246 238
+1662  1:SPILL                     84 247   0
+1663  0:EXT                       54   0   0
+1664  1:RELOAD                    85 246   0
+1665  0:EXT                       54   0   0
+1666  0:ADD_INT                  247 246 239
+1667  1:SPILL                     84 247   0
+1668  0:EXT                       54   0   0
+1669  1:RELOAD                    85 246   0
+1670  0:EXT                       54   0   0
+1671  0:ADD_INT                  247 246 240
+1672  1:SPILL                     84 247   0
+1673  0:EXT                       54   0   0
+1674  1:RELOAD                    85 246   0
+1675  0:EXT                       54   0   0
+1676  0:ADD_INT                  247 246 241
+1677  1:SPILL                     84 247   0
+1678  0:EXT                       54   0   0
+1679  1:RELOAD                    85 246   0
+1680  0:EXT                       54   0   0
+1681  0:ADD_INT                  247 246 242
+1682  1:SPILL                     84 247   0
+1683  0:EXT                       54   0   0
+1684  1:RELOAD                    85 246   0
+1685  0:EXT                       54   0   0
+1686  0:ADD_INT                  247 246 243
+1687  1:SPILL                     84 247   0
+1688  0:EXT                       54   0   0
+1689  1:RELOAD                    85 246   0
+1690  0:EXT                       54   0   0
+1691  0:ADD_INT                  247 246 244
+1692  1:SPILL                     84 247   0
+1693  0:EXT                       54   0   0
+1694  1:RELOAD                    85 246   0
+1695  0:EXT                       54   0   0
+1696  0:ADD_INT                  247 246 245
+1697  1:SPILL                     84 247   0
+1698  0:EXT                       54   0   0
+1699  1:RELOAD                    85 246   0
+1700  0:EXT                        0   0   0
+1701  1:RELOAD                    85 247   0
+1702  0:EXT                       54   0   0
+1703  0:ADD_INT                  248 247 246
+1704  1:SPILL                     84 248   0
+1705  0:EXT                       54   0   0
+1706  1:RELOAD                    85 246   0
+1707  0:EXT                        1   0   0
+1708  1:RELOAD                    85 247   0
+1709  0:EXT                       54   0   0
+1710  0:ADD_INT                  248 247 246
+1711  1:SPILL                     84 248   0
+1712  0:EXT                       54   0   0
+1713  1:RELOAD                    85 246   0
+1714  0:EXT                        2   0   0
+1715  1:RELOAD                    85 247   0
+1716  0:EXT                       54   0   0
+1717  0:ADD_INT                  248 247 246
+1718  1:SPILL                     84 248   0
+1719  0:EXT                       54   0   0
+1720  1:RELOAD                    85 246   0
+1721  0:EXT                        3   0   0
+1722  1:RELOAD                    85 247   0
+1723  0:EXT                       54   0   0
+1724  0:ADD_INT                  248 247 246
+1725  1:SPILL                     84 248   0
+1726  0:EXT                       54   0   0
+1727  1:RELOAD                    85 246   0
+1728  0:EXT                        4   0   0
+1729  1:RELOAD                    85 247   0
+1730  0:EXT                       54   0   0
+1731  0:ADD_INT                  248 247 246
+1732  1:SPILL                     84 248   0
+1733  0:EXT                       54   0   0
+1734  1:RELOAD                    85 246   0
+1735  0:EXT                        5   0   0
+1736  1:RELOAD                    85 247   0
+1737  0:EXT                       54   0   0
+1738  0:ADD_INT                  248 247 246
+1739  1:SPILL                     84 248   0
+1740  0:EXT                       54   0   0
+1741  1:RELOAD                    85 246   0
+1742  0:EXT                        6   0   0
+1743  1:RELOAD                    85 247   0
+1744  0:EXT                       54   0   0
+1745  0:ADD_INT                  248 247 246
+1746  1:SPILL                     84 248   0
+1747  0:EXT                       54   0   0
+1748  1:RELOAD                    85 246   0
+1749  0:EXT                        7   0   0
+1750  1:RELOAD                    85 247   0
+1751  0:EXT                       54   0   0
+1752  0:ADD_INT                  248 247 246
+1753  1:SPILL                     84 248   0
+1754  0:EXT                       54   0   0
+1755  1:RELOAD                    85 246   0
+1756  0:EXT                        8   0   0
+1757  1:RELOAD                    85 247   0
+1758  0:EXT                       54   0   0
+1759  0:ADD_INT                  248 247 246
+1760  1:SPILL                     84 248   0
+1761  0:EXT                       54   0   0
+1762  1:RELOAD                    85 246   0
+1763  0:EXT                        9   0   0
+1764  1:RELOAD                    85 247   0
+1765  0:EXT                       54   0   0
+1766  0:ADD_INT                  248 247 246
+1767  1:SPILL                     84 248   0
+1768  0:EXT                       54   0   0
+1769  1:RELOAD                    85 246   0
+1770  0:EXT                       10   0   0
+1771  1:RELOAD                    85 247   0
+1772  0:EXT                       54   0   0
+1773  0:ADD_INT                  248 247 246
+1774  1:SPILL                     84 248   0
+1775  0:EXT                       54   0   0
+1776  1:RELOAD                    85 246   0
+1777  0:EXT                       11   0   0
+1778  1:RELOAD                    85 247   0
+1779  0:EXT                       54   0   0
+1780  0:ADD_INT                  248 247 246
+1781  1:SPILL                     84 248   0
+1782  0:EXT                       54   0   0
+1783  1:RELOAD                    85 246   0
+1784  0:EXT                       12   0   0
+1785  1:RELOAD                    85 247   0
+1786  0:EXT                       54   0   0
+1787  0:ADD_INT                  248 247 246
+1788  1:SPILL                     84 248   0
+1789  0:EXT                       54   0   0
+1790  1:RELOAD                    85 246   0
+1791  0:EXT                       13   0   0
+1792  1:RELOAD                    85 247   0
+1793  0:EXT                       54   0   0
+1794  0:ADD_INT                  248 247 246
+1795  1:SPILL                     84 248   0
+1796  0:EXT                       54   0   0
+1797  1:RELOAD                    85 246   0
+1798  0:EXT                       14   0   0
+1799  1:RELOAD                    85 247   0
+1800  0:EXT                       54   0   0
+1801  0:ADD_INT                  248 247 246
+1802  1:SPILL                     84 248   0
+1803  0:EXT                       54   0   0
+1804  1:RELOAD                    85 246   0
+1805  0:EXT                       15   0   0
+1806  1:RELOAD                    85 247   0
+1807  0:EXT                       54   0   0
+1808  0:ADD_INT                  248 247 246
+1809  1:SPILL                     84 248   0
+1810  0:EXT                       54   0   0
+1811  1:RELOAD                    85 246   0
+1812  0:EXT                       16   0   0
+1813  1:RELOAD                    85 247   0
+1814  0:EXT                       54   0   0
+1815  0:ADD_INT                  248 247 246
+1816  1:SPILL                     84 248   0
+1817  0:EXT                       54   0   0
+1818  1:RELOAD                    85 246   0
+1819  0:EXT                       17   0   0
+1820  1:RELOAD                    85 247   0
+1821  0:EXT                       54   0   0
+1822  0:ADD_INT                  248 247 246
+1823  1:SPILL                     84 248   0
+1824  0:EXT                       54   0   0
+1825  1:RELOAD                    85 246   0
+1826  0:EXT                       18   0   0
+1827  1:RELOAD                    85 247   0
+1828  0:EXT                       54   0   0
+1829  0:ADD_INT                  248 247 246
+1830  1:SPILL                     84 248   0
+1831  0:EXT                       54   0   0
+1832  1:RELOAD                    85 246   0
+1833  0:EXT                       19   0   0
+1834  1:RELOAD                    85 247   0
+1835  0:EXT                       54   0   0
+1836  0:ADD_INT                  248 247 246
+1837  1:SPILL                     84 248   0
+1838  0:EXT                       54   0   0
+1839  1:RELOAD                    85 246   0
+1840  0:EXT                       20   0   0
+1841  1:RELOAD                    85 247   0
+1842  0:EXT                       54   0   0
+1843  0:ADD_INT                  248 247 246
+1844  1:SPILL                     84 248   0
+1845  0:EXT                       54   0   0
+1846  1:RELOAD                    85 246   0
+1847  0:EXT                       21   0   0
+1848  1:RELOAD                    85 247   0
+1849  0:EXT                       54   0   0
+1850  0:ADD_INT                  248 247 246
+1851  1:SPILL                     84 248   0
+1852  0:EXT                       54   0   0
+1853  1:RELOAD                    85 246   0
+1854  0:EXT                       22   0   0
+1855  1:RELOAD                    85 247   0
+1856  0:EXT                       54   0   0
+1857  0:ADD_INT                  248 247 246
+1858  1:SPILL                     84 248   0
+1859  0:EXT                       54   0   0
+1860  1:RELOAD                    85 246   0
+1861  0:EXT                       23   0   0
+1862  1:RELOAD                    85 247   0
+1863  0:EXT                       54   0   0
+1864  0:ADD_INT                  248 247 246
+1865  1:SPILL                     84 248   0
+1866  0:EXT                       54   0   0
+1867  1:RELOAD                    85 246   0
+1868  0:EXT                       24   0   0
+1869  1:RELOAD                    85 247   0
+1870  0:EXT                       54   0   0
+1871  0:ADD_INT                  248 247 246
+1872  1:SPILL                     84 248   0
+1873  0:EXT                       54   0   0
+1874  1:RELOAD                    85 246   0
+1875  0:EXT                       25   0   0
+1876  1:RELOAD                    85 247   0
+1877  0:EXT                       54   0   0
+1878  0:ADD_INT                  248 247 246
+1879  1:SPILL                     84 248   0
+1880  0:EXT                       54   0   0
+1881  1:RELOAD                    85 246   0
+1882  0:EXT                       26   0   0
+1883  1:RELOAD                    85 247   0
+1884  0:EXT                       54   0   0
+1885  0:ADD_INT                  248 247 246
+1886  1:SPILL                     84 248   0
+1887  0:EXT                       54   0   0
+1888  1:RELOAD                    85 246   0
+1889  0:EXT                       27   0   0
+1890  1:RELOAD                    85 247   0
+1891  0:EXT                       54   0   0
+1892  0:ADD_INT                  248 247 246
+1893  1:SPILL                     84 248   0
+1894  0:EXT                       54   0   0
+1895  1:RELOAD                    85 246   0
+1896  0:EXT                       28   0   0
+1897  1:RELOAD                    85 247   0
+1898  0:EXT                       54   0   0
+1899  0:ADD_INT                  248 247 246
+1900  1:SPILL                     84 248   0
+1901  0:EXT                       54   0   0
+1902  1:RELOAD                    85 246   0
+1903  0:EXT                       29   0   0
+1904  1:RELOAD                    85 247   0
+1905  0:EXT                       54   0   0
+1906  0:ADD_INT                  248 247 246
+1907  1:SPILL                     84 248   0
+1908  0:EXT                       54   0   0
+1909  1:RELOAD                    85 246   0
+1910  0:EXT                       30   0   0
+1911  1:RELOAD                    85 247   0
+1912  0:EXT                       54   0   0
+1913  0:ADD_INT                  248 247 246
+1914  1:SPILL                     84 248   0
+1915  0:EXT                       54   0   0
+1916  1:RELOAD                    85 246   0
+1917  0:EXT                       31   0   0
+1918  1:RELOAD                    85 247   0
+1919  0:EXT                       54   0   0
+1920  0:ADD_INT                  248 247 246
+1921  1:SPILL                     84 248   0
+1922  0:EXT                       54   0   0
+1923  1:RELOAD                    85 246   0
+1924  0:EXT                       32   0   0
+1925  1:RELOAD                    85 247   0
+1926  0:EXT                       54   0   0
+1927  0:ADD_INT                  248 247 246
+1928  1:SPILL                     84 248   0
+1929  0:EXT                       54   0   0
+1930  1:RELOAD                    85 246   0
+1931  0:EXT                       33   0   0
+1932  1:RELOAD                    85 247   0
+1933  0:EXT                       54   0   0
+1934  0:ADD_INT                  248 247 246
+1935  1:SPILL                     84 248   0
+1936  0:EXT                       54   0   0
+1937  1:RELOAD                    85 246   0
+1938  0:EXT                       34   0   0
+1939  1:RELOAD                    85 247   0
+1940  0:EXT                       54   0   0
+1941  0:ADD_INT                  248 247 246
+1942  1:SPILL                     84 248   0
+1943  0:EXT                       54   0   0
+1944  1:RELOAD                    85 246   0
+1945  0:EXT                       35   0   0
+1946  1:RELOAD                    85 247   0
+1947  0:EXT                       54   0   0
+1948  0:ADD_INT                  248 247 246
+1949  1:SPILL                     84 248   0
+1950  0:EXT                       54   0   0
+1951  1:RELOAD                    85 246   0
+1952  0:EXT                       36   0   0
+1953  1:RELOAD                    85 247   0
+1954  0:EXT                       54   0   0
+1955  0:ADD_INT                  248 247 246
+1956  1:SPILL                     84 248   0
+1957  0:EXT                       54   0   0
+1958  1:RELOAD                    85 246   0
+1959  0:EXT                       37   0   0
+1960  1:RELOAD                    85 247   0
+1961  0:EXT                       54   0   0
+1962  0:ADD_INT                  248 247 246
+1963  1:SPILL                     84 248   0
+1964  0:EXT                       54   0   0
+1965  1:RELOAD                    85 246   0
+1966  0:EXT                       38   0   0
+1967  1:RELOAD                    85 247   0
+1968  0:EXT                       54   0   0
+1969  0:ADD_INT                  248 247 246
+1970  1:SPILL                     84 248   0
+1971  0:EXT                       54   0   0
+1972  1:RELOAD                    85 246   0
+1973  0:EXT                       39   0   0
+1974  1:RELOAD                    85 247   0
+1975  0:EXT                       54   0   0
+1976  0:ADD_INT                  248 247 246
+1977  1:SPILL                     84 248   0
+1978  0:EXT                       54   0   0
+1979  1:RELOAD                    85 246   0
+1980  0:EXT                       40   0   0
+1981  1:RELOAD                    85 247   0
+1982  0:EXT                       54   0   0
+1983  0:ADD_INT                  248 247 246
+1984  1:SPILL                     84 248   0
+1985  0:EXT                       54   0   0
+1986  1:RELOAD                    85 246   0
+1987  0:EXT                       41   0   0
+1988  1:RELOAD                    85 247   0
+1989  0:EXT                       54   0   0
+1990  0:ADD_INT                  248 247 246
+1991  1:SPILL                     84 248   0
+1992  0:EXT                       54   0   0
+1993  1:RELOAD                    85 246   0
+1994  0:EXT                       42   0   0
+1995  1:RELOAD                    85 247   0
+1996  0:EXT                       54   0   0
+1997  0:ADD_INT                  248 247 246
+1998  1:SPILL                     84 248   0
+1999  0:EXT                       54   0   0
+2000  1:RELOAD                    85 246   0
+2001  0:EXT                       43   0   0
+2002  1:RELOAD                    85 247   0
+2003  0:EXT                       54   0   0
+2004  0:ADD_INT                  248 247 246
+2005  1:SPILL                     84 248   0
+2006  0:EXT                       54   0   0
+2007  1:RELOAD                    85 246   0
+2008  0:EXT                       44   0   0
+2009  1:RELOAD                    85 247   0
+2010  0:EXT                       54   0   0
+2011  0:ADD_INT                  248 247 246
+2012  1:SPILL                     84 248   0
+2013  0:EXT                       54   0   0
+2014  1:RELOAD                    85 246   0
+2015  0:EXT                       45   0   0
+2016  1:RELOAD                    85 247   0
+2017  0:EXT                       54   0   0
+2018  0:ADD_INT                  248 247 246
+2019  1:SPILL                     84 248   0
+2020  0:EXT                       54   0   0
+2021  1:RELOAD                    85 246   0
+2022  0:EXT                       46   0   0
+2023  1:RELOAD                    85 247   0
+2024  0:EXT                       54   0   0
+2025  0:ADD_INT                  248 247 246
+2026  1:SPILL                     84 248   0
+2027  0:EXT                       54   0   0
+2028  1:RELOAD                    85 246   0
+2029  0:EXT                       47   0   0
+2030  1:RELOAD                    85 247   0
+2031  0:EXT                       54   0   0
+2032  0:ADD_INT                  248 247 246
+2033  1:SPILL                     84 248   0
+2034  0:EXT                       54   0   0
+2035  1:RELOAD                    85 246   0
+2036  0:EXT                       48   0   0
+2037  1:RELOAD                    85 247   0
+2038  0:EXT                       54   0   0
+2039  0:ADD_INT                  248 247 246
+2040  1:SPILL                     84 248   0
+2041  0:EXT                       54   0   0
+2042  1:RELOAD                    85 246   0
+2043  0:EXT                       49   0   0
+2044  1:RELOAD                    85 247   0
+2045  0:EXT                       54   0   0
+2046  0:ADD_INT                  248 247 246
+2047  1:SPILL                     84 248   0
+2048  0:EXT                       54   0   0
+2049  1:RELOAD                    85 246   0
+2050  0:EXT                       50   0   0
+2051  1:RELOAD                    85 247   0
+2052  0:EXT                       54   0   0
+2053  0:ADD_INT                  248 247 246
+2054  1:SPILL                     84 248   0
+2055  0:EXT                       54   0   0
+2056  1:RELOAD                    85 246   0
+2057  0:EXT                       51   0   0
+2058  1:RELOAD                    85 247   0
+2059  0:EXT                       54   0   0
+2060  0:ADD_INT                  248 247 246
+2061  1:SPILL                     84 248   0
+2062  0:EXT                       54   0   0
+2063  1:RELOAD                    85 246   0
+2064  0:EXT                       52   0   0
+2065  1:RELOAD                    85 247   0
+2066  0:EXT                       54   0   0
+2067  0:ADD_INT                  248 247 246
+2068  1:SPILL                     84 248   0
+2069  0:EXT                       54   0   0
+2070  1:RELOAD                    85 246   0
+2071  0:EXT                       53   0   0
+2072  1:RELOAD                    85 247   0
+2073  0:EXT                       54   0   0
+2074  0:ADD_INT                  248 247 246
+2075  1:SPILL                     84 248   0
+2076  0:EXT                       54   0   0
+2077  1:RELOAD                    85 246   0
+2078  0:EXT                       54   0   0
+2079  1:MOVE_INT                  35   0 246
+2080  2:TIER2_RETURN               0  10   1    ; 1 values

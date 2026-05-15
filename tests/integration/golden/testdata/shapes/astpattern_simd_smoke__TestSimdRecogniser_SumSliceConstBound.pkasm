@@ -1,0 +1,33 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function EntrypointRun
+;   registers: int=6 float=1 sliceFloat=1
+;   params:    (none)
+;   returns:   (float)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=64  [1]=0  [2]=1
+;   floats:  [0]=0
+
+0000  1:LOAD_INT_CONST_SMALL      75   0  64    ; ints[0] = 64
+0001  1:MAKE_SLICE_FLOAT          18   0   0
+0002  0:EXT                        0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0004  1:LOAD_INT_CONST_SMALL      75   4   1    ; LICM hoist of PC 7
+0005  1:LEN_SLICE_FLOAT_DIRECT    21   2   0
+0006  1:LT_INT_JUMP_FALSE        116   1   2
+0007  0:EXT                        6   0   0
+0008  0:ADD_INT                    5   1   4
+0009  1:INT_TO_FLOAT              50   0   5
+0010  1:SLICE_SET_FLOAT_DIRECT    20   0   1
+0011  0:EXT                        0   0   0
+0012  2:TIER2_INC_INT              0   1   1
+0013  1:JUMP                      74 247 255    ; goto -9
+0014  0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 0
+0015  1:LOAD_INT_CONST_SMALL      75   1  64    ; ints[1] = 64
+0016  1:SIMD_SUM_SLICE_FLOAT64   152   0   0
+0017  0:EXT                        1   0   0
+0018  2:TIER2_RETURN               0  10   1    ; 1 values

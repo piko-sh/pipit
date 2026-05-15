@@ -1,0 +1,19 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: complex=4
+;   params:    (none)
+;   returns:   (complex)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   complex: [0]=(2+4i)
+
+0000  0:LOAD_COMPLEX_CONST         1   0   0
+0001  1:MOVE_COMPLEX              15   0   1
+0002  0:LOAD_COMPLEX_CONST         3   0   0
+0003  1:MOVE_COMPLEX              15   2   3
+0004  0:DIV_COMPLEX                0   0   2
+0005  2:TIER2_RETURN               0  10   1    ; 1 values

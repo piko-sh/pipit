@@ -1,0 +1,32 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function add
+;   registers: int=2 general=1
+;   params:    (general)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:GET_STRUCT_FIELD_INT_T0    0   0   0
+0001  0:GET_STRUCT_FIELD_INT_T0    1   0   1
+0002  0:ADD_INT                    0   0   1
+0003  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function EntrypointRun
+;   registers: int=1 general=1
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=3  [1]=4
+
+0000  2:ALLOC_STRUCT_LITERAL       0  14   0
+0001  0:EXT                        0   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0003  0:SET_STRUCT_FIELD_INT_T0    0   0   0
+0004  1:LOAD_INT_CONST_SMALL      75   0   4    ; ints[0] = 4
+0005  0:SET_STRUCT_FIELD_INT_T0    0   0   1
+0006  1:TAIL_CALL                129   0   0    ; tail call (site 0)

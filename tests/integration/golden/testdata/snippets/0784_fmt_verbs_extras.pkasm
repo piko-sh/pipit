@@ -1,0 +1,62 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=4 string=6 general=4 bool=2
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=7  [1]=42  [2]=3  [3]=65  [4]=20013
+;   strings: [0]=""  [1]="alpha"  [2]="hash=%#v;"  [3]="%p"  [4]="p_starts_0x=%t,p_len_ge_3=%t;"  [5]="0x"  [6]="c=%c;"  [7]="U=%U"
+
+0000  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = ""
+0001  2:MAKE_MAP                   0  12   0
+0002  0:EXT                        0   0   0
+0003  0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "alpha"
+0004  1:SET_STRUCT_FIELD_STRING   95   0   1
+0005  0:EXT                        0   0   0
+0006  1:LOAD_INT_CONST_SMALL      75   0   7    ; ints[0] = 7
+0007  0:SET_STRUCT_FIELD_INT_T0    0   0   1
+0008  0:LOAD_GENERAL_CONST         1   0   0
+0009  0:LOAD_STRING_CONST          1   2   0    ; strings[1] = "hash=%#v;"
+0010  1:CALL_NATIVE              130   0   0    ; call native general[1] (site 0)
+0011  0:CONCAT_STRING              3   0   2
+0012  1:MOVE_STRING               37   0   3
+0013  1:LOAD_INT_CONST_SMALL      75   0  42    ; ints[0] = 42
+0014  0:ALLOC_INDIRECT             1   0   0
+0015  0:EXT                        1   0   0
+0016  0:LOAD_GENERAL_CONST         2   1   0
+0017  0:LOAD_STRING_CONST          1   3   0    ; strings[1] = "%p"
+0018  1:CALL_NATIVE              130   1   0    ; call native general[2] (site 1)
+0019  1:MOVE_STRING               37   1   2
+0020  0:LOAD_GENERAL_CONST         2   2   0
+0021  0:LOAD_STRING_CONST          2   4   0    ; strings[2] = "p_starts_0x=%t,p_len_ge_3=%t;"
+0022  0:LOAD_STRING_CONST          3   5   0    ; strings[3] = "0x"
+0023  0:STR_HAS_PREFIX             0   1   3
+0024  1:LEN_STRING                65   1   1
+0025  1:LOAD_INT_CONST_SMALL      75   2   3    ; ints[2] = 3
+0026  0:GE_INT                     3   1   2
+0027  1:INT_TO_BOOL               54   1   3
+0028  1:CALL_NATIVE              130   2   0    ; call native general[2] (site 2)
+0029  0:CONCAT_STRING              5   0   4
+0030  1:MOVE_STRING               37   0   5
+0031  0:LOAD_GENERAL_CONST         2   3   0
+0032  0:LOAD_STRING_CONST          2   6   0    ; strings[2] = "c=%c;"
+0033  1:LOAD_INT_CONST_SMALL      75   1  65    ; ints[1] = 65
+0034  0:PACK_TYPED                 3   1   0
+0035  0:EXT                        2   0   0
+0036  1:CALL_NATIVE              130   3   0    ; call native general[2] (site 3)
+0037  0:CONCAT_STRING              4   0   3
+0038  1:MOVE_STRING               37   0   4
+0039  0:LOAD_GENERAL_CONST         2   4   0
+0040  0:LOAD_STRING_CONST          2   7   0    ; strings[2] = "U=%U"
+0041  0:LOAD_INT_CONST             1   4   0    ; ints[1] = 20013
+0042  0:PACK_TYPED                 3   1   0
+0043  0:EXT                        2   0   0
+0044  1:CALL_NATIVE              130   4   0    ; call native general[2] (site 4)
+0045  0:CONCAT_STRING              4   0   3
+0046  1:MOVE_STRING               37   0   4
+0047  2:TIER2_RETURN               0  10   1    ; 1 values

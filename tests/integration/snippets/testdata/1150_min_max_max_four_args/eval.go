@@ -1,0 +1,5 @@
+package main
+
+func run() int {
+	return max(5, 3, 8, 1)
+}

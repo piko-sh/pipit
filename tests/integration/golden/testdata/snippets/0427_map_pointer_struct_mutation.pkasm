@@ -1,0 +1,251 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function newCache
+;   registers: int=1 general=2
+;   params:    (int)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+0000  2:MAKE_MAP                   0  12   0
+0001  0:EXT                        0   0   0
+0002  0:SET_STRUCT_FIELD_INT_T0    0   0   0
+0003  2:MAKE_MAP                   0  12   1
+0004  0:EXT                        1   0   0
+0005  0:SET_STRUCT_FIELD_GENERAL_T0   0   1   1
+0006  0:ADDR                       1   0   0
+0007  0:MOVE_GENERAL               0   1   0
+0008  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function cache.get
+;   registers: int=6 general=5 bool=2
+;   params:    (general, int)
+;   returns:   (int, bool)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+;   bools:   [0]=false  [1]=true
+
+0000  0:GET_STRUCT_FIELD_GENERAL_T0   1   0   0
+0001  0:MAP_INDEX_OK_INT_GENERAL   3   1   0
+0002  0:EXT                        2   0   0
+0003  0:MOVE_GENERAL               2   3   0
+0004  1:MOVE_INT                  35   1   2
+0005  1:NOT                       52   3   1
+0006  0:JUMP_IF_FALSE              3   7   0    ; if ints[3] == 0 goto +7
+0007  1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
+0008  1:MOVE_INT                  35   4   3
+0009  1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = false
+0010  1:MOVE_BOOL                 38   1   0
+0011  1:MOVE_INT                  35   0   4
+0012  1:MOVE_BOOL                 38   0   1
+0013  2:TIER2_RETURN               0  10   2    ; 2 values
+0014  1:JUMP                      74   8   0    ; goto 8
+0015  0:GET_STRUCT_FIELD_INT_T0    3   2   1
+0016  1:MOVE_INT                  35   4   3
+0017  1:LOAD_BOOL_CONST          138   0   1    ; bools[0] = true
+0018  1:MOVE_BOOL                 38   1   0
+0019  1:MOVE_INT                  35   0   4
+0020  1:MOVE_BOOL                 38   0   1
+0021  2:TIER2_RETURN               0  10   2    ; 2 values
+0022  1:JUMP                      74   7   0    ; goto 7
+0023  0:GET_STRUCT_FIELD_GENERAL_T0   4   0   2    ; inlined body of function 3 called at PC 14
+0024  0:EQ_GENERAL                 5   2   4
+0025  0:JUMP_IF_FALSE              5   1   0    ; if ints[5] == 0 goto +1
+0026  1:JUMP                      74   2   0    ; goto 2
+0027  1:CALL                     128   1   0    ; call (site 1)
+0028  1:CALL                     128   2   0    ; call (site 2)
+0029  1:JUMP                      74 241 255    ; goto -15
+
+; ═════════════════════════════════════════════════════════════
+; function cache.put
+;   registers: int=7 general=10
+;   params:    (general, int, int)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:GET_STRUCT_FIELD_GENERAL_T0   1   0   0
+0001  0:MAP_INDEX_OK_INT_GENERAL   3   1   0
+0002  0:EXT                        3   0   0
+0003  0:MOVE_GENERAL               2   3   0
+0004  1:MOVE_INT                  35   2   3
+0005  0:JUMP_IF_FALSE              2   3   0    ; if ints[2] == 0 goto +3
+0006  0:SET_STRUCT_FIELD_INT_T0    2   1   1
+0007  1:JUMP                      74  23   0    ; goto 23
+0008  3:TIER3_RETURN_VOID          0   0   1
+0009  2:MAKE_MAP                   0  12   1
+0010  0:EXT                        2   0   0
+0011  0:SET_STRUCT_FIELD_INT_T0    1   0   2
+0012  0:SET_STRUCT_FIELD_INT_T0    1   1   1
+0013  0:ADDR                       2   1   0
+0014  0:MOVE_GENERAL               1   2   1
+0015  0:GET_STRUCT_FIELD_GENERAL_T0   2   0   0
+0016  0:MAP_SET_INT_GENERAL        2   0   1
+0017  1:JUMP                      74  21   0    ; goto 21
+0018  1:INC_STRUCT_FIELD_INT     107   0   3
+0019  0:GET_STRUCT_FIELD_INT_T0    2   0   3
+0020  0:GET_STRUCT_FIELD_INT_T0    3   0   4
+0021  1:GT_INT_JUMP_FALSE        118   2   3
+0022  0:EXT                        7   0   0
+0023  0:GET_STRUCT_FIELD_GENERAL_T0   2   0   5
+0024  1:CALL                     128   2   0    ; call (site 2)
+0025  0:GET_STRUCT_FIELD_GENERAL_T0   3   0   0
+0026  0:GET_STRUCT_FIELD_INT_T0    2   2   2
+0027  1:MOVE_INT_TO_GENERAL       40   4   2
+0028  1:MAP_DELETE                81   3   4
+0029  1:DEC_STRUCT_FIELD_INT     108   0   3
+0030  1:JUMP                      74   7   0    ; goto 7
+0031  0:GET_STRUCT_FIELD_GENERAL_T0   5   0   6    ; inlined body of function 3 called at PC 7
+0032  0:EQ_GENERAL                 5   2   5
+0033  0:JUMP_IF_FALSE              5   1   0    ; if ints[5] == 0 goto +1
+0034  1:JUMP                      74   2   0    ; goto 2
+0035  1:CALL                     128   3   0    ; call (site 3)
+0036  1:CALL                     128   4   0    ; call (site 4)
+0037  1:JUMP                      74 226 255    ; goto -30
+0038  1:JUMP                      74  19   0    ; goto 19
+0039  0:MOVE_GENERAL               6   0   0
+0040  0:MOVE_GENERAL               7   1   0
+0041  0:LOAD_GENERAL_CONST         8   0   0    ; inlined body of function 4 called at PC 17
+0042  0:SET_STRUCT_FIELD_GENERAL_T0   7   8   7
+0043  0:GET_STRUCT_FIELD_GENERAL_T0   8   6   6
+0044  0:SET_STRUCT_FIELD_GENERAL_T0   7   8   8
+0045  0:MOVE_GENERAL               8   8   1    ; CSE'd from PC 43
+0046  0:TEST_NIL_JUMP_TRUE         8   4   0
+0047  3:TIER3_NOP                  0   0   0
+0048  3:TIER3_NOP                  0   0   0
+0049  0:GET_STRUCT_FIELD_GENERAL_T0   8   6   6
+0050  0:SET_STRUCT_FIELD_GENERAL_T0   8   7   7
+0051  0:SET_STRUCT_FIELD_GENERAL_T0   6   7   6
+0052  0:GET_STRUCT_FIELD_GENERAL_T0   8   6   5
+0053  0:TEST_NIL_JUMP_FALSE        8   3   0
+0054  3:TIER3_NOP                  0   0   0
+0055  3:TIER3_NOP                  0   0   0
+0056  0:SET_STRUCT_FIELD_GENERAL_T0   6   7   5
+0057  1:JUMP                      74 216 255    ; goto -40
+
+; ═════════════════════════════════════════════════════════════
+; function cache.moveToFront
+;   registers: int=1 general=3
+;   params:    (general, general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:GET_STRUCT_FIELD_GENERAL_T0   2   0   0
+0001  0:EQ_GENERAL                 0   1   2
+0002  0:JUMP_IF_FALSE              0   1   0    ; if ints[0] == 0 goto +1
+0003  3:TIER3_RETURN_VOID          0   0   1
+0004  1:CALL                     128   0   0    ; call (site 0)
+0005  1:TAIL_CALL                129   1   0    ; tail call (site 1)
+
+; ═════════════════════════════════════════════════════════════
+; function cache.attachAtFront
+;   registers: int=1 general=4
+;   params:    (general, general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:LOAD_GENERAL_CONST         2   0   0
+0001  0:SET_STRUCT_FIELD_GENERAL_T0   1   2   0
+0002  0:GET_STRUCT_FIELD_GENERAL_T0   2   0   1
+0003  0:SET_STRUCT_FIELD_GENERAL_T0   1   2   2
+0004  0:MOVE_GENERAL               2   2   1    ; CSE'd from PC 2
+0005  0:TEST_NIL_JUMP_TRUE         2   4   0
+0006  3:TIER3_NOP                  0   0   0
+0007  3:TIER3_NOP                  0   0   0
+0008  0:GET_STRUCT_FIELD_GENERAL_T0   2   0   1
+0009  0:SET_STRUCT_FIELD_GENERAL_T0   2   1   0
+0010  0:SET_STRUCT_FIELD_GENERAL_T0   0   1   1
+0011  0:GET_STRUCT_FIELD_GENERAL_T0   2   0   3
+0012  0:TEST_NIL_JUMP_FALSE        2   3   0
+0013  3:TIER3_NOP                  0   0   0
+0014  3:TIER3_NOP                  0   0   0
+0015  0:SET_STRUCT_FIELD_GENERAL_T0   0   1   3
+
+; ═════════════════════════════════════════════════════════════
+; function cache.detach
+;   registers: int=1 general=4
+;   params:    (general, general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:GET_STRUCT_FIELD_RAW_POINTER_T0   2   1   0
+0001  0:TEST_NIL_JUMP_TRUE         2   6   0
+0002  3:TIER3_NOP                  0   0   0
+0003  3:TIER3_NOP                  0   0   0
+0004  0:GET_STRUCT_FIELD_RAW_POINTER_T0   3   1   0
+0005  0:COPY_STRUCT_FIELD_GENERAL_T0   1   3   1
+0006  0:EXT                        1   0   0
+0007  1:JUMP                      74   2   0    ; goto 2
+0008  0:GET_STRUCT_FIELD_RAW_POINTER_T0   2   1   1
+0009  0:SET_STRUCT_FIELD_GENERAL_T0   0   2   2
+0010  0:GET_STRUCT_FIELD_RAW_POINTER_T0   2   1   1
+0011  0:TEST_NIL_JUMP_TRUE         2   6   0
+0012  3:TIER3_NOP                  0   0   0
+0013  3:TIER3_NOP                  0   0   0
+0014  0:GET_STRUCT_FIELD_RAW_POINTER_T0   2   1   0
+0015  0:GET_STRUCT_FIELD_RAW_POINTER_T0   3   1   1
+0016  0:SET_STRUCT_FIELD_GENERAL_T0   3   2   0
+0017  1:JUMP                      74   2   0    ; goto 2
+0018  0:GET_STRUCT_FIELD_RAW_POINTER_T0   2   1   0
+0019  0:SET_STRUCT_FIELD_GENERAL_T0   0   2   3
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=7 general=1 bool=2 uint=7
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=4  [1]=0  [2]=100
+;   uints:   [0]=13579246  [1]=1664525  [2]=1013904223  [3]=4294967295  [4]=8  [5]=15  [6]=31  [7]=0  [8]=65535
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   4    ; ints[0] = 4
+0001  1:CALL                     128   0   0    ; call (site 0)
+0002  0:LOAD_UINT_CONST            0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0004  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0005  0:LOAD_UINT_CONST            5   3   0    ; LICM hoist of PC 14
+0006  1:LT_INT_CONST_JUMP_FALSE  123   1   2
+0007  0:EXT                       37   0   0
+0008  3:TIER3_NOP                  0   0   0
+0009  0:LOAD_UINT_CONST            1   1   0
+0010  0:MUL_UINT                   2   0   1
+0011  0:TRUNCATE_NARROW            2  32   5
+0012  0:LOAD_UINT_CONST            3   2   0
+0013  0:ADD_UINT                   4   2   3
+0014  0:TRUNCATE_NARROW            4  32   5
+0015  0:BIT_AND_UINT               6   4   5
+0016  0:TRUNCATE_NARROW            6  32   5
+0017  1:MOVE_UINT                 39   0   6
+0018  1:LOAD_UINT_CONST_SMALL     99   1   8    ; uints[1] = 8
+0019  0:SHIFT_RIGHT_UINT           2   0   1
+0020  0:TRUNCATE_NARROW            2  32   5
+0021  1:LOAD_UINT_CONST_SMALL     99   3  15    ; uints[3] = 15
+0022  0:BIT_AND_UINT               4   2   3
+0023  0:TRUNCATE_NARROW            4  32   5
+0024  1:UINT_TO_INT               56   4   4
+0025  1:LOAD_UINT_CONST_SMALL     99   1  31    ; uints[1] = 31
+0026  0:SHIFT_RIGHT_UINT           2   0   1
+0027  0:TRUNCATE_NARROW            2  32   5
+0028  1:LOAD_UINT_CONST_SMALL     99   3   0    ; uints[3] = 0
+0029  0:EQ_UINT                    5   2   3
+0030  1:INT_TO_BOOL               54   0   5
+0031  1:BOOL_TO_INT               53   5   0
+0032  0:JUMP_IF_FALSE              5   5   0    ; if ints[5] == 0 goto +5
+0033  1:CALL                     128   1   0    ; call (site 1)
+0034  1:BOOL_TO_INT               53   6   1
+0035  0:JUMP_IF_FALSE              6   1   0    ; if ints[6] == 0 goto +1
+0036  2:TIER2_INC_INT              0   1   0
+0037  1:JUMP                      74   5   0    ; goto 5
+0038  0:LOAD_UINT_CONST            1   8   0
+0039  0:BIT_AND_UINT               2   0   1
+0040  0:TRUNCATE_NARROW            2  32   5
+0041  1:UINT_TO_INT               56   5   2
+0042  1:CALL                     128   2   0    ; call (site 2)
+0043  2:TIER2_INC_INT              0   1   1
+0044  1:JUMP                      74 217 255    ; goto -39
+0045  2:TIER2_RETURN               0  10   1    ; 1 values

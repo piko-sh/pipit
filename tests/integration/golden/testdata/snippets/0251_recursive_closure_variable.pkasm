@@ -1,0 +1,48 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=2 general=3
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=5
+
+0000  0:LOAD_GENERAL_CONST         0   0   0
+0001  0:ALLOC_INDIRECT             1   0   3
+0002  0:EXT                        0   0   0
+0003  0:MAKE_CLOSURE               2   1   0    ; closure (func 1)
+0004  0:SET_FIELD                  1 255   2
+0005  0:DEREF                      2   1   0
+0006  1:LOAD_INT_CONST_SMALL      75   0   5    ; ints[0] = 5
+0007  1:CALL                     128   0   0    ; call closure general[2] (site 0)
+0008  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0009  1:MOVE_INT                  35   0   1
+0010  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=4 general=1
+;   params:    (int)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1
+
+0000  1:LE_INT_CONST_JUMP_FALSE  122   0   0
+0001  0:EXT                        4   0   0
+0002  3:TIER3_NOP                  0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0004  1:MOVE_INT                  35   0   1
+0005  2:TIER2_RETURN               0  10   1    ; 1 values
+0006  0:GET_UPVALUE                0   0   3
+0007  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0008  0:SUB_INT                    2   0   1
+0009  1:CALL                     128   0   0    ; call closure general[0] (site 0)
+0010  3:TIER3_NOP                  0   0   0
+0011  0:MUL_INT                    0   0   3
+0012  2:TIER2_RETURN               0  10   1    ; 1 values

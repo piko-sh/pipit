@@ -1,0 +1,45 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function EntrypointRun
+;   registers: int=10 sliceInt=2
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=4  [1]=0  [2]=1
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   4    ; ints[0] = 4
+0001  1:MAKE_SLICE_INT            16   0   0
+0002  0:EXT                        0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   1   4    ; ints[1] = 4
+0004  1:MAKE_SLICE_INT            16   1   1
+0005  0:EXT                        1   0   0
+0006  1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0007  1:LEN_SLICE_INT_DIRECT      17   3   0
+0008  1:LT_INT_JUMP_FALSE        116   2   3
+0009  0:EXT                        8   0   0
+0010  1:LOAD_INT_CONST_SMALL      75   5   1    ; ints[5] = 1
+0011  0:ADD_INT                    6   2   5
+0012  0:SLICE_SET_INT_DIRECT       0   2   6
+0013  1:LOAD_INT_CONST_SMALL      75   5   4    ; ints[5] = 4
+0014  0:SUB_INT                    6   5   2
+0015  0:SLICE_SET_INT_DIRECT       1   2   6
+0016  2:TIER2_INC_INT              0   1   2
+0017  1:JUMP                      74 245 255    ; goto -11
+0018  1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0019  1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
+0020  1:LEN_SLICE_INT_DIRECT      17   4   0
+0021  1:LT_INT_JUMP_FALSE        116   3   4
+0022  0:EXT                        7   0   0
+0023  0:SLICE_GET_INT_DIRECT       6   0   3
+0024  0:SLICE_GET_INT_DIRECT       7   1   3
+0025  0:MUL_INT                    8   6   7
+0026  0:ADD_INT                    9   2   8
+0027  1:MOVE_INT                  35   2   9
+0028  2:TIER2_INC_INT              0   1   3
+0029  1:JUMP                      74 246 255    ; goto -10
+0030  1:MOVE_INT                  35   0   2
+0031  2:TIER2_RETURN               0  10   1    ; 1 values

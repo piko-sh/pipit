@@ -1,0 +1,567 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function joinInts
+;   registers: int=5 string=5 sliceInt=1
+;   params:    (sliceInt)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=1
+;   strings: [0]=""  [1]="."
+
+0000  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = ""
+0001  1:LEN_SLICE_INT_DIRECT      17   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0003  0:LOAD_STRING_CONST          2   1   0    ; LICM hoist of PC 8
+0004  1:LOAD_INT_CONST_SMALL      75   4   1    ; LICM hoist of PC 11
+0005  1:LT_INT_JUMP_FALSE        116   1   0
+0006  0:EXT                        7   0   0
+0007  0:SLICE_GET_INT_DIRECT_UNCHECKED   3   0   1
+0008  1:STRCONV_ITOA               8   1   3
+0009  0:CONCAT_STRING              3   1   2
+0010  0:CONCAT_STRING              4   0   3
+0011  1:MOVE_STRING               37   0   4
+0012  0:ADD_INT                    1   1   4
+0013  1:JUMP                      74 247 255    ; goto -9
+0014  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function lookups
+;   registers: int=7 float=3 string=11 general=12 bool=2 uint=1 sliceInt=1 sliceFloat=1 sliceString=1 sliceBool=1 sliceByte=1
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=3  [1]=0  [2]=1  [3]=2  [4]=7  [5]=20  [6]=64
+;   floats:  [0]=0.5  [1]=1.5
+;   strings: [0]="a"  [1]="x"  [2]="y"  [3]="z"  [4]="b"  [5]="hey"  [6]=""  [7]=","  [8]="nope"  [9]="never"  [10]="grown"  [11]="w"  [12]="n1"  [13]="n2"
+;   bools:   [0]=true  [1]=false
+;   uints:   [0]=102
+
+0000  2:MAKE_MAP                   0  12   0
+0001  0:EXT                        0   0   1
+0002  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "a"
+0003  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0004  0:MAKE_SLICE                 1   0   0
+0005  0:EXT                        1   0   0
+0006  0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "x"
+0007  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0008  1:MOVE_STRING_TO_GENERAL    44   2   1
+0009  0:INDEX_SET                  1   0   2
+0010  0:LOAD_STRING_CONST          1   2   0    ; strings[1] = "y"
+0011  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0012  1:MOVE_STRING_TO_GENERAL    44   2   1
+0013  0:INDEX_SET                  1   0   2
+0014  0:LOAD_STRING_CONST          1   3   0    ; strings[1] = "z"
+0015  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0016  1:MOVE_STRING_TO_GENERAL    44   2   1
+0017  0:INDEX_SET                  1   0   2
+0018  1:MOVE_STRING_TO_GENERAL    44   2   0
+0019  0:MAP_SET                    0   2   1
+0020  0:LOAD_STRING_CONST          0   4   0    ; strings[0] = "b"
+0021  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0022  0:MAKE_SLICE                 1   0   0
+0023  0:EXT                        1   0   0
+0024  1:MOVE_STRING_TO_GENERAL    44   2   0
+0025  0:MAP_SET                    0   2   1
+0026  2:MAKE_MAP                   0  12   1
+0027  0:EXT                        2   0   1
+0028  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "a"
+0029  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0030  0:MAKE_SLICE                 2   0   0
+0031  0:EXT                        3   0   0
+0032  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0033  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0034  1:MOVE_INT_TO_GENERAL       40   3   0
+0035  0:INDEX_SET                  2   1   3
+0036  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0037  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0038  1:MOVE_INT_TO_GENERAL       40   3   0
+0039  0:INDEX_SET                  2   1   3
+0040  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0041  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0042  1:MOVE_INT_TO_GENERAL       40   3   0
+0043  0:INDEX_SET                  2   1   3
+0044  1:MOVE_STRING_TO_GENERAL    44   3   0
+0045  0:MAP_SET                    1   3   2
+0046  2:MAKE_MAP                   0  12   2
+0047  0:EXT                        4   0   1
+0048  1:LOAD_INT_CONST_SMALL      75   0   7    ; ints[0] = 7
+0049  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0050  0:MAKE_SLICE                 3   1   1
+0051  0:EXT                        5   0   0
+0052  0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 0.5
+0053  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0054  1:MOVE_FLOAT_TO_GENERAL     42   4   0
+0055  0:INDEX_SET                  3   1   4
+0056  0:LOAD_FLOAT_CONST           0   1   0    ; floats[0] = 1.5
+0057  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0058  1:MOVE_FLOAT_TO_GENERAL     42   4   0
+0059  0:INDEX_SET                  3   1   4
+0060  1:MOVE_INT_TO_GENERAL       40   4   0
+0061  0:MAP_SET                    2   4   3
+0062  2:MAKE_MAP                   0  12   3
+0063  0:EXT                        6   0   1
+0064  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "a"
+0065  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0066  0:MAKE_SLICE                 4   0   0
+0067  0:EXT                        7   0   0
+0068  1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
+0069  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0070  0:PACK_INTERFACE             5   0   4
+0071  0:INDEX_SET                  4   0   5
+0072  1:LOAD_BOOL_CONST          138   0   1    ; bools[0] = false
+0073  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0074  0:PACK_INTERFACE             5   0   4
+0075  0:INDEX_SET                  4   0   5
+0076  1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
+0077  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0078  0:PACK_INTERFACE             5   0   4
+0079  0:INDEX_SET                  4   0   5
+0080  1:MOVE_STRING_TO_GENERAL    44   5   0
+0081  0:MAP_SET                    3   5   4
+0082  2:MAKE_MAP                   0  12   4
+0083  0:EXT                        8   0   1
+0084  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "a"
+0085  0:LOAD_STRING_CONST          1   5   0    ; strings[1] = "hey"
+0086  1:STRING_TO_BYTES           71   5   1
+0087  1:MOVE_STRING_TO_GENERAL    44   6   0
+0088  0:MAP_SET                    4   6   5
+0089  0:LOAD_STRING_CONST          0   6   0    ; strings[0] = ""
+0090  0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "a"
+0091  0:MAP_GET_STRING_GENERAL     5   0   1
+0092  1:ADOPT_GENERAL_TO_SLICES_STRING 157   0   5
+0093  1:LEN_SLICE_STRING_DIRECT   25   0   0
+0094  1:STRCONV_ITOA               8   1   0
+0095  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0096  1:SLICE_GET_STRING_DIRECT   23   2   0
+0097  0:EXT                        1   0   0
+0098  0:CONCAT_STRING              3   1   2
+0099  1:LOAD_INT_CONST_SMALL      75   2   2    ; ints[2] = 2
+0100  1:SLICE_GET_STRING_DIRECT   23   4   0
+0101  0:EXT                        2   0   0
+0102  0:CONCAT_STRING              5   3   4
+0103  0:LOAD_STRING_CONST          6   7   0    ; strings[6] = ","
+0104  0:CONCAT_STRING              7   5   6
+0105  0:CONCAT_STRING              8   0   7
+0106  1:MOVE_STRING               37   0   8
+0107  1:LEN_SLICE_STRING_DIRECT   25   0   0
+0108  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0109  1:LOAD_INT_CONST_SMALL      75   4   1    ; LICM hoist of PC 118
+0110  1:LT_INT_JUMP_FALSE        116   1   0
+0111  0:EXT                        9   0   0
+0112  1:MOVE_INT                  35   3   1
+0113  1:SLICE_GET_STRING_DIRECT   23   1   0
+0114  0:EXT                        1   0   0
+0115  1:STRCONV_ITOA               8   2   3
+0116  0:CONCAT_STRING              3   2   1
+0117  0:CONCAT_STRING              4   0   3
+0118  1:MOVE_STRING               37   0   4
+0119  0:ADD_INT                    1   1   4
+0120  1:JUMP                      74 245 255    ; goto -11
+0121  0:LOAD_STRING_CONST          1   7   0    ; strings[1] = ","
+0122  0:CONCAT_STRING              2   0   1
+0123  1:MOVE_STRING               37   0   2
+0124  0:LOAD_STRING_CONST          1   8   0    ; strings[1] = "nope"
+0125  0:MAP_GET_STRING_GENERAL     5   0   1
+0126  1:LEN                       70   0   5
+0127  1:STRCONV_ITOA               8   1   0
+0128  2:TIER2_LOAD_NIL             0   9   6
+0129  0:EQ_GENERAL                 1   5   6
+0130  1:INT_TO_BOOL               54   0   1
+0131  1:STRCONV_FORMAT_BOOL        6   2   0
+0132  0:CONCAT_STRING              3   1   2
+0133  0:CONCAT_STRING              4   0   3
+0134  1:MOVE_STRING               37   0   4
+0135  1:LEN                       70   0   5
+0136  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0137  0:LOAD_STRING_CONST          1   9   0    ; LICM hoist of PC 140
+0138  1:LOAD_INT_CONST_SMALL      75   3   1    ; LICM hoist of PC 142
+0139  1:LT_INT_JUMP_FALSE        116   1   0
+0140  0:EXT                        4   0   0
+0141  0:CONCAT_STRING              2   0   1
+0142  1:MOVE_STRING               37   0   2
+0143  0:ADD_INT                    1   1   3
+0144  1:JUMP                      74 250 255    ; goto -6
+0145  0:LOAD_STRING_CONST          1  10   0    ; strings[1] = "grown"
+0146  0:APPEND_STRING_FAST         5   5   1
+0147  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0148  0:SLICE_GET_STRING           1   5   0
+0149  0:LOAD_STRING_CONST          2   7   0    ; strings[2] = ","
+0150  0:CONCAT_STRING              3   1   2
+0151  0:CONCAT_STRING              4   0   3
+0152  1:MOVE_STRING               37   0   4
+0153  0:LOAD_STRING_CONST          1   4   0    ; strings[1] = "b"
+0154  0:MAP_INDEX_OK_STRING_GENERAL   6   0   1
+0155  0:EXT                        1   0   0
+0156  1:ADOPT_GENERAL_TO_SLICES_STRING 157   0   6
+0157  1:MOVE_INT                  35   0   1
+0158  1:INT_TO_BOOL               54   0   0
+0159  1:STRCONV_FORMAT_BOOL        6   2   0
+0160  1:LEN_SLICE_STRING_DIRECT   25   2   0
+0161  1:STRCONV_ITOA               8   3   2
+0162  0:CONCAT_STRING              4   2   3
+0163  2:TIER2_LOAD_NIL             0   9   7
+0164  0:PACK_INTERFACE             8   0   9
+0165  0:EQ_GENERAL                 3   8   7
+0166  1:INT_TO_BOOL               54   1   3
+0167  1:STRCONV_FORMAT_BOOL        6   5   1
+0168  0:CONCAT_STRING              6   4   5
+0169  0:LOAD_STRING_CONST          7   7   0    ; strings[7] = ","
+0170  0:CONCAT_STRING              8   6   7
+0171  0:CONCAT_STRING              9   0   8
+0172  1:MOVE_STRING               37   0   9
+0173  0:LOAD_STRING_CONST          2   0   0    ; strings[2] = "a"
+0174  0:MAP_INDEX_OK_STRING_GENERAL   7   1   2
+0175  0:EXT                        2   0   0
+0176  1:ADOPT_GENERAL_TO_SLICES_INT 156   0   7
+0177  1:MOVE_INT                  35   0   2
+0178  1:INT_TO_BOOL               54   0   0
+0179  1:STRCONV_FORMAT_BOOL        6   3   0
+0180  1:CALL                     128   0   0    ; call (site 0)
+0181  0:CONCAT_STRING              5   3   4
+0182  0:CONCAT_STRING              6   0   5
+0183  1:MOVE_STRING               37   0   6
+0184  1:LOAD_INT_CONST_SMALL      75   3  20    ; ints[3] = 20
+0185  1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
+0186  0:SLICE_SET_INT_DIRECT       0   4   3
+0187  0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "a"
+0188  0:MAP_GET_STRING_GENERAL     8   1   3
+0189  1:CALL                     128   1   0    ; call (site 1)
+0190  0:LOAD_STRING_CONST          5   7   0    ; strings[5] = ","
+0191  0:CONCAT_STRING              6   4   5
+0192  0:CONCAT_STRING              7   0   6
+0193  1:MOVE_STRING               37   0   7
+0194  1:LOAD_INT_CONST_SMALL      75   3   7    ; ints[3] = 7
+0195  0:MAP_GET_INT_GENERAL        8   2   3
+0196  1:ADOPT_GENERAL_TO_SLICES_FLOAT 155   0   8
+0197  0:LOAD_GENERAL_CONST         8   0   0
+0198  1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
+0199  1:SLICE_GET_FLOAT_DIRECT    19   0   0
+0200  0:EXT                        3   0   0
+0201  1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
+0202  1:SLICE_GET_FLOAT_DIRECT    19   1   0
+0203  0:EXT                        4   0   0
+0204  0:ADD_FLOAT                  2   0   1
+0205  1:LOAD_UINT_CONST_SMALL     99   0 102    ; uints[0] = 102
+0206  1:LOAD_INT_CONST_SMALL      75   5   1    ; ints[5] = 1
+0207  1:LOAD_INT_CONST_SMALL      75   6  64    ; ints[6] = 64
+0208  1:CALL_NATIVE              130   2   0    ; call native general[8] (site 2)
+0209  0:LOAD_STRING_CONST          4   7   0    ; strings[4] = ","
+0210  0:CONCAT_STRING              5   3   4
+0211  0:CONCAT_STRING              6   0   5
+0212  1:MOVE_STRING               37   0   6
+0213  0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "a"
+0214  0:MAP_GET_STRING_GENERAL     8   3   3
+0215  1:ADOPT_GENERAL_TO_SLICES_BOOL 158   0   8
+0216  1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
+0217  1:MOVE_INT                  35   0   3
+0218  1:LEN_SLICE_BOOL_DIRECT     29   3   0
+0219  1:LOAD_INT_CONST_SMALL      75   4   0    ; ints[4] = 0
+0220  1:LT_INT_JUMP_FALSE        116   4   3
+0221  0:EXT                        8   0   0
+0222  1:SLICE_GET_BOOL_DIRECT     27   0   0
+0223  0:EXT                        4   0   0
+0224  1:BOOL_TO_INT               53   6   0
+0225  0:JUMP_IF_FALSE              6   1   0    ; if ints[6] == 0 goto +1
+0226  2:TIER2_INC_INT              0   1   0
+0227  1:LOAD_INT_CONST_SMALL      75   6   1    ; ints[6] = 1
+0228  0:ADD_INT                    4   4   6
+0229  1:JUMP                      74 246 255    ; goto -10
+0230  1:STRCONV_ITOA               8   3   0
+0231  0:LOAD_STRING_CONST          4   7   0    ; strings[4] = ","
+0232  0:CONCAT_STRING              5   3   4
+0233  0:CONCAT_STRING              6   0   5
+0234  1:MOVE_STRING               37   0   6
+0235  0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "a"
+0236  0:MAP_GET_STRING_GENERAL     8   4   3
+0237  1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   8
+0238  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0239  1:SLICE_GET_BYTE_DIRECT    112   0   0
+0240  0:EXT                        3   0   0
+0241  0:PACK_TYPED                 8   0   5
+0242  0:EXT                        9   0   0
+0243  0:CONVERT                    9   8   0
+0244  0:EXT                       10   0   0
+0245  1:MOVE_GENERAL_TO_STRING    45   3   9
+0246  1:LEN_SLICE_BYTE_DIRECT    114   4   0
+0247  1:STRCONV_ITOA               8   4   4
+0248  0:CONCAT_STRING              5   3   4
+0249  0:LOAD_STRING_CONST          6   7   0    ; strings[6] = ","
+0250  0:CONCAT_STRING              7   5   6
+0251  0:CONCAT_STRING              8   0   7
+0252  1:MOVE_STRING               37   0   8
+0253  0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "a"
+0254  0:MAP_GET_STRING_GENERAL     8   0   3
+0255  0:LOAD_STRING_CONST          4  11   0    ; strings[4] = "w"
+0256  0:APPEND_STRING_FAST         9   8   4
+0257  0:MOVE_GENERAL               4   9   1
+0258  0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "a"
+0259  0:MAP_SET_STRING_GENERAL     0   3   4
+0260  0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "a"
+0261  0:MAP_GET_STRING_GENERAL     8   0   3
+0262  1:LEN                       70   3   8
+0263  1:STRCONV_ITOA               8   4   3
+0264  0:LOAD_STRING_CONST          5   0   0    ; strings[5] = "a"
+0265  0:MAP_GET_STRING_GENERAL     9   0   5
+0266  1:LOAD_INT_CONST_SMALL      75   4   3    ; ints[4] = 3
+0267  0:SLICE_GET_STRING           6   9   4
+0268  0:CONCAT_STRING              7   4   6
+0269  0:LOAD_STRING_CONST          8   7   0    ; strings[8] = ","
+0270  0:CONCAT_STRING              9   7   8
+0271  0:CONCAT_STRING             10   0   9
+0272  1:MOVE_STRING               37   0  10
+0273  0:LOAD_GENERAL_CONST         4   1   0
+0274  0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "a"
+0275  0:MAP_INDEX_OK_STRING_GENERAL   8   0   3
+0276  0:EXT                        3   0   0
+0277  0:MOVE_GENERAL               4   8   0
+0278  1:MOVE_INT                  35   0   3
+0279  1:INT_TO_BOOL               54   0   0
+0280  1:STRCONV_FORMAT_BOOL        6   4   0
+0281  1:LEN                       70   4   4
+0282  1:STRCONV_ITOA               8   5   4
+0283  0:CONCAT_STRING              6   4   5
+0284  0:LOAD_STRING_CONST          7   7   0    ; strings[7] = ","
+0285  0:CONCAT_STRING              8   6   7
+0286  0:CONCAT_STRING              9   0   8
+0287  1:MOVE_STRING               37   0   9
+0288  2:MAKE_MAP                   0  12   9
+0289  0:EXT                        0   0   1
+0290  0:LOAD_STRING_CONST          4   0   0    ; strings[4] = "a"
+0291  1:LOAD_INT_CONST_SMALL      75   4   2    ; ints[4] = 2
+0292  0:MAKE_SLICE                10   4   4
+0293  0:EXT                        1   0   0
+0294  0:LOAD_STRING_CONST          5  12   0    ; strings[5] = "n1"
+0295  1:LOAD_INT_CONST_SMALL      75   4   0    ; ints[4] = 0
+0296  1:MOVE_STRING_TO_GENERAL    44  11   5
+0297  0:INDEX_SET                 10   4  11
+0298  0:LOAD_STRING_CONST          5  13   0    ; strings[5] = "n2"
+0299  1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
+0300  1:MOVE_STRING_TO_GENERAL    44  11   5
+0301  0:INDEX_SET                 10   4  11
+0302  1:MOVE_STRING_TO_GENERAL    44  11   4
+0303  0:MAP_SET                    9  11  10
+0304  0:MOVE_GENERAL               4   9   1
+0305  0:LOAD_STRING_CONST          4   0   0    ; strings[4] = "a"
+0306  0:MAP_GET_STRING_GENERAL     9   4   4
+0307  0:MOVE_GENERAL               0   9   1
+0308  1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
+0309  0:SLICE_GET_STRING           4   0   4
+0310  1:LEN                       70   5   0
+0311  1:STRCONV_ITOA               8   5   5
+0312  0:CONCAT_STRING              6   4   5
+0313  0:CONCAT_STRING              7   0   6
+0314  1:MOVE_STRING               37   0   7
+0315  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function markov
+;   registers: int=11 string=5 general=3 sliceString=1
+;   params:    (int)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=3  [1]=0  [2]=1  [3]=2  [4]=7  [5]=1103515245  [6]=12345  [7]=2147483647
+;   strings: [0]="the"  [1]="quick"  [2]="lazy"  [3]="old"  [4]="brown"  [5]="red"  [6]="dog"  [7]="man"  [8]="fox"  [9]="jumps"  [10]="sleeps"  [11]="runs"  [12]="|"  [13]=" "
+
+0000  2:MAKE_MAP                   0  12   0
+0001  0:EXT                        0   0   4
+0002  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "the"
+0003  1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
+0004  0:MAKE_SLICE                 1   1   1
+0005  0:EXT                        1   0   0
+0006  0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "quick"
+0007  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0008  1:MOVE_STRING_TO_GENERAL    44   2   1
+0009  0:INDEX_SET                  1   1   2
+0010  0:LOAD_STRING_CONST          1   2   0    ; strings[1] = "lazy"
+0011  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0012  1:MOVE_STRING_TO_GENERAL    44   2   1
+0013  0:INDEX_SET                  1   1   2
+0014  0:LOAD_STRING_CONST          1   3   0    ; strings[1] = "old"
+0015  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0016  1:MOVE_STRING_TO_GENERAL    44   2   1
+0017  0:INDEX_SET                  1   1   2
+0018  1:MOVE_STRING_TO_GENERAL    44   2   0
+0019  0:MAP_SET                    0   2   1
+0020  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "quick"
+0021  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0022  0:MAKE_SLICE                 1   1   1
+0023  0:EXT                        1   0   0
+0024  0:LOAD_STRING_CONST          1   4   0    ; strings[1] = "brown"
+0025  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0026  1:MOVE_STRING_TO_GENERAL    44   2   1
+0027  0:INDEX_SET                  1   1   2
+0028  0:LOAD_STRING_CONST          1   5   0    ; strings[1] = "red"
+0029  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0030  1:MOVE_STRING_TO_GENERAL    44   2   1
+0031  0:INDEX_SET                  1   1   2
+0032  1:MOVE_STRING_TO_GENERAL    44   2   0
+0033  0:MAP_SET                    0   2   1
+0034  0:LOAD_STRING_CONST          0   2   0    ; strings[0] = "lazy"
+0035  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0036  0:MAKE_SLICE                 1   1   1
+0037  0:EXT                        1   0   0
+0038  0:LOAD_STRING_CONST          1   6   0    ; strings[1] = "dog"
+0039  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0040  1:MOVE_STRING_TO_GENERAL    44   2   1
+0041  0:INDEX_SET                  1   1   2
+0042  1:MOVE_STRING_TO_GENERAL    44   2   0
+0043  0:MAP_SET                    0   2   1
+0044  0:LOAD_STRING_CONST          0   3   0    ; strings[0] = "old"
+0045  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0046  0:MAKE_SLICE                 1   1   1
+0047  0:EXT                        1   0   0
+0048  0:LOAD_STRING_CONST          1   7   0    ; strings[1] = "man"
+0049  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0050  1:MOVE_STRING_TO_GENERAL    44   2   1
+0051  0:INDEX_SET                  1   1   2
+0052  0:LOAD_STRING_CONST          1   6   0    ; strings[1] = "dog"
+0053  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0054  1:MOVE_STRING_TO_GENERAL    44   2   1
+0055  0:INDEX_SET                  1   1   2
+0056  1:MOVE_STRING_TO_GENERAL    44   2   0
+0057  0:MAP_SET                    0   2   1
+0058  0:LOAD_STRING_CONST          0   4   0    ; strings[0] = "brown"
+0059  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0060  0:MAKE_SLICE                 1   1   1
+0061  0:EXT                        1   0   0
+0062  0:LOAD_STRING_CONST          1   8   0    ; strings[1] = "fox"
+0063  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0064  1:MOVE_STRING_TO_GENERAL    44   2   1
+0065  0:INDEX_SET                  1   1   2
+0066  1:MOVE_STRING_TO_GENERAL    44   2   0
+0067  0:MAP_SET                    0   2   1
+0068  0:LOAD_STRING_CONST          0   5   0    ; strings[0] = "red"
+0069  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0070  0:MAKE_SLICE                 1   1   1
+0071  0:EXT                        1   0   0
+0072  0:LOAD_STRING_CONST          1   8   0    ; strings[1] = "fox"
+0073  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0074  1:MOVE_STRING_TO_GENERAL    44   2   1
+0075  0:INDEX_SET                  1   1   2
+0076  1:MOVE_STRING_TO_GENERAL    44   2   0
+0077  0:MAP_SET                    0   2   1
+0078  0:LOAD_STRING_CONST          0   8   0    ; strings[0] = "fox"
+0079  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0080  0:MAKE_SLICE                 1   1   1
+0081  0:EXT                        1   0   0
+0082  0:LOAD_STRING_CONST          1   9   0    ; strings[1] = "jumps"
+0083  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0084  1:MOVE_STRING_TO_GENERAL    44   2   1
+0085  0:INDEX_SET                  1   1   2
+0086  1:MOVE_STRING_TO_GENERAL    44   2   0
+0087  0:MAP_SET                    0   2   1
+0088  0:LOAD_STRING_CONST          0   7   0    ; strings[0] = "man"
+0089  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0090  0:MAKE_SLICE                 1   1   1
+0091  0:EXT                        1   0   0
+0092  0:LOAD_STRING_CONST          1  10   0    ; strings[1] = "sleeps"
+0093  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0094  1:MOVE_STRING_TO_GENERAL    44   2   1
+0095  0:INDEX_SET                  1   1   2
+0096  1:MOVE_STRING_TO_GENERAL    44   2   0
+0097  0:MAP_SET                    0   2   1
+0098  0:LOAD_STRING_CONST          0   6   0    ; strings[0] = "dog"
+0099  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0100  0:MAKE_SLICE                 1   1   1
+0101  0:EXT                        1   0   0
+0102  0:LOAD_STRING_CONST          1  10   0    ; strings[1] = "sleeps"
+0103  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0104  1:MOVE_STRING_TO_GENERAL    44   2   1
+0105  0:INDEX_SET                  1   1   2
+0106  0:LOAD_STRING_CONST          1  11   0    ; strings[1] = "runs"
+0107  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0108  1:MOVE_STRING_TO_GENERAL    44   2   1
+0109  0:INDEX_SET                  1   1   2
+0110  1:MOVE_STRING_TO_GENERAL    44   2   0
+0111  0:MAP_SET                    0   2   1
+0112  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0113  1:LEN                       70   2   0
+0114  0:MAKE_SLICE                 1   1   2
+0115  0:EXT                        1   0   0
+0116  1:RANGE_INIT               142   2   0
+0117  1:RANGE_NEXT               143   2   1
+0118  0:EXT                        1   0   2
+0119  0:EXT                        0   0   0
+0120  0:JUMP_IF_FALSE              1   2   0    ; if ints[1] == 0 goto +2
+0121  0:APPEND_STRING_FAST         1   1   0
+0122  1:JUMP                      74 250 255    ; goto -6
+0123  0:LOAD_GENERAL_CONST         2   0   0
+0124  1:CALL_NATIVE              130   0   0    ; call native general[2] (site 0)
+0125  1:LOAD_INT_CONST_SMALL      75   1   7    ; ints[1] = 7
+0126  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "the"
+0127  1:MOVE_STRING               37   1   0
+0128  1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0129  1:LT_INT_JUMP_FALSE        116   2   0
+0130  0:EXT                       38   0   0
+0131  0:MAP_INDEX_OK_STRING_GENERAL   2   0   0
+0132  0:EXT                        5   0   0
+0133  1:ADOPT_GENERAL_TO_SLICES_STRING 157   0   2
+0134  1:MOVE_INT                  35   4   5
+0135  1:NOT                       52   6   4
+0136  1:MOVE_INT                  35   7   6
+0137  0:JUMP_IF_TRUE               7   4   0    ; if ints[7] != 0 goto +4
+0138  1:LEN_SLICE_STRING_DIRECT   25   8   0
+0139  1:LOAD_INT_CONST_SMALL      75   9   0    ; ints[9] = 0
+0140  0:EQ_INT                    10   8   9
+0141  1:MOVE_INT                  35   7  10
+0142  0:JUMP_IF_FALSE              7   9   0    ; if ints[7] == 0 goto +9
+0143  1:LEN                       70   6   1
+0144  0:REM_INT                    7   1   6
+0145  0:SLICE_GET_STRING           2   1   7
+0146  1:MOVE_STRING               37   0   2
+0147  0:LOAD_STRING_CONST          2  12   0    ; strings[2] = "|"
+0148  0:CONCAT_STRING              3   2   0
+0149  0:CONCAT_STRING              4   1   3
+0150  1:MOVE_STRING               37   1   4
+0151  1:JUMP                      74  15   0    ; goto 15
+0152  0:LOAD_INT_CONST             6   5   0    ; ints[6] = 1103515245
+0153  0:MUL_INT                    7   1   6
+0154  0:LOAD_INT_CONST             8   6   0    ; ints[8] = 12345
+0155  0:ADD_INT                    9   7   8
+0156  0:LOAD_INT_CONST            10   7   0    ; ints[10] = 2147483647
+0157  0:REM_INT                    1   9  10
+0158  1:LEN_SLICE_STRING_DIRECT   25   6   0
+0159  0:REM_INT                    7   1   6
+0160  1:SLICE_GET_STRING_DIRECT   23   2   0
+0161  0:EXT                        7   0   0
+0162  1:MOVE_STRING               37   0   2
+0163  0:LOAD_STRING_CONST          2  13   0    ; strings[2] = " "
+0164  0:CONCAT_STRING              3   2   0
+0165  0:CONCAT_STRING              4   1   3
+0166  1:MOVE_STRING               37   1   4
+0167  2:TIER2_INC_INT              0   1   2
+0168  1:JUMP                      74 216 255    ; goto -40
+0169  1:MOVE_STRING               37   0   1
+0170  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=2 string=8
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=12  [1]=3
+;   strings: [0]="|"
+
+0000  1:CALL_SCALAR              134   0   0
+0001  0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "|"
+0002  0:CONCAT_STRING              2   0   1
+0003  1:LOAD_INT_CONST_SMALL      75   0  12    ; ints[0] = 12
+0004  1:CALL_SCALAR              134   1   0
+0005  0:CONCAT_STRING              4   2   3
+0006  0:LOAD_STRING_CONST          5   0   0    ; strings[5] = "|"
+0007  0:CONCAT_STRING              6   4   5
+0008  1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
+0009  1:CALL_SCALAR              134   2   0
+0010  0:CONCAT_STRING              0   6   7
+0011  2:TIER2_RETURN               0  10   1    ; 1 values

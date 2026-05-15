@@ -1,0 +1,17 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=1 string=2
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]="go gopher"  [1]="go"
+
+0000  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "go gopher"
+0001  0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "go"
+0002  0:STR_LAST_INDEX             0   0   1
+0003  2:TIER2_RETURN               0  10   1    ; 1 values

@@ -1,0 +1,100 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=2 float=1 string=2 general=3 bool=1 uint=1 sliceInt=1 sliceFloat=1 sliceString=1 sliceBool=1 sliceByte=1
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=3  [1]=1  [2]=0  [3]=2
+;   floats:  [0]=1.5  [1]=2.5
+;   strings: [0]="a"  [1]="b"  [2]="%v %v %v %v %v"
+;   bools:   [0]=true  [1]=false
+;   uints:   [0]=7  [1]=8
+
+0000  2:MAKE_MAP                   0  12   0
+0001  0:EXT                        0   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0003  0:MAKE_SLICE                 1   0   0
+0004  0:EXT                        1   0   0
+0005  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0006  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0007  1:MOVE_INT_TO_GENERAL       40   2   0
+0008  0:INDEX_SET                  1   1   2
+0009  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0010  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0011  1:MOVE_INT_TO_GENERAL       40   2   0
+0012  0:INDEX_SET                  1   1   2
+0013  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0014  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0015  1:MOVE_INT_TO_GENERAL       40   2   0
+0016  0:INDEX_SET                  1   1   2
+0017  0:SET_STRUCT_FIELD_GENERAL_T0   0   1   0
+0018  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0019  0:MAKE_SLICE                 1   0   0
+0020  0:EXT                        2   0   0
+0021  0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 1.5
+0022  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0023  1:MOVE_FLOAT_TO_GENERAL     42   2   0
+0024  0:INDEX_SET                  1   0   2
+0025  0:LOAD_FLOAT_CONST           0   1   0    ; floats[0] = 2.5
+0026  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0027  1:MOVE_FLOAT_TO_GENERAL     42   2   0
+0028  0:INDEX_SET                  1   0   2
+0029  0:SET_STRUCT_FIELD_GENERAL_T0   0   1   1
+0030  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0031  0:MAKE_SLICE                 1   0   0
+0032  0:EXT                        3   0   0
+0033  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "a"
+0034  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0035  1:MOVE_STRING_TO_GENERAL    44   2   0
+0036  0:INDEX_SET                  1   0   2
+0037  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "b"
+0038  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0039  1:MOVE_STRING_TO_GENERAL    44   2   0
+0040  0:INDEX_SET                  1   0   2
+0041  0:SET_STRUCT_FIELD_GENERAL_T0   0   1   2
+0042  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0043  0:MAKE_SLICE                 1   0   0
+0044  0:EXT                        4   0   0
+0045  1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
+0046  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0047  0:PACK_INTERFACE             2   0   4
+0048  0:INDEX_SET                  1   0   2
+0049  1:LOAD_BOOL_CONST          138   0   1    ; bools[0] = false
+0050  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0051  0:PACK_INTERFACE             2   0   4
+0052  0:INDEX_SET                  1   0   2
+0053  0:SET_STRUCT_FIELD_GENERAL_T0   0   1   3
+0054  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0055  0:MAKE_SLICE                 1   0   0
+0056  0:EXT                        5   0   0
+0057  1:LOAD_UINT_CONST_SMALL     99   0   7    ; uints[0] = 7
+0058  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0059  0:PACK_TYPED                 2   0   5
+0060  0:EXT                        6   0   0
+0061  0:INDEX_SET                  1   0   2
+0062  1:LOAD_UINT_CONST_SMALL     99   0   8    ; uints[0] = 8
+0063  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0064  0:PACK_TYPED                 2   0   5
+0065  0:EXT                        6   0   0
+0066  0:INDEX_SET                  1   0   2
+0067  0:SET_STRUCT_FIELD_GENERAL_T0   0   1   4
+0068  0:LOAD_GENERAL_CONST         1   0   0
+0069  0:LOAD_STRING_CONST          0   2   0    ; strings[0] = "%v %v %v %v %v"
+0070  1:GET_STRUCT_FIELD_SLICE_INT 190   0   0
+0071  0:EXT                        0   0   0
+0072  1:GET_STRUCT_FIELD_SLICE_FLOAT 191   0   0
+0073  0:EXT                        1   0   0
+0074  1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
+0075  0:EXT                        2   0   0
+0076  1:GET_STRUCT_FIELD_SLICE_BOOL 194   0   0
+0077  0:EXT                        3   0   0
+0078  1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
+0079  0:EXT                        4   0   0
+0080  1:CALL_NATIVE              130   0   0    ; call native general[1] (site 0)
+0081  1:MOVE_STRING               37   0   1
+0082  2:TIER2_RETURN               0  10   1    ; 1 values

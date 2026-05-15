@@ -1,0 +1,27 @@
+go 1.27.0
+
+use (
+	.
+	./cmd/asmgen
+	./cmd/pipit
+	./cmd/pipit-worker
+	./cmd/wasm
+	./sdk/extract
+	./sdk/link
+	./sdk/selfhost
+	./sdk/stdlib
+	./tests/bench
+	./tests/facade
+	./tests/integration/apps
+	./tests/integration/bytecode
+	./tests/integration/debug
+	./tests/integration/golden
+	./tests/integration/gotoolchain
+	./tests/integration/interop
+	./tests/integration/language
+	./tests/integration/limits
+	./tests/integration/session
+	./tests/integration/snippets
+	./tests/integration/selfhost
+	./examples/webserver
+)

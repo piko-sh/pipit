@@ -1,0 +1,62 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function inc
+;   registers: int=2
+;   params:    (int)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1
+
+0000  0:ADD_INT_CONST              0   0   0    ; const = 1
+0001  3:TIER3_NOP                  0   0   0
+0002  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function dec
+;   registers: int=2
+;   params:    (int)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1
+
+0000  0:SUB_INT_CONST              0   0   0    ; const = 1
+0001  3:TIER3_NOP                  0   0   0
+0002  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=4 string=2 general=3
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=20
+;   strings: [0]="inc"  [1]="dec"
+
+0000  2:MAKE_MAP                   0  12   0
+0001  0:EXT                        0   0   1
+0002  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "inc"
+0003  0:MAKE_CLOSURE               1   0   0    ; closure (func 0)
+0004  1:MOVE_STRING_TO_GENERAL    44   2   0
+0005  0:MAP_SET                    0   2   1
+0006  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "dec"
+0007  0:MAKE_CLOSURE               1   1   0    ; closure (func 1)
+0008  1:MOVE_STRING_TO_GENERAL    44   2   0
+0009  0:MAP_SET                    0   2   1
+0010  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "inc"
+0011  0:MAP_GET_STRING_GENERAL     1   0   0
+0012  1:LOAD_INT_CONST_SMALL      75   0  20    ; ints[0] = 20
+0013  1:CALL_NATIVE              130   0   0    ; call native general[1] (site 0)
+0014  0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "dec"
+0015  0:MAP_GET_STRING_GENERAL     2   0   1
+0016  1:LOAD_INT_CONST_SMALL      75   2  20    ; ints[2] = 20
+0017  1:CALL_NATIVE              130   1   0    ; call native general[2] (site 1)
+0018  0:ADD_INT                    0   1   3
+0019  2:TIER2_RETURN               0  10   1    ; 1 values

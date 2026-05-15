@@ -1,0 +1,38 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function fib
+;   registers: int=7
+;   params:    (int)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2  [1]=1
+
+0000  1:LT_INT_CONST_JUMP_FALSE  123   0   0
+0001  0:EXT                        2   0   0
+0002  3:TIER3_NOP                  0   0   0
+0003  2:TIER2_RETURN               0  10   1    ; 1 values
+0004  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0005  0:SUB_INT                    2   0   1
+0006  1:CALL_SCALAR              134   0   0
+0007  1:LOAD_INT_CONST_SMALL      75   4   2    ; ints[4] = 2
+0008  0:SUB_INT                    5   0   4
+0009  1:CALL_SCALAR              134   1   0
+0010  0:ADD_INT                    0   3   6
+0011  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function EntrypointRun
+;   registers: int=1
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=10
+
+0000  1:LOAD_INT_CONST_SMALL      75   0  10    ; ints[0] = 10
+0001  1:TAIL_CALL                129   0   0    ; tail call (site 0)

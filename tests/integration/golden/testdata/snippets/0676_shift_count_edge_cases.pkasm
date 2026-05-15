@@ -1,0 +1,146 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=6 string=4 general=3 uint=8
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=-8  [1]=-1  [2]=1
+;   strings: [0]=""  [1]="u8<<8=%d;"  [2]="u8<<15=%d;"  [3]="u32<<32=%d;"  [4]="i8>>1=%d;"  [5]="i8>>8=%d;"  [6]="i32>>10=%d;"  [7]="i32>>32=%d;"  [8]="u32hi>>31=%d;"  [9]="u32hi>>32=%d;"  [10]="i64<<%d=%d;"  [11]="u8>>9=%d"
+;   uints:   [0]=1  [1]=8  [2]=15  [3]=4294967295  [4]=32  [5]=10  [6]=2147483648  [7]=31  [8]=65  [9]=9
+
+0000  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = ""
+0001  1:LOAD_UINT_CONST_SMALL     99   1   1    ; uints[1] = 1
+0002  1:MOVE_UINT                 39   0   1
+0003  0:LOAD_GENERAL_CONST         0   0   0
+0004  0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "u8<<8=%d;"
+0005  1:LOAD_UINT_CONST_SMALL     99   2   8    ; uints[2] = 8
+0006  0:SHIFT_LEFT_UINT            3   0   2
+0007  0:TRUNCATE_NARROW            3   8   5
+0008  0:PACK_TYPED                 1   3   5
+0009  0:EXT                        0   0   0
+0010  1:CALL_NATIVE              130   0   0    ; call native general[0] (site 0)
+0011  0:CONCAT_STRING              3   0   2
+0012  1:MOVE_STRING               37   0   3
+0013  0:LOAD_GENERAL_CONST         0   1   0
+0014  0:LOAD_STRING_CONST          1   2   0    ; strings[1] = "u8<<15=%d;"
+0015  1:LOAD_UINT_CONST_SMALL     99   2  15    ; uints[2] = 15
+0016  0:SHIFT_LEFT_UINT            3   0   2
+0017  0:TRUNCATE_NARROW            3   8   5
+0018  0:PACK_TYPED                 1   3   5
+0019  0:EXT                        0   0   0
+0020  1:CALL_NATIVE              130   1   0    ; call native general[0] (site 1)
+0021  0:CONCAT_STRING              3   0   2
+0022  1:MOVE_STRING               37   0   3
+0023  0:LOAD_UINT_CONST            3   3   0
+0024  1:MOVE_UINT                 39   2   3
+0025  0:LOAD_GENERAL_CONST         0   2   0
+0026  0:LOAD_STRING_CONST          1   3   0    ; strings[1] = "u32<<32=%d;"
+0027  1:LOAD_UINT_CONST_SMALL     99   4  32    ; uints[4] = 32
+0028  0:SHIFT_LEFT_UINT            5   2   4
+0029  0:TRUNCATE_NARROW            5  32   5
+0030  0:PACK_TYPED                 1   5   5
+0031  0:EXT                        1   0   0
+0032  1:CALL_NATIVE              130   2   0    ; call native general[0] (site 2)
+0033  0:CONCAT_STRING              3   0   2
+0034  1:MOVE_STRING               37   0   3
+0035  0:LOAD_INT_CONST             1   0   0    ; ints[1] = -8
+0036  1:MOVE_INT                  35   0   1
+0037  0:LOAD_GENERAL_CONST         0   3   0
+0038  0:LOAD_STRING_CONST          1   4   0    ; strings[1] = "i8>>1=%d;"
+0039  1:LOAD_UINT_CONST_SMALL     99   4   1    ; uints[4] = 1
+0040  1:UINT_TO_INT               56   3   4
+0041  0:SHIFT_RIGHT                2   0   3
+0042  0:TRUNCATE_NARROW            2   8   0
+0043  0:PACK_TYPED                 1   2   0
+0044  0:EXT                        2   0   0
+0045  1:CALL_NATIVE              130   3   0    ; call native general[0] (site 3)
+0046  0:CONCAT_STRING              3   0   2
+0047  1:MOVE_STRING               37   0   3
+0048  0:LOAD_GENERAL_CONST         0   4   0
+0049  0:LOAD_STRING_CONST          1   5   0    ; strings[1] = "i8>>8=%d;"
+0050  1:LOAD_UINT_CONST_SMALL     99   4   8    ; uints[4] = 8
+0051  1:UINT_TO_INT               56   3   4
+0052  0:SHIFT_RIGHT                2   0   3
+0053  0:TRUNCATE_NARROW            2   8   0
+0054  0:PACK_TYPED                 1   2   0
+0055  0:EXT                        2   0   0
+0056  1:CALL_NATIVE              130   4   0    ; call native general[0] (site 4)
+0057  0:CONCAT_STRING              3   0   2
+0058  1:MOVE_STRING               37   0   3
+0059  0:LOAD_INT_CONST             2   1   0    ; ints[2] = -1
+0060  1:MOVE_INT                  35   0   2
+0061  0:LOAD_GENERAL_CONST         0   5   0
+0062  0:LOAD_STRING_CONST          1   6   0    ; strings[1] = "i32>>10=%d;"
+0063  1:LOAD_UINT_CONST_SMALL     99   4  10    ; uints[4] = 10
+0064  1:UINT_TO_INT               56   4   4
+0065  0:SHIFT_RIGHT                3   0   4
+0066  0:TRUNCATE_NARROW            3  32   0
+0067  0:PACK_TYPED                 1   3   0
+0068  0:EXT                        3   0   0
+0069  1:CALL_NATIVE              130   5   0    ; call native general[0] (site 5)
+0070  0:CONCAT_STRING              3   0   2
+0071  1:MOVE_STRING               37   0   3
+0072  0:LOAD_GENERAL_CONST         0   6   0
+0073  0:LOAD_STRING_CONST          1   7   0    ; strings[1] = "i32>>32=%d;"
+0074  1:LOAD_UINT_CONST_SMALL     99   4  32    ; uints[4] = 32
+0075  1:UINT_TO_INT               56   4   4
+0076  0:SHIFT_RIGHT                3   0   4
+0077  0:TRUNCATE_NARROW            3  32   0
+0078  0:PACK_TYPED                 1   3   0
+0079  0:EXT                        3   0   0
+0080  1:CALL_NATIVE              130   6   0    ; call native general[0] (site 6)
+0081  0:CONCAT_STRING              3   0   2
+0082  1:MOVE_STRING               37   0   3
+0083  0:LOAD_UINT_CONST            4   6   0
+0084  1:MOVE_UINT                 39   2   4
+0085  0:LOAD_GENERAL_CONST         0   7   0
+0086  0:LOAD_STRING_CONST          1   8   0    ; strings[1] = "u32hi>>31=%d;"
+0087  1:LOAD_UINT_CONST_SMALL     99   5  31    ; uints[5] = 31
+0088  0:SHIFT_RIGHT_UINT           6   2   5
+0089  0:TRUNCATE_NARROW            6  32   5
+0090  0:PACK_TYPED                 1   6   5
+0091  0:EXT                        1   0   0
+0092  1:CALL_NATIVE              130   7   0    ; call native general[0] (site 7)
+0093  0:CONCAT_STRING              3   0   2
+0094  1:MOVE_STRING               37   0   3
+0095  0:LOAD_GENERAL_CONST         0   8   0
+0096  0:LOAD_STRING_CONST          1   9   0    ; strings[1] = "u32hi>>32=%d;"
+0097  1:LOAD_UINT_CONST_SMALL     99   5  32    ; uints[5] = 32
+0098  0:SHIFT_RIGHT_UINT           6   2   5
+0099  0:TRUNCATE_NARROW            6  32   5
+0100  0:PACK_TYPED                 1   6   5
+0101  0:EXT                        1   0   0
+0102  1:CALL_NATIVE              130   8   0    ; call native general[0] (site 8)
+0103  0:CONCAT_STRING              3   0   2
+0104  1:MOVE_STRING               37   0   3
+0105  1:LOAD_UINT_CONST_SMALL     99   5  65    ; uints[5] = 65
+0106  1:MOVE_UINT                 39   2   5
+0107  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0108  1:MOVE_INT                  35   0   3
+0109  0:LOAD_GENERAL_CONST         0   9   0
+0110  0:LOAD_STRING_CONST          1  10   0    ; strings[1] = "i64<<%d=%d;"
+0111  0:PACK_TYPED                 1   2   5
+0112  0:EXT                        4   0   0
+0113  1:UINT_TO_INT               56   5   2
+0114  0:SHIFT_LEFT                 4   0   5
+0115  0:PACK_TYPED                 2   4   0
+0116  0:EXT                        5   0   0
+0117  1:CALL_NATIVE              130   9   0    ; call native general[0] (site 9)
+0118  0:CONCAT_STRING              3   0   2
+0119  1:MOVE_STRING               37   0   3
+0120  0:LOAD_GENERAL_CONST         0  10   0
+0121  0:LOAD_STRING_CONST          1  11   0    ; strings[1] = "u8>>9=%d"
+0122  1:LOAD_UINT_CONST_SMALL     99   6   9    ; uints[6] = 9
+0123  0:SHIFT_RIGHT_UINT           7   0   6
+0124  0:TRUNCATE_NARROW            7   8   5
+0125  0:PACK_TYPED                 1   7   5
+0126  0:EXT                        0   0   0
+0127  1:CALL_NATIVE              130  10   0    ; call native general[0] (site 10)
+0128  0:CONCAT_STRING              3   0   2
+0129  1:MOVE_STRING               37   0   3
+0130  2:TIER2_RETURN               0  10   1    ; 1 values

@@ -1,0 +1,64 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function makeMultiplier
+;   registers: general=2
+;   params:    (general)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:MAKE_CLOSURE               1   2   0    ; closure (func 2)
+0001  0:MOVE_GENERAL               0   1   0
+0002  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=2 general=1
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=3  [1]=7
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0001  1:CALL                     128   0   0    ; call (site 0)
+0002  1:LOAD_INT_CONST_SMALL      75   0   7    ; ints[0] = 7
+0003  1:CALL                     128   1   0    ; call closure general[0] (site 1)
+0004  3:TIER3_NOP                  0   0   0
+0005  1:MOVE_INT                  35   0   1
+0006  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: general=3
+;   params:    (general)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:GET_UPVALUE                1   0   3
+0001  0:MUL                        2   0   1
+0002  0:MOVE_GENERAL               0   2   0
+0003  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function makeMultiplier[spec:int]
+;   registers: int=1 general=1
+;   params:    (int)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:MAKE_CLOSURE               0   4   0    ; closure (func 4)
+0001  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=2
+;   params:    (int)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:GET_UPVALUE                1   0   0
+0001  0:MUL_INT                    0   0   1
+0002  2:TIER2_RETURN               0  10   1    ; 1 values

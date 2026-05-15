@@ -1,0 +1,14 @@
+{
+  "name": "06_lru_cache_100k_ops",
+  "description": "Hand-rolled LRU (doubly-linked list + map) driven through 100,000 mixed get/put operations from a deterministic LCG. Returns final hit count.",
+  "args": [],
+  "expected_stdout_sha256": "3893589f42821814bb4f12b40df762ef32f2d27c884e17fdfa7ae7ee87d8dd68",
+  "k_inner": 3,
+  "timeout_seconds": 180,
+  "source_sha256": {
+    "go/native_main.go": "8c119ceca22e7aa65af3a44a2742b0145c622eb9df50642431d979a9d3a6c40f",
+    "go/pipit_source.go": "0869c7de72857370450f5cc1b53bf775293eace9b70d92b55b2ee082320fffe6",
+    "py/cpython.py": "14fd391f4c2c3ee18b742125846d53bcd043a5eb271dffc081bf9fff2b64f90c",
+    "py/pypy.py": "14fd391f4c2c3ee18b742125846d53bcd043a5eb271dffc081bf9fff2b64f90c"
+  }
+}

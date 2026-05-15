@@ -1,0 +1,33 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=2 string=8
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=255  [1]=16  [2]=8  [3]=2  [4]=-42  [5]=10
+;   strings: [0]="|"
+
+0000  1:LOAD_INT_CONST_SMALL      75   0 255    ; ints[0] = 255
+0001  1:LOAD_INT_CONST_SMALL      75   1  16    ; ints[1] = 16
+0002  1:STRCONV_FORMAT_INT         7   0   0
+0003  0:EXT                        1   0   0
+0004  1:LOAD_INT_CONST_SMALL      75   0   8    ; ints[0] = 8
+0005  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0006  1:STRCONV_FORMAT_INT         7   1   0
+0007  0:EXT                        1   0   0
+0008  0:LOAD_INT_CONST             0   4   0    ; ints[0] = -42
+0009  1:LOAD_INT_CONST_SMALL      75   1  10    ; ints[1] = 10
+0010  1:STRCONV_FORMAT_INT         7   2   0
+0011  0:EXT                        1   0   0
+0012  0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "|"
+0013  0:CONCAT_STRING              4   0   3
+0014  0:CONCAT_STRING              5   4   1
+0015  0:LOAD_STRING_CONST          6   0   0    ; strings[6] = "|"
+0016  0:CONCAT_STRING              7   5   6
+0017  0:CONCAT_STRING              0   7   2
+0018  2:TIER2_RETURN               0  10   1    ; 1 values

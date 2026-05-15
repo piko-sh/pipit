@@ -1,0 +1,76 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=3 string=4 general=3
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=3  [1]=2  [2]=0  [3]=1
+;   strings: [0]="b"  [1]="a"  [2]="c"
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0001  0:MAKE_SLICE                 0   0   0
+0002  0:EXT                        0   0   0
+0003  2:MAKE_MAP                   0  12   1
+0004  0:EXT                        1   0   0
+0005  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "b"
+0006  1:SET_STRUCT_FIELD_STRING   95   1   0
+0007  0:EXT                        0   0   0
+0008  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0009  0:SET_STRUCT_FIELD_INT_T0    1   0   1
+0010  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0011  0:INDEX_SET                  0   0   1
+0012  2:MAKE_MAP                   0  12   1
+0013  0:EXT                        1   0   0
+0014  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "a"
+0015  1:SET_STRUCT_FIELD_STRING   95   1   0
+0016  0:EXT                        0   0   0
+0017  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0018  0:SET_STRUCT_FIELD_INT_T0    1   0   1
+0019  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0020  0:INDEX_SET                  0   0   1
+0021  2:MAKE_MAP                   0  12   1
+0022  0:EXT                        1   0   0
+0023  0:LOAD_STRING_CONST          0   2   0    ; strings[0] = "c"
+0024  1:SET_STRUCT_FIELD_STRING   95   1   0
+0025  0:EXT                        0   0   0
+0026  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0027  0:SET_STRUCT_FIELD_INT_T0    1   0   1
+0028  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0029  0:INDEX_SET                  0   0   1
+0030  0:LOAD_GENERAL_CONST         1   0   0
+0031  0:MAKE_CLOSURE               2   1   0    ; closure (func 1)
+0032  1:CALL_NATIVE              130   0   0    ; call native general[1] (site 0)
+0033  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0034  0:SLICE_INDEX_STRUCT_FIELD_STRING   0   0   0
+0035  0:EXT                        0   0   0
+0036  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0037  0:SLICE_INDEX_STRUCT_FIELD_STRING   1   0   1
+0038  0:EXT                        0   0   0
+0039  0:CONCAT_STRING              2   0   1
+0040  1:LOAD_INT_CONST_SMALL      75   2   2    ; ints[2] = 2
+0041  0:SLICE_INDEX_STRUCT_FIELD_STRING   3   0   2
+0042  0:EXT                        0   0   0
+0043  0:CONCAT_STRING              0   2   3
+0044  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=5 general=2 bool=1
+;   params:    (int, int)
+;   returns:   (bool)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:GET_UPVALUE                0   0   3
+0001  0:SLICE_INDEX_STRUCT_FIELD_INT   2   0   0
+0002  0:EXT                        0   0   0
+0003  0:GET_UPVALUE                1   0   3
+0004  0:SLICE_INDEX_STRUCT_FIELD_INT   3   1   1
+0005  0:EXT                        0   0   0
+0006  0:GT_INT                     4   2   3
+0007  1:INT_TO_BOOL               54   0   4
+0008  2:TIER2_RETURN               0  10   1    ; 1 values

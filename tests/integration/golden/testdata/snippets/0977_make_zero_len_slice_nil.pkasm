@@ -1,0 +1,332 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function flags
+;   registers: int=4 string=3 bool=1 sliceBool=1
+;   params:    (sliceBool)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=1
+;   strings: [0]=""  [1]="1"  [2]="0"
+
+0000  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = ""
+0001  1:LEN_SLICE_BOOL_DIRECT     29   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0003  1:LT_INT_JUMP_FALSE        116   1   0
+0004  0:EXT                       14   0   0
+0005  1:SLICE_GET_BOOL_DIRECT     27   0   0
+0006  0:EXT                        1   0   0
+0007  1:BOOL_TO_INT               53   3   0
+0008  0:JUMP_IF_FALSE              3   4   0    ; if ints[3] == 0 goto +4
+0009  0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "1"
+0010  0:CONCAT_STRING              2   0   1
+0011  1:MOVE_STRING               37   0   2
+0012  1:JUMP                      74   3   0    ; goto 3
+0013  0:LOAD_STRING_CONST          1   2   0    ; strings[1] = "0"
+0014  0:CONCAT_STRING              2   0   1
+0015  1:MOVE_STRING               37   0   2
+0016  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0017  0:ADD_INT                    1   1   3
+0018  1:JUMP                      74 240 255    ; goto -16
+0019  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function probe
+;   registers: int=1 general=2 bool=1 sliceInt=1
+;   params:    (sliceInt)
+;   returns:   (bool)
+; ═════════════════════════════════════════════════════════════
+
+0000  2:TIER2_LOAD_NIL             0   9   0
+0001  0:PACK_INTERFACE             1   0   7
+0002  0:EQ_GENERAL                 0   1   0
+0003  1:INT_TO_BOOL               54   0   0
+0004  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=15 string=3 general=20 bool=1 sliceInt=2 sliceFloat=1 sliceString=1 sliceBool=1 sliceUint=1 sliceByte=1
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=4  [2]=1  [3]=7  [4]=2  [5]=3  [6]=23  [7]=5  [8]=6  [9]=8  [10]=9  [11]=10  [12]=11  [13]=12  [14]=13  [15]=14  [16]=15  [17]=16  [18]=17  [19]=18  [20]=19  [21]=20  [22]=21  [23]=22
+;   strings: [0]=""  [1]="%s %d %d %d"
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0001  0:MAKE_SLICE                 0   0   0
+0002  0:EXT                        0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0004  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0005  1:MAKE_SLICE_INT            16   0   0
+0006  0:EXT                        1   0   0
+0007  1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0008  1:LOAD_INT_CONST_SMALL      75   3   4    ; ints[3] = 4
+0009  0:MAKE_SLICE                 1   2   3
+0010  0:EXT                        0   0   0
+0011  1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0012  1:MAKE_SLICE_STRING         22   0   2
+0013  0:EXT                        2   0   0
+0014  1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
+0015  1:MAKE_SLICE_BYTE          111   0   3
+0016  0:EXT                        3   0   0
+0017  1:LOAD_INT_CONST_SMALL      75   4   0    ; ints[4] = 0
+0018  1:MAKE_SLICE_FLOAT          18   0   4
+0019  0:EXT                        4   0   0
+0020  1:LOAD_INT_CONST_SMALL      75   5   0    ; ints[5] = 0
+0021  1:MAKE_SLICE_BOOL           26   0   5
+0022  0:EXT                        5   0   0
+0023  1:LOAD_INT_CONST_SMALL      75   6   0    ; ints[6] = 0
+0024  1:MAKE_SLICE_UINT           30   0   6
+0025  0:EXT                        6   0   0
+0026  1:LOAD_INT_CONST_SMALL      75   7   0    ; ints[7] = 0
+0027  0:MAKE_SLICE                 2   7   7
+0028  0:EXT                        1   0   0
+0029  1:LOAD_INT_CONST_SMALL      75   7   0    ; ints[7] = 0
+0030  0:MAKE_SLICE                 3   7   7
+0031  0:EXT                        2   0   0
+0032  1:LOAD_INT_CONST_SMALL      75   7   0    ; ints[7] = 0
+0033  1:MAKE_SLICE_INT            16   1   7
+0034  0:EXT                        7   0   0
+0035  1:LOAD_INT_CONST_SMALL      75   8   0    ; ints[8] = 0
+0036  0:MAKE_SLICE                 4   8   8
+0037  0:EXT                        0   0   0
+0038  0:LOAD_GENERAL_CONST         5   0   0
+0039  0:LOAD_GENERAL_CONST         6   1   0
+0040  1:LOAD_INT_CONST_SMALL      75   8   0    ; ints[8] = 0
+0041  1:SLICE_OP                 141   7   5
+0042  0:EXT                        2   0   8
+0043  1:LOAD_INT_CONST_SMALL      75   8   1    ; ints[8] = 1
+0044  0:MAKE_SLICE                 8   8   8
+0045  0:EXT                        0   0   0
+0046  1:LOAD_INT_CONST_SMALL      75   8   7    ; ints[8] = 7
+0047  1:LOAD_INT_CONST_SMALL      75   9   0    ; ints[9] = 0
+0048  1:MOVE_INT_TO_GENERAL       40   9   8
+0049  0:INDEX_SET                  8   9   9
+0050  1:LOAD_INT_CONST_SMALL      75   8   0    ; ints[8] = 0
+0051  1:SLICE_OP                 141   9   8
+0052  0:EXT                        2   0   8
+0053  1:LOAD_INT_CONST_SMALL      75   8   1    ; ints[8] = 1
+0054  1:SLICE_OP                 141  10   8
+0055  0:EXT                        1   8   0
+0056  1:LOAD_INT_CONST_SMALL      75   8   1    ; ints[8] = 1
+0057  0:APPEND_INT_FAST           11   5   8
+0058  0:MOVE_GENERAL               8  11   1
+0059  0:APPEND_SPREAD             11   5   7
+0060  0:APPEND_SPREAD             12   0   5
+0061  0:LOAD_GENERAL_CONST        13   2   0
+0062  1:SLICE_OP                 141  14  13
+0063  0:EXT                        0   0   0
+0064  0:LOAD_GENERAL_CONST        15   3   0
+0065  1:LOAD_INT_CONST_SMALL      75   8   1    ; ints[8] = 1
+0066  1:LOAD_INT_CONST_SMALL      75   9   0    ; ints[9] = 0
+0067  1:MOVE_INT_TO_GENERAL       40  16   8
+0068  0:INDEX_SET                 15   9  16
+0069  1:LOAD_INT_CONST_SMALL      75   8   2    ; ints[8] = 2
+0070  1:LOAD_INT_CONST_SMALL      75   9   1    ; ints[9] = 1
+0071  1:MOVE_INT_TO_GENERAL       40  16   8
+0072  0:INDEX_SET                 15   9  16
+0073  1:LOAD_INT_CONST_SMALL      75   8   3    ; ints[8] = 3
+0074  1:LOAD_INT_CONST_SMALL      75   9   2    ; ints[9] = 2
+0075  1:MOVE_INT_TO_GENERAL       40  16   8
+0076  0:INDEX_SET                 15   9  16
+0077  0:MOVE_GENERAL              13  15   2
+0078  1:LOAD_INT_CONST_SMALL      75   8   3    ; ints[8] = 3
+0079  1:SLICE_OP                 141  15  13
+0080  0:EXT                        1   8   0
+0081  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = ""
+0082  1:STRING_TO_BYTES           71  16   0
+0083  0:MOVE_GENERAL              13  16   1
+0084  1:LOAD_INT_CONST_SMALL      75   8  23    ; ints[8] = 23
+0085  0:MAKE_SLICE                16   8   8
+0086  0:EXT                        3   0   0
+0087  2:TIER2_LOAD_NIL             0   9  17
+0088  0:EQ_GENERAL                 8   0  17
+0089  1:INT_TO_BOOL               54   0   8
+0090  1:LOAD_INT_CONST_SMALL      75   9   0    ; ints[9] = 0
+0091  0:PACK_INTERFACE            18   0   4
+0092  0:INDEX_SET                 16   9  18
+0093  2:TIER2_LOAD_NIL             0   9  17
+0094  0:PACK_INTERFACE            18   0   7
+0095  0:EQ_GENERAL                 8  18  17
+0096  1:INT_TO_BOOL               54   0   8
+0097  1:LOAD_INT_CONST_SMALL      75   9   1    ; ints[9] = 1
+0098  0:PACK_INTERFACE            19   0   4
+0099  0:INDEX_SET                 16   9  19
+0100  2:TIER2_LOAD_NIL             0   9  17
+0101  0:EQ_GENERAL                 8   1  17
+0102  1:INT_TO_BOOL               54   0   8
+0103  1:LOAD_INT_CONST_SMALL      75   9   2    ; ints[9] = 2
+0104  0:PACK_INTERFACE            18   0   4
+0105  0:INDEX_SET                 16   9  18
+0106  2:TIER2_LOAD_NIL             0   9  17
+0107  0:PACK_INTERFACE            18   0   9
+0108  0:EQ_GENERAL                 8  18  17
+0109  1:INT_TO_BOOL               54   0   8
+0110  1:LOAD_INT_CONST_SMALL      75   9   3    ; ints[9] = 3
+0111  0:PACK_INTERFACE            19   0   4
+0112  0:INDEX_SET                 16   9  19
+0113  2:TIER2_LOAD_NIL             0   9  17
+0114  0:PACK_INTERFACE            18   0  12
+0115  0:EQ_GENERAL                 8  18  17
+0116  1:INT_TO_BOOL               54   0   8
+0117  1:LOAD_INT_CONST_SMALL      75   9   4    ; ints[9] = 4
+0118  0:PACK_INTERFACE            19   0   4
+0119  0:INDEX_SET                 16   9  19
+0120  2:TIER2_LOAD_NIL             0   9  17
+0121  0:PACK_INTERFACE            18   0   8
+0122  0:EQ_GENERAL                 8  18  17
+0123  1:INT_TO_BOOL               54   0   8
+0124  1:LOAD_INT_CONST_SMALL      75   9   5    ; ints[9] = 5
+0125  0:PACK_INTERFACE            19   0   4
+0126  0:INDEX_SET                 16   9  19
+0127  2:TIER2_LOAD_NIL             0   9  17
+0128  0:PACK_INTERFACE            18   0  10
+0129  0:EQ_GENERAL                 8  18  17
+0130  1:INT_TO_BOOL               54   0   8
+0131  1:LOAD_INT_CONST_SMALL      75   9   6    ; ints[9] = 6
+0132  0:PACK_INTERFACE            19   0   4
+0133  0:INDEX_SET                 16   9  19
+0134  2:TIER2_LOAD_NIL             0   9  17
+0135  0:PACK_INTERFACE            18   0  11
+0136  0:EQ_GENERAL                 8  18  17
+0137  1:INT_TO_BOOL               54   0   8
+0138  1:LOAD_INT_CONST_SMALL      75   9   7    ; ints[9] = 7
+0139  0:PACK_INTERFACE            19   0   4
+0140  0:INDEX_SET                 16   9  19
+0141  2:TIER2_LOAD_NIL             0   9  17
+0142  0:EQ_GENERAL                 8   2  17
+0143  1:INT_TO_BOOL               54   0   8
+0144  1:LOAD_INT_CONST_SMALL      75   9   8    ; ints[9] = 8
+0145  0:PACK_INTERFACE            18   0   4
+0146  0:INDEX_SET                 16   9  18
+0147  2:TIER2_LOAD_NIL             0   9  17
+0148  0:EQ_GENERAL                 8   3  17
+0149  1:INT_TO_BOOL               54   0   8
+0150  1:LOAD_INT_CONST_SMALL      75   9   9    ; ints[9] = 9
+0151  0:PACK_INTERFACE            18   0   4
+0152  0:INDEX_SET                 16   9  18
+0153  2:TIER2_LOAD_NIL             0   9  17
+0154  0:PACK_INTERFACE            18   1   7
+0155  0:EQ_GENERAL                 8  18  17
+0156  1:INT_TO_BOOL               54   0   8
+0157  1:LOAD_INT_CONST_SMALL      75   9  10    ; ints[9] = 10
+0158  0:PACK_INTERFACE            19   0   4
+0159  0:INDEX_SET                 16   9  19
+0160  2:TIER2_LOAD_NIL             0   9  17
+0161  0:EQ_GENERAL                 8   4  17
+0162  1:INT_TO_BOOL               54   0   8
+0163  1:LOAD_INT_CONST_SMALL      75   9  11    ; ints[9] = 11
+0164  0:PACK_INTERFACE            18   0   4
+0165  0:INDEX_SET                 16   9  18
+0166  2:TIER2_LOAD_NIL             0   9  17
+0167  0:EQ_GENERAL                 8   5  17
+0168  1:INT_TO_BOOL               54   0   8
+0169  1:LOAD_INT_CONST_SMALL      75   9  12    ; ints[9] = 12
+0170  0:PACK_INTERFACE            18   0   4
+0171  0:INDEX_SET                 16   9  18
+0172  2:TIER2_LOAD_NIL             0   9  17
+0173  0:EQ_GENERAL                 8   6  17
+0174  1:INT_TO_BOOL               54   0   8
+0175  1:LOAD_INT_CONST_SMALL      75   9  13    ; ints[9] = 13
+0176  0:PACK_INTERFACE            18   0   4
+0177  0:INDEX_SET                 16   9  18
+0178  2:TIER2_LOAD_NIL             0   9  17
+0179  0:EQ_GENERAL                 8   7  17
+0180  1:INT_TO_BOOL               54   0   8
+0181  1:LOAD_INT_CONST_SMALL      75   9  14    ; ints[9] = 14
+0182  0:PACK_INTERFACE            18   0   4
+0183  0:INDEX_SET                 16   9  18
+0184  2:TIER2_LOAD_NIL             0   9  17
+0185  0:EQ_GENERAL                 8   9  17
+0186  1:INT_TO_BOOL               54   0   8
+0187  1:LOAD_INT_CONST_SMALL      75   9  15    ; ints[9] = 15
+0188  0:PACK_INTERFACE            18   0   4
+0189  0:INDEX_SET                 16   9  18
+0190  2:TIER2_LOAD_NIL             0   9  17
+0191  0:EQ_GENERAL                 8  10  17
+0192  1:INT_TO_BOOL               54   0   8
+0193  1:LOAD_INT_CONST_SMALL      75   9  16    ; ints[9] = 16
+0194  0:PACK_INTERFACE            18   0   4
+0195  0:INDEX_SET                 16   9  18
+0196  2:TIER2_LOAD_NIL             0   9  17
+0197  0:EQ_GENERAL                 8   8  17
+0198  1:INT_TO_BOOL               54   0   8
+0199  1:LOAD_INT_CONST_SMALL      75   9  17    ; ints[9] = 17
+0200  0:PACK_INTERFACE            18   0   4
+0201  0:INDEX_SET                 16   9  18
+0202  2:TIER2_LOAD_NIL             0   9  17
+0203  0:EQ_GENERAL                 8  11  17
+0204  1:INT_TO_BOOL               54   0   8
+0205  1:LOAD_INT_CONST_SMALL      75   9  18    ; ints[9] = 18
+0206  0:PACK_INTERFACE            18   0   4
+0207  0:INDEX_SET                 16   9  18
+0208  2:TIER2_LOAD_NIL             0   9  17
+0209  0:EQ_GENERAL                 8  12  17
+0210  1:INT_TO_BOOL               54   0   8
+0211  1:LOAD_INT_CONST_SMALL      75   9  19    ; ints[9] = 19
+0212  0:PACK_INTERFACE            18   0   4
+0213  0:INDEX_SET                 16   9  18
+0214  2:TIER2_LOAD_NIL             0   9  17
+0215  0:EQ_GENERAL                 8  14  17
+0216  1:INT_TO_BOOL               54   0   8
+0217  1:LOAD_INT_CONST_SMALL      75   9  20    ; ints[9] = 20
+0218  0:PACK_INTERFACE            18   0   4
+0219  0:INDEX_SET                 16   9  18
+0220  2:TIER2_LOAD_NIL             0   9  17
+0221  0:EQ_GENERAL                 8  15  17
+0222  1:INT_TO_BOOL               54   0   8
+0223  1:LOAD_INT_CONST_SMALL      75   9  21    ; ints[9] = 21
+0224  0:PACK_INTERFACE            18   0   4
+0225  0:INDEX_SET                 16   9  18
+0226  2:TIER2_LOAD_NIL             0   9  17
+0227  0:EQ_GENERAL                 8  13  17
+0228  1:INT_TO_BOOL               54   0   8
+0229  1:LOAD_INT_CONST_SMALL      75   9  22    ; ints[9] = 22
+0230  0:PACK_INTERFACE            18   0   4
+0231  0:INDEX_SET                 16   9  18
+0232  1:LOAD_INT_CONST_SMALL      75   8   0    ; ints[8] = 0
+0233  0:TEST_NIL_JUMP_TRUE         0   3   0
+0234  3:TIER3_NOP                  0   0   0
+0235  3:TIER3_NOP                  0   0   0
+0236  2:TIER2_INC_INT              0   1   8
+0237  0:TEST_NIL_JUMP_FALSE        5   5   0
+0238  3:TIER3_NOP                  0   0   0
+0239  3:TIER3_NOP                  0   0   0
+0240  1:LOAD_INT_CONST_SMALL      75   9   2    ; ints[9] = 2
+0241  0:ADD_INT                   10   8   9
+0242  1:MOVE_INT                  35   8  10
+0243  2:TIER2_LOAD_NIL             0   9  17
+0244  0:PACK_INTERFACE            18   0  12
+0245  0:EQ_GENERAL                 9  18  17
+0246  0:JUMP_IF_FALSE              9   3   0    ; if ints[9] == 0 goto +3
+0247  1:LOAD_INT_CONST_SMALL      75   9   4    ; ints[9] = 4
+0248  0:ADD_INT                   10   8   9
+0249  1:MOVE_INT                  35   8  10
+0250  1:LOAD_INT_CONST_SMALL      75   9   0    ; ints[9] = 0
+0251  1:CALL                     128   0   0    ; call (site 0)
+0252  1:BOOL_TO_INT               53  10   0
+0253  0:JUMP_IF_FALSE             10   1   0    ; if ints[10] == 0 goto +1
+0254  2:TIER2_INC_INT              0   1   9
+0255  1:CALL                     128   1   0    ; call (site 1)
+0256  1:BOOL_TO_INT               53  10   0
+0257  0:JUMP_IF_FALSE             10   3   0    ; if ints[10] == 0 goto +3
+0258  1:LOAD_INT_CONST_SMALL      75  10   2    ; ints[10] = 2
+0259  0:ADD_INT                   11   9  10
+0260  1:MOVE_INT                  35   9  11
+0261  1:LEN                       70  10   0
+0262  1:CAP                       13  11   1
+0263  0:ADD_INT                   12  10  11
+0264  1:LEN                       70  13   8
+0265  0:ADD_INT                   14  12  13
+0266  1:MOVE_INT                  35  10  14
+0267  0:LOAD_GENERAL_CONST        17   4   0
+0268  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "%s %d %d %d"
+0269  1:CALL                     128   2   0    ; call (site 2)
+0270  1:CALL_NATIVE              130   3   0    ; call native general[17] (site 3)
+0271  1:MOVE_STRING               37   0   2
+0272  2:TIER2_RETURN               0  10   1    ; 1 values

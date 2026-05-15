@@ -1,0 +1,91 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function sum
+;   registers: int=3 general=5
+;   params:    (general)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=1
+
+0000  1:LEN                       70   0   0
+0001  1:EQ_INT_CONST_JUMP_FALSE  124   0   0
+0002  0:EXT                        5   0   0
+0003  3:TIER3_NOP                  0   0   0
+0004  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0005  0:PACK_INTERFACE             1   0   0
+0006  0:MOVE_GENERAL               0   1   0
+0007  2:TIER2_RETURN               0  10   1    ; 1 values
+0008  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0009  0:INDEX                      1   0   0
+0010  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0011  1:SLICE_OP                 141   2   0
+0012  0:EXT                        1   1   0
+0013  1:CALL                     128   0   0    ; call (site 0)
+0014  0:ADD                        4   1   3
+0015  0:MOVE_GENERAL               0   4   0
+0016  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=2 general=2
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=5  [1]=1  [2]=0  [3]=2  [4]=3  [5]=4
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   5    ; ints[0] = 5
+0001  0:MAKE_SLICE                 0   0   0
+0002  0:EXT                        0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0004  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0005  1:MOVE_INT_TO_GENERAL       40   1   0
+0006  0:INDEX_SET                  0   1   1
+0007  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0008  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0009  1:MOVE_INT_TO_GENERAL       40   1   0
+0010  0:INDEX_SET                  0   1   1
+0011  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0012  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0013  1:MOVE_INT_TO_GENERAL       40   1   0
+0014  0:INDEX_SET                  0   1   1
+0015  1:LOAD_INT_CONST_SMALL      75   0   4    ; ints[0] = 4
+0016  1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
+0017  1:MOVE_INT_TO_GENERAL       40   1   0
+0018  0:INDEX_SET                  0   1   1
+0019  1:LOAD_INT_CONST_SMALL      75   0   5    ; ints[0] = 5
+0020  1:LOAD_INT_CONST_SMALL      75   1   4    ; ints[1] = 4
+0021  1:MOVE_INT_TO_GENERAL       40   1   0
+0022  0:INDEX_SET                  0   1   1
+0023  1:CALL                     128   0   0    ; call (site 0)
+0024  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function sum[spec:int]
+;   registers: int=4 sliceInt=2
+;   params:    (sliceInt)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=1
+
+0000  1:LEN_SLICE_INT_DIRECT      17   0   0
+0001  1:EQ_INT_CONST_JUMP_FALSE  124   0   0
+0002  0:EXT                        3   0   0
+0003  3:TIER3_NOP                  0   0   0
+0004  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0005  2:TIER2_RETURN               0  10   1    ; 1 values
+0006  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0007  0:SLICE_GET_INT_DIRECT       1   0   0
+0008  1:LOAD_INT_CONST_SMALL      75   2   1    ; ints[2] = 1
+0009  1:SLICE_SLICE_INT_DIRECT   177   1   0
+0010  0:EXT                        1   2   0
+0011  1:CALL                     128   0   0    ; call (site 0)
+0012  0:ADD_INT                    0   1   3
+0013  2:TIER2_RETURN               0  10   1    ; 1 values

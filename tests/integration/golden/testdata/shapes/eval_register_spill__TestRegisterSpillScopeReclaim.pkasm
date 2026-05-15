@@ -1,0 +1,859 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=271
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=1  [2]=2  [3]=3  [4]=4  [5]=5  [6]=6  [7]=7  [8]=8  [9]=9  [10]=10  [11]=11  [12]=12  [13]=13  [14]=14  [15]=15  [16]=16  [17]=17  [18]=18  [19]=19  [20]=20  [21]=21  [22]=22  [23]=23  [24]=24  [25]=25  [26]=26  [27]=27  [28]=28  [29]=29  [30]=30  [31]=31  [32]=32  [33]=33  [34]=34  [35]=35  [36]=36  [37]=37  [38]=38  [39]=39  [40]=40  [41]=41  [42]=42  [43]=43  [44]=44  [45]=45  [46]=46  [47]=47  [48]=48  [49]=49  [50]=50  [51]=51  [52]=52  [53]=53  [54]=54  [55]=55  [56]=56  [57]=57  [58]=58  [59]=59  [60]=60  [61]=61  [62]=62  [63]=63  [64]=64  [65]=65  [66]=66  [67]=67  [68]=68  [69]=69  [70]=70  [71]=71  [72]=72  [73]=73  [74]=74  [75]=75  [76]=76  [77]=77  [78]=78  [79]=79  [80]=80  [81]=81  [82]=82  [83]=83  [84]=84  [85]=85  [86]=86  [87]=87  [88]=88  [89]=89  [90]=90  [91]=91  [92]=92  [93]=93  [94]=94  [95]=95  [96]=96  [97]=97  [98]=98  [99]=99  [100]=100  [101]=101  [102]=102  [103]=103  [104]=104  [105]=105  [106]=106  [107]=107  [108]=108  [109]=109  [110]=110  [111]=111  [112]=112  [113]=113  [114]=114  [115]=115  [116]=116  [117]=117  [118]=118  [119]=119  [120]=120  [121]=121  [122]=122  [123]=123  [124]=124  [125]=125  [126]=126  [127]=127  [128]=128  [129]=129  [130]=130  [131]=131  [132]=132  [133]=133  [134]=134  [135]=135  [136]=136  [137]=137  [138]=138  [139]=139  [140]=140  [141]=141  [142]=142  [143]=143  [144]=144  [145]=145  [146]=146  [147]=147  [148]=148  [149]=149  [150]=150  [151]=151  [152]=152  [153]=153  [154]=154  [155]=155  [156]=156  [157]=157  [158]=158  [159]=159  [160]=160  [161]=161  [162]=162  [163]=163  [164]=164  [165]=165  [166]=166  [167]=167  [168]=168  [169]=169  [170]=170  [171]=171  [172]=172  [173]=173  [174]=174  [175]=175  [176]=176  [177]=177  [178]=178  [179]=179  [180]=180  [181]=181  [182]=182  [183]=183  [184]=184  [185]=185  [186]=186  [187]=187  [188]=188  [189]=189  [190]=190  [191]=191  [192]=192  [193]=193  [194]=194  [195]=195  [196]=196  [197]=197  [198]=198  [199]=199  [200]=200  [201]=201  [202]=202  [203]=203  [204]=204  [205]=205  [206]=206  [207]=207  [208]=208  [209]=209  [210]=210  [211]=211  [212]=212  [213]=213  [214]=214  [215]=215  [216]=216  [217]=217  [218]=218  [219]=219  [220]=220  [221]=221  [222]=222  [223]=223  [224]=224  [225]=225  [226]=226  [227]=227  [228]=228  [229]=229  [230]=230  [231]=231  [232]=232  [233]=233  [234]=234  [235]=235  [236]=236  [237]=237  [238]=238  [239]=239  [240]=240  [241]=241  [242]=242  [243]=243  [244]=244  [245]=245  [246]=246  [247]=247  [248]=248  [249]=249  [250]=250  [251]=251  [252]=252  [253]=253  [254]=254  [255]=255  [256]=256  [257]=257  [258]=258  [259]=259
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0001  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0002  1:LOAD_INT_CONST_SMALL      75   2   1    ; ints[2] = 1
+0003  1:LOAD_INT_CONST_SMALL      75   3   2    ; ints[3] = 2
+0004  1:LOAD_INT_CONST_SMALL      75   4   3    ; ints[4] = 3
+0005  1:LOAD_INT_CONST_SMALL      75   5   4    ; ints[5] = 4
+0006  1:LOAD_INT_CONST_SMALL      75   6   5    ; ints[6] = 5
+0007  1:LOAD_INT_CONST_SMALL      75   7   6    ; ints[7] = 6
+0008  1:LOAD_INT_CONST_SMALL      75   8   7    ; ints[8] = 7
+0009  1:LOAD_INT_CONST_SMALL      75   9   8    ; ints[9] = 8
+0010  1:LOAD_INT_CONST_SMALL      75  10   9    ; ints[10] = 9
+0011  1:LOAD_INT_CONST_SMALL      75  11  10    ; ints[11] = 10
+0012  1:LOAD_INT_CONST_SMALL      75  12  11    ; ints[12] = 11
+0013  1:LOAD_INT_CONST_SMALL      75  13  12    ; ints[13] = 12
+0014  1:LOAD_INT_CONST_SMALL      75  14  13    ; ints[14] = 13
+0015  1:LOAD_INT_CONST_SMALL      75  15  14    ; ints[15] = 14
+0016  1:LOAD_INT_CONST_SMALL      75  16  15    ; ints[16] = 15
+0017  1:LOAD_INT_CONST_SMALL      75  17  16    ; ints[17] = 16
+0018  1:LOAD_INT_CONST_SMALL      75  18  17    ; ints[18] = 17
+0019  1:LOAD_INT_CONST_SMALL      75  19  18    ; ints[19] = 18
+0020  1:LOAD_INT_CONST_SMALL      75  20  19    ; ints[20] = 19
+0021  1:LOAD_INT_CONST_SMALL      75  21  20    ; ints[21] = 20
+0022  1:LOAD_INT_CONST_SMALL      75  22  21    ; ints[22] = 21
+0023  1:LOAD_INT_CONST_SMALL      75  23  22    ; ints[23] = 22
+0024  1:LOAD_INT_CONST_SMALL      75  24  23    ; ints[24] = 23
+0025  1:LOAD_INT_CONST_SMALL      75  25  24    ; ints[25] = 24
+0026  1:LOAD_INT_CONST_SMALL      75  26  25    ; ints[26] = 25
+0027  1:LOAD_INT_CONST_SMALL      75  27  26    ; ints[27] = 26
+0028  1:LOAD_INT_CONST_SMALL      75  28  27    ; ints[28] = 27
+0029  1:LOAD_INT_CONST_SMALL      75  29  28    ; ints[29] = 28
+0030  1:LOAD_INT_CONST_SMALL      75  30  29    ; ints[30] = 29
+0031  1:LOAD_INT_CONST_SMALL      75  31  30    ; ints[31] = 30
+0032  1:LOAD_INT_CONST_SMALL      75  32  31    ; ints[32] = 31
+0033  1:LOAD_INT_CONST_SMALL      75  33  32    ; ints[33] = 32
+0034  1:LOAD_INT_CONST_SMALL      75  34  33    ; ints[34] = 33
+0035  1:LOAD_INT_CONST_SMALL      75  35  34    ; ints[35] = 34
+0036  1:LOAD_INT_CONST_SMALL      75  36  35    ; ints[36] = 35
+0037  1:LOAD_INT_CONST_SMALL      75  37  36    ; ints[37] = 36
+0038  1:LOAD_INT_CONST_SMALL      75  38  37    ; ints[38] = 37
+0039  1:LOAD_INT_CONST_SMALL      75  39  38    ; ints[39] = 38
+0040  1:LOAD_INT_CONST_SMALL      75  40  39    ; ints[40] = 39
+0041  1:LOAD_INT_CONST_SMALL      75  41  40    ; ints[41] = 40
+0042  1:LOAD_INT_CONST_SMALL      75  42  41    ; ints[42] = 41
+0043  1:LOAD_INT_CONST_SMALL      75  43  42    ; ints[43] = 42
+0044  1:LOAD_INT_CONST_SMALL      75  44  43    ; ints[44] = 43
+0045  1:LOAD_INT_CONST_SMALL      75  45  44    ; ints[45] = 44
+0046  1:LOAD_INT_CONST_SMALL      75  46  45    ; ints[46] = 45
+0047  1:LOAD_INT_CONST_SMALL      75  47  46    ; ints[47] = 46
+0048  1:LOAD_INT_CONST_SMALL      75  48  47    ; ints[48] = 47
+0049  1:LOAD_INT_CONST_SMALL      75  49  48    ; ints[49] = 48
+0050  1:LOAD_INT_CONST_SMALL      75  50  49    ; ints[50] = 49
+0051  1:LOAD_INT_CONST_SMALL      75  51  50    ; ints[51] = 50
+0052  1:LOAD_INT_CONST_SMALL      75  52  51    ; ints[52] = 51
+0053  1:LOAD_INT_CONST_SMALL      75  53  52    ; ints[53] = 52
+0054  1:LOAD_INT_CONST_SMALL      75  54  53    ; ints[54] = 53
+0055  1:LOAD_INT_CONST_SMALL      75  55  54    ; ints[55] = 54
+0056  1:LOAD_INT_CONST_SMALL      75  56  55    ; ints[56] = 55
+0057  1:LOAD_INT_CONST_SMALL      75  57  56    ; ints[57] = 56
+0058  1:LOAD_INT_CONST_SMALL      75  58  57    ; ints[58] = 57
+0059  1:LOAD_INT_CONST_SMALL      75  59  58    ; ints[59] = 58
+0060  1:LOAD_INT_CONST_SMALL      75  60  59    ; ints[60] = 59
+0061  1:LOAD_INT_CONST_SMALL      75  61  60    ; ints[61] = 60
+0062  1:LOAD_INT_CONST_SMALL      75  62  61    ; ints[62] = 61
+0063  1:LOAD_INT_CONST_SMALL      75  63  62    ; ints[63] = 62
+0064  1:LOAD_INT_CONST_SMALL      75  64  63    ; ints[64] = 63
+0065  1:LOAD_INT_CONST_SMALL      75  65  64    ; ints[65] = 64
+0066  1:LOAD_INT_CONST_SMALL      75  66  65    ; ints[66] = 65
+0067  1:LOAD_INT_CONST_SMALL      75  67  66    ; ints[67] = 66
+0068  1:LOAD_INT_CONST_SMALL      75  68  67    ; ints[68] = 67
+0069  1:LOAD_INT_CONST_SMALL      75  69  68    ; ints[69] = 68
+0070  1:LOAD_INT_CONST_SMALL      75  70  69    ; ints[70] = 69
+0071  1:LOAD_INT_CONST_SMALL      75  71  70    ; ints[71] = 70
+0072  1:LOAD_INT_CONST_SMALL      75  72  71    ; ints[72] = 71
+0073  1:LOAD_INT_CONST_SMALL      75  73  72    ; ints[73] = 72
+0074  1:LOAD_INT_CONST_SMALL      75  74  73    ; ints[74] = 73
+0075  1:LOAD_INT_CONST_SMALL      75  75  74    ; ints[75] = 74
+0076  1:LOAD_INT_CONST_SMALL      75  76  75    ; ints[76] = 75
+0077  1:LOAD_INT_CONST_SMALL      75  77  76    ; ints[77] = 76
+0078  1:LOAD_INT_CONST_SMALL      75  78  77    ; ints[78] = 77
+0079  1:LOAD_INT_CONST_SMALL      75  79  78    ; ints[79] = 78
+0080  1:LOAD_INT_CONST_SMALL      75  80  79    ; ints[80] = 79
+0081  1:LOAD_INT_CONST_SMALL      75  81  80    ; ints[81] = 80
+0082  1:LOAD_INT_CONST_SMALL      75  82  81    ; ints[82] = 81
+0083  1:LOAD_INT_CONST_SMALL      75  83  82    ; ints[83] = 82
+0084  1:LOAD_INT_CONST_SMALL      75  84  83    ; ints[84] = 83
+0085  1:LOAD_INT_CONST_SMALL      75  85  84    ; ints[85] = 84
+0086  1:LOAD_INT_CONST_SMALL      75  86  85    ; ints[86] = 85
+0087  1:LOAD_INT_CONST_SMALL      75  87  86    ; ints[87] = 86
+0088  1:LOAD_INT_CONST_SMALL      75  88  87    ; ints[88] = 87
+0089  1:LOAD_INT_CONST_SMALL      75  89  88    ; ints[89] = 88
+0090  1:LOAD_INT_CONST_SMALL      75  90  89    ; ints[90] = 89
+0091  1:LOAD_INT_CONST_SMALL      75  91  90    ; ints[91] = 90
+0092  1:LOAD_INT_CONST_SMALL      75  92  91    ; ints[92] = 91
+0093  1:LOAD_INT_CONST_SMALL      75  93  92    ; ints[93] = 92
+0094  1:LOAD_INT_CONST_SMALL      75  94  93    ; ints[94] = 93
+0095  1:LOAD_INT_CONST_SMALL      75  95  94    ; ints[95] = 94
+0096  1:LOAD_INT_CONST_SMALL      75  96  95    ; ints[96] = 95
+0097  1:LOAD_INT_CONST_SMALL      75  97  96    ; ints[97] = 96
+0098  1:LOAD_INT_CONST_SMALL      75  98  97    ; ints[98] = 97
+0099  1:LOAD_INT_CONST_SMALL      75  99  98    ; ints[99] = 98
+0100  1:LOAD_INT_CONST_SMALL      75 100  99    ; ints[100] = 99
+0101  1:LOAD_INT_CONST_SMALL      75 101 100    ; ints[101] = 100
+0102  1:LOAD_INT_CONST_SMALL      75 102 101    ; ints[102] = 101
+0103  1:LOAD_INT_CONST_SMALL      75 103 102    ; ints[103] = 102
+0104  1:LOAD_INT_CONST_SMALL      75 104 103    ; ints[104] = 103
+0105  1:LOAD_INT_CONST_SMALL      75 105 104    ; ints[105] = 104
+0106  1:LOAD_INT_CONST_SMALL      75 106 105    ; ints[106] = 105
+0107  1:LOAD_INT_CONST_SMALL      75 107 106    ; ints[107] = 106
+0108  1:LOAD_INT_CONST_SMALL      75 108 107    ; ints[108] = 107
+0109  1:LOAD_INT_CONST_SMALL      75 109 108    ; ints[109] = 108
+0110  1:LOAD_INT_CONST_SMALL      75 110 109    ; ints[110] = 109
+0111  1:LOAD_INT_CONST_SMALL      75 111 110    ; ints[111] = 110
+0112  1:LOAD_INT_CONST_SMALL      75 112 111    ; ints[112] = 111
+0113  1:LOAD_INT_CONST_SMALL      75 113 112    ; ints[113] = 112
+0114  1:LOAD_INT_CONST_SMALL      75 114 113    ; ints[114] = 113
+0115  1:LOAD_INT_CONST_SMALL      75 115 114    ; ints[115] = 114
+0116  1:LOAD_INT_CONST_SMALL      75 116 115    ; ints[116] = 115
+0117  1:LOAD_INT_CONST_SMALL      75 117 116    ; ints[117] = 116
+0118  1:LOAD_INT_CONST_SMALL      75 118 117    ; ints[118] = 117
+0119  1:LOAD_INT_CONST_SMALL      75 119 118    ; ints[119] = 118
+0120  1:LOAD_INT_CONST_SMALL      75 120 119    ; ints[120] = 119
+0121  1:LOAD_INT_CONST_SMALL      75 121 120    ; ints[121] = 120
+0122  1:LOAD_INT_CONST_SMALL      75 122 121    ; ints[122] = 121
+0123  1:LOAD_INT_CONST_SMALL      75 123 122    ; ints[123] = 122
+0124  1:LOAD_INT_CONST_SMALL      75 124 123    ; ints[124] = 123
+0125  1:LOAD_INT_CONST_SMALL      75 125 124    ; ints[125] = 124
+0126  1:LOAD_INT_CONST_SMALL      75 126 125    ; ints[126] = 125
+0127  1:LOAD_INT_CONST_SMALL      75 127 126    ; ints[127] = 126
+0128  1:LOAD_INT_CONST_SMALL      75 128 127    ; ints[128] = 127
+0129  1:LOAD_INT_CONST_SMALL      75 129 128    ; ints[129] = 128
+0130  1:LOAD_INT_CONST_SMALL      75 130 129    ; ints[130] = 129
+0131  1:LOAD_INT_CONST_SMALL      75 131 130    ; ints[131] = 130
+0132  1:LOAD_INT_CONST_SMALL      75 132 131    ; ints[132] = 131
+0133  1:LOAD_INT_CONST_SMALL      75 133 132    ; ints[133] = 132
+0134  1:LOAD_INT_CONST_SMALL      75 134 133    ; ints[134] = 133
+0135  1:LOAD_INT_CONST_SMALL      75 135 134    ; ints[135] = 134
+0136  1:LOAD_INT_CONST_SMALL      75 136 135    ; ints[136] = 135
+0137  1:LOAD_INT_CONST_SMALL      75 137 136    ; ints[137] = 136
+0138  1:LOAD_INT_CONST_SMALL      75 138 137    ; ints[138] = 137
+0139  1:LOAD_INT_CONST_SMALL      75 139 138    ; ints[139] = 138
+0140  1:LOAD_INT_CONST_SMALL      75 140 139    ; ints[140] = 139
+0141  1:LOAD_INT_CONST_SMALL      75 141 140    ; ints[141] = 140
+0142  1:LOAD_INT_CONST_SMALL      75 142 141    ; ints[142] = 141
+0143  1:LOAD_INT_CONST_SMALL      75 143 142    ; ints[143] = 142
+0144  1:LOAD_INT_CONST_SMALL      75 144 143    ; ints[144] = 143
+0145  1:LOAD_INT_CONST_SMALL      75 145 144    ; ints[145] = 144
+0146  1:LOAD_INT_CONST_SMALL      75 146 145    ; ints[146] = 145
+0147  1:LOAD_INT_CONST_SMALL      75 147 146    ; ints[147] = 146
+0148  1:LOAD_INT_CONST_SMALL      75 148 147    ; ints[148] = 147
+0149  1:LOAD_INT_CONST_SMALL      75 149 148    ; ints[149] = 148
+0150  1:LOAD_INT_CONST_SMALL      75 150 149    ; ints[150] = 149
+0151  1:LOAD_INT_CONST_SMALL      75 151 150    ; ints[151] = 150
+0152  1:LOAD_INT_CONST_SMALL      75 152 151    ; ints[152] = 151
+0153  1:LOAD_INT_CONST_SMALL      75 153 152    ; ints[153] = 152
+0154  1:LOAD_INT_CONST_SMALL      75 154 153    ; ints[154] = 153
+0155  1:LOAD_INT_CONST_SMALL      75 155 154    ; ints[155] = 154
+0156  1:LOAD_INT_CONST_SMALL      75 156 155    ; ints[156] = 155
+0157  1:LOAD_INT_CONST_SMALL      75 157 156    ; ints[157] = 156
+0158  1:LOAD_INT_CONST_SMALL      75 158 157    ; ints[158] = 157
+0159  1:LOAD_INT_CONST_SMALL      75 159 158    ; ints[159] = 158
+0160  1:LOAD_INT_CONST_SMALL      75 160 159    ; ints[160] = 159
+0161  1:LOAD_INT_CONST_SMALL      75 161 160    ; ints[161] = 160
+0162  1:LOAD_INT_CONST_SMALL      75 162 161    ; ints[162] = 161
+0163  1:LOAD_INT_CONST_SMALL      75 163 162    ; ints[163] = 162
+0164  1:LOAD_INT_CONST_SMALL      75 164 163    ; ints[164] = 163
+0165  1:LOAD_INT_CONST_SMALL      75 165 164    ; ints[165] = 164
+0166  1:LOAD_INT_CONST_SMALL      75 166 165    ; ints[166] = 165
+0167  1:LOAD_INT_CONST_SMALL      75 167 166    ; ints[167] = 166
+0168  1:LOAD_INT_CONST_SMALL      75 168 167    ; ints[168] = 167
+0169  1:LOAD_INT_CONST_SMALL      75 169 168    ; ints[169] = 168
+0170  1:LOAD_INT_CONST_SMALL      75 170 169    ; ints[170] = 169
+0171  1:LOAD_INT_CONST_SMALL      75 171 170    ; ints[171] = 170
+0172  1:LOAD_INT_CONST_SMALL      75 172 171    ; ints[172] = 171
+0173  1:LOAD_INT_CONST_SMALL      75 173 172    ; ints[173] = 172
+0174  1:LOAD_INT_CONST_SMALL      75 174 173    ; ints[174] = 173
+0175  1:LOAD_INT_CONST_SMALL      75 175 174    ; ints[175] = 174
+0176  1:LOAD_INT_CONST_SMALL      75 176 175    ; ints[176] = 175
+0177  1:LOAD_INT_CONST_SMALL      75 177 176    ; ints[177] = 176
+0178  1:LOAD_INT_CONST_SMALL      75 178 177    ; ints[178] = 177
+0179  1:LOAD_INT_CONST_SMALL      75 179 178    ; ints[179] = 178
+0180  1:LOAD_INT_CONST_SMALL      75 180 179    ; ints[180] = 179
+0181  1:LOAD_INT_CONST_SMALL      75 181 180    ; ints[181] = 180
+0182  1:LOAD_INT_CONST_SMALL      75 182 181    ; ints[182] = 181
+0183  1:LOAD_INT_CONST_SMALL      75 183 182    ; ints[183] = 182
+0184  1:LOAD_INT_CONST_SMALL      75 184 183    ; ints[184] = 183
+0185  1:LOAD_INT_CONST_SMALL      75 185 184    ; ints[185] = 184
+0186  1:LOAD_INT_CONST_SMALL      75 186 185    ; ints[186] = 185
+0187  1:LOAD_INT_CONST_SMALL      75 187 186    ; ints[187] = 186
+0188  1:LOAD_INT_CONST_SMALL      75 188 187    ; ints[188] = 187
+0189  1:LOAD_INT_CONST_SMALL      75 189 188    ; ints[189] = 188
+0190  1:LOAD_INT_CONST_SMALL      75 190 189    ; ints[190] = 189
+0191  1:LOAD_INT_CONST_SMALL      75 191 190    ; ints[191] = 190
+0192  1:LOAD_INT_CONST_SMALL      75 192 191    ; ints[192] = 191
+0193  1:LOAD_INT_CONST_SMALL      75 193 192    ; ints[193] = 192
+0194  1:LOAD_INT_CONST_SMALL      75 194 193    ; ints[194] = 193
+0195  1:LOAD_INT_CONST_SMALL      75 195 194    ; ints[195] = 194
+0196  1:LOAD_INT_CONST_SMALL      75 196 195    ; ints[196] = 195
+0197  1:LOAD_INT_CONST_SMALL      75 197 196    ; ints[197] = 196
+0198  1:LOAD_INT_CONST_SMALL      75 198 197    ; ints[198] = 197
+0199  1:LOAD_INT_CONST_SMALL      75 199 198    ; ints[199] = 198
+0200  1:LOAD_INT_CONST_SMALL      75 200 199    ; ints[200] = 199
+0201  1:LOAD_INT_CONST_SMALL      75 201 200    ; ints[201] = 200
+0202  1:LOAD_INT_CONST_SMALL      75 202 201    ; ints[202] = 201
+0203  1:LOAD_INT_CONST_SMALL      75 203 202    ; ints[203] = 202
+0204  1:LOAD_INT_CONST_SMALL      75 204 203    ; ints[204] = 203
+0205  1:LOAD_INT_CONST_SMALL      75 205 204    ; ints[205] = 204
+0206  1:LOAD_INT_CONST_SMALL      75 206 205    ; ints[206] = 205
+0207  1:LOAD_INT_CONST_SMALL      75 207 206    ; ints[207] = 206
+0208  1:LOAD_INT_CONST_SMALL      75 208 207    ; ints[208] = 207
+0209  1:LOAD_INT_CONST_SMALL      75 209 208    ; ints[209] = 208
+0210  1:LOAD_INT_CONST_SMALL      75 210 209    ; ints[210] = 209
+0211  1:LOAD_INT_CONST_SMALL      75 211 210    ; ints[211] = 210
+0212  1:LOAD_INT_CONST_SMALL      75 212 211    ; ints[212] = 211
+0213  1:LOAD_INT_CONST_SMALL      75 213 212    ; ints[213] = 212
+0214  1:LOAD_INT_CONST_SMALL      75 214 213    ; ints[214] = 213
+0215  1:LOAD_INT_CONST_SMALL      75 215 214    ; ints[215] = 214
+0216  1:LOAD_INT_CONST_SMALL      75 216 215    ; ints[216] = 215
+0217  1:LOAD_INT_CONST_SMALL      75 217 216    ; ints[217] = 216
+0218  1:LOAD_INT_CONST_SMALL      75 218 217    ; ints[218] = 217
+0219  1:LOAD_INT_CONST_SMALL      75 219 218    ; ints[219] = 218
+0220  1:LOAD_INT_CONST_SMALL      75 220 219    ; ints[220] = 219
+0221  1:LOAD_INT_CONST_SMALL      75 221 220    ; ints[221] = 220
+0222  1:LOAD_INT_CONST_SMALL      75 222 221    ; ints[222] = 221
+0223  1:LOAD_INT_CONST_SMALL      75 223 222    ; ints[223] = 222
+0224  1:LOAD_INT_CONST_SMALL      75 224 223    ; ints[224] = 223
+0225  1:LOAD_INT_CONST_SMALL      75 225 224    ; ints[225] = 224
+0226  1:LOAD_INT_CONST_SMALL      75 226 225    ; ints[226] = 225
+0227  1:LOAD_INT_CONST_SMALL      75 227 226    ; ints[227] = 226
+0228  1:LOAD_INT_CONST_SMALL      75 228 227    ; ints[228] = 227
+0229  1:LOAD_INT_CONST_SMALL      75 229 228    ; ints[229] = 228
+0230  1:LOAD_INT_CONST_SMALL      75 230 229    ; ints[230] = 229
+0231  1:LOAD_INT_CONST_SMALL      75 231 230    ; ints[231] = 230
+0232  1:LOAD_INT_CONST_SMALL      75 232 231    ; ints[232] = 231
+0233  1:LOAD_INT_CONST_SMALL      75 233 232    ; ints[233] = 232
+0234  1:LOAD_INT_CONST_SMALL      75 234 233    ; ints[234] = 233
+0235  1:LOAD_INT_CONST_SMALL      75 235 234    ; ints[235] = 234
+0236  1:LOAD_INT_CONST_SMALL      75 236 235    ; ints[236] = 235
+0237  1:LOAD_INT_CONST_SMALL      75 237 236    ; ints[237] = 236
+0238  1:LOAD_INT_CONST_SMALL      75 238 237    ; ints[238] = 237
+0239  1:LOAD_INT_CONST_SMALL      75 239 238    ; ints[239] = 238
+0240  1:LOAD_INT_CONST_SMALL      75 240 239    ; ints[240] = 239
+0241  1:LOAD_INT_CONST_SMALL      75 241 240    ; ints[241] = 240
+0242  1:LOAD_INT_CONST_SMALL      75 242 241    ; ints[242] = 241
+0243  1:LOAD_INT_CONST_SMALL      75 243 242    ; ints[243] = 242
+0244  1:LOAD_INT_CONST_SMALL      75 244 243    ; ints[244] = 243
+0245  1:LOAD_INT_CONST_SMALL      75 245 244    ; ints[245] = 244
+0246  1:LOAD_INT_CONST_SMALL      75 246 245    ; ints[246] = 245
+0247  1:SPILL                     84 246   0
+0248  0:EXT                        0   0   0
+0249  1:LOAD_INT_CONST_SMALL      75 246 246    ; ints[246] = 246
+0250  1:SPILL                     84 246   0
+0251  0:EXT                        1   0   0
+0252  1:LOAD_INT_CONST_SMALL      75 246 247    ; ints[246] = 247
+0253  1:SPILL                     84 246   0
+0254  0:EXT                        2   0   0
+0255  1:LOAD_INT_CONST_SMALL      75 246 248    ; ints[246] = 248
+0256  1:SPILL                     84 246   0
+0257  0:EXT                        3   0   0
+0258  1:LOAD_INT_CONST_SMALL      75 246 249    ; ints[246] = 249
+0259  1:SPILL                     84 246   0
+0260  0:EXT                        4   0   0
+0261  1:LOAD_INT_CONST_SMALL      75 246 250    ; ints[246] = 250
+0262  1:SPILL                     84 246   0
+0263  0:EXT                        5   0   0
+0264  1:LOAD_INT_CONST_SMALL      75 246 251    ; ints[246] = 251
+0265  1:SPILL                     84 246   0
+0266  0:EXT                        6   0   0
+0267  1:LOAD_INT_CONST_SMALL      75 246 252    ; ints[246] = 252
+0268  1:SPILL                     84 246   0
+0269  0:EXT                        7   0   0
+0270  1:LOAD_INT_CONST_SMALL      75 246 253    ; ints[246] = 253
+0271  1:SPILL                     84 246   0
+0272  0:EXT                        8   0   0
+0273  1:LOAD_INT_CONST_SMALL      75 246 254    ; ints[246] = 254
+0274  1:SPILL                     84 246   0
+0275  0:EXT                        9   0   0
+0276  1:LOAD_INT_CONST_SMALL      75 246 255    ; ints[246] = 255
+0277  1:SPILL                     84 246   0
+0278  0:EXT                       10   0   0
+0279  0:LOAD_INT_CONST           246   0   1    ; ints[246] = 256
+0280  1:SPILL                     84 246   0
+0281  0:EXT                       11   0   0
+0282  0:LOAD_INT_CONST           246   1   1    ; ints[246] = 257
+0283  1:SPILL                     84 246   0
+0284  0:EXT                       12   0   0
+0285  0:LOAD_INT_CONST           246   2   1    ; ints[246] = 258
+0286  1:SPILL                     84 246   0
+0287  0:EXT                       13   0   0
+0288  0:LOAD_INT_CONST           246   3   1    ; ints[246] = 259
+0289  1:SPILL                     84 246   0
+0290  0:EXT                       14   0   0
+0291  0:ADD_INT                  246   0   1
+0292  1:MOVE_INT                  35   0 246
+0293  0:ADD_INT                  246   0   2
+0294  1:MOVE_INT                  35   0 246
+0295  0:ADD_INT                  246   0   3
+0296  1:MOVE_INT                  35   0 246
+0297  0:ADD_INT                  246   0   4
+0298  1:MOVE_INT                  35   0 246
+0299  0:ADD_INT                  246   0   5
+0300  1:MOVE_INT                  35   0 246
+0301  0:ADD_INT                  246   0   6
+0302  1:MOVE_INT                  35   0 246
+0303  0:ADD_INT                  246   0   7
+0304  1:MOVE_INT                  35   0 246
+0305  0:ADD_INT                  246   0   8
+0306  1:MOVE_INT                  35   0 246
+0307  0:ADD_INT                  246   0   9
+0308  1:MOVE_INT                  35   0 246
+0309  0:ADD_INT                  246   0  10
+0310  1:MOVE_INT                  35   0 246
+0311  0:ADD_INT                  246   0  11
+0312  1:MOVE_INT                  35   0 246
+0313  0:ADD_INT                  246   0  12
+0314  1:MOVE_INT                  35   0 246
+0315  0:ADD_INT                  246   0  13
+0316  1:MOVE_INT                  35   0 246
+0317  0:ADD_INT                  246   0  14
+0318  1:MOVE_INT                  35   0 246
+0319  0:ADD_INT                  246   0  15
+0320  1:MOVE_INT                  35   0 246
+0321  0:ADD_INT                  246   0  16
+0322  1:MOVE_INT                  35   0 246
+0323  0:ADD_INT                  246   0  17
+0324  1:MOVE_INT                  35   0 246
+0325  0:ADD_INT                  246   0  18
+0326  1:MOVE_INT                  35   0 246
+0327  0:ADD_INT                  246   0  19
+0328  1:MOVE_INT                  35   0 246
+0329  0:ADD_INT                  246   0  20
+0330  1:MOVE_INT                  35   0 246
+0331  0:ADD_INT                  246   0  21
+0332  1:MOVE_INT                  35   0 246
+0333  0:ADD_INT                  246   0  22
+0334  1:MOVE_INT                  35   0 246
+0335  0:ADD_INT                  246   0  23
+0336  1:MOVE_INT                  35   0 246
+0337  0:ADD_INT                  246   0  24
+0338  1:MOVE_INT                  35   0 246
+0339  0:ADD_INT                  246   0  25
+0340  1:MOVE_INT                  35   0 246
+0341  0:ADD_INT                  246   0  26
+0342  1:MOVE_INT                  35   0 246
+0343  0:ADD_INT                  246   0  27
+0344  1:MOVE_INT                  35   0 246
+0345  0:ADD_INT                  246   0  28
+0346  1:MOVE_INT                  35   0 246
+0347  0:ADD_INT                  246   0  29
+0348  1:MOVE_INT                  35   0 246
+0349  0:ADD_INT                  246   0  30
+0350  1:MOVE_INT                  35   0 246
+0351  0:ADD_INT                  246   0  31
+0352  1:MOVE_INT                  35   0 246
+0353  0:ADD_INT                  246   0  32
+0354  1:MOVE_INT                  35   0 246
+0355  0:ADD_INT                  246   0  33
+0356  1:MOVE_INT                  35   0 246
+0357  0:ADD_INT                  246   0  34
+0358  1:MOVE_INT                  35   0 246
+0359  0:ADD_INT                  246   0  35
+0360  1:MOVE_INT                  35   0 246
+0361  0:ADD_INT                  246   0  36
+0362  1:MOVE_INT                  35   0 246
+0363  0:ADD_INT                  246   0  37
+0364  1:MOVE_INT                  35   0 246
+0365  0:ADD_INT                  246   0  38
+0366  1:MOVE_INT                  35   0 246
+0367  0:ADD_INT                  246   0  39
+0368  1:MOVE_INT                  35   0 246
+0369  0:ADD_INT                  246   0  40
+0370  1:MOVE_INT                  35   0 246
+0371  0:ADD_INT                  246   0  41
+0372  1:MOVE_INT                  35   0 246
+0373  0:ADD_INT                  246   0  42
+0374  1:MOVE_INT                  35   0 246
+0375  0:ADD_INT                  246   0  43
+0376  1:MOVE_INT                  35   0 246
+0377  0:ADD_INT                  246   0  44
+0378  1:MOVE_INT                  35   0 246
+0379  0:ADD_INT                  246   0  45
+0380  1:MOVE_INT                  35   0 246
+0381  0:ADD_INT                  246   0  46
+0382  1:MOVE_INT                  35   0 246
+0383  0:ADD_INT                  246   0  47
+0384  1:MOVE_INT                  35   0 246
+0385  0:ADD_INT                  246   0  48
+0386  1:MOVE_INT                  35   0 246
+0387  0:ADD_INT                  246   0  49
+0388  1:MOVE_INT                  35   0 246
+0389  0:ADD_INT                  246   0  50
+0390  1:MOVE_INT                  35   0 246
+0391  0:ADD_INT                  246   0  51
+0392  1:MOVE_INT                  35   0 246
+0393  0:ADD_INT                  246   0  52
+0394  1:MOVE_INT                  35   0 246
+0395  0:ADD_INT                  246   0  53
+0396  1:MOVE_INT                  35   0 246
+0397  0:ADD_INT                  246   0  54
+0398  1:MOVE_INT                  35   0 246
+0399  0:ADD_INT                  246   0  55
+0400  1:MOVE_INT                  35   0 246
+0401  0:ADD_INT                  246   0  56
+0402  1:MOVE_INT                  35   0 246
+0403  0:ADD_INT                  246   0  57
+0404  1:MOVE_INT                  35   0 246
+0405  0:ADD_INT                  246   0  58
+0406  1:MOVE_INT                  35   0 246
+0407  0:ADD_INT                  246   0  59
+0408  1:MOVE_INT                  35   0 246
+0409  0:ADD_INT                  246   0  60
+0410  1:MOVE_INT                  35   0 246
+0411  0:ADD_INT                  246   0  61
+0412  1:MOVE_INT                  35   0 246
+0413  0:ADD_INT                  246   0  62
+0414  1:MOVE_INT                  35   0 246
+0415  0:ADD_INT                  246   0  63
+0416  1:MOVE_INT                  35   0 246
+0417  0:ADD_INT                  246   0  64
+0418  1:MOVE_INT                  35   0 246
+0419  0:ADD_INT                  246   0  65
+0420  1:MOVE_INT                  35   0 246
+0421  0:ADD_INT                  246   0  66
+0422  1:MOVE_INT                  35   0 246
+0423  0:ADD_INT                  246   0  67
+0424  1:MOVE_INT                  35   0 246
+0425  0:ADD_INT                  246   0  68
+0426  1:MOVE_INT                  35   0 246
+0427  0:ADD_INT                  246   0  69
+0428  1:MOVE_INT                  35   0 246
+0429  0:ADD_INT                  246   0  70
+0430  1:MOVE_INT                  35   0 246
+0431  0:ADD_INT                  246   0  71
+0432  1:MOVE_INT                  35   0 246
+0433  0:ADD_INT                  246   0  72
+0434  1:MOVE_INT                  35   0 246
+0435  0:ADD_INT                  246   0  73
+0436  1:MOVE_INT                  35   0 246
+0437  0:ADD_INT                  246   0  74
+0438  1:MOVE_INT                  35   0 246
+0439  0:ADD_INT                  246   0  75
+0440  1:MOVE_INT                  35   0 246
+0441  0:ADD_INT                  246   0  76
+0442  1:MOVE_INT                  35   0 246
+0443  0:ADD_INT                  246   0  77
+0444  1:MOVE_INT                  35   0 246
+0445  0:ADD_INT                  246   0  78
+0446  1:MOVE_INT                  35   0 246
+0447  0:ADD_INT                  246   0  79
+0448  1:MOVE_INT                  35   0 246
+0449  0:ADD_INT                  246   0  80
+0450  1:MOVE_INT                  35   0 246
+0451  0:ADD_INT                  246   0  81
+0452  1:MOVE_INT                  35   0 246
+0453  0:ADD_INT                  246   0  82
+0454  1:MOVE_INT                  35   0 246
+0455  0:ADD_INT                  246   0  83
+0456  1:MOVE_INT                  35   0 246
+0457  0:ADD_INT                  246   0  84
+0458  1:MOVE_INT                  35   0 246
+0459  0:ADD_INT                  246   0  85
+0460  1:MOVE_INT                  35   0 246
+0461  0:ADD_INT                  246   0  86
+0462  1:MOVE_INT                  35   0 246
+0463  0:ADD_INT                  246   0  87
+0464  1:MOVE_INT                  35   0 246
+0465  0:ADD_INT                  246   0  88
+0466  1:MOVE_INT                  35   0 246
+0467  0:ADD_INT                  246   0  89
+0468  1:MOVE_INT                  35   0 246
+0469  0:ADD_INT                  246   0  90
+0470  1:MOVE_INT                  35   0 246
+0471  0:ADD_INT                  246   0  91
+0472  1:MOVE_INT                  35   0 246
+0473  0:ADD_INT                  246   0  92
+0474  1:MOVE_INT                  35   0 246
+0475  0:ADD_INT                  246   0  93
+0476  1:MOVE_INT                  35   0 246
+0477  0:ADD_INT                  246   0  94
+0478  1:MOVE_INT                  35   0 246
+0479  0:ADD_INT                  246   0  95
+0480  1:MOVE_INT                  35   0 246
+0481  0:ADD_INT                  246   0  96
+0482  1:MOVE_INT                  35   0 246
+0483  0:ADD_INT                  246   0  97
+0484  1:MOVE_INT                  35   0 246
+0485  0:ADD_INT                  246   0  98
+0486  1:MOVE_INT                  35   0 246
+0487  0:ADD_INT                  246   0  99
+0488  1:MOVE_INT                  35   0 246
+0489  0:ADD_INT                  246   0 100
+0490  1:MOVE_INT                  35   0 246
+0491  0:ADD_INT                  246   0 101
+0492  1:MOVE_INT                  35   0 246
+0493  0:ADD_INT                  246   0 102
+0494  1:MOVE_INT                  35   0 246
+0495  0:ADD_INT                  246   0 103
+0496  1:MOVE_INT                  35   0 246
+0497  0:ADD_INT                  246   0 104
+0498  1:MOVE_INT                  35   0 246
+0499  0:ADD_INT                  246   0 105
+0500  1:MOVE_INT                  35   0 246
+0501  0:ADD_INT                  246   0 106
+0502  1:MOVE_INT                  35   0 246
+0503  0:ADD_INT                  246   0 107
+0504  1:MOVE_INT                  35   0 246
+0505  0:ADD_INT                  246   0 108
+0506  1:MOVE_INT                  35   0 246
+0507  0:ADD_INT                  246   0 109
+0508  1:MOVE_INT                  35   0 246
+0509  0:ADD_INT                  246   0 110
+0510  1:MOVE_INT                  35   0 246
+0511  0:ADD_INT                  246   0 111
+0512  1:MOVE_INT                  35   0 246
+0513  0:ADD_INT                  246   0 112
+0514  1:MOVE_INT                  35   0 246
+0515  0:ADD_INT                  246   0 113
+0516  1:MOVE_INT                  35   0 246
+0517  0:ADD_INT                  246   0 114
+0518  1:MOVE_INT                  35   0 246
+0519  0:ADD_INT                  246   0 115
+0520  1:MOVE_INT                  35   0 246
+0521  0:ADD_INT                  246   0 116
+0522  1:MOVE_INT                  35   0 246
+0523  0:ADD_INT                  246   0 117
+0524  1:MOVE_INT                  35   0 246
+0525  0:ADD_INT                  246   0 118
+0526  1:MOVE_INT                  35   0 246
+0527  0:ADD_INT                  246   0 119
+0528  1:MOVE_INT                  35   0 246
+0529  0:ADD_INT                  246   0 120
+0530  1:MOVE_INT                  35   0 246
+0531  0:ADD_INT                  246   0 121
+0532  1:MOVE_INT                  35   0 246
+0533  0:ADD_INT                  246   0 122
+0534  1:MOVE_INT                  35   0 246
+0535  0:ADD_INT                  246   0 123
+0536  1:MOVE_INT                  35   0 246
+0537  0:ADD_INT                  246   0 124
+0538  1:MOVE_INT                  35   0 246
+0539  0:ADD_INT                  246   0 125
+0540  1:MOVE_INT                  35   0 246
+0541  0:ADD_INT                  246   0 126
+0542  1:MOVE_INT                  35   0 246
+0543  0:ADD_INT                  246   0 127
+0544  1:MOVE_INT                  35   0 246
+0545  0:ADD_INT                  246   0 128
+0546  1:MOVE_INT                  35   0 246
+0547  0:ADD_INT                  246   0 129
+0548  1:MOVE_INT                  35   0 246
+0549  0:ADD_INT                  246   0 130
+0550  1:MOVE_INT                  35   0 246
+0551  0:ADD_INT                  246   0 131
+0552  1:MOVE_INT                  35   0 246
+0553  0:ADD_INT                  246   0 132
+0554  1:MOVE_INT                  35   0 246
+0555  0:ADD_INT                  246   0 133
+0556  1:MOVE_INT                  35   0 246
+0557  0:ADD_INT                  246   0 134
+0558  1:MOVE_INT                  35   0 246
+0559  0:ADD_INT                  246   0 135
+0560  1:MOVE_INT                  35   0 246
+0561  0:ADD_INT                  246   0 136
+0562  1:MOVE_INT                  35   0 246
+0563  0:ADD_INT                  246   0 137
+0564  1:MOVE_INT                  35   0 246
+0565  0:ADD_INT                  246   0 138
+0566  1:MOVE_INT                  35   0 246
+0567  0:ADD_INT                  246   0 139
+0568  1:MOVE_INT                  35   0 246
+0569  0:ADD_INT                  246   0 140
+0570  1:MOVE_INT                  35   0 246
+0571  0:ADD_INT                  246   0 141
+0572  1:MOVE_INT                  35   0 246
+0573  0:ADD_INT                  246   0 142
+0574  1:MOVE_INT                  35   0 246
+0575  0:ADD_INT                  246   0 143
+0576  1:MOVE_INT                  35   0 246
+0577  0:ADD_INT                  246   0 144
+0578  1:MOVE_INT                  35   0 246
+0579  0:ADD_INT                  246   0 145
+0580  1:MOVE_INT                  35   0 246
+0581  0:ADD_INT                  246   0 146
+0582  1:MOVE_INT                  35   0 246
+0583  0:ADD_INT                  246   0 147
+0584  1:MOVE_INT                  35   0 246
+0585  0:ADD_INT                  246   0 148
+0586  1:MOVE_INT                  35   0 246
+0587  0:ADD_INT                  246   0 149
+0588  1:MOVE_INT                  35   0 246
+0589  0:ADD_INT                  246   0 150
+0590  1:MOVE_INT                  35   0 246
+0591  0:ADD_INT                  246   0 151
+0592  1:MOVE_INT                  35   0 246
+0593  0:ADD_INT                  246   0 152
+0594  1:MOVE_INT                  35   0 246
+0595  0:ADD_INT                  246   0 153
+0596  1:MOVE_INT                  35   0 246
+0597  0:ADD_INT                  246   0 154
+0598  1:MOVE_INT                  35   0 246
+0599  0:ADD_INT                  246   0 155
+0600  1:MOVE_INT                  35   0 246
+0601  0:ADD_INT                  246   0 156
+0602  1:MOVE_INT                  35   0 246
+0603  0:ADD_INT                  246   0 157
+0604  1:MOVE_INT                  35   0 246
+0605  0:ADD_INT                  246   0 158
+0606  1:MOVE_INT                  35   0 246
+0607  0:ADD_INT                  246   0 159
+0608  1:MOVE_INT                  35   0 246
+0609  0:ADD_INT                  246   0 160
+0610  1:MOVE_INT                  35   0 246
+0611  0:ADD_INT                  246   0 161
+0612  1:MOVE_INT                  35   0 246
+0613  0:ADD_INT                  246   0 162
+0614  1:MOVE_INT                  35   0 246
+0615  0:ADD_INT                  246   0 163
+0616  1:MOVE_INT                  35   0 246
+0617  0:ADD_INT                  246   0 164
+0618  1:MOVE_INT                  35   0 246
+0619  0:ADD_INT                  246   0 165
+0620  1:MOVE_INT                  35   0 246
+0621  0:ADD_INT                  246   0 166
+0622  1:MOVE_INT                  35   0 246
+0623  0:ADD_INT                  246   0 167
+0624  1:MOVE_INT                  35   0 246
+0625  0:ADD_INT                  246   0 168
+0626  1:MOVE_INT                  35   0 246
+0627  0:ADD_INT                  246   0 169
+0628  1:MOVE_INT                  35   0 246
+0629  0:ADD_INT                  246   0 170
+0630  1:MOVE_INT                  35   0 246
+0631  0:ADD_INT                  246   0 171
+0632  1:MOVE_INT                  35   0 246
+0633  0:ADD_INT                  246   0 172
+0634  1:MOVE_INT                  35   0 246
+0635  0:ADD_INT                  246   0 173
+0636  1:MOVE_INT                  35   0 246
+0637  0:ADD_INT                  246   0 174
+0638  1:MOVE_INT                  35   0 246
+0639  0:ADD_INT                  246   0 175
+0640  1:MOVE_INT                  35   0 246
+0641  0:ADD_INT                  246   0 176
+0642  1:MOVE_INT                  35   0 246
+0643  0:ADD_INT                  246   0 177
+0644  1:MOVE_INT                  35   0 246
+0645  0:ADD_INT                  246   0 178
+0646  1:MOVE_INT                  35   0 246
+0647  0:ADD_INT                  246   0 179
+0648  1:MOVE_INT                  35   0 246
+0649  0:ADD_INT                  246   0 180
+0650  1:MOVE_INT                  35   0 246
+0651  0:ADD_INT                  246   0 181
+0652  1:MOVE_INT                  35   0 246
+0653  0:ADD_INT                  246   0 182
+0654  1:MOVE_INT                  35   0 246
+0655  0:ADD_INT                  246   0 183
+0656  1:MOVE_INT                  35   0 246
+0657  0:ADD_INT                  246   0 184
+0658  1:MOVE_INT                  35   0 246
+0659  0:ADD_INT                  246   0 185
+0660  1:MOVE_INT                  35   0 246
+0661  0:ADD_INT                  246   0 186
+0662  1:MOVE_INT                  35   0 246
+0663  0:ADD_INT                  246   0 187
+0664  1:MOVE_INT                  35   0 246
+0665  0:ADD_INT                  246   0 188
+0666  1:MOVE_INT                  35   0 246
+0667  0:ADD_INT                  246   0 189
+0668  1:MOVE_INT                  35   0 246
+0669  0:ADD_INT                  246   0 190
+0670  1:MOVE_INT                  35   0 246
+0671  0:ADD_INT                  246   0 191
+0672  1:MOVE_INT                  35   0 246
+0673  0:ADD_INT                  246   0 192
+0674  1:MOVE_INT                  35   0 246
+0675  0:ADD_INT                  246   0 193
+0676  1:MOVE_INT                  35   0 246
+0677  0:ADD_INT                  246   0 194
+0678  1:MOVE_INT                  35   0 246
+0679  0:ADD_INT                  246   0 195
+0680  1:MOVE_INT                  35   0 246
+0681  0:ADD_INT                  246   0 196
+0682  1:MOVE_INT                  35   0 246
+0683  0:ADD_INT                  246   0 197
+0684  1:MOVE_INT                  35   0 246
+0685  0:ADD_INT                  246   0 198
+0686  1:MOVE_INT                  35   0 246
+0687  0:ADD_INT                  246   0 199
+0688  1:MOVE_INT                  35   0 246
+0689  0:ADD_INT                  246   0 200
+0690  1:MOVE_INT                  35   0 246
+0691  0:ADD_INT                  246   0 201
+0692  1:MOVE_INT                  35   0 246
+0693  0:ADD_INT                  246   0 202
+0694  1:MOVE_INT                  35   0 246
+0695  0:ADD_INT                  246   0 203
+0696  1:MOVE_INT                  35   0 246
+0697  0:ADD_INT                  246   0 204
+0698  1:MOVE_INT                  35   0 246
+0699  0:ADD_INT                  246   0 205
+0700  1:MOVE_INT                  35   0 246
+0701  0:ADD_INT                  246   0 206
+0702  1:MOVE_INT                  35   0 246
+0703  0:ADD_INT                  246   0 207
+0704  1:MOVE_INT                  35   0 246
+0705  0:ADD_INT                  246   0 208
+0706  1:MOVE_INT                  35   0 246
+0707  0:ADD_INT                  246   0 209
+0708  1:MOVE_INT                  35   0 246
+0709  0:ADD_INT                  246   0 210
+0710  1:MOVE_INT                  35   0 246
+0711  0:ADD_INT                  246   0 211
+0712  1:MOVE_INT                  35   0 246
+0713  0:ADD_INT                  246   0 212
+0714  1:MOVE_INT                  35   0 246
+0715  0:ADD_INT                  246   0 213
+0716  1:MOVE_INT                  35   0 246
+0717  0:ADD_INT                  246   0 214
+0718  1:MOVE_INT                  35   0 246
+0719  0:ADD_INT                  246   0 215
+0720  1:MOVE_INT                  35   0 246
+0721  0:ADD_INT                  246   0 216
+0722  1:MOVE_INT                  35   0 246
+0723  0:ADD_INT                  246   0 217
+0724  1:MOVE_INT                  35   0 246
+0725  0:ADD_INT                  246   0 218
+0726  1:MOVE_INT                  35   0 246
+0727  0:ADD_INT                  246   0 219
+0728  1:MOVE_INT                  35   0 246
+0729  0:ADD_INT                  246   0 220
+0730  1:MOVE_INT                  35   0 246
+0731  0:ADD_INT                  246   0 221
+0732  1:MOVE_INT                  35   0 246
+0733  0:ADD_INT                  246   0 222
+0734  1:MOVE_INT                  35   0 246
+0735  0:ADD_INT                  246   0 223
+0736  1:MOVE_INT                  35   0 246
+0737  0:ADD_INT                  246   0 224
+0738  1:MOVE_INT                  35   0 246
+0739  0:ADD_INT                  246   0 225
+0740  1:MOVE_INT                  35   0 246
+0741  0:ADD_INT                  246   0 226
+0742  1:MOVE_INT                  35   0 246
+0743  0:ADD_INT                  246   0 227
+0744  1:MOVE_INT                  35   0 246
+0745  0:ADD_INT                  246   0 228
+0746  1:MOVE_INT                  35   0 246
+0747  0:ADD_INT                  246   0 229
+0748  1:MOVE_INT                  35   0 246
+0749  0:ADD_INT                  246   0 230
+0750  1:MOVE_INT                  35   0 246
+0751  0:ADD_INT                  246   0 231
+0752  1:MOVE_INT                  35   0 246
+0753  0:ADD_INT                  246   0 232
+0754  1:MOVE_INT                  35   0 246
+0755  0:ADD_INT                  246   0 233
+0756  1:MOVE_INT                  35   0 246
+0757  0:ADD_INT                  246   0 234
+0758  1:MOVE_INT                  35   0 246
+0759  0:ADD_INT                  246   0 235
+0760  1:MOVE_INT                  35   0 246
+0761  0:ADD_INT                  246   0 236
+0762  1:MOVE_INT                  35   0 246
+0763  0:ADD_INT                  246   0 237
+0764  1:MOVE_INT                  35   0 246
+0765  0:ADD_INT                  246   0 238
+0766  1:MOVE_INT                  35   0 246
+0767  0:ADD_INT                  246   0 239
+0768  1:MOVE_INT                  35   0 246
+0769  0:ADD_INT                  246   0 240
+0770  1:MOVE_INT                  35   0 246
+0771  0:ADD_INT                  246   0 241
+0772  1:MOVE_INT                  35   0 246
+0773  0:ADD_INT                  246   0 242
+0774  1:MOVE_INT                  35   0 246
+0775  0:ADD_INT                  246   0 243
+0776  1:MOVE_INT                  35   0 246
+0777  0:ADD_INT                  246   0 244
+0778  1:MOVE_INT                  35   0 246
+0779  0:ADD_INT                  246   0 245
+0780  1:MOVE_INT                  35   0 246
+0781  1:RELOAD                    85 246   0
+0782  0:EXT                        0   0   0
+0783  0:ADD_INT                  247   0 246
+0784  1:MOVE_INT                  35   0 247
+0785  1:RELOAD                    85 246   0
+0786  0:EXT                        1   0   0
+0787  0:ADD_INT                  247   0 246
+0788  1:MOVE_INT                  35   0 247
+0789  1:RELOAD                    85 246   0
+0790  0:EXT                        2   0   0
+0791  0:ADD_INT                  247   0 246
+0792  1:MOVE_INT                  35   0 247
+0793  1:RELOAD                    85 246   0
+0794  0:EXT                        3   0   0
+0795  0:ADD_INT                  247   0 246
+0796  1:MOVE_INT                  35   0 247
+0797  1:RELOAD                    85 246   0
+0798  0:EXT                        4   0   0
+0799  0:ADD_INT                  247   0 246
+0800  1:MOVE_INT                  35   0 247
+0801  1:RELOAD                    85 246   0
+0802  0:EXT                        5   0   0
+0803  0:ADD_INT                  247   0 246
+0804  1:MOVE_INT                  35   0 247
+0805  1:RELOAD                    85 246   0
+0806  0:EXT                        6   0   0
+0807  0:ADD_INT                  247   0 246
+0808  1:MOVE_INT                  35   0 247
+0809  1:RELOAD                    85 246   0
+0810  0:EXT                        7   0   0
+0811  0:ADD_INT                  247   0 246
+0812  1:MOVE_INT                  35   0 247
+0813  1:RELOAD                    85 246   0
+0814  0:EXT                        8   0   0
+0815  0:ADD_INT                  247   0 246
+0816  1:MOVE_INT                  35   0 247
+0817  1:RELOAD                    85 246   0
+0818  0:EXT                        9   0   0
+0819  0:ADD_INT                  247   0 246
+0820  1:MOVE_INT                  35   0 247
+0821  1:RELOAD                    85 246   0
+0822  0:EXT                       10   0   0
+0823  0:ADD_INT                  247   0 246
+0824  1:MOVE_INT                  35   0 247
+0825  1:RELOAD                    85 246   0
+0826  0:EXT                       11   0   0
+0827  0:ADD_INT                  247   0 246
+0828  1:MOVE_INT                  35   0 247
+0829  1:RELOAD                    85 246   0
+0830  0:EXT                       12   0   0
+0831  0:ADD_INT                  247   0 246
+0832  1:MOVE_INT                  35   0 247
+0833  1:RELOAD                    85 246   0
+0834  0:EXT                       13   0   0
+0835  0:ADD_INT                  247   0 246
+0836  1:MOVE_INT                  35   0 247
+0837  1:RELOAD                    85 246   0
+0838  0:EXT                       14   0   0
+0839  0:ADD_INT                  247   0 246
+0840  1:MOVE_INT                  35   0 247
+0841  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0842  1:LOAD_INT_CONST_SMALL      75   2   2    ; ints[2] = 2
+0843  0:ADD_INT                    3   0   1
+0844  0:ADD_INT                    0   3   2
+0845  2:TIER2_RETURN               0  10   1    ; 1 values

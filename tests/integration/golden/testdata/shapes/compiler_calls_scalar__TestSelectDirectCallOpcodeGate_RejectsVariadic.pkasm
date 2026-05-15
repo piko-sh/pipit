@@ -1,0 +1,61 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function sumAll
+;   registers: int=6 general=1
+;   params:    (general)
+;   returns:   (int)
+;   variadic:  true
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=1
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0001  1:LEN                       70   1   0
+0002  1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0003  1:LT_INT_JUMP_FALSE        116   2   1
+0004  0:EXT                        6   0   0
+0005  0:SLICE_GET_INT              4   0   2
+0006  0:ADD_INT                    5   0   4
+0007  1:MOVE_INT                  35   0   5
+0008  1:LOAD_INT_CONST_SMALL      75   5   1    ; ints[5] = 1
+0009  0:ADD_INT                    2   2   5
+0010  1:JUMP                      74 248 255    ; goto -8
+0011  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function EntrypointRun
+;   registers: int=6 general=6
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=5  [1]=1  [2]=0  [3]=2  [4]=3  [5]=4
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   5    ; ints[0] = 5
+0001  0:MAKE_SLICE                 0   0   0
+0002  0:EXT                        0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0004  1:MOVE_INT_TO_GENERAL       40   1   0
+0005  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0006  0:INDEX_SET                  0   1   1
+0007  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0008  1:MOVE_INT_TO_GENERAL       40   2   1
+0009  1:LOAD_INT_CONST_SMALL      75   2   1    ; ints[2] = 1
+0010  0:INDEX_SET                  0   2   2
+0011  1:LOAD_INT_CONST_SMALL      75   2   3    ; ints[2] = 3
+0012  1:MOVE_INT_TO_GENERAL       40   3   2
+0013  1:LOAD_INT_CONST_SMALL      75   3   2    ; ints[3] = 2
+0014  0:INDEX_SET                  0   3   3
+0015  1:LOAD_INT_CONST_SMALL      75   3   4    ; ints[3] = 4
+0016  1:MOVE_INT_TO_GENERAL       40   4   3
+0017  1:LOAD_INT_CONST_SMALL      75   4   3    ; ints[4] = 3
+0018  0:INDEX_SET                  0   4   4
+0019  1:LOAD_INT_CONST_SMALL      75   4   5    ; ints[4] = 5
+0020  1:MOVE_INT_TO_GENERAL       40   5   4
+0021  1:LOAD_INT_CONST_SMALL      75   5   4    ; ints[5] = 4
+0022  0:INDEX_SET                  0   5   5
+0023  1:TAIL_CALL                129   0   0    ; tail call (site 0)

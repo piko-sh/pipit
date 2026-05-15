@@ -1,0 +1,564 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function intAppend
+;   registers: int=2 general=3 sliceInt=4
+;   params:    (none)
+;   returns:   (sliceInt)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2  [1]=1  [2]=0
+
+0000  1:LOAD_ZERO                 79   1   7
+0001  0:ALLOC_INDIRECT             0   1   7
+0002  0:EXT                        0   0   0
+0003  0:MAKE_CLOSURE               1  11   0    ; closure (func 11)
+0004  0:DEFER                      1   0   0
+0005  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0006  0:MAKE_SLICE                 1   0   0
+0007  0:EXT                        0   0   0
+0008  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0009  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0010  1:MOVE_INT_TO_GENERAL       40   2   0
+0011  0:INDEX_SET                  1   1   2
+0012  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0013  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0014  1:MOVE_INT_TO_GENERAL       40   2   0
+0015  0:INDEX_SET                  1   1   2
+0016  0:SET_FIELD                  0 255   1
+0017  0:DEREF                      1   0   0
+0018  0:UNPACK_INTERFACE           2   1   7
+0019  0:PACK_INTERFACE             1   2   7
+0020  0:SET_FIELD                  0 255   1
+0021  0:DEREF                      1   0   0
+0022  0:UNPACK_INTERFACE           3   1   7
+0023  1:MOVE_SLICE_INT           165   0   3
+0024  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function int64Append
+;   registers: int=2 general=3 sliceInt=4
+;   params:    (none)
+;   returns:   (sliceInt)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2  [1]=1  [2]=0
+
+0000  1:LOAD_ZERO                 79   1   7
+0001  0:ALLOC_INDIRECT             0   1   7
+0002  0:EXT                        0   0   0
+0003  0:MAKE_CLOSURE               1  12   0    ; closure (func 12)
+0004  0:DEFER                      1   0   0
+0005  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0006  0:MAKE_SLICE                 1   0   0
+0007  0:EXT                        0   0   0
+0008  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0009  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0010  0:PACK_TYPED                 2   0   0
+0011  0:EXT                        1   0   0
+0012  0:INDEX_SET                  1   1   2
+0013  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0014  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0015  0:PACK_TYPED                 2   0   0
+0016  0:EXT                        1   0   0
+0017  0:INDEX_SET                  1   1   2
+0018  0:SET_FIELD                  0 255   1
+0019  0:DEREF                      1   0   0
+0020  0:UNPACK_INTERFACE           2   1   7
+0021  0:PACK_TYPED                 1   2   7
+0022  0:EXT                        0   0   0
+0023  0:SET_FIELD                  0 255   1
+0024  0:DEREF                      1   0   0
+0025  0:UNPACK_INTERFACE           3   1   7
+0026  1:MOVE_SLICE_INT           165   0   3
+0027  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function uintAppend
+;   registers: int=1 general=3 uint=1 sliceUint=4
+;   params:    (none)
+;   returns:   (sliceUint)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2  [1]=0  [2]=1
+;   uints:   [0]=1  [1]=2
+
+0000  1:LOAD_ZERO                 79   1  11
+0001  0:ALLOC_INDIRECT             0   1  11
+0002  0:EXT                        0   0   0
+0003  0:MAKE_CLOSURE               1  13   0    ; closure (func 13)
+0004  0:DEFER                      1   0   0
+0005  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0006  0:MAKE_SLICE                 1   0   0
+0007  0:EXT                        0   0   0
+0008  1:LOAD_UINT_CONST_SMALL     99   0   1    ; uints[0] = 1
+0009  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0010  0:PACK_TYPED                 2   0   5
+0011  0:EXT                        1   0   0
+0012  0:INDEX_SET                  1   0   2
+0013  1:LOAD_UINT_CONST_SMALL     99   0   2    ; uints[0] = 2
+0014  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0015  0:PACK_TYPED                 2   0   5
+0016  0:EXT                        1   0   0
+0017  0:INDEX_SET                  1   0   2
+0018  0:SET_FIELD                  0 255   1
+0019  0:DEREF                      1   0   0
+0020  0:UNPACK_INTERFACE           2   1  11
+0021  0:PACK_TYPED                 1   2  11
+0022  0:EXT                        0   0   0
+0023  0:SET_FIELD                  0 255   1
+0024  0:DEREF                      1   0   0
+0025  0:UNPACK_INTERFACE           3   1  11
+0026  1:MOVE_SLICE_UINT          169   0   3
+0027  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function byteAppend
+;   registers: int=1 general=3 uint=1 sliceByte=4
+;   params:    (none)
+;   returns:   (sliceByte)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2  [1]=0  [2]=1
+;   uints:   [0]=1  [1]=2
+
+0000  1:LOAD_ZERO                 79   1  12
+0001  0:ALLOC_INDIRECT             0   1  12
+0002  0:EXT                        0   0   0
+0003  0:MAKE_CLOSURE               1  14   0    ; closure (func 14)
+0004  0:DEFER                      1   0   0
+0005  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0006  0:MAKE_SLICE                 1   0   0
+0007  0:EXT                        0   0   0
+0008  1:LOAD_UINT_CONST_SMALL     99   0   1    ; uints[0] = 1
+0009  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0010  0:PACK_TYPED                 2   0   5
+0011  0:EXT                        1   0   0
+0012  0:INDEX_SET                  1   0   2
+0013  1:LOAD_UINT_CONST_SMALL     99   0   2    ; uints[0] = 2
+0014  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0015  0:PACK_TYPED                 2   0   5
+0016  0:EXT                        1   0   0
+0017  0:INDEX_SET                  1   0   2
+0018  0:SET_FIELD                  0 255   1
+0019  0:DEREF                      1   0   0
+0020  0:UNPACK_INTERFACE           2   1  12
+0021  0:PACK_INTERFACE             1   2  12
+0022  0:SET_FIELD                  0 255   1
+0023  0:DEREF                      1   0   0
+0024  0:UNPACK_INTERFACE           3   1  12
+0025  1:MOVE_SLICE_BYTE          170   0   3
+0026  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function floatAppend
+;   registers: int=1 float=1 general=3 sliceFloat=4
+;   params:    (none)
+;   returns:   (sliceFloat)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2  [1]=0  [2]=1
+;   floats:  [0]=1.5  [1]=2.5
+
+0000  1:LOAD_ZERO                 79   1   8
+0001  0:ALLOC_INDIRECT             0   1   8
+0002  0:EXT                        0   0   0
+0003  0:MAKE_CLOSURE               1  15   0    ; closure (func 15)
+0004  0:DEFER                      1   0   0
+0005  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0006  0:MAKE_SLICE                 1   0   0
+0007  0:EXT                        0   0   0
+0008  0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 1.5
+0009  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0010  1:MOVE_FLOAT_TO_GENERAL     42   2   0
+0011  0:INDEX_SET                  1   0   2
+0012  0:LOAD_FLOAT_CONST           0   1   0    ; floats[0] = 2.5
+0013  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0014  1:MOVE_FLOAT_TO_GENERAL     42   2   0
+0015  0:INDEX_SET                  1   0   2
+0016  0:SET_FIELD                  0 255   1
+0017  0:DEREF                      1   0   0
+0018  0:UNPACK_INTERFACE           2   1   8
+0019  0:PACK_INTERFACE             1   2   8
+0020  0:SET_FIELD                  0 255   1
+0021  0:DEREF                      1   0   0
+0022  0:UNPACK_INTERFACE           3   1   8
+0023  1:MOVE_SLICE_FLOAT         166   0   3
+0024  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function boolAppend
+;   registers: int=1 general=3 bool=1 sliceBool=4
+;   params:    (none)
+;   returns:   (sliceBool)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2  [1]=0  [2]=1
+;   bools:   [0]=false  [1]=true
+
+0000  1:LOAD_ZERO                 79   1  10
+0001  0:ALLOC_INDIRECT             0   1  10
+0002  0:EXT                        0   0   0
+0003  0:MAKE_CLOSURE               1  16   0    ; closure (func 16)
+0004  0:DEFER                      1   0   0
+0005  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0006  0:MAKE_SLICE                 1   0   0
+0007  0:EXT                        0   0   0
+0008  1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = false
+0009  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0010  0:PACK_INTERFACE             2   0   4
+0011  0:INDEX_SET                  1   0   2
+0012  1:LOAD_BOOL_CONST          138   0   1    ; bools[0] = true
+0013  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0014  0:PACK_INTERFACE             2   0   4
+0015  0:INDEX_SET                  1   0   2
+0016  0:SET_FIELD                  0 255   1
+0017  0:DEREF                      1   0   0
+0018  0:UNPACK_INTERFACE           2   1  10
+0019  0:PACK_INTERFACE             1   2  10
+0020  0:SET_FIELD                  0 255   1
+0021  0:DEREF                      1   0   0
+0022  0:UNPACK_INTERFACE           3   1  10
+0023  1:MOVE_SLICE_BOOL          168   0   3
+0024  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function stringAppend
+;   registers: int=1 string=1 general=3 sliceString=4
+;   params:    (none)
+;   returns:   (sliceString)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2  [1]=0  [2]=1
+;   strings: [0]="a"  [1]="b"
+
+0000  1:LOAD_ZERO                 79   1   9
+0001  0:ALLOC_INDIRECT             0   1   9
+0002  0:EXT                        0   0   0
+0003  0:MAKE_CLOSURE               1  17   0    ; closure (func 17)
+0004  0:DEFER                      1   0   0
+0005  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0006  0:MAKE_SLICE                 1   0   0
+0007  0:EXT                        0   0   0
+0008  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "a"
+0009  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0010  1:MOVE_STRING_TO_GENERAL    44   2   0
+0011  0:INDEX_SET                  1   0   2
+0012  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "b"
+0013  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0014  1:MOVE_STRING_TO_GENERAL    44   2   0
+0015  0:INDEX_SET                  1   0   2
+0016  0:SET_FIELD                  0 255   1
+0017  0:DEREF                      1   0   0
+0018  0:UNPACK_INTERFACE           2   1   9
+0019  0:PACK_INTERFACE             1   2   9
+0020  0:SET_FIELD                  0 255   1
+0021  0:DEREF                      1   0   0
+0022  0:UNPACK_INTERFACE           3   1   9
+0023  1:MOVE_SLICE_STRING        167   0   3
+0024  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function stringReassign
+;   registers: int=1 string=1 general=3 sliceString=4
+;   params:    (none)
+;   returns:   (sliceString)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1  [1]=0
+;   strings: [0]="a"
+
+0000  1:LOAD_ZERO                 79   1   9
+0001  0:ALLOC_INDIRECT             0   1   9
+0002  0:EXT                        0   0   0
+0003  0:MAKE_CLOSURE               1  18   0    ; closure (func 18)
+0004  0:DEFER                      1   0   0
+0005  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0006  0:MAKE_SLICE                 1   0   0
+0007  0:EXT                        0   0   0
+0008  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "a"
+0009  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0010  1:MOVE_STRING_TO_GENERAL    44   2   0
+0011  0:INDEX_SET                  1   0   2
+0012  0:SET_FIELD                  0 255   1
+0013  0:DEREF                      1   0   0
+0014  0:UNPACK_INTERFACE           2   1   9
+0015  0:PACK_INTERFACE             1   2   9
+0016  0:SET_FIELD                  0 255   1
+0017  0:DEREF                      1   0   0
+0018  0:UNPACK_INTERFACE           3   1   9
+0019  1:MOVE_SLICE_STRING        167   0   3
+0020  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function intReassign
+;   registers: int=2 general=3 sliceInt=4
+;   params:    (none)
+;   returns:   (sliceInt)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1  [1]=0
+
+0000  1:LOAD_ZERO                 79   1   7
+0001  0:ALLOC_INDIRECT             0   1   7
+0002  0:EXT                        0   0   0
+0003  0:MAKE_CLOSURE               1  19   0    ; closure (func 19)
+0004  0:DEFER                      1   0   0
+0005  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0006  0:MAKE_SLICE                 1   0   0
+0007  0:EXT                        0   0   0
+0008  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0009  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0010  1:MOVE_INT_TO_GENERAL       40   2   0
+0011  0:INDEX_SET                  1   1   2
+0012  0:SET_FIELD                  0 255   1
+0013  0:DEREF                      1   0   0
+0014  0:UNPACK_INTERFACE           2   1   7
+0015  0:PACK_INTERFACE             1   2   7
+0016  0:SET_FIELD                  0 255   1
+0017  0:DEREF                      1   0   0
+0018  0:UNPACK_INTERFACE           3   1   7
+0019  1:MOVE_SLICE_INT           165   0   3
+0020  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function nilAppend
+;   registers: general=2 sliceInt=4
+;   params:    (none)
+;   returns:   (sliceInt)
+; ═════════════════════════════════════════════════════════════
+
+0000  1:LOAD_ZERO                 79   1   7
+0001  0:ALLOC_INDIRECT             0   1   7
+0002  0:EXT                        0   0   0
+0003  0:MAKE_CLOSURE               1  20   0    ; closure (func 20)
+0004  0:DEFER                      1   0   0
+0005  0:DEREF                      1   0   0
+0006  0:UNPACK_INTERFACE           2   1   7
+0007  0:PACK_INTERFACE             1   2   7
+0008  0:SET_FIELD                  0 255   1
+0009  0:DEREF                      1   0   0
+0010  0:UNPACK_INTERFACE           3   1   7
+0011  1:MOVE_SLICE_INT           165   0   3
+0012  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: string=2 general=3 sliceInt=4 sliceFloat=1 sliceString=2 sliceBool=1 sliceUint=1 sliceByte=1
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]="%v|%v|%v|%v|%v|%v|%v|%v|%v|%v"
+
+0000  0:LOAD_GENERAL_CONST         0   0   0
+0001  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "%v|%v|%v|%v|%v|%v|%v|%v|%v|%v"
+0002  1:CALL                     128   0   0    ; call (site 0)
+0003  1:CALL                     128   1   0    ; call (site 1)
+0004  0:PACK_TYPED                 1   1   7
+0005  0:EXT                        0   0   0
+0006  1:CALL                     128   2   0    ; call (site 2)
+0007  0:PACK_TYPED                 2   0  11
+0008  0:EXT                        1   0   0
+0009  1:CALL                     128   3   0    ; call (site 3)
+0010  1:CALL                     128   4   0    ; call (site 4)
+0011  1:CALL                     128   5   0    ; call (site 5)
+0012  1:CALL                     128   6   0    ; call (site 6)
+0013  1:CALL                     128   7   0    ; call (site 7)
+0014  1:CALL                     128   8   0    ; call (site 8)
+0015  1:CALL                     128   9   0    ; call (site 9)
+0016  1:CALL_NATIVE              130  10   0    ; call native general[0] (site 10)
+0017  1:MOVE_STRING               37   0   1
+0018  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=1 sliceInt=2
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=99
+
+0000  0:GET_UPVALUE                0   0   7
+0001  1:LOAD_INT_CONST_SMALL      75   0  99    ; ints[0] = 99
+0002  1:APPEND_SLICE_INT_DIRECT  171   1   0
+0003  0:EXT                        0   0   0
+0004  0:SET_UPVALUE                1   0   7
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=1 sliceInt=2
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=99
+
+0000  0:GET_UPVALUE                0   0   7
+0001  1:LOAD_INT_CONST_SMALL      75   0  99    ; ints[0] = 99
+0002  1:APPEND_SLICE_INT_DIRECT  171   1   0
+0003  0:EXT                        0   0   0
+0004  0:SET_UPVALUE                1   0   7
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: uint=1 sliceUint=2
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   uints:   [0]=99
+
+0000  0:GET_UPVALUE                0   0  11
+0001  1:LOAD_UINT_CONST_SMALL     99   0  99    ; uints[0] = 99
+0002  1:APPEND_SLICE_UINT_DIRECT 175   1   0
+0003  0:EXT                        0   0   0
+0004  0:SET_UPVALUE                1   0  11
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: uint=1 sliceByte=2
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   uints:   [0]=99
+
+0000  0:GET_UPVALUE                0   0  12
+0001  1:LOAD_UINT_CONST_SMALL     99   0  99    ; uints[0] = 99
+0002  1:APPEND_SLICE_BYTE_DIRECT 176   1   0
+0003  0:EXT                        0   0   0
+0004  0:SET_UPVALUE                1   0  12
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: float=1 sliceFloat=2
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   floats:  [0]=9.5
+
+0000  0:GET_UPVALUE                0   0   8
+0001  0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 9.5
+0002  1:APPEND_SLICE_FLOAT_DIRECT 172   1   0
+0003  0:EXT                        0   0   0
+0004  0:SET_UPVALUE                1   0   8
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: bool=1 sliceBool=2
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   bools:   [0]=true
+
+0000  0:GET_UPVALUE                0   0  10
+0001  1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
+0002  1:APPEND_SLICE_BOOL_DIRECT 174   1   0
+0003  0:EXT                        0   0   0
+0004  0:SET_UPVALUE                1   0  10
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: string=1 sliceString=2
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]="z"
+
+0000  0:GET_UPVALUE                0   0   9
+0001  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "z"
+0002  1:APPEND_SLICE_STRING_DIRECT 173   1   0
+0003  0:EXT                        0   0   0
+0004  0:SET_UPVALUE                1   0   9
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=1 string=1 general=2 sliceString=1
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=3  [1]=0  [2]=1  [3]=2
+;   strings: [0]="x"  [1]="y"  [2]="z"
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0001  0:MAKE_SLICE                 0   0   0
+0002  0:EXT                        0   0   0
+0003  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "x"
+0004  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0005  1:MOVE_STRING_TO_GENERAL    44   1   0
+0006  0:INDEX_SET                  0   0   1
+0007  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "y"
+0008  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0009  1:MOVE_STRING_TO_GENERAL    44   1   0
+0010  0:INDEX_SET                  0   0   1
+0011  0:LOAD_STRING_CONST          0   2   0    ; strings[0] = "z"
+0012  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0013  1:MOVE_STRING_TO_GENERAL    44   1   0
+0014  0:INDEX_SET                  0   0   1
+0015  0:UNPACK_INTERFACE           0   0   9
+0016  0:SET_UPVALUE                0   0   9
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=2 general=2 sliceInt=1
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2  [1]=7  [2]=0  [3]=8  [4]=1
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0001  0:MAKE_SLICE                 0   0   0
+0002  0:EXT                        0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   0   7    ; ints[0] = 7
+0004  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0005  1:MOVE_INT_TO_GENERAL       40   1   0
+0006  0:INDEX_SET                  0   1   1
+0007  1:LOAD_INT_CONST_SMALL      75   0   8    ; ints[0] = 8
+0008  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0009  1:MOVE_INT_TO_GENERAL       40   1   0
+0010  0:INDEX_SET                  0   1   1
+0011  0:UNPACK_INTERFACE           0   0   7
+0012  0:SET_UPVALUE                0   0   7
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=1 sliceInt=2
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=7
+
+0000  0:GET_UPVALUE                0   0   7
+0001  1:LOAD_INT_CONST_SMALL      75   0   7    ; ints[0] = 7
+0002  1:APPEND_SLICE_INT_DIRECT  171   1   0
+0003  0:EXT                        0   0   0
+0004  0:SET_UPVALUE                1   0   7

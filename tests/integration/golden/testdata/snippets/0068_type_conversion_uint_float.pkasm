@@ -1,0 +1,34 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function <varinit>
+;   registers: uint=1
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   uints:   [0]=7
+
+0000  0:LOAD_UINT_CONST            0   0   0
+0001  0:SET_GLOBAL                 0   0   5
+0002  3:TIER3_RETURN_VOID          0   0   1
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=1 float=3 uint=1
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   floats:  [0]=3
+
+0000  0:GET_GLOBAL                 0   0   5
+0001  1:UINT_TO_FLOAT             57   0   0
+0002  0:LOAD_FLOAT_CONST           1   0   0    ; floats[1] = 3
+0003  0:MUL_FLOAT                  2   0   1
+0004  1:FLOAT_TO_UINT             58   0   2
+0005  1:UINT_TO_INT               56   0   0
+0006  2:TIER2_RETURN               0  10   1    ; 1 values

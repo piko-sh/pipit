@@ -1,0 +1,14 @@
+{
+  "name": "18_generic_numeric_pipeline",
+  "description": "Generic numeric pipeline. Hand-rolled Sum/Max/Min generic over T Numeric (uint32 | int64). 500 slices per element type. Tests pipit's RegisterGeneral + unpackGenericResult dispatch path with two instantiations per outer call.",
+  "args": [],
+  "expected_stdout_sha256": "5fb584465b7d5f38c68448ba3f7a2fcd43b327331e32a58e13187ec07db92e70",
+  "k_inner": 3,
+  "timeout_seconds": 180,
+  "source_sha256": {
+    "go/native_main.go": "8c119ceca22e7aa65af3a44a2742b0145c622eb9df50642431d979a9d3a6c40f",
+    "go/pipit_source.go": "1f27666de44e469c51cc7c59d696829ee7a3ece599b987dbf7e4604856045bf2",
+    "py/cpython.py": "166d1862a3b22e539d4976aff4df68972ccb426d68b7f3ff6c302b019d76795d",
+    "py/pypy.py": "166d1862a3b22e539d4976aff4df68972ccb426d68b7f3ff6c302b019d76795d"
+  }
+}

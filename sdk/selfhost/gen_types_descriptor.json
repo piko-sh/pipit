@@ -1,0 +1,33 @@
+{
+  "import_paths": [
+    "pipit.sh/pipit/internal/compile/appendlower",
+    "pipit.sh/pipit/internal/compile/astpattern",
+    "pipit.sh/pipit/internal/compile/escape",
+    "pipit.sh/pipit/internal/compile/fieldlayout",
+    "pipit.sh/pipit/internal/compile/inline",
+    "pipit.sh/pipit/internal/compile/isaselect",
+    "pipit.sh/pipit/internal/compile/liveness",
+    "pipit.sh/pipit/internal/compile/passes",
+    "pipit.sh/pipit/internal/compile/patterns",
+    "pipit.sh/pipit/internal/compile/scope",
+    "pipit.sh/pipit/internal/compile/typemap",
+    "pipit.sh/pipit/internal/engine",
+    "pipit.sh/pipit/internal/engine/asm",
+    "pipit.sh/pipit/internal/engine/asm/asmgen_arch_amd64",
+    "pipit.sh/pipit/internal/engine/asm/asmgen_arch_arm64",
+    "pipit.sh/pipit/internal/engine/goversion",
+    "pipit.sh/pipit/internal/engine/program",
+    "pipit.sh/pipit/internal/fault",
+    "pipit.sh/pipit/internal/hostmem",
+    "pipit.sh/pipit/internal/isa",
+    "pipit.sh/pipit/internal/link",
+    "pipit.sh/pipit/internal/logging",
+    "pipit.sh/pipit/internal/mem",
+    "pipit.sh/pipit/internal/policy",
+    "pipit.sh/pipit/internal/safeconv",
+    "pipit.sh/pipit/internal/stablepool",
+    "pipit.sh/pipit/internal/symtab",
+    "pipit.sh/pipit/internal/symtab/descriptor",
+    "pipit.sh/pipit/internal/symtab/typemodel"
+  ]
+}

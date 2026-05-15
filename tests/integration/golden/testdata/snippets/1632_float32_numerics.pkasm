@@ -1,0 +1,203 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function scale
+;   registers: float=2
+;   params:    (float, float)
+;   returns:   (float)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:MUL_FLOAT                  0   0   1
+0001  1:ROUND_FLOAT32            210   0   0
+0002  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=4 float=12 string=2 general=7 bool=1 uint=4 complex=3
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=10  [1]=0  [2]=1
+;   floats:  [0]=0.10000000149011612  [1]=1  [2]=1.100000023841858  [3]=2.200000047683716  [4]=0  [5]=3.3  [6]=36.599998474121094  [7]=1.7999999523162842
+;   strings: [0]="acc=%v eq1=%v bits=%d"  [1]="product=%v %T bits=%d"  [2]="sum=%v quotient=%v diff=%v"  [3]="compound=%v bits=%d"  [4]="tiny=%v zero=%v"  [5]="wide=%.17g narrow=%v"  [6]="sqrt=%v"  [7]="named=%v %T bits=%d"  [8]="complex=%v %T"  [9]="parts=%d %d"  [10]="shift=%v %v"  [11]="\n"
+;   uints:   [0]=3  [1]=1
+;   complex: [0]=(0.10000000149011612+0.20000000298023224i)
+
+0000  0:LOAD_GENERAL_CONST         0   0   0
+0001  0:ALLOC_INDIRECT             1   0   3
+0002  0:EXT                        0   0   0
+0003  0:MAKE_CLOSURE               2   2   0    ; closure (func 2)
+0004  1:LOAD_ZERO                 79   0   1
+0005  1:LOAD_INT_CONST_SMALL      75   0  10    ; ints[0] = 10
+0006  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0007  1:LOAD_INT_CONST_SMALL      75   3   1    ; LICM hoist of PC 13
+0008  1:LT_INT_JUMP_FALSE        116   1   0
+0009  0:EXT                        6   0   0
+0010  0:LOAD_FLOAT_CONST           1   0   0    ; floats[1] = 0.10000000149011612
+0011  0:ADD_FLOAT                  2   0   1
+0012  1:ROUND_FLOAT32            210   2   2
+0013  1:MOVE_FLOAT                36   0   2
+0014  0:ADD_INT                    1   1   3
+0015  1:JUMP                      74 248 255    ; goto -8
+0016  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "acc=%v eq1=%v bits=%d"
+0017  0:PACK_TYPED                 3   0   1
+0018  0:EXT                        1   0   0
+0019  0:LOAD_FLOAT_CONST           1   1   0    ; floats[1] = 1
+0020  0:EQ_FLOAT                   0   0   1
+0021  1:INT_TO_BOOL               54   0   0
+0022  0:LOAD_GENERAL_CONST         4   1   0
+0023  1:CALL_NATIVE              130   0   0    ; call native general[4] (site 0)
+0024  0:PACK_TYPED                 5   0   5
+0025  0:EXT                        2   0   0
+0026  1:CALL                     128   1   0    ; call closure general[2] (site 1)
+0027  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0028  0:LOAD_FLOAT_CONST           1   2   0    ; floats[1] = 1.100000023841858
+0029  1:MOVE_FLOAT                36   0   1
+0030  0:LOAD_FLOAT_CONST           3   3   0    ; floats[3] = 2.200000047683716
+0031  1:MOVE_FLOAT                36   2   3
+0032  0:MUL_FLOAT                  4   0   2
+0033  1:ROUND_FLOAT32            210   4   4
+0034  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "product=%v %T bits=%d"
+0035  0:PACK_TYPED                 3   4   1
+0036  0:EXT                        1   0   0
+0037  0:PACK_TYPED                 4   4   1
+0038  0:EXT                        1   0   0
+0039  0:LOAD_GENERAL_CONST         5   2   0
+0040  1:CALL_NATIVE              130   2   0    ; call native general[5] (site 2)
+0041  0:PACK_TYPED                 6   0   5
+0042  0:EXT                        2   0   0
+0043  1:CALL                     128   3   0    ; call closure general[2] (site 3)
+0044  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0045  0:LOAD_STRING_CONST          0   2   0    ; strings[0] = "sum=%v quotient=%v diff=%v"
+0046  0:ADD_FLOAT                  5   0   2
+0047  1:ROUND_FLOAT32            210   5   5
+0048  0:PACK_TYPED                 3   5   1
+0049  0:EXT                        1   0   0
+0050  0:DIV_FLOAT                  6   2   0
+0051  1:ROUND_FLOAT32            210   6   6
+0052  0:PACK_TYPED                 4   6   1
+0053  0:EXT                        1   0   0
+0054  0:SUB_FLOAT                  7   2   0
+0055  1:ROUND_FLOAT32            210   7   7
+0056  0:PACK_TYPED                 5   7   1
+0057  0:EXT                        1   0   0
+0058  1:CALL                     128   4   0    ; call closure general[2] (site 4)
+0059  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0060  0:LOAD_FLOAT_CONST           5   2   0    ; floats[5] = 1.100000023841858
+0061  0:MUL_FLOAT                  6   0   5
+0062  1:ROUND_FLOAT32            210   6   6
+0063  1:MOVE_FLOAT                36   0   6
+0064  0:LOAD_FLOAT_CONST           5   1   0    ; floats[5] = 1
+0065  0:ADD_FLOAT                  0   0   5
+0066  1:ROUND_FLOAT32            210   0   0
+0067  0:LOAD_STRING_CONST          0   3   0    ; strings[0] = "compound=%v bits=%d"
+0068  0:PACK_TYPED                 3   0   1
+0069  0:EXT                        1   0   0
+0070  0:LOAD_GENERAL_CONST         4   3   0
+0071  1:CALL_NATIVE              130   5   0    ; call native general[4] (site 5)
+0072  0:PACK_TYPED                 5   0   5
+0073  0:EXT                        2   0   0
+0074  1:CALL                     128   6   0    ; call closure general[2] (site 6)
+0075  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0076  0:LOAD_FLOAT_CONST           5   4   0    ; floats[5] = 0
+0077  1:MOVE_FLOAT                36   0   5
+0078  0:LOAD_STRING_CONST          0   4   0    ; strings[0] = "tiny=%v zero=%v"
+0079  0:PACK_TYPED                 3   0   1
+0080  0:EXT                        1   0   0
+0081  0:LOAD_FLOAT_CONST           6   4   0    ; floats[6] = 0
+0082  0:EQ_FLOAT                   0   0   6
+0083  1:INT_TO_BOOL               54   0   0
+0084  1:CALL                     128   7   0    ; call closure general[2] (site 7)
+0085  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0086  1:MOVE_FLOAT                36   0   4
+0087  0:LOAD_FLOAT_CONST           6   5   0    ; floats[6] = 3.3
+0088  0:MUL_FLOAT                  7   0   6
+0089  1:MOVE_FLOAT                36   4   7
+0090  0:LOAD_STRING_CONST          0   5   0    ; strings[0] = "wide=%.17g narrow=%v"
+0091  0:PACK_TYPED                 3   4   1
+0092  0:EXT                        1   0   0
+0093  1:CALL                     128   8   0    ; call closure general[2] (site 8)
+0094  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0095  0:LOAD_STRING_CONST          0   6   0    ; strings[0] = "sqrt=%v"
+0096  1:MATH_SQRT                 59   6   2
+0097  0:PACK_TYPED                 3   6   1
+0098  0:EXT                        1   0   0
+0099  1:CALL                     128   9   0    ; call closure general[2] (site 9)
+0100  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0101  0:LOAD_FLOAT_CONST           6   6   0    ; floats[6] = 36.599998474121094
+0102  1:MOVE_FLOAT                36   2   6
+0103  0:LOAD_STRING_CONST          0   7   0    ; strings[0] = "named=%v %T bits=%d"
+0104  0:LOAD_FLOAT_CONST           6   7   0    ; floats[6] = 1.7999999523162842
+0105  1:CALL_SCALAR              134  10   0
+0106  0:PACK_TYPED                 3   7   1
+0107  0:EXT                        3   0   0
+0108  0:LOAD_FLOAT_CONST           8   7   0    ; floats[8] = 1.7999999523162842
+0109  1:CALL_SCALAR              134  11   0
+0110  0:PACK_TYPED                 4   9   1
+0111  0:EXT                        3   0   0
+0112  0:LOAD_GENERAL_CONST         5   4   0
+0113  0:LOAD_FLOAT_CONST          10   7   0    ; floats[10] = 1.7999999523162842
+0114  1:CALL_SCALAR              134  12   0
+0115  1:CALL_NATIVE              130  13   0    ; call native general[5] (site 13)
+0116  0:PACK_TYPED                 6   0   5
+0117  0:EXT                        2   0   0
+0118  1:CALL                     128  14   0    ; call closure general[2] (site 14)
+0119  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0120  0:LOAD_COMPLEX_CONST         1   0   0
+0121  1:MOVE_COMPLEX              15   0   1
+0122  0:MUL_COMPLEX                2   0   0
+0123  1:ROUND_COMPLEX64          211   2   2
+0124  0:LOAD_STRING_CONST          0   8   0    ; strings[0] = "complex=%v %T"
+0125  0:PACK_TYPED                 3   2   6
+0126  0:EXT                        4   0   0
+0127  0:PACK_TYPED                 4   2   6
+0128  0:EXT                        4   0   0
+0129  1:CALL                     128  15   0    ; call closure general[2] (site 15)
+0130  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0131  0:LOAD_STRING_CONST          0   9   0    ; strings[0] = "parts=%d %d"
+0132  0:LOAD_GENERAL_CONST         3   5   0
+0133  1:REAL_COMPLEX               9   6   2
+0134  1:CALL_NATIVE              130  16   0    ; call native general[3] (site 16)
+0135  0:PACK_TYPED                 4   0   5
+0136  0:EXT                        2   0   0
+0137  0:LOAD_GENERAL_CONST         5   6   0
+0138  1:IMAG_COMPLEX              10   7   2
+0139  1:CALL_NATIVE              130  17   0    ; call native general[5] (site 17)
+0140  0:PACK_TYPED                 6   1   5
+0141  0:EXT                        2   0   0
+0142  1:CALL                     128  18   0    ; call closure general[2] (site 18)
+0143  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0144  1:LOAD_UINT_CONST_SMALL     99   1   3    ; uints[1] = 3
+0145  1:MOVE_UINT                 39   0   1
+0146  0:LOAD_STRING_CONST          0  10   0    ; strings[0] = "shift=%v %v"
+0147  1:LOAD_UINT_CONST_SMALL     99   2   1    ; uints[2] = 1
+0148  0:SHIFT_LEFT_UINT            3   0   2
+0149  0:PACK_TYPED                 3   3   5
+0150  0:EXT                        5   0   0
+0151  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0152  1:UINT_TO_INT               56   2   0
+0153  0:SHIFT_LEFT                 1   0   2
+0154  1:CALL                     128  19   0    ; call closure general[2] (site 19)
+0155  2:SYNC_CLOSURE_UPVALUES      0  15   2
+0156  0:DEREF                      3   1   0
+0157  0:LOAD_STRING_CONST          0  11   0    ; strings[0] = "\n"
+0158  0:STR_JOIN                   1   3   0
+0159  1:MOVE_STRING               37   0   1
+0160  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: string=2 general=4
+;   params:    (string, general)
+;   returns:   (none)
+;   variadic:  true
+; ═════════════════════════════════════════════════════════════
+
+0000  0:GET_UPVALUE                1   0   3
+0001  0:LOAD_GENERAL_CONST         2   0   0
+0002  1:CALL_NATIVE              130   0   0    ; call native general[2] (site 0)
+0003  0:APPEND_STRING_FAST         3   1   1
+0004  0:SET_UPVALUE                3   0   3

@@ -1,0 +1,35 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=6 string=3
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=26  [2]=97
+;   strings: [0]=""  [1]="abcdefghijklmnopqrstuvwxyz"
+
+0000  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = ""
+0001  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0002  1:LOAD_INT_CONST_SMALL      75   3  97    ; LICM hoist of PC 5
+0003  1:LT_INT_CONST_JUMP_FALSE  123   0   1
+0004  0:EXT                        9   0   0
+0005  3:TIER3_NOP                  0   0   0
+0006  0:ADD_INT                    4   3   0
+0007  1:MOVE_INT                  35   5   4
+0008  0:TRUNCATE_NARROW            5  32   0
+0009  0:CONCAT_RUNE_STRING         2   0   5
+0010  3:TIER3_NOP                  0   0   0
+0011  1:MOVE_STRING               37   0   2
+0012  2:TIER2_INC_INT              0   1   0
+0013  1:JUMP                      74 245 255    ; goto -11
+0014  0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "abcdefghijklmnopqrstuvwxyz"
+0015  0:NE_STRING                  0   0   1
+0016  0:JUMP_IF_FALSE              0   2   0    ; if ints[0] == 0 goto +2
+0017  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0018  2:TIER2_RETURN               0  10   1    ; 1 values
+0019  1:LEN_STRING                65   0   0
+0020  2:TIER2_RETURN               0  10   1    ; 1 values

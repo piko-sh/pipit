@@ -1,0 +1,267 @@
+# Copyright 2026 PolitePixels Limited
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# This project stands against fascism, authoritarianism, and all forms of
+# oppression. We built this to empower people, not to enable those who would
+# strip others of their rights and dignity.
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION_FILE: go.mod
+  GOLANGCI_LINT_VERSION: v2.13.2
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+
+      - name: gofmt (library)
+        run: |
+          files=$(gofmt -l .)
+          if [ -n "$files" ]; then
+            echo "gofmt needs to be run on the following files:"
+            echo "$files"
+            exit 1
+          fi
+
+      - name: gofmt (cmd/pipit)
+        working-directory: cmd/pipit
+        run: |
+          files=$(gofmt -l .)
+          if [ -n "$files" ]; then
+            echo "gofmt needs to be run on the following files:"
+            echo "$files"
+            exit 1
+          fi
+
+      - name: Vet every build tag and cross-compile target
+        run: make lint-vet-tags
+
+      - name: Build
+        run: go build ./...
+
+      - name: Build cmd/pipit
+        working-directory: cmd/pipit
+        run: go build ./...
+
+      - name: Build cmd/asmgen
+        working-directory: cmd/asmgen
+        run: go build ./...
+
+      - name: Test sdk/link
+        working-directory: sdk/link
+        run: go test ./...
+
+      - name: Build tests/bench
+        working-directory: tests/bench
+        run: go build ./...
+
+      - name: Test library
+        run: go test -short -shuffle=on ./...
+
+      - name: Test CLI
+        working-directory: cmd/pipit
+        run: go test -shuffle=on ./...
+
+  worker-protocol:
+    name: Worker protocol (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+
+      - name: Test worker protocol, broker validation and fuzz seeds
+        run: go test ./internal/sandboxwire ./internal/sandboxbroker -count=1 -timeout=60s
+
+      - name: Race-test worker protocol and broker controls
+        if: runner.os == 'Linux'
+        run: go test -race ./internal/sandboxwire ./internal/sandboxbroker -count=1 -timeout=90s
+
+      - name: Test Linux resource and syscall controls
+        if: runner.os == 'Linux'
+        env:
+          PIPIT_TEST_REQUIRE_USERNS: "1"
+        run: go test ./internal/sandboxlinux -count=1 -timeout=60s
+
+      - name: Race-test Linux policy and resource controls
+        if: runner.os == 'Linux'
+        run: go test -race ./internal/sandboxlinux -count=1 -timeout=90s
+
+      - name: Build static Linux source worker
+        if: runner.os == 'Linux'
+        env:
+          CGO_ENABLED: "0"
+        run: cd cmd/pipit-worker && go build -o "$RUNNER_TEMP/pipit-worker" .
+
+      - name: Test confined source execution
+        if: runner.os == 'Linux'
+        run: go test ./internal/sandboxworker -count=1 -timeout=90s -args -pipit-worker-test-binary "$RUNNER_TEMP/pipit-worker"
+
+      - name: Race-test worker exchanges and isolated embedding
+        if: runner.os == 'Linux'
+        run: |
+          go test -race ./internal/sandboxworker -count=1 -timeout=90s
+          go test -race ./internal/sandboxhost -count=1 -timeout=90s
+
+      - name: Test delegated Linux isolation without skip fallback
+        if: runner.os == 'Linux'
+        env:
+          PIPIT_REQUIRE_BROKER_LANDLOCK: "1"
+          PIPIT_TEST_REQUIRE_USERNS: "1"
+        run: |
+          uid=$(id -u)
+          sudo systemctl start "user@${uid}.service"
+          XDG_RUNTIME_DIR="/run/user/${uid}"
+          DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+          export XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
+          systemctl --user show-environment > /dev/null
+          make test-isolation
+
+      - name: Test WebAssembly restricted policy
+        if: runner.os == 'Linux'
+        env:
+          GOOS: js
+          GOARCH: wasm
+        run: cd cmd/wasm && go test -exec="$(go env GOROOT)/lib/wasm/go_js_wasm_exec" . -count=1 -timeout=90s
+
+  lint:
+    name: Lint Go
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+
+      - uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          install-mode: goinstall
+          args: --timeout=10m
+          verify: false
+
+      - name: Lint cmd/pipit
+        working-directory: cmd/pipit
+        run: golangci-lint run --timeout=10m ./...
+
+  lint-scripts:
+    name: Lint Scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run shellcheck
+        run: make lint-scripts
+
+  go-mod-verify:
+    name: Verify go.mod
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+
+      - name: Verify all go.mod files are tidy
+        run: make go-mod-verify
+
+  verify:
+    name: Verify generated files and docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+
+      - name: Verify generated Go
+        run: |
+          make generate-asmgen-validate generate-engine-validate \
+            generate-symtab-validate generate-symbols-validate \
+            generate-selfhost-symbols-validate
+
+  golden:
+    name: Golden disassembly
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+
+      - name: Compare golden disassembly snapshots
+        run: make test-golden
+
+  ci-ok:
+    name: CI
+    if: always()
+    needs:
+      - build-and-test
+      - worker-protocol
+      - lint
+      - lint-scripts
+      - go-mod-verify
+      - verify
+      - golden
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all jobs passed
+        run: |
+          results="${{ join(needs.*.result, ' ') }}"
+          for result in $results; do
+            if [ "$result" != "success" ]; then
+              echo "::error::One or more CI jobs did not succeed: $results"
+              exit 1
+            fi
+          done
+          echo "All CI checks passed"

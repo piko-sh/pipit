@@ -1,0 +1,27 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function EntrypointRun
+;   registers: int=6
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=4  [2]=2
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0001  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0002  1:LT_INT_CONST_JUMP_FALSE  123   1   1
+0003  0:EXT                        9   0   0
+0004  3:TIER3_NOP                  0   0   0
+0005  1:EQ_INT_CONST_JUMP_FALSE  124   1   2
+0006  0:EXT                        2   0   0
+0007  3:TIER3_NOP                  0   0   0
+0008  1:JUMP                      74   4   0    ; goto 4
+0009  0:ADD_INT                    4   0   1
+0010  1:MOVE_INT                  35   0   4
+0011  2:TIER2_INC_INT              0   1   1
+0012  1:JUMP                      74 245 255    ; goto -11
+0013  2:TIER2_RETURN               0  10   1    ; 1 values

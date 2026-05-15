@@ -1,0 +1,139 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function Pipe.Read
+;   registers: int=5 general=4 bool=1 sliceByte=2
+;   params:    (general, general)
+;   returns:   (int, general)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+
+0000  0:GET_STRUCT_FIELD_BOOL_T0   0   0   0
+0001  1:BOOL_TO_INT               53   0   0
+0002  1:MOVE_INT                  35   1   0
+0003  0:JUMP_IF_FALSE              1   4   0    ; if ints[1] == 0 goto +4
+0004  0:GET_STRUCT_FIELD_SLICE_LEN   2   0   1
+0005  1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
+0006  0:EQ_INT                     4   2   3
+0007  1:MOVE_INT                  35   1   4
+0008  0:JUMP_IF_FALSE              1   7   0    ; if ints[1] == 0 goto +7
+0009  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0010  1:MOVE_INT                  35   1   0
+0011  0:LOAD_GENERAL_CONST         2   0   0
+0012  0:MOVE_GENERAL               3   2   0
+0013  1:MOVE_INT                  35   0   1
+0014  0:MOVE_GENERAL               0   3   0
+0015  2:TIER2_RETURN               0  10   2    ; 2 values
+0016  1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
+0017  0:EXT                        1   0   0
+0018  0:PACK_INTERFACE             2   0  12
+0019  0:COPY                       0   1   2
+0020  1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
+0021  0:EXT                        1   0   0
+0022  1:SLICE_BYTE_SLICE         115   1   0
+0023  0:EXT                        1   0   0
+0024  1:SET_STRUCT_FIELD_SLICE_BYTE 201   0   1
+0025  0:EXT                        1   0   0
+0026  1:MOVE_INT                  35   1   0
+0027  2:TIER2_LOAD_NIL             0   9   2
+0028  0:MOVE_GENERAL               3   2   1
+0029  1:MOVE_INT                  35   0   1
+0030  0:MOVE_GENERAL               0   3   0
+0031  2:TIER2_RETURN               0  10   2    ; 2 values
+
+; ═════════════════════════════════════════════════════════════
+; function Pipe.Write
+;   registers: int=2 string=1 general=5 bool=1 sliceByte=1
+;   params:    (general, general)
+;   returns:   (int, general)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+;   strings: [0]="closed"
+
+0000  0:GET_STRUCT_FIELD_BOOL_T0   0   0   0
+0001  1:BOOL_TO_INT               53   0   0
+0002  0:JUMP_IF_FALSE              0   9   0    ; if ints[0] == 0 goto +9
+0003  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0004  1:MOVE_INT                  35   1   0
+0005  0:LOAD_GENERAL_CONST         2   0   0
+0006  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "closed"
+0007  1:CALL_NATIVE              130   0   0    ; call native general[2] (site 0)
+0008  0:MOVE_GENERAL               4   3   0
+0009  1:MOVE_INT                  35   0   1
+0010  0:MOVE_GENERAL               0   4   0
+0011  2:TIER2_RETURN               0  10   2    ; 2 values
+0012  0:MOVE_GENERAL               2   0   0
+0013  1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
+0014  0:EXT                        1   0   0
+0015  0:PACK_INTERFACE             3   0  12
+0016  0:APPEND_SPREAD              4   3   1
+0017  0:SET_STRUCT_FIELD_GENERAL_T0   2   4   1
+0018  1:LEN                       70   0   1
+0019  1:MOVE_INT                  35   1   0
+0020  2:TIER2_LOAD_NIL             0   9   2
+0021  0:MOVE_GENERAL               3   2   1
+0022  1:MOVE_INT                  35   0   1
+0023  0:MOVE_GENERAL               0   3   0
+0024  2:TIER2_RETURN               0  10   2    ; 2 values
+
+; ═════════════════════════════════════════════════════════════
+; function Pipe.Close
+;   registers: general=2 bool=1
+;   params:    (general)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   bools:   [0]=true
+
+0000  1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
+0001  0:SET_STRUCT_FIELD_BOOL_T0   0   0   0
+0002  2:TIER2_LOAD_NIL             0   9   1
+0003  0:MOVE_GENERAL               0   1   0
+0004  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=1 string=3 general=6 bool=1
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=32
+;   strings: [0]="hello"  [1]="Write"  [2]=" world"  [3]="Close"  [4]="Read"  [5]="read=%s,closed=%t"
+
+0000  2:MAKE_MAP                   0  12   0
+0001  0:EXT                        0   0   0
+0002  0:ADDR                       1   0   0
+0003  0:MOVE_GENERAL               0   1   1
+0004  0:MOVE_GENERAL               1   0   1
+0005  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "hello"
+0006  1:STRING_TO_BYTES           71   3   0
+0007  1:CALL_METHOD              132   0   0    ; call method (site 0)
+0008  0:EXT                        1   0   0
+0009  0:LOAD_STRING_CONST          0   2   0    ; strings[0] = " world"
+0010  1:STRING_TO_BYTES           71   3   0
+0011  1:CALL_METHOD              132   1   0    ; call method (site 1)
+0012  0:EXT                        1   0   0
+0013  1:CALL_METHOD              132   2   0    ; call method (site 2)
+0014  0:EXT                        3   0   0
+0015  1:LOAD_INT_CONST_SMALL      75   0  32    ; ints[0] = 32
+0016  0:MAKE_SLICE                 2   0   0
+0017  0:EXT                        1   0   0
+0018  1:CALL_METHOD              132   3   0    ; call method (site 3)
+0019  0:EXT                        4   0   0
+0020  0:LOAD_GENERAL_CONST         4   0   0
+0021  0:LOAD_STRING_CONST          0   5   0    ; strings[0] = "read=%s,closed=%t"
+0022  1:SLICE_OP                 141   5   2
+0023  0:EXT                        2   0   0
+0024  1:BYTES_TO_STRING           11   1   5
+0025  0:GET_STRUCT_FIELD_BOOL_T0   0   0   0
+0026  1:CALL_NATIVE              130   4   0    ; call native general[4] (site 4)
+0027  1:MOVE_STRING               37   0   2
+0028  2:TIER2_RETURN               0  10   1    ; 1 values

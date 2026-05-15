@@ -1,0 +1,17 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: float=2
+;   params:    (none)
+;   returns:   (float)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   floats:  [0]=3.9
+
+0000  0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 3.9
+0001  1:MATH_TRUNC                63   1   0
+0002  1:MOVE_FLOAT                36   0   1
+0003  2:TIER2_RETURN               0  10   1    ; 1 values

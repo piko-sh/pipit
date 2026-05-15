@@ -1,0 +1,41 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=2 string=1 general=3
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1  [1]=2  [2]=3  [3]=99
+;   strings: [0]="a"  [1]="b"  [2]="c"  [3]="x"
+
+0000  2:MAKE_MAP                   0  12   0
+0001  0:EXT                        0   0   2
+0002  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "a"
+0003  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0004  1:MOVE_STRING_TO_GENERAL    44   1   0
+0005  1:MOVE_INT_TO_GENERAL       40   2   0
+0006  0:MAP_SET                    0   1   2
+0007  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "b"
+0008  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0009  1:MOVE_STRING_TO_GENERAL    44   1   0
+0010  1:MOVE_INT_TO_GENERAL       40   2   0
+0011  0:MAP_SET                    0   1   2
+0012  0:LOAD_STRING_CONST          0   2   0    ; strings[0] = "c"
+0013  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0014  1:MOVE_STRING_TO_GENERAL    44   1   0
+0015  1:MOVE_INT_TO_GENERAL       40   2   0
+0016  0:MAP_SET                    0   1   2
+0017  1:CALL_BUILTIN             131   3   1    ; call builtin
+0018  0:EXT                        0   3   0
+0019  1:LOAD_INT_CONST_SMALL      75   0  99    ; ints[0] = 99
+0020  0:LOAD_STRING_CONST          0   3   0    ; strings[0] = "x"
+0021  0:MAP_SET_STRING_INT         0   0   0
+0022  1:LEN                       70   0   0
+0023  0:LOAD_STRING_CONST          0   3   0    ; strings[0] = "x"
+0024  0:MAP_GET_STRING_INT         1   0   0
+0025  0:ADD_INT                    0   0   1
+0026  2:TIER2_RETURN               0  10   1    ; 1 values

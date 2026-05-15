@@ -1,0 +1,5 @@
+{
+  "description": "Chess move generator counting legal move sequences from the opening position. The expected counts are the published perft values, so this asserts against ground truth rather than against whatever the interpreter happens to produce.",
+  "shouldError": false,
+  "expected": "20 400 8902 197281"
+}

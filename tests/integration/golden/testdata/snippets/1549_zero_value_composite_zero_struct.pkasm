@@ -1,0 +1,13 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=1 general=1
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:LOAD_COMPOSITE_ZERO_REUSE   0   0   0
+0001  0:GET_STRUCT_FIELD_INT_T0    0   0   0
+0002  2:TIER2_RETURN               0  10   1    ; 1 values

@@ -1,0 +1,14 @@
+{
+  "name": "10_markov_text_gen_10k_words",
+  "description": "Bigram Markov chain text generator. Trains on a deterministic 50,000-token corpus, then generates 10,000 output tokens. Returns a 32-bit fold hash of the generated text.",
+  "args": [],
+  "expected_stdout_sha256": "33b2ef13ac1c7d4fcf46cb39cd43b530c2fb6f1eda260b516780a7e4040c6a4f",
+  "k_inner": 3,
+  "timeout_seconds": 180,
+  "source_sha256": {
+    "go/native_main.go": "8c119ceca22e7aa65af3a44a2742b0145c622eb9df50642431d979a9d3a6c40f",
+    "go/pipit_source.go": "d552b5c37bd75109076b765ea743f3dc6a03341393ad392107e5c8eb2ac76c70",
+    "py/cpython.py": "3affefe06bc0ca306174a5c5ddf4ecaae4c043422b5a6ac7bbc1d6a0b5f54e5b",
+    "py/pypy.py": "3affefe06bc0ca306174a5c5ddf4ecaae4c043422b5a6ac7bbc1d6a0b5f54e5b"
+  }
+}

@@ -1,0 +1,42 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function rowSum
+;   registers: int=3 float=1 sliceFloat=1
+;   params:    (int)
+;   returns:   (float)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+;   floats:  [0]=0
+
+0000  1:MAKE_SLICE_FLOAT          18   0   0
+0001  0:EXT                        0   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0003  1:LT_INT_JUMP_FALSE        116   1   0
+0004  0:EXT                        5   0   0
+0005  1:INT_TO_FLOAT              50   0   1
+0006  1:SLICE_SET_FLOAT_DIRECT    20   0   1
+0007  0:EXT                        0   0   0
+0008  2:TIER2_INC_INT              0   1   1
+0009  1:JUMP                      74 249 255    ; goto -7
+0010  0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 0
+0011  1:LEN_SLICE_FLOAT_DIRECT    21   1   0
+0012  1:SIMD_SUM_SLICE_FLOAT64   152   0   0
+0013  0:EXT                        1   0   0
+0014  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function EntrypointRun
+;   registers: int=1
+;   params:    (none)
+;   returns:   (float)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=8
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   8    ; ints[0] = 8
+0001  1:TAIL_CALL                129   0   0    ; tail call (site 0)

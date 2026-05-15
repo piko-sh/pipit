@@ -1,0 +1,169 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function makeInts
+;   registers: int=2 general=1 sliceInt=1
+;   params:    (none)
+;   returns:   (sliceInt)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=3  [2]=1  [3]=2
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0001  1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
+0002  0:MAKE_SLICE                 0   0   1
+0003  0:EXT                        0   0   0
+0004  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0005  0:APPEND_INT_FAST            0   0   0
+0006  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0007  0:APPEND_INT_FAST            0   0   0
+0008  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0009  0:APPEND_INT_FAST            0   0   0
+0010  1:ADOPT_GENERAL_TO_SLICES_INT 156   0   0
+0011  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function makeFloats
+;   registers: int=1 float=1 general=2 sliceFloat=1
+;   params:    (none)
+;   returns:   (sliceFloat)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=3  [1]=0  [2]=1  [3]=2
+;   floats:  [0]=1.5  [1]=2.5  [2]=3.5
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0001  0:MAKE_SLICE                 0   0   0
+0002  0:EXT                        0   0   0
+0003  0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 1.5
+0004  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0005  1:MOVE_FLOAT_TO_GENERAL     42   1   0
+0006  0:INDEX_SET                  0   0   1
+0007  0:LOAD_FLOAT_CONST           0   1   0    ; floats[0] = 2.5
+0008  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0009  1:MOVE_FLOAT_TO_GENERAL     42   1   0
+0010  0:INDEX_SET                  0   0   1
+0011  0:LOAD_FLOAT_CONST           0   2   0    ; floats[0] = 3.5
+0012  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0013  1:MOVE_FLOAT_TO_GENERAL     42   1   0
+0014  0:INDEX_SET                  0   0   1
+0015  1:ADOPT_GENERAL_TO_SLICES_FLOAT 155   0   0
+0016  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function toBytes
+;   registers: string=1 general=1 sliceByte=1
+;   params:    (string)
+;   returns:   (sliceByte)
+; ═════════════════════════════════════════════════════════════
+
+0000  1:STRING_TO_BYTES           71   0   0
+0001  1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   0
+0002  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function makeStrings
+;   registers: int=1 string=1 general=2 sliceString=1
+;   params:    (none)
+;   returns:   (sliceString)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=3  [1]=0  [2]=1  [3]=2
+;   strings: [0]="a"  [1]="bb"  [2]="ccc"
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0001  0:MAKE_SLICE                 0   0   0
+0002  0:EXT                        0   0   0
+0003  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "a"
+0004  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0005  1:MOVE_STRING_TO_GENERAL    44   1   0
+0006  0:INDEX_SET                  0   0   1
+0007  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "bb"
+0008  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0009  1:MOVE_STRING_TO_GENERAL    44   1   0
+0010  0:INDEX_SET                  0   0   1
+0011  0:LOAD_STRING_CONST          0   2   0    ; strings[0] = "ccc"
+0012  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0013  1:MOVE_STRING_TO_GENERAL    44   1   0
+0014  0:INDEX_SET                  0   0   1
+0015  1:ADOPT_GENERAL_TO_SLICES_STRING 157   0   0
+0016  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=8 float=3 string=1 general=4 uint=1 sliceInt=1 sliceFloat=1 sliceString=1 sliceByte=1
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=1
+;   floats:  [0]=0  [1]=10
+;   strings: [0]="hello"
+
+0000  1:CALL                     128   0   0    ; call (site 0)
+0001  1:BOX_SLICE_INT             34   0   0
+0002  1:CALL                     128   1   0    ; call (site 1)
+0003  1:BOX_SLICE_FLOAT          161   1   0
+0004  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "hello"
+0005  1:CALL                     128   2   0    ; call (site 2)
+0006  1:BOX_SLICE_BYTE           148   2   0
+0007  1:CALL                     128   3   0    ; call (site 3)
+0008  1:BOX_SLICE_STRING         162   3   0
+0009  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0010  1:LEN                       70   1   0
+0011  1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0012  1:LT_INT_JUMP_FALSE        116   2   1
+0013  0:EXT                        6   0   0
+0014  0:SLICE_GET_INT              4   0   2
+0015  0:ADD_INT                    5   0   4
+0016  1:MOVE_INT                  35   0   5
+0017  1:LOAD_INT_CONST_SMALL      75   5   1    ; ints[5] = 1
+0018  0:ADD_INT                    2   2   5
+0019  1:JUMP                      74 248 255    ; goto -8
+0020  0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 0
+0021  1:LEN                       70   1   1
+0022  1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0023  1:LOAD_INT_CONST_SMALL      75   4   1    ; LICM hoist of PC 28
+0024  1:LT_INT_JUMP_FALSE        116   2   1
+0025  0:EXT                        5   0   0
+0026  0:SLICE_GET_FLOAT            1   1   2
+0027  0:ADD_FLOAT                  2   0   1
+0028  1:MOVE_FLOAT                36   0   2
+0029  0:ADD_INT                    2   2   4
+0030  1:JUMP                      74 249 255    ; goto -7
+0031  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0032  1:LEN                       70   2   2
+0033  1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
+0034  1:LT_INT_JUMP_FALSE        116   3   2
+0035  0:EXT                        7   0   0
+0036  0:SLICE_GET_UINT             0   2   3
+0037  1:UINT_TO_INT               56   5   0
+0038  0:ADD_INT                    6   1   5
+0039  1:MOVE_INT                  35   1   6
+0040  1:LOAD_INT_CONST_SMALL      75   5   1    ; ints[5] = 1
+0041  0:ADD_INT                    3   3   5
+0042  1:JUMP                      74 247 255    ; goto -9
+0043  1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0044  1:LEN                       70   3   3
+0045  1:LOAD_INT_CONST_SMALL      75   4   0    ; ints[4] = 0
+0046  1:LT_INT_JUMP_FALSE        116   4   3
+0047  0:EXT                        7   0   0
+0048  0:SLICE_GET_STRING           0   3   4
+0049  1:LEN_STRING                65   6   0
+0050  0:ADD_INT                    7   2   6
+0051  1:MOVE_INT                  35   2   7
+0052  1:LOAD_INT_CONST_SMALL      75   6   1    ; ints[6] = 1
+0053  0:ADD_INT                    4   4   6
+0054  1:JUMP                      74 247 255    ; goto -9
+0055  0:LOAD_FLOAT_CONST           1   1   0    ; floats[1] = 10
+0056  0:MUL_FLOAT                  2   0   1
+0057  1:FLOAT_TO_INT              51   3   2
+0058  0:ADD_INT                    4   0   3
+0059  0:ADD_INT                    5   4   1
+0060  0:ADD_INT                    0   5   2
+0061  2:TIER2_RETURN               0  10   1    ; 1 values

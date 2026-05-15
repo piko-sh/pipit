@@ -1,0 +1,297 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function pushTwice
+;   registers: int=8 general=4
+;   params:    (general, int, int)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1
+
+0000  0:MOVE_GENERAL               1   0   0
+0001  0:DEREF                      2   0   0
+0002  0:APPEND_INT_FAST            3   2   0
+0003  0:SET_FIELD                  1 255   3
+0004  0:DEREF                      1   0   0
+0005  0:MOVE_GENERAL               2   1   0
+0006  0:DEREF                      3   0   0
+0007  1:LEN                       70   2   3
+0008  0:SUB_INT_CONST              4   2   0    ; const = 1
+0009  3:TIER3_NOP                  0   0   0
+0010  1:MOVE_INT                  35   5   4
+0011  0:ADD_INT_CONST              7   0   0    ; const = 1
+0012  3:TIER3_NOP                  0   0   0
+0013  0:SLICE_SET_INT              2   5   7
+0014  0:MOVE_GENERAL               1   0   0
+0015  0:DEREF                      2   0   0
+0016  0:APPEND_INT_FAST            3   2   1
+0017  0:SET_FIELD                  1 255   3
+
+; ═════════════════════════════════════════════════════════════
+; function swap
+;   registers: int=8 general=5
+;   params:    (general, int, int)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:DEREF                      1   0   0
+0001  0:MOVE_GENERAL               2   1   0
+0002  1:MOVE_INT                  35   2   0
+0003  0:DEREF                      3   0   0
+0004  0:MOVE_GENERAL               4   3   0
+0005  1:MOVE_INT                  35   3   1
+0006  0:DEREF_SLICE_GET_INT        4   0   1
+0007  1:MOVE_INT                  35   5   4
+0008  0:DEREF_SLICE_GET_INT        6   0   0
+0009  1:MOVE_INT                  35   7   6
+0010  0:SLICE_SET_INT              2   2   5
+0011  0:SLICE_SET_INT              4   3   7
+
+; ═════════════════════════════════════════════════════════════
+; function sumThrough
+;   registers: int=6 general=2
+;   params:    (general)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0001  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0002  0:DEREF                      1   0   0
+0003  1:LEN                       70   2   1
+0004  1:LT_INT_JUMP_FALSE        116   1   2
+0005  0:EXT                        5   0   0
+0006  0:DEREF_SLICE_GET_INT        4   0   1
+0007  0:ADD_INT                    5   0   4
+0008  1:MOVE_INT                  35   0   5
+0009  2:TIER2_INC_INT              0   1   1
+0010  1:JUMP                      74 247 255    ; goto -9
+0011  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function boundsProbe
+;   registers: int=2 string=4 general=4
+;   params:    (general)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]="unreachable"
+
+0000  1:LOAD_ZERO                 79   1   2
+0001  0:ALLOC_INDIRECT             1   1   2
+0002  0:EXT                        0   0   0
+0003  0:MAKE_CLOSURE               2   6   0    ; closure (func 6)
+0004  0:DEFER                      2   0   0
+0005  0:DEREF                      2   0   0
+0006  1:LEN                       70   0   2
+0007  0:DEREF_SLICE_GET_INT        1   0   0
+0008  0:LOAD_STRING_CONST          2   0   0    ; strings[2] = "unreachable"
+0009  1:MOVE_STRING_TO_GENERAL    44   2   2
+0010  0:SET_FIELD                  1 255   2
+0011  0:DEREF                      3   1   0
+0012  0:UNPACK_INTERFACE           3   3   2
+0013  1:MOVE_STRING               37   0   3
+0014  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function nilProbe
+;   registers: int=2 string=4 general=4
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+;   strings: [0]="unreachable"
+
+0000  1:LOAD_ZERO                 79   1   2
+0001  0:ALLOC_INDIRECT             0   1   2
+0002  0:EXT                        0   0   0
+0003  0:LOAD_GENERAL_CONST         1   0   0
+0004  0:MAKE_CLOSURE               2   7   0    ; closure (func 7)
+0005  0:DEFER                      2   0   0
+0006  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0007  0:DEREF_SLICE_GET_INT        1   1   0
+0008  0:LOAD_STRING_CONST          2   0   0    ; strings[2] = "unreachable"
+0009  1:MOVE_STRING_TO_GENERAL    44   2   2
+0010  0:SET_FIELD                  0 255   2
+0011  0:DEREF                      3   0   0
+0012  0:UNPACK_INTERFACE           3   3   2
+0013  1:MOVE_STRING               37   0   3
+0014  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=7 string=4 general=8
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=4  [2]=10  [3]=20  [4]=100  [5]=1  [6]=2  [7]=5  [8]=3  [9]=8
+;   strings: [0]="%d %d %v %d %s %s"
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0001  1:LOAD_INT_CONST_SMALL      75   1   4    ; ints[1] = 4
+0002  0:MAKE_SLICE                 0   0   1
+0003  0:EXT                        0   0   1
+0004  0:ALLOC_INDIRECT             1   0   3
+0005  0:EXT                        0   0   0
+0006  0:MOVE_GENERAL               2   1   1
+0007  0:MOVE_GENERAL               3   1   1
+0008  1:LOAD_INT_CONST_SMALL      75   0  10    ; ints[0] = 10
+0009  1:LOAD_INT_CONST_SMALL      75   1  20    ; ints[1] = 20
+0010  1:CALL                     128   0   0    ; call (site 0)
+0011  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0012  0:DEREF_SLICE_GET_INT        1   2   0
+0013  1:LOAD_INT_CONST_SMALL      75   2 100    ; ints[2] = 100
+0014  0:ADD_INT                    3   1   2
+0015  1:LOAD_INT_CONST_SMALL      75   4   0    ; ints[4] = 0
+0016  0:DEREF_SLICE_SET_INT        3   4   3
+0017  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0018  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0019  1:CALL                     128   1   0    ; call (site 1)
+0020  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0021  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0022  1:LOAD_INT_CONST_SMALL      75   2   2    ; ints[2] = 2
+0023  0:MUL_INT                    3   1   2
+0024  1:CALL                     128   2   0    ; call (site 2)
+0025  0:DEREF                      4   2   0
+0026  1:LEN                       70   2   4
+0027  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0028  0:SUB_INT                    4   2   3
+0029  0:DEREF_SLICE_GET_INT        5   2   4
+0030  0:ADD_INT                    6   0   5
+0031  1:MOVE_INT                  35   0   6
+0032  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0033  1:LOAD_INT_CONST_SMALL      75   2   2    ; ints[2] = 2
+0034  0:MUL_INT                    3   1   2
+0035  1:CALL                     128   3   0    ; call (site 3)
+0036  0:DEREF                      4   2   0
+0037  1:LEN                       70   2   4
+0038  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0039  0:SUB_INT                    4   2   3
+0040  0:DEREF_SLICE_GET_INT        5   2   4
+0041  0:ADD_INT                    6   0   5
+0042  1:MOVE_INT                  35   0   6
+0043  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0044  1:LOAD_INT_CONST_SMALL      75   2   2    ; ints[2] = 2
+0045  0:MUL_INT                    3   1   2
+0046  1:CALL                     128   4   0    ; call (site 4)
+0047  0:DEREF                      4   2   0
+0048  1:LEN                       70   2   4
+0049  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0050  0:SUB_INT                    4   2   3
+0051  0:DEREF_SLICE_GET_INT        5   2   4
+0052  0:ADD_INT                    6   0   5
+0053  1:MOVE_INT                  35   0   6
+0054  1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
+0055  1:LOAD_INT_CONST_SMALL      75   2   2    ; ints[2] = 2
+0056  0:MUL_INT                    3   1   2
+0057  1:CALL                     128   5   0    ; call (site 5)
+0058  0:DEREF                      4   2   0
+0059  1:LEN                       70   2   4
+0060  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0061  0:SUB_INT                    4   2   3
+0062  0:DEREF_SLICE_GET_INT        5   2   4
+0063  0:ADD_INT                    6   0   5
+0064  1:MOVE_INT                  35   0   6
+0065  1:LOAD_INT_CONST_SMALL      75   1   4    ; ints[1] = 4
+0066  1:LOAD_INT_CONST_SMALL      75   2   2    ; ints[2] = 2
+0067  0:MUL_INT                    3   1   2
+0068  1:CALL                     128   6   0    ; call (site 6)
+0069  0:DEREF                      4   2   0
+0070  1:LEN                       70   2   4
+0071  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0072  0:SUB_INT                    4   2   3
+0073  0:DEREF_SLICE_GET_INT        5   2   4
+0074  0:ADD_INT                    6   0   5
+0075  1:MOVE_INT                  35   0   6
+0076  1:LOAD_INT_CONST_SMALL      75   1   5    ; ints[1] = 5
+0077  1:LOAD_INT_CONST_SMALL      75   2   2    ; ints[2] = 2
+0078  0:MUL_INT                    3   1   2
+0079  1:CALL                     128   7   0    ; call (site 7)
+0080  0:DEREF                      4   2   0
+0081  1:LEN                       70   2   4
+0082  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0083  0:SUB_INT                    4   2   3
+0084  0:DEREF_SLICE_GET_INT        5   2   4
+0085  0:ADD_INT                    6   0   5
+0086  1:MOVE_INT                  35   0   6
+0087  1:CALL                     128   8   0    ; call (site 8)
+0088  1:LOAD_INT_CONST_SMALL      75   2   4    ; ints[2] = 4
+0089  0:MAKE_SLICE                 4   2   2
+0090  0:EXT                        0   0   0
+0091  1:LOAD_INT_CONST_SMALL      75   2   5    ; ints[2] = 5
+0092  1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
+0093  1:MOVE_INT_TO_GENERAL       40   5   2
+0094  0:INDEX_SET                  4   3   5
+0095  1:LOAD_INT_CONST_SMALL      75   2   3    ; ints[2] = 3
+0096  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0097  1:MOVE_INT_TO_GENERAL       40   5   2
+0098  0:INDEX_SET                  4   3   5
+0099  1:LOAD_INT_CONST_SMALL      75   2   8    ; ints[2] = 8
+0100  1:LOAD_INT_CONST_SMALL      75   3   2    ; ints[3] = 2
+0101  1:MOVE_INT_TO_GENERAL       40   5   2
+0102  0:INDEX_SET                  4   3   5
+0103  1:LOAD_INT_CONST_SMALL      75   2   1    ; ints[2] = 1
+0104  1:LOAD_INT_CONST_SMALL      75   3   3    ; ints[3] = 3
+0105  1:MOVE_INT_TO_GENERAL       40   5   2
+0106  0:INDEX_SET                  4   3   5
+0107  0:MOVE_GENERAL               3   4   1
+0108  0:ALLOC_INDIRECT             4   3   3
+0109  0:EXT                        0   0   0
+0110  1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0111  1:LOAD_INT_CONST_SMALL      75   3   3    ; ints[3] = 3
+0112  1:CALL                     128   9   0    ; call (site 9)
+0113  1:LOAD_INT_CONST_SMALL      75   2   1    ; ints[2] = 1
+0114  1:LOAD_INT_CONST_SMALL      75   3   2    ; ints[3] = 2
+0115  1:CALL                     128  10   0    ; call (site 10)
+0116  0:LOAD_GENERAL_CONST         5   0   0
+0117  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "%d %d %v %d %s %s"
+0118  0:DEREF                      6   4   0
+0119  0:DEREF                      7   2   0
+0120  1:LEN                       70   2   7
+0121  1:CALL                     128  11   0    ; call (site 11)
+0122  1:CALL_SCALAR              134  12   0
+0123  1:CALL_NATIVE              130  13   0    ; call native general[5] (site 13)
+0124  1:MOVE_STRING               37   0   3
+0125  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=1 string=1 general=1
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]="panicked"
+
+0000  2:TIER2_RECOVER              0   6   0
+0001  1:NE_INTERFACE_NIL         147   0   0
+0002  0:JUMP_IF_FALSE              0   2   0    ; if ints[0] == 0 goto +2
+0003  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "panicked"
+0004  0:SET_UPVALUE                0   0   2
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=1 string=1 general=1
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]="nil-panicked"
+
+0000  2:TIER2_RECOVER              0   6   0
+0001  1:NE_INTERFACE_NIL         147   0   0
+0002  0:JUMP_IF_FALSE              0   2   0    ; if ints[0] == 0 goto +2
+0003  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "nil-panicked"
+0004  0:SET_UPVALUE                0   0   2

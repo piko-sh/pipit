@@ -1,0 +1,10 @@
+/bin/
+*.pbc
+*.test
+coverage.out
+.pipit/
+/output
+.bench/
+/.piko-extract
+tests/bench/cross_language/results/
+tests/bench/cross_language/results_scratch_*/

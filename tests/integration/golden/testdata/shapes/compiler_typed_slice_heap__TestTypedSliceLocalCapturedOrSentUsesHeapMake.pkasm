@@ -1,0 +1,81 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function captured
+;   registers: int=3 general=1 sliceInt=1
+;   params:    (int)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=7  [1]=0
+
+0000  1:MAKE_SLICE_HEAP          208   0   0
+0001  0:EXT                        0   7   0
+0002  1:LOAD_INT_CONST_SMALL      75   1   7    ; ints[1] = 7
+0003  1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0004  0:SLICE_SET_INT_DIRECT       0   2   1
+0005  0:MAKE_CLOSURE               0   3   0    ; closure (func 3)
+0006  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function sent
+;   registers: int=2 general=1 uint=1 sliceUint=1
+;   params:    (int, general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+;   uints:   [0]=9
+
+0000  1:MAKE_SLICE_HEAP          208   0   0
+0001  0:EXT                        0  11   0
+0002  1:LOAD_UINT_CONST_SMALL     99   0   9    ; uints[0] = 9
+0003  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0004  1:SLICE_SET_UINT_DIRECT     32   0   1
+0005  0:EXT                        0   0   0
+0006  0:CHAN_SEND                  0   0  11
+
+; ═════════════════════════════════════════════════════════════
+; function EntrypointRun
+;   registers: int=5 general=3 uint=1
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1  [1]=2  [2]=0
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0001  1:MAKE_CHANNEL              80   0   0
+0002  0:EXT                        0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0004  1:CALL                     128   0   0    ; call (site 0)
+0005  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0006  1:CALL                     128   1   0    ; call (site 1)
+0007  1:CALL_NATIVE              130   2   0    ; call native general[1] (site 2)
+0008  1:CHANNEL_RECEIVE           82   0   2
+0009  0:EXT                        2   3   0
+0010  1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
+0011  0:SLICE_GET_UINT             0   2   3
+0012  1:UINT_TO_INT               56   4   0
+0013  0:ADD_INT                    0   1   4
+0014  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=2 sliceInt=1
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+
+0000  0:GET_UPVALUE                0   0   7
+0001  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0002  0:SLICE_GET_INT_DIRECT       1   0   0
+0003  1:MOVE_INT                  35   0   1
+0004  2:TIER2_RETURN               0  10   1    ; 1 values

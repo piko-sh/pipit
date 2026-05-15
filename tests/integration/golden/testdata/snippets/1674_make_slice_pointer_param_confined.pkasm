@@ -1,0 +1,207 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function generateExpression
+;   registers: int=2 string=2 general=3 uint=2
+;   params:    (uint)
+;   returns:   (string, uint)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=64  [2]=3
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0001  1:LOAD_INT_CONST_SMALL      75   1  64    ; ints[1] = 64
+0002  0:MAKE_SLICE                 0   0   1
+0003  0:EXT                        0   0   0
+0004  0:ALLOC_INDIRECT             1   0   3
+0005  0:EXT                        0   0   0
+0006  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0007  1:CALL                     128   0   0    ; call (site 0)
+0008  1:MOVE_UINT                 39   0   1
+0009  0:DEREF                      2   1   0
+0010  1:BYTES_TO_STRING           11   0   2
+0011  1:MOVE_STRING               37   1   0
+0012  1:MOVE_UINT                 39   1   0
+0013  1:MOVE_STRING               37   0   1
+0014  1:MOVE_UINT                 39   0   1
+0015  2:TIER2_RETURN               0  10   2    ; 2 values
+
+; ═════════════════════════════════════════════════════════════
+; function nextState
+;   registers: uint=4
+;   params:    (uint)
+;   returns:   (uint)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   uints:   [0]=1664525  [1]=1013904223
+
+0000  0:LOAD_UINT_CONST            1   0   0
+0001  0:MUL_UINT                   2   0   1
+0002  0:TRUNCATE_NARROW            2  32   5
+0003  1:ADD_UINT_CONST            96   0   2
+0004  0:EXT                        1   0   0
+0005  0:TRUNCATE_NARROW            0  32   5
+0006  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function generateTerm
+;   registers: int=5 general=3 uint=4 sliceByte=1
+;   params:    (general, uint, int)
+;   returns:   (uint)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=1  [2]=3  [3]=2
+;   uints:   [0]=3  [1]=0  [2]=100  [3]=40  [4]=43  [5]=45  [6]=42  [7]=41
+
+0000  1:CALL_SCALAR              134   0   0
+0001  1:MOVE_UINT                 39   0   1
+0002  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0003  0:EQ_INT                     2   0   1
+0004  1:MOVE_INT                  35   3   2
+0005  0:JUMP_IF_TRUE               3   6   0    ; if ints[3] != 0 goto +6
+0006  1:LOAD_UINT_CONST_SMALL     99   1   3    ; uints[1] = 3
+0007  0:REM_UINT                   2   0   1
+0008  0:TRUNCATE_NARROW            2  32   5
+0009  1:LOAD_UINT_CONST_SMALL     99   3   0    ; uints[3] = 0
+0010  0:EQ_UINT                    4   2   3
+0011  1:MOVE_INT                  35   3   4
+0012  0:JUMP_IF_FALSE              3   8   0    ; if ints[3] == 0 goto +8
+0013  1:LOAD_UINT_CONST_SMALL     99   1 100    ; uints[1] = 100
+0014  0:REM_UINT                   2   0   1
+0015  0:TRUNCATE_NARROW            2  32   5
+0016  1:UINT_TO_INT               56   1   2
+0017  1:CALL                     128   1   0    ; call (site 1)
+0018  0:PACK_INTERFACE             1   0  12
+0019  1:STAR_APPEND_BYTE_SPREAD  106   0   1
+0020  2:TIER2_RETURN               0  10   1    ; 1 values
+0021  1:LOAD_UINT_CONST_SMALL     99   1  40    ; uints[1] = 40
+0022  1:STAR_APPEND_BYTE_FAST    105   0   1
+0023  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0024  0:SUB_INT                    2   0   1
+0025  1:CALL                     128   2   0    ; call (site 2)
+0026  1:MOVE_UINT                 39   0   1
+0027  1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
+0028  0:MAKE_SLICE                 1   1   1
+0029  0:EXT                        0   0   0
+0030  1:LOAD_UINT_CONST_SMALL     99   1  43    ; uints[1] = 43
+0031  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0032  0:PACK_TYPED                 2   1   5
+0033  0:EXT                        1   0   0
+0034  0:INDEX_SET                  1   1   2
+0035  1:LOAD_UINT_CONST_SMALL     99   1  45    ; uints[1] = 45
+0036  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0037  0:PACK_TYPED                 2   1   5
+0038  0:EXT                        1   0   0
+0039  0:INDEX_SET                  1   1   2
+0040  1:LOAD_UINT_CONST_SMALL     99   1  42    ; uints[1] = 42
+0041  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0042  0:PACK_TYPED                 2   1   5
+0043  0:EXT                        1   0   0
+0044  0:INDEX_SET                  1   1   2
+0045  1:LOAD_UINT_CONST_SMALL     99   1   3    ; uints[1] = 3
+0046  0:REM_UINT                   2   0   1
+0047  0:TRUNCATE_NARROW            2  32   5
+0048  1:UINT_TO_INT               56   1   2
+0049  0:SLICE_GET_UINT             3   1   1
+0050  1:STAR_APPEND_BYTE_FAST    105   0   3
+0051  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0052  0:SUB_INT                    2   0   1
+0053  1:CALL                     128   3   0    ; call (site 3)
+0054  1:MOVE_UINT                 39   0   1
+0055  1:LOAD_UINT_CONST_SMALL     99   1  41    ; uints[1] = 41
+0056  1:STAR_APPEND_BYTE_FAST    105   0   1
+0057  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function intToDecimalBytes
+;   registers: int=8 general=2 uint=1 sliceByte=1
+;   params:    (int)
+;   returns:   (sliceByte)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=1  [2]=4  [3]=48  [4]=10
+;   uints:   [0]=48
+
+0000  1:EQ_INT_CONST_JUMP_FALSE  124   0   0
+0001  0:EXT                       11   0   0
+0002  3:TIER3_NOP                  0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0004  0:MAKE_SLICE                 0   1   1
+0005  0:EXT                        0   0   0
+0006  1:LOAD_UINT_CONST_SMALL     99   0  48    ; uints[0] = 48
+0007  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0008  0:PACK_TYPED                 1   0   5
+0009  0:EXT                        1   0   0
+0010  0:INDEX_SET                  0   1   1
+0011  1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   0
+0012  2:TIER2_RETURN               0  10   1    ; 1 values
+0013  0:LOAD_GENERAL_CONST         0   0   0
+0014  1:LOAD_INT_CONST_SMALL      75   1   4    ; ints[1] = 4
+0015  1:GT_INT_CONST_JUMP_FALSE  127   0   0
+0016  0:EXT                       13   0   0
+0017  3:TIER3_NOP                  0   0   0
+0018  2:TIER2_DEC_INT              0   2   1
+0019  1:LOAD_INT_CONST_SMALL      75   4  48    ; ints[4] = 48
+0020  1:LOAD_INT_CONST_SMALL      75   5  10    ; ints[5] = 10
+0021  0:REM_INT                    6   0   5
+0022  0:ADD_INT                    7   4   6
+0023  1:INT_TO_UINT               55   0   7
+0024  0:TRUNCATE_NARROW            0   8   5
+0025  0:SLICE_SET_UINT             0   1   0
+0026  1:LOAD_INT_CONST_SMALL      75   4  10    ; ints[4] = 10
+0027  0:DIV_INT                    5   0   4
+0028  1:MOVE_INT                  35   0   5
+0029  1:JUMP                      74 241 255    ; goto -15
+0030  1:SLICE_OP                 141   1   0
+0031  0:EXT                        1   1   0
+0032  1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   1
+0033  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=6 string=4 uint=1
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=200
+;   strings: [0]=" "
+;   uints:   [0]=42
+
+0000  1:LOAD_UINT_CONST_SMALL     99   0  42    ; uints[0] = 42
+0001  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0002  1:LOAD_ZERO                 79   0   2
+0003  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0004  1:LT_INT_CONST_JUMP_FALSE  123   1   1
+0005  0:EXT                        9   0   0
+0006  3:TIER3_NOP                  0   0   0
+0007  1:LOAD_ZERO                 79   1   2
+0008  1:CALL                     128   0   0    ; call (site 0)
+0009  1:LEN_STRING                65   4   1
+0010  0:ADD_INT                    5   0   4
+0011  1:MOVE_INT                  35   0   5
+0012  1:MOVE_STRING               37   0   1
+0013  2:TIER2_INC_INT              0   1   1
+0014  1:JUMP                      74 245 255    ; goto -11
+0015  0:LOAD_STRING_CONST          1   0   0    ; strings[1] = " "
+0016  0:CONCAT_STRING              2   0   1
+0017  1:CALL_SCALAR              134   1   0
+0018  0:CONCAT_STRING              0   2   3
+0019  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function intToString
+;   registers: int=1 string=1 sliceByte=1
+;   params:    (int)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+0000  1:CALL                     128   0   0    ; call (site 0)
+0001  1:SLICE_BYTE_TO_STRING     149   0   0
+0002  2:TIER2_RETURN               0  10   1    ; 1 values

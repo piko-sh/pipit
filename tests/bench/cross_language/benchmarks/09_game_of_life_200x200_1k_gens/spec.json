@@ -1,0 +1,14 @@
+{
+  "name": "09_game_of_life_200x200_1k_gens",
+  "description": "Conway's Game of Life on a 200x200 toroidal grid for 1000 generations. Initial state seeded deterministically from a 32-bit LCG. Returns live cell count after generation 1000.",
+  "args": [],
+  "expected_stdout_sha256": "6557739a67283a8de383fc5c0997fbec7c5721a46f28f3235fc9607598d9016b",
+  "k_inner": 1,
+  "timeout_seconds": 600,
+  "source_sha256": {
+    "go/native_main.go": "8c119ceca22e7aa65af3a44a2742b0145c622eb9df50642431d979a9d3a6c40f",
+    "go/pipit_source.go": "d10f881cb90e53ef4295e45e4064c3c496c43e2a89510fbf41baf4527ae93ab2",
+    "py/cpython.py": "8ed51bcb9b7d84171d8018fb714dcc76731915bbafdc3ce14b0308105c5b0e9b",
+    "py/pypy.py": "8ed51bcb9b7d84171d8018fb714dcc76731915bbafdc3ce14b0308105c5b0e9b"
+  }
+}

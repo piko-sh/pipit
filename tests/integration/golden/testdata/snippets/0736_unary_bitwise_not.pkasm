@@ -1,0 +1,73 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=6 string=4 general=2 uint=3
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=5  [2]=255
+;   strings: [0]=""  [1]="not0xF0=%d;"  [2]="notZero16=%d;"  [3]="notInt8Zero=%d;"  [4]="notAllOnes=%d;"  [5]="notAnd=%d"
+;   uints:   [0]=240  [1]=0  [2]=4294967295
+
+0000  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = ""
+0001  1:LOAD_UINT_CONST_SMALL     99   0 240    ; uints[0] = 240
+0002  1:BIT_NOT_UINT              49   1   0
+0003  0:TRUNCATE_NARROW            1   8   5
+0004  0:LOAD_GENERAL_CONST         0   0   0
+0005  0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "not0xF0=%d;"
+0006  0:PACK_TYPED                 1   1   5
+0007  0:EXT                        0   0   0
+0008  1:CALL_NATIVE              130   0   0    ; call native general[0] (site 0)
+0009  0:CONCAT_STRING              3   0   2
+0010  1:MOVE_STRING               37   0   3
+0011  1:LOAD_UINT_CONST_SMALL     99   2   0    ; uints[2] = 0
+0012  1:MOVE_UINT                 39   1   2
+0013  1:BIT_NOT_UINT              49   2   1
+0014  0:TRUNCATE_NARROW            2  16   5
+0015  1:MOVE_UINT                 39   0   2
+0016  0:LOAD_GENERAL_CONST         0   1   0
+0017  0:LOAD_STRING_CONST          1   2   0    ; strings[1] = "notZero16=%d;"
+0018  0:PACK_TYPED                 1   0   5
+0019  0:EXT                        1   0   0
+0020  1:CALL_NATIVE              130   1   0    ; call native general[0] (site 1)
+0021  0:CONCAT_STRING              3   0   2
+0022  1:MOVE_STRING               37   0   3
+0023  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0024  1:MOVE_INT                  35   0   1
+0025  1:BIT_NOT                   48   2   0
+0026  0:TRUNCATE_NARROW            2   8   0
+0027  0:LOAD_GENERAL_CONST         0   2   0
+0028  0:LOAD_STRING_CONST          1   3   0    ; strings[1] = "notInt8Zero=%d;"
+0029  0:PACK_TYPED                 1   2   0
+0030  0:EXT                        2   0   0
+0031  1:CALL_NATIVE              130   2   0    ; call native general[0] (site 2)
+0032  0:CONCAT_STRING              3   0   2
+0033  1:MOVE_STRING               37   0   3
+0034  0:LOAD_UINT_CONST            2   2   0
+0035  1:MOVE_UINT                 39   0   2
+0036  1:BIT_NOT_UINT              49   2   0
+0037  0:TRUNCATE_NARROW            2  32   5
+0038  1:MOVE_UINT                 39   1   2
+0039  0:LOAD_GENERAL_CONST         0   3   0
+0040  0:LOAD_STRING_CONST          1   4   0    ; strings[1] = "notAllOnes=%d;"
+0041  0:PACK_TYPED                 1   1   5
+0042  0:EXT                        3   0   0
+0043  1:CALL_NATIVE              130   3   0    ; call native general[0] (site 3)
+0044  0:CONCAT_STRING              3   0   2
+0045  1:MOVE_STRING               37   0   3
+0046  1:LOAD_INT_CONST_SMALL      75   3   5    ; ints[3] = 5
+0047  1:MOVE_INT                  35   2   3
+0048  1:BIT_NOT                   48   3   2
+0049  1:LOAD_INT_CONST_SMALL      75   4 255    ; ints[4] = 255
+0050  0:BIT_AND                    5   3   4
+0051  1:MOVE_INT                  35   0   5
+0052  0:LOAD_GENERAL_CONST         0   4   0
+0053  0:LOAD_STRING_CONST          1   5   0    ; strings[1] = "notAnd=%d"
+0054  1:CALL_NATIVE              130   4   0    ; call native general[0] (site 4)
+0055  0:CONCAT_STRING              3   0   2
+0056  1:MOVE_STRING               37   0   3
+0057  2:TIER2_RETURN               0  10   1    ; 1 values

@@ -1,0 +1,43 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=9 string=6 general=4 bool=4
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=2
+;   strings: [0]="ncpu_positive=%t;goos_nonempty=%t;goa..."  [1]="go"
+;   bools:   [0]=true
+
+0000  0:LOAD_GENERAL_CONST         0   0   0
+0001  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "ncpu_positive=%t;goos_nonempty=%t;goa..."
+0002  0:LOAD_GENERAL_CONST         1   1   0
+0003  1:CALL_NATIVE              130   0   0    ; call native general[1] (site 0)
+0004  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0005  0:GT_INT                     2   0   1
+0006  1:INT_TO_BOOL               54   0   2
+0007  1:LOAD_BOOL_CONST          138   1   0    ; bools[1] = true
+0008  1:LOAD_BOOL_CONST          138   2   0    ; bools[2] = true
+0009  0:LOAD_GENERAL_CONST         2   2   0
+0010  1:CALL_NATIVE              130   1   0    ; call native general[2] (site 1)
+0011  1:LEN_STRING                65   3   1
+0012  1:LOAD_INT_CONST_SMALL      75   4   2    ; ints[4] = 2
+0013  0:GE_INT                     5   3   4
+0014  1:MOVE_INT                  35   6   5
+0015  0:JUMP_IF_FALSE              6   8   0    ; if ints[6] == 0 goto +8
+0016  0:LOAD_GENERAL_CONST         3   3   0
+0017  1:CALL_NATIVE              130   2   0    ; call native general[3] (site 2)
+0018  1:LOAD_INT_CONST_SMALL      75   7   2    ; ints[7] = 2
+0019  0:SLICE_STRING               3   2   2
+0020  0:EXT                        0   7   0
+0021  0:LOAD_STRING_CONST          4   1   0    ; strings[4] = "go"
+0022  0:EQ_STRING                  8   3   4
+0023  1:MOVE_INT                  35   6   8
+0024  1:INT_TO_BOOL               54   3   6
+0025  1:CALL_NATIVE              130   3   0    ; call native general[0] (site 3)
+0026  1:MOVE_STRING               37   0   5
+0027  2:TIER2_RETURN               0  10   1    ; 1 values

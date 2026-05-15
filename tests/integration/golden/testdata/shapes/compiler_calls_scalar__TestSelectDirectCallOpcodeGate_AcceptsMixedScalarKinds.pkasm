@@ -1,0 +1,50 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function mix
+;   registers: int=6 float=1 string=1 bool=1 uint=1
+;   params:    (int, uint, float, bool, string)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+
+0000  1:BOOL_TO_INT               53   1   0
+0001  0:JUMP_IF_FALSE              1   7   0    ; if ints[1] == 0 goto +7
+0002  1:UINT_TO_INT               56   1   0
+0003  0:ADD_INT                    2   0   1
+0004  1:FLOAT_TO_INT              51   3   0
+0005  0:ADD_INT                    4   2   3
+0006  1:LEN_STRING                65   5   0
+0007  0:ADD_INT                    0   4   5
+0008  2:TIER2_RETURN               0  10   1    ; 1 values
+0009  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0010  1:MOVE_INT                  35   0   1
+0011  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function EntrypointRun
+;   registers: int=2 float=1 string=1 bool=1 uint=1
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1
+;   floats:  [0]=3
+;   strings: [0]="abcd"
+;   bools:   [0]=true
+;   uints:   [0]=2
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0001  1:LOAD_UINT_CONST_SMALL     99   0   2    ; uints[0] = 2
+0002  0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 3
+0003  1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
+0004  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "abcd"
+0005  1:CALL_SCALAR              134   0   0
+0006  1:MOVE_INT                  35   0   1
+0007  0:ADD_INT_CONST              0   0   0    ; const = 1
+0008  3:TIER3_NOP                  0   0   0
+0009  2:TIER2_RETURN               0  10   1    ; 1 values

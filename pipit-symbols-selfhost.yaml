@@ -1,0 +1,62 @@
+# Copyright 2026 PolitePixels Limited
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# This project stands against fascism, authoritarianism, and all forms of
+# oppression. We built this to empower people, not to enable those who would
+# strip others of their rights and dignity.
+
+# pipit-symbols-selfhost.yaml - Symbol extraction manifest for the self-hosting lane.
+#
+# Lists pipit's own packages that internal/compile depends on, so that the compiler's
+# source can run under the interpreter (make selfhost) with its dependencies served as
+# native symbols. Regenerate with: make generate-selfhost-symbols
+
+package: selfhost
+output: sdk/selfhost
+
+# Emitted into sdk/selfhost, the module the self-hosting harness imports. The link
+# sentinels keep their internal import path: the tables serve pipit's own packages, which
+# reference link by that path.
+link_import_path: pipit.sh/pipit/internal/link
+
+packages:
+  - pipit.sh/pipit/internal/compile/appendlower
+  - pipit.sh/pipit/internal/compile/astpattern
+  - pipit.sh/pipit/internal/compile/escape
+  - pipit.sh/pipit/internal/compile/fieldlayout
+  - pipit.sh/pipit/internal/compile/inline
+  - pipit.sh/pipit/internal/compile/isaselect
+  - pipit.sh/pipit/internal/compile/liveness
+  - pipit.sh/pipit/internal/compile/passes
+  - pipit.sh/pipit/internal/compile/patterns
+  - pipit.sh/pipit/internal/compile/scope
+  - pipit.sh/pipit/internal/compile/typemap
+  - pipit.sh/pipit/internal/engine
+  - pipit.sh/pipit/internal/engine/asm
+  - pipit.sh/pipit/internal/engine/asm/asmgen_arch_amd64
+  - pipit.sh/pipit/internal/engine/asm/asmgen_arch_arm64
+  - pipit.sh/pipit/internal/engine/goversion
+  - pipit.sh/pipit/internal/engine/program
+  - pipit.sh/pipit/internal/fault
+  - pipit.sh/pipit/internal/hostmem
+  - pipit.sh/pipit/internal/isa
+  - pipit.sh/pipit/internal/logging
+  - pipit.sh/pipit/internal/mem
+  - pipit.sh/pipit/internal/policy
+  - pipit.sh/pipit/internal/safeconv
+  - pipit.sh/pipit/internal/stablepool
+  - pipit.sh/pipit/internal/symtab
+  - pipit.sh/pipit/internal/symtab/descriptor
+  - pipit.sh/pipit/internal/symtab/typemodel
+  - pipit.sh/pipit/internal/link

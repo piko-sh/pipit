@@ -1,0 +1,41 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function EntrypointRun
+;   registers: int=7 float=1 sliceFloat=2
+;   params:    (none)
+;   returns:   (float)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=4  [1]=0  [2]=1
+;   floats:  [0]=0
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   4    ; ints[0] = 4
+0001  1:MAKE_SLICE_FLOAT          18   0   0
+0002  0:EXT                        0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   1   4    ; ints[1] = 4
+0004  1:MAKE_SLICE_FLOAT          18   1   1
+0005  0:EXT                        1   0   0
+0006  1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0007  1:LEN_SLICE_FLOAT_DIRECT    21   3   0
+0008  1:LT_INT_JUMP_FALSE        116   2   3
+0009  0:EXT                       12   0   0
+0010  1:LOAD_INT_CONST_SMALL      75   5   1    ; ints[5] = 1
+0011  0:ADD_INT                    6   2   5
+0012  1:INT_TO_FLOAT              50   0   6
+0013  1:SLICE_SET_FLOAT_DIRECT    20   0   2
+0014  0:EXT                        0   0   0
+0015  1:LOAD_INT_CONST_SMALL      75   5   4    ; ints[5] = 4
+0016  0:SUB_INT                    6   5   2
+0017  1:INT_TO_FLOAT              50   0   6
+0018  1:SLICE_SET_FLOAT_DIRECT    20   1   2
+0019  0:EXT                        0   0   0
+0020  2:TIER2_INC_INT              0   1   2
+0021  1:JUMP                      74 241 255    ; goto -15
+0022  0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 0
+0023  1:LOAD_INT_CONST_SMALL      75   2   4    ; ints[2] = 4
+0024  1:SIMD_DOT_PRODUCT_FLOAT64 151   0   0
+0025  0:EXT                        1   2   0
+0026  2:TIER2_RETURN               0  10   1    ; 1 values

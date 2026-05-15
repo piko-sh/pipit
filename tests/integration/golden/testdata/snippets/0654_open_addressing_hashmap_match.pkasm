@@ -1,0 +1,510 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function newHashTable
+;   registers: int=1 general=2
+;   params:    (none)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=64
+
+0000  2:MAKE_MAP                   0  12   0
+0001  0:EXT                        0   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   0  64    ; ints[0] = 64
+0003  0:MAKE_SLICE                 1   0   0
+0004  0:EXT                        1   0   0
+0005  0:SET_STRUCT_FIELD_GENERAL_T0   0   1   0
+0006  1:LOAD_INT_CONST_SMALL      75   0  64    ; ints[0] = 64
+0007  0:MAKE_SLICE                 1   0   0
+0008  0:EXT                        2   0   0
+0009  0:SET_STRUCT_FIELD_GENERAL_T0   0   1   1
+0010  1:LOAD_INT_CONST_SMALL      75   0  64    ; ints[0] = 64
+0011  0:MAKE_SLICE                 1   0   0
+0012  0:EXT                        3   0   0
+0013  0:SET_STRUCT_FIELD_GENERAL_T0   0   1   2
+0014  1:LOAD_INT_CONST_SMALL      75   0  64    ; ints[0] = 64
+0015  0:SET_STRUCT_FIELD_INT_T0    0   0   3
+0016  0:ADDR                       1   0   0
+0017  0:MOVE_GENERAL               0   1   0
+0018  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function fnv1a32
+;   registers: int=3 string=1 uint=5
+;   params:    (string)
+;   returns:   (uint)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+;   uints:   [0]=2166136261  [1]=16777619  [2]=4294967295
+
+0000  0:LOAD_UINT_CONST            0   0   0
+0001  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0002  1:LEN_STRING_LT_JUMP_FALSE  78   0   0
+0003  0:EXT                       16   0   0
+0004  3:TIER3_NOP                  0   0   0
+0005  0:STRING_INDEX               1   0   0
+0006  3:TIER3_NOP                  0   0   0
+0007  0:TRUNCATE_NARROW            2  32   5
+0008  0:BIT_XOR_UINT               3   0   1
+0009  0:TRUNCATE_NARROW            3  32   5
+0010  1:MOVE_UINT                 39   0   3
+0011  0:LOAD_UINT_CONST            1   1   0
+0012  0:MUL_UINT                   2   0   1
+0013  0:TRUNCATE_NARROW            2  32   5
+0014  0:LOAD_UINT_CONST            3   2   0
+0015  0:BIT_AND_UINT               4   2   3
+0016  0:TRUNCATE_NARROW            4  32   5
+0017  1:MOVE_UINT                 39   0   4
+0018  2:TIER2_INC_INT              0   1   0
+0019  1:JUMP                      74 238 255    ; goto -18
+0020  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function hashTable.put
+;   registers: int=8 string=2 general=1 uint=5 sliceInt=1 sliceString=1 sliceByte=1
+;   params:    (general, string, int)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=10  [1]=7  [2]=1  [3]=-1  [4]=0
+;   uints:   [0]=0  [1]=1  [2]=2
+
+0000  0:GET_STRUCT_FIELD_INT_T0    1   0   0
+0001  1:LOAD_INT_CONST_SMALL      75   2  10    ; ints[2] = 10
+0002  0:MUL_INT                    3   1   2
+0003  0:GET_STRUCT_FIELD_INT_T0    4   0   1
+0004  1:LOAD_INT_CONST_SMALL      75   5   7    ; ints[5] = 7
+0005  0:MUL_INT                    6   4   5
+0006  1:GE_INT_JUMP_FALSE        119   3   6
+0007  0:EXT                        1   0   0
+0008  1:CALL                     128   0   0    ; call (site 0)
+0009  1:CALL_SCALAR              134   1   0
+0010  0:GET_STRUCT_FIELD_INT_T0    1   0   1
+0011  1:LOAD_INT_CONST_SMALL      75   2   1    ; ints[2] = 1
+0012  0:SUB_INT                    3   1   2
+0013  1:INT_TO_UINT               55   1   3
+0014  0:TRUNCATE_NARROW            1  32   5
+0015  0:BIT_AND_UINT               2   0   1
+0016  0:TRUNCATE_NARROW            2  32   5
+0017  1:UINT_TO_INT               56   1   2
+0018  0:LOAD_INT_CONST             2   3   0    ; ints[2] = -1
+0019  1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
+0020  0:EXT                        2   0   0
+0021  1:SLICE_GET_BYTE_DIRECT    112   2   0
+0022  0:EXT                        1   0   0
+0023  1:EQ_UINT_CONST_JUMP_FALSE 150   2   0
+0024  0:EXT                       32   0   0
+0025  3:TIER3_NOP                  0   0   0
+0026  1:GE_INT_CONST_JUMP_FALSE  126   2   4
+0027  0:EXT                       15   0   0
+0028  3:TIER3_NOP                  0   0   0
+0029  1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
+0030  0:EXT                        3   0   0
+0031  1:SLICE_SET_STRING_DIRECT   24   0   2
+0032  0:EXT                        0   0   0
+0033  1:GET_STRUCT_FIELD_SLICE_INT 190   0   0
+0034  0:EXT                        4   0   0
+0035  0:SLICE_SET_INT_DIRECT       0   2   0
+0036  1:LOAD_UINT_CONST_SMALL     99   3   1    ; uints[3] = 1
+0037  1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
+0038  0:EXT                        2   0   0
+0039  1:SLICE_SET_BYTE_DIRECT    113   0   2
+0040  0:EXT                        3   0   0
+0041  1:INC_STRUCT_FIELD_INT     107   0   5
+0042  3:TIER3_RETURN_VOID          0   0   1
+0043  1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
+0044  0:EXT                        3   0   0
+0045  1:SLICE_SET_STRING_DIRECT   24   0   1
+0046  0:EXT                        0   0   0
+0047  1:GET_STRUCT_FIELD_SLICE_INT 190   0   0
+0048  0:EXT                        4   0   0
+0049  0:SLICE_SET_INT_DIRECT       0   1   0
+0050  1:LOAD_UINT_CONST_SMALL     99   3   1    ; uints[3] = 1
+0051  1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
+0052  0:EXT                        2   0   0
+0053  1:SLICE_SET_BYTE_DIRECT    113   0   1
+0054  0:EXT                        3   0   0
+0055  1:INC_STRUCT_FIELD_INT     107   0   5
+0056  1:INC_STRUCT_FIELD_INT     107   0   0
+0057  3:TIER3_RETURN_VOID          0   0   1
+0058  1:LOAD_UINT_CONST_SMALL     99   3   1    ; uints[3] = 1
+0059  0:EQ_UINT                    3   2   3
+0060  1:MOVE_INT                  35   4   3
+0061  0:JUMP_IF_FALSE              4   6   0    ; if ints[4] == 0 goto +6
+0062  1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
+0063  0:EXT                        3   0   0
+0064  1:SLICE_GET_STRING_DIRECT   23   1   0
+0065  0:EXT                        1   0   0
+0066  0:EQ_STRING                  5   1   0
+0067  1:MOVE_INT                  35   4   5
+0068  0:JUMP_IF_FALSE              4   4   0    ; if ints[4] == 0 goto +4
+0069  1:GET_STRUCT_FIELD_SLICE_INT 190   0   0
+0070  0:EXT                        4   0   0
+0071  0:SLICE_SET_INT_DIRECT       0   1   0
+0072  3:TIER3_RETURN_VOID          0   0   1
+0073  1:LOAD_UINT_CONST_SMALL     99   3   2    ; uints[3] = 2
+0074  0:EQ_UINT                    3   2   3
+0075  1:MOVE_INT                  35   4   3
+0076  0:JUMP_IF_FALSE              4   3   0    ; if ints[4] == 0 goto +3
+0077  1:LOAD_INT_CONST_SMALL      75   5   0    ; ints[5] = 0
+0078  0:LT_INT                     6   2   5
+0079  1:MOVE_INT                  35   4   6
+0080  0:JUMP_IF_FALSE              4   1   0    ; if ints[4] == 0 goto +1
+0081  1:MOVE_INT                  35   2   1
+0082  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0083  0:ADD_INT                    4   1   3
+0084  1:INT_TO_UINT               55   3   4
+0085  0:TRUNCATE_NARROW            3  32   5
+0086  0:BIT_AND_UINT               4   3   1
+0087  0:TRUNCATE_NARROW            4  32   5
+0088  1:UINT_TO_INT               56   5   4
+0089  1:MOVE_INT                  35   1   5
+0090  1:JUMP                      74 184 255    ; goto -72
+
+; ═════════════════════════════════════════════════════════════
+; function hashTable.get
+;   registers: int=5 string=2 general=1 bool=2 uint=6 sliceInt=1 sliceString=1 sliceByte=2
+;   params:    (general, string)
+;   returns:   (int, bool)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1  [1]=0
+;   bools:   [0]=true  [1]=false
+;   uints:   [0]=0  [1]=1
+
+0000  1:CALL_SCALAR              134   0   0
+0001  0:GET_STRUCT_FIELD_INT_T0    0   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0003  0:SUB_INT                    2   0   1
+0004  1:INT_TO_UINT               55   1   2
+0005  0:TRUNCATE_NARROW            1  32   5
+0006  0:BIT_AND_UINT               2   0   1
+0007  0:TRUNCATE_NARROW            2  32   5
+0008  1:UINT_TO_INT               56   0   2
+0009  1:LOAD_UINT_CONST_SMALL     99   3   0    ; LICM hoist of PC 13
+0010  1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
+0011  0:EXT                        1   0   0
+0012  1:SLICE_GET_BYTE_DIRECT    112   2   0
+0013  0:EXT                        0   0   0
+0014  0:NE_UINT                    1   2   3
+0015  0:JUMP_IF_FALSE              1  33   0    ; if ints[1] == 0 goto +33
+0016  1:GET_STRUCT_FIELD_SLICE_BYTE 195   1   0
+0017  0:EXT                        1   0   0
+0018  1:SLICE_GET_BYTE_DIRECT    112   4   1
+0019  0:EXT                        0   0   0
+0020  1:LOAD_UINT_CONST_SMALL     99   5   1    ; uints[5] = 1
+0021  0:EQ_UINT                    2   4   5
+0022  1:MOVE_INT                  35   3   2
+0023  0:JUMP_IF_FALSE              3   6   0    ; if ints[3] == 0 goto +6
+0024  1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
+0025  0:EXT                        2   0   0
+0026  1:SLICE_GET_STRING_DIRECT   23   1   0
+0027  0:EXT                        0   0   0
+0028  0:EQ_STRING                  4   1   0
+0029  1:MOVE_INT                  35   3   4
+0030  0:JUMP_IF_FALSE              3   9   0    ; if ints[3] == 0 goto +9
+0031  1:GET_STRUCT_FIELD_SLICE_INT 190   0   0
+0032  0:EXT                        3   0   0
+0033  0:SLICE_GET_INT_DIRECT       2   0   0
+0034  1:MOVE_INT                  35   3   2
+0035  1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
+0036  1:MOVE_BOOL                 38   1   0
+0037  1:MOVE_INT                  35   0   3
+0038  1:MOVE_BOOL                 38   0   1
+0039  2:TIER2_RETURN               0  10   2    ; 2 values
+0040  1:LOAD_INT_CONST_SMALL      75   2   1    ; ints[2] = 1
+0041  0:ADD_INT                    3   0   2
+0042  1:INT_TO_UINT               55   4   3
+0043  0:TRUNCATE_NARROW            4  32   5
+0044  0:BIT_AND_UINT               5   4   1
+0045  0:TRUNCATE_NARROW            5  32   5
+0046  1:UINT_TO_INT               56   4   5
+0047  1:MOVE_INT                  35   0   4
+0048  1:JUMP                      74 217 255    ; goto -39
+0049  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0050  1:MOVE_INT                  35   2   1
+0051  1:LOAD_BOOL_CONST          138   0   1    ; bools[0] = false
+0052  1:MOVE_BOOL                 38   1   0
+0053  1:MOVE_INT                  35   0   2
+0054  1:MOVE_BOOL                 38   0   1
+0055  2:TIER2_RETURN               0  10   2    ; 2 values
+
+; ═════════════════════════════════════════════════════════════
+; function hashTable.deleteKey
+;   registers: int=5 string=2 general=1 bool=1 uint=6 sliceString=1 sliceByte=2
+;   params:    (general, string)
+;   returns:   (bool)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1
+;   bools:   [0]=true  [1]=false
+;   uints:   [0]=0  [1]=1  [2]=2
+
+0000  1:CALL_SCALAR              134   0   0
+0001  0:GET_STRUCT_FIELD_INT_T0    0   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0003  0:SUB_INT                    2   0   1
+0004  1:INT_TO_UINT               55   1   2
+0005  0:TRUNCATE_NARROW            1  32   5
+0006  0:BIT_AND_UINT               2   0   1
+0007  0:TRUNCATE_NARROW            2  32   5
+0008  1:UINT_TO_INT               56   0   2
+0009  1:LOAD_UINT_CONST_SMALL     99   3   0    ; LICM hoist of PC 13
+0010  1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
+0011  0:EXT                        1   0   0
+0012  1:SLICE_GET_BYTE_DIRECT    112   2   0
+0013  0:EXT                        0   0   0
+0014  0:NE_UINT                    1   2   3
+0015  0:JUMP_IF_FALSE              1  32   0    ; if ints[1] == 0 goto +32
+0016  1:GET_STRUCT_FIELD_SLICE_BYTE 195   1   0
+0017  0:EXT                        1   0   0
+0018  1:SLICE_GET_BYTE_DIRECT    112   4   1
+0019  0:EXT                        0   0   0
+0020  1:LOAD_UINT_CONST_SMALL     99   5   1    ; uints[5] = 1
+0021  0:EQ_UINT                    2   4   5
+0022  1:MOVE_INT                  35   3   2
+0023  0:JUMP_IF_FALSE              3   6   0    ; if ints[3] == 0 goto +6
+0024  1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
+0025  0:EXT                        2   0   0
+0026  1:SLICE_GET_STRING_DIRECT   23   1   0
+0027  0:EXT                        0   0   0
+0028  0:EQ_STRING                  4   1   0
+0029  1:MOVE_INT                  35   3   4
+0030  0:JUMP_IF_FALSE              3   8   0    ; if ints[3] == 0 goto +8
+0031  1:LOAD_UINT_CONST_SMALL     99   4   2    ; uints[4] = 2
+0032  1:GET_STRUCT_FIELD_SLICE_BYTE 195   1   0
+0033  0:EXT                        1   0   0
+0034  1:SLICE_SET_BYTE_DIRECT    113   1   0
+0035  0:EXT                        4   0   0
+0036  1:DEC_STRUCT_FIELD_INT     108   0   3
+0037  1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
+0038  2:TIER2_RETURN               0  10   1    ; 1 values
+0039  1:LOAD_INT_CONST_SMALL      75   2   1    ; ints[2] = 1
+0040  0:ADD_INT                    3   0   2
+0041  1:INT_TO_UINT               55   4   3
+0042  0:TRUNCATE_NARROW            4  32   5
+0043  0:BIT_AND_UINT               5   4   1
+0044  0:TRUNCATE_NARROW            5  32   5
+0045  1:UINT_TO_INT               56   4   5
+0046  1:MOVE_INT                  35   0   4
+0047  1:JUMP                      74 218 255    ; goto -38
+0048  1:LOAD_BOOL_CONST          138   0   1    ; bools[0] = false
+0049  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function hashTable.grow
+;   registers: int=4 string=1 general=6 uint=2 sliceInt=1 sliceString=1 sliceByte=1
+;   params:    (general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2  [1]=0
+;   uints:   [0]=1
+
+0000  1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
+0001  0:EXT                        0   0   0
+0002  1:BOX_SLICE_STRING         162   1   0
+0003  1:GET_STRUCT_FIELD_SLICE_INT 190   0   0
+0004  0:EXT                        1   0   0
+0005  1:BOX_SLICE_INT             34   2   0
+0006  1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
+0007  0:EXT                        2   0   0
+0008  1:BOX_SLICE_BYTE           148   3   0
+0009  0:GET_STRUCT_FIELD_INT_T0    0   0   3
+0010  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0011  0:MUL_INT                    2   0   1
+0012  0:SET_STRUCT_FIELD_INT_T0    0   2   3
+0013  0:MOVE_GENERAL               4   0   0
+0014  0:GET_STRUCT_FIELD_INT_T0    1   0   3
+0015  0:MAKE_SLICE                 5   1   1
+0016  0:EXT                        1   0   0
+0017  0:SET_STRUCT_FIELD_GENERAL_T0   4   5   0
+0018  0:MOVE_GENERAL               4   0   0
+0019  0:GET_STRUCT_FIELD_INT_T0    1   0   3
+0020  0:MAKE_SLICE                 5   1   1
+0021  0:EXT                        2   0   0
+0022  0:SET_STRUCT_FIELD_GENERAL_T0   4   5   1
+0023  0:MOVE_GENERAL               4   0   0
+0024  0:GET_STRUCT_FIELD_INT_T0    1   0   3
+0025  0:MAKE_SLICE                 5   1   1
+0026  0:EXT                        3   0   0
+0027  0:SET_STRUCT_FIELD_GENERAL_T0   4   5   2
+0028  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0029  0:SET_STRUCT_FIELD_INT_T0    0   1   4
+0030  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0031  0:SET_STRUCT_FIELD_INT_T0    0   1   5
+0032  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0033  1:LT_INT_JUMP_FALSE        116   1   0
+0034  0:EXT                        9   0   0
+0035  0:SLICE_GET_UINT             0   3   1
+0036  1:EQ_UINT_CONST_JUMP_FALSE 150   0   1
+0037  0:EXT                        3   0   0
+0038  3:TIER3_NOP                  0   0   0
+0039  0:SLICE_GET_STRING           0   1   1
+0040  0:SLICE_GET_INT              3   2   1
+0041  1:CALL                     128   0   0    ; call (site 0)
+0042  2:TIER2_INC_INT              0   1   1
+0043  1:JUMP                      74 245 255    ; goto -11
+
+; ═════════════════════════════════════════════════════════════
+; function hashTable.insertNoGrow
+;   registers: int=6 string=1 general=1 uint=6 sliceInt=1 sliceString=1 sliceByte=1
+;   params:    (general, string, int)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1
+;   uints:   [0]=0  [1]=1
+
+0000  1:CALL_SCALAR              134   0   0
+0001  0:GET_STRUCT_FIELD_INT_T0    1   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   2   1    ; ints[2] = 1
+0003  0:SUB_INT                    3   1   2
+0004  1:INT_TO_UINT               55   1   3
+0005  0:TRUNCATE_NARROW            1  32   5
+0006  0:BIT_AND_UINT               2   0   1
+0007  0:TRUNCATE_NARROW            2  32   5
+0008  1:UINT_TO_INT               56   1   2
+0009  1:LOAD_UINT_CONST_SMALL     99   3   0    ; LICM hoist of PC 14
+0010  1:LOAD_INT_CONST_SMALL      75   3   1    ; LICM hoist of PC 16
+0011  1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
+0012  0:EXT                        1   0   0
+0013  1:SLICE_GET_BYTE_DIRECT    112   2   0
+0014  0:EXT                        1   0   0
+0015  0:NE_UINT                    2   2   3
+0016  0:JUMP_IF_FALSE              2   8   0    ; if ints[2] == 0 goto +8
+0017  0:ADD_INT                    4   1   3
+0018  1:INT_TO_UINT               55   4   4
+0019  0:TRUNCATE_NARROW            4  32   5
+0020  0:BIT_AND_UINT               5   4   1
+0021  0:TRUNCATE_NARROW            5  32   5
+0022  1:UINT_TO_INT               56   5   5
+0023  1:MOVE_INT                  35   1   5
+0024  1:JUMP                      74 242 255    ; goto -14
+0025  1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
+0026  0:EXT                        2   0   0
+0027  1:SLICE_SET_STRING_DIRECT   24   0   1
+0028  0:EXT                        0   0   0
+0029  1:GET_STRUCT_FIELD_SLICE_INT 190   0   0
+0030  0:EXT                        3   0   0
+0031  0:SLICE_SET_INT_DIRECT       0   1   0
+0032  1:LOAD_UINT_CONST_SMALL     99   2   1    ; uints[2] = 1
+0033  1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
+0034  0:EXT                        1   0   0
+0035  1:SLICE_SET_BYTE_DIRECT    113   0   1
+0036  0:EXT                        2   0   0
+0037  1:INC_STRUCT_FIELD_INT     107   0   4
+0038  1:INC_STRUCT_FIELD_INT     107   0   5
+
+; ═════════════════════════════════════════════════════════════
+; function generateKey
+;   registers: int=3 string=1 general=2 uint=6
+;   params:    (uint)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=11  [1]=0
+;   uints:   [0]=97  [1]=26
+
+0000  0:LOAD_GENERAL_CONST         0   0   0
+0001  0:DEREF                      0   0   1
+0002  1:LOAD_INT_CONST_SMALL      75   0  11    ; ints[0] = 11
+0003  1:GE_INT_CONST_JUMP_FALSE  126   0   1
+0004  0:EXT                       16   0   0
+0005  3:TIER3_NOP                  0   0   0
+0006  1:LOAD_UINT_CONST_SMALL     99   1  97    ; uints[1] = 97
+0007  1:LOAD_UINT_CONST_SMALL     99   2  26    ; uints[2] = 26
+0008  0:REM_UINT                   3   0   2
+0009  0:TRUNCATE_NARROW            3  32   5
+0010  0:ADD_UINT                   4   1   3
+0011  0:TRUNCATE_NARROW            4  32   5
+0012  1:MOVE_UINT                 39   5   4
+0013  0:TRUNCATE_NARROW            5   8   5
+0014  0:SLICE_SET_UINT             0   0   5
+0015  1:LOAD_UINT_CONST_SMALL     99   1  26    ; uints[1] = 26
+0016  0:DIV_UINT                   2   0   1
+0017  0:TRUNCATE_NARROW            2  32   5
+0018  1:MOVE_UINT                 39   0   2
+0019  2:TIER2_DEC_INT              0   2   0
+0020  1:JUMP                      74 238 255    ; goto -18
+0021  1:SLICE_OP                 141   1   0
+0022  0:EXT                        0   0   0
+0023  1:BYTES_TO_STRING           11   0   1
+0024  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=6 string=1 general=1 bool=1 uint=7
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=70  [2]=100000
+;   uints:   [0]=3735928559  [1]=1664525  [2]=1013904223  [3]=4294967295  [4]=28  [5]=15  [6]=4  [7]=32767  [8]=8  [9]=14
+
+0000  1:CALL                     128   0   0    ; call (site 0)
+0001  0:LOAD_UINT_CONST            0   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0003  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0004  1:LT_INT_CONST_JUMP_FALSE  123   1   1
+0005  0:EXT                       43   0   0
+0006  3:TIER3_NOP                  0   0   0
+0007  0:LOAD_UINT_CONST            1   1   0
+0008  0:MUL_UINT                   2   0   1
+0009  0:TRUNCATE_NARROW            2  32   5
+0010  0:LOAD_UINT_CONST            3   2   0
+0011  0:ADD_UINT                   4   2   3
+0012  0:TRUNCATE_NARROW            4  32   5
+0013  0:LOAD_UINT_CONST            5   3   0
+0014  0:BIT_AND_UINT               6   4   5
+0015  0:TRUNCATE_NARROW            6  32   5
+0016  1:MOVE_UINT                 39   0   6
+0017  1:LOAD_UINT_CONST_SMALL     99   1  28    ; uints[1] = 28
+0018  0:SHIFT_RIGHT_UINT           2   0   1
+0019  0:TRUNCATE_NARROW            2  32   5
+0020  1:LOAD_UINT_CONST_SMALL     99   3  15    ; uints[3] = 15
+0021  0:BIT_AND_UINT               4   2   3
+0022  0:TRUNCATE_NARROW            4  32   5
+0023  1:MOVE_UINT                 39   1   4
+0024  1:LOAD_UINT_CONST_SMALL     99   2   4    ; uints[2] = 4
+0025  0:SHIFT_RIGHT_UINT           3   0   2
+0026  0:TRUNCATE_NARROW            3  32   5
+0027  0:LOAD_UINT_CONST            4   7   0
+0028  0:BIT_AND_UINT               5   3   4
+0029  0:TRUNCATE_NARROW            5  32   5
+0030  1:MOVE_UINT                 39   2   5
+0031  1:CALL_SCALAR              134   1   0
+0032  1:LOAD_UINT_CONST_SMALL     99   3   8    ; uints[3] = 8
+0033  0:LT_UINT                    4   1   3
+0034  0:JUMP_IF_FALSE              4   3   0    ; if ints[4] == 0 goto +3
+0035  1:UINT_TO_INT               56   4   0
+0036  1:CALL                     128   2   0    ; call (site 2)
+0037  1:JUMP                      74   9   0    ; goto 9
+0038  1:LOAD_UINT_CONST_SMALL     99   3  14    ; uints[3] = 14
+0039  0:LT_UINT                    4   1   3
+0040  0:JUMP_IF_FALSE              4   5   0    ; if ints[4] == 0 goto +5
+0041  1:CALL                     128   3   0    ; call (site 3)
+0042  1:BOOL_TO_INT               53   5   0
+0043  0:JUMP_IF_FALSE              5   1   0    ; if ints[5] == 0 goto +1
+0044  2:TIER2_INC_INT              0   1   0
+0045  1:JUMP                      74   1   0    ; goto 1
+0046  1:CALL                     128   4   0    ; call (site 4)
+0047  2:TIER2_INC_INT              0   1   1
+0048  1:JUMP                      74 211 255    ; goto -45
+0049  0:GET_STRUCT_FIELD_INT_T0    1   0   0
+0050  0:MUL_INT_CONST              3   1   2    ; const = 100000
+0051  3:TIER3_NOP                  0   0   0
+0052  0:ADD_INT                    0   3   0
+0053  2:TIER2_RETURN               0  10   1    ; 1 values

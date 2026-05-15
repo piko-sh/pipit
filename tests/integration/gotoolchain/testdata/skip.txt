@@ -1,0 +1,43 @@
+# Toolchain test files the suite never runs, one per line: <path relative to $GOROOT/test>
+# followed by the reason. Reserve this for programs that cannot give a stable answer under
+# an interpreter (scheduler-order dependent output, deliberate memory exhaustion); a file
+# that merely fails belongs in the report, not here.
+nosplit.go drives the go toolchain through os/exec to inspect stack frames
+linkobj.go drives the go toolchain through os/exec to inspect export data
+fixedbugs/issue21317.go drives the go toolchain through os/exec to check a diagnostic
+fixedbugs/bug369.go drives the go toolchain through os/exec to compare binaries
+fixedbugs/issue9355.go drives the go toolchain through os/exec to inspect object files
+fixedbugs/bug347.go receives in a select from a channel field of a nil pointer, which must panic; pipit selects on the nil channel and blocks
+fixedbugs/issue24488.go takes a method value of a named func type, which pipit does not model
+fixedbugs/issue58300.go maps a function value's code pointer (reflect.ValueOf(f).Pointer()) back through runtime.FuncForPC; interpreted functions have no code address
+fixedbugs/issue58300b.go maps a function value's code pointer (reflect.ValueOf(f).Pointer()) back through runtime.FuncForPC; interpreted functions have no code address
+fixedbugs/issue75764.go binds a method value promoted through an embedded interface on a nil pointer, which pipit dereferences
+inline_literal.go maps a function value's code pointer (reflect.ValueOf(f).Pointer()) back through runtime.FuncForPC; interpreted functions have no code address
+chan/select2.go measures the Go heap through runtime.ReadMemStats
+closure.go measures the Go heap through runtime.ReadMemStats
+fixedbugs/issue15277.go measures the Go heap through runtime.ReadMemStats
+fixedbugs/issue15281.go measures the Go heap through runtime.ReadMemStats
+fixedbugs/issue9110.go measures the Go heap through runtime.ReadMemStats
+deferfin.go relies on runtime.SetFinalizer or AddCleanup timing
+finprofiled.go relies on runtime.SetFinalizer or AddCleanup timing
+fixedbugs/issue24491a.go relies on runtime.SetFinalizer or AddCleanup timing
+fixedbugs/issue24491b.go relies on runtime.SetFinalizer or AddCleanup timing
+fixedbugs/issue27518b.go relies on runtime.SetFinalizer or AddCleanup timing
+fixedbugs/issue32477.go relies on runtime.SetFinalizer or AddCleanup timing
+fixedbugs/issue45045.go relies on runtime.SetFinalizer or AddCleanup timing
+fixedbugs/issue46725.go relies on runtime.SetFinalizer or AddCleanup timing
+fixedbugs/issue5493.go relies on runtime.SetFinalizer or AddCleanup timing
+fixedbugs/issue57823.go relies on runtime.SetFinalizer or AddCleanup timing
+gcstring.go relies on runtime.SetFinalizer or AddCleanup timing
+mallocfin.go relies on runtime.SetFinalizer or AddCleanup timing
+stackobj.go relies on runtime.SetFinalizer or AddCleanup timing
+stackobj3.go relies on runtime.SetFinalizer or AddCleanup timing
+typeparam/chans.go relies on runtime.SetFinalizer or AddCleanup timing
+typeparam/orderedmap.go relies on runtime.SetFinalizer or AddCleanup timing
+uintptrescapes3.go relies on runtime.SetFinalizer or AddCleanup timing
+gcgort.go GC torture test: goroutines mutating shared data under runtime.GC and Gosched
+fixedbugs/issue4618.go measures allocations through testing.AllocsPerRun, which pipit does not model
+fixedbugs/issue4667.go measures allocations through testing.AllocsPerRun, which pipit does not model
+fixedbugs/issue9862_run.go drives the go toolchain through os/exec to run a second program
+fixedbugs/bug260.go compares %p pointer text arithmetically, which depends on the host allocator layout
+fixedbugs/issue5963.go races runtime.Goexit in init against a goroutine that calls os.Exit on the deferred send; which one ends the process first is scheduler-order dependent

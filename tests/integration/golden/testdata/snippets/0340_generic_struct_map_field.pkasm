@@ -1,0 +1,103 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function newIndex
+;   registers: general=2
+;   params:    (none)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+0000  2:MAKE_MAP                   0  12   0
+0001  0:EXT                        0   0   0
+0002  2:MAKE_MAP                   0  12   1
+0003  0:EXT                        1   0   0
+0004  0:SET_STRUCT_FIELD_GENERAL_T0   0   1   0
+0005  0:ADDR                       1   0   0
+0006  0:MOVE_GENERAL               0   1   0
+0007  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function Index.Put
+;   registers: general=4
+;   params:    (general, general, general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:GET_FIELD                  3   0   0
+0001  0:MAP_SET                    3   1   2
+
+; ═════════════════════════════════════════════════════════════
+; function Index.Get
+;   registers: general=4
+;   params:    (general, general)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:GET_FIELD                  2   0   0
+0001  0:MAP_INDEX                  3   2   1
+0002  0:MOVE_GENERAL               0   3   0
+0003  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=2 string=2 general=13
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=42  [1]=2026
+;   strings: [0]="answer"  [1]="year"
+
+0000  1:CALL                     128   0   0    ; call (site 0)
+0001  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "answer"
+0002  0:PACK_TYPED                 1   0   2
+0003  0:EXT                        0   0   0
+0004  1:LOAD_INT_CONST_SMALL      75   0  42    ; ints[0] = 42
+0005  0:PACK_TYPED                 2   0   0
+0006  0:EXT                        1   0   0
+0007  1:JUMP                      74  20   0    ; goto 20
+0008  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "year"
+0009  0:PACK_TYPED                 1   0   2
+0010  0:EXT                        0   0   0
+0011  0:LOAD_INT_CONST             0   1   0    ; ints[0] = 2026
+0012  0:PACK_TYPED                 2   0   0
+0013  0:EXT                        1   0   0
+0014  1:JUMP                      74  17   0    ; goto 17
+0015  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "answer"
+0016  0:PACK_TYPED                 1   0   2
+0017  0:EXT                        0   0   0
+0018  1:CALL                     128   3   0    ; call (site 3)
+0019  0:UNPACK_INTERFACE           0   2   0
+0020  0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "year"
+0021  0:PACK_TYPED                 3   1   2
+0022  0:EXT                        0   0   0
+0023  1:CALL                     128   4   0    ; call (site 4)
+0024  0:UNPACK_INTERFACE           1   4   0
+0025  0:ADD_INT                    0   0   1
+0026  2:TIER2_RETURN               0  10   1    ; 1 values
+0027  1:JUMP                      74   3   0    ; goto 3
+0028  0:GET_FIELD                  5   0   0    ; inlined body of function 1 called at PC 7
+0029  0:MAP_SET                    5   1   2
+0030  1:JUMP                      74 233 255    ; goto -23
+0031  1:JUMP                      74   3   0    ; goto 3
+0032  0:GET_FIELD                  6   0   0    ; inlined body of function 1 called at PC 14
+0033  0:MAP_SET                    6   1   2
+0034  1:JUMP                      74 236 255    ; goto -20
+
+; ═════════════════════════════════════════════════════════════
+; function newIndex[spec:string,int]
+;   registers: general=2
+;   params:    (none)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+0000  2:MAKE_MAP                   0  12   0
+0001  0:EXT                        0   0   0
+0002  2:MAKE_MAP                   0  12   1
+0003  0:EXT                        1   0   0
+0004  0:SET_STRUCT_FIELD_GENERAL_T0   0   1   0
+0005  0:ADDR                       1   0   0
+0006  0:MOVE_GENERAL               0   1   0
+0007  2:TIER2_RETURN               0  10   1    ; 1 values

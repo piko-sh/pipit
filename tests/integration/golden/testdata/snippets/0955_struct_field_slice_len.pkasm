@@ -1,0 +1,133 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function stack.depth
+;   registers: int=1 general=1
+;   params:    (general)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+0000  1:LEN                       70   0   0
+0001  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=8 string=2 general=6 sliceInt=3 sliceByte=2
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2  [1]=3  [2]=1  [3]=0  [4]=4  [5]=5  [6]=6  [7]=7  [8]=8  [9]=9  [10]=10
+;   strings: [0]="empty"  [1]="abcdef"  [2]="%d %d %d %d %d %d %d %d"
+
+0000  2:MAKE_MAP                   0  12   0
+0001  0:EXT                        0   0   0
+0002  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "empty"
+0003  1:SET_STRUCT_FIELD_STRING   95   0   0
+0004  0:EXT                        0   0   0
+0005  0:ADDR                       1   0   0
+0006  0:MOVE_GENERAL               0   1   1
+0007  0:GET_STRUCT_FIELD_SLICE_LEN   0   0   1
+0008  2:MAKE_MAP                   0  12   1
+0009  0:EXT                        0   0   0
+0010  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "abcdef"
+0011  1:STRING_TO_BYTES           71   2   0
+0012  0:SET_STRUCT_FIELD_GENERAL_T0   1   2   1
+0013  0:ADDR                       2   1   0
+0014  0:MOVE_GENERAL               0   2   1
+0015  0:GET_STRUCT_FIELD_SLICE_LEN   1   0   1
+0016  1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
+0017  0:EXT                        1   0   0
+0018  1:LOAD_INT_CONST_SMALL      75   2   2    ; ints[2] = 2
+0019  1:SLICE_BYTE_SLICE         115   1   0
+0020  0:EXT                        2   0   2
+0021  1:SET_STRUCT_FIELD_SLICE_BYTE 201   0   1
+0022  0:EXT                        1   0   0
+0023  0:GET_STRUCT_FIELD_SLICE_LEN   2   0   1
+0024  2:MAKE_MAP                   0  12   1
+0025  0:EXT                        2   0   0
+0026  2:MAKE_MAP                   0  12   2
+0027  0:EXT                        3   0   0
+0028  1:LOAD_INT_CONST_SMALL      75   3   3    ; ints[3] = 3
+0029  0:MAKE_SLICE                 3   3   3
+0030  0:EXT                        4   0   0
+0031  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0032  1:LOAD_INT_CONST_SMALL      75   4   0    ; ints[4] = 0
+0033  1:MOVE_INT_TO_GENERAL       40   4   3
+0034  0:INDEX_SET                  3   4   4
+0035  1:LOAD_INT_CONST_SMALL      75   3   2    ; ints[3] = 2
+0036  1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
+0037  1:MOVE_INT_TO_GENERAL       40   4   3
+0038  0:INDEX_SET                  3   4   4
+0039  1:LOAD_INT_CONST_SMALL      75   3   3    ; ints[3] = 3
+0040  1:LOAD_INT_CONST_SMALL      75   4   2    ; ints[4] = 2
+0041  1:MOVE_INT_TO_GENERAL       40   4   3
+0042  0:INDEX_SET                  3   4   4
+0043  0:SET_STRUCT_FIELD_GENERAL_T0   2   3   2
+0044  0:SET_FIELD                  1   0   2
+0045  1:LOAD_INT_CONST_SMALL      75   3   2    ; ints[3] = 2
+0046  0:MAKE_SLICE                 2   3   3
+0047  0:EXT                        4   0   0
+0048  1:LOAD_INT_CONST_SMALL      75   3   4    ; ints[3] = 4
+0049  1:LOAD_INT_CONST_SMALL      75   4   0    ; ints[4] = 0
+0050  1:MOVE_INT_TO_GENERAL       40   3   3
+0051  0:INDEX_SET                  2   4   3
+0052  1:LOAD_INT_CONST_SMALL      75   3   5    ; ints[3] = 5
+0053  1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
+0054  1:MOVE_INT_TO_GENERAL       40   3   3
+0055  0:INDEX_SET                  2   4   3
+0056  0:SET_STRUCT_FIELD_GENERAL_T0   1   2   3
+0057  1:LOAD_INT_CONST_SMALL      75   3   3    ; ints[3] = 3
+0058  0:MAKE_SLICE                 2   3   3
+0059  0:EXT                        4   0   0
+0060  1:LOAD_INT_CONST_SMALL      75   3   6    ; ints[3] = 6
+0061  1:LOAD_INT_CONST_SMALL      75   4   0    ; ints[4] = 0
+0062  1:MOVE_INT_TO_GENERAL       40   3   3
+0063  0:INDEX_SET                  2   4   3
+0064  1:LOAD_INT_CONST_SMALL      75   3   7    ; ints[3] = 7
+0065  1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
+0066  1:MOVE_INT_TO_GENERAL       40   3   3
+0067  0:INDEX_SET                  2   4   3
+0068  1:LOAD_INT_CONST_SMALL      75   3   8    ; ints[3] = 8
+0069  1:LOAD_INT_CONST_SMALL      75   4   2    ; ints[4] = 2
+0070  1:MOVE_INT_TO_GENERAL       40   3   3
+0071  0:INDEX_SET                  2   4   3
+0072  0:SET_STRUCT_FIELD_GENERAL_T0   1   2   4
+0073  0:DEREF                      1   1   1
+0074  0:MOVE_GENERAL               0   1   2
+0075  0:GET_FIELD                  1   0   0
+0076  0:GET_STRUCT_FIELD_SLICE_LEN   3   1   2
+0077  0:GET_STRUCT_FIELD_SLICE_LEN   4   0   3
+0078  0:GET_FIELD                  1   0   2
+0079  1:LEN                       70   5   1
+0080  0:MOVE_GENERAL               2   1   1    ; CSE'd from PC 78
+0081  1:CALL                     128   0   0    ; call (site 0)
+0082  0:ADD_INT                    7   5   6
+0083  1:MOVE_INT                  35   5   7
+0084  0:MOVE_GENERAL               1   0   2
+0085  0:ADDR                       2   0   1
+0086  0:DEREF                      3   2   0
+0087  0:GET_FIELD                  3   3   0
+0088  0:ADDR                       4   3   1
+0089  0:GET_FIELD                  5   0   0
+0090  1:GET_STRUCT_FIELD_SLICE_INT 190   0   5
+0091  0:EXT                        2   0   0
+0092  1:LOAD_INT_CONST_SMALL      75   6   9    ; ints[6] = 9
+0093  1:APPEND_SLICE_INT_DIRECT  171   1   0
+0094  0:EXT                        6   0   0
+0095  1:LOAD_INT_CONST_SMALL      75   7  10    ; ints[7] = 10
+0096  1:APPEND_SLICE_INT_DIRECT  171   2   1
+0097  0:EXT                        7   0   0
+0098  1:SET_STRUCT_FIELD_SLICE_INT 196   4   2
+0099  0:EXT                        2   0   0
+0100  0:GET_FIELD                  2   1   0
+0101  0:GET_STRUCT_FIELD_SLICE_LEN   6   2   2
+0102  0:GET_FIELD                  2   0   0
+0103  0:GET_STRUCT_FIELD_SLICE_LEN   7   2   2
+0104  0:LOAD_GENERAL_CONST         2   0   0
+0105  0:LOAD_STRING_CONST          0   2   0    ; strings[0] = "%d %d %d %d %d %d %d %d"
+0106  1:CALL_NATIVE              130   1   0    ; call native general[2] (site 1)
+0107  1:MOVE_STRING               37   0   1
+0108  2:TIER2_RETURN               0  10   1    ; 1 values

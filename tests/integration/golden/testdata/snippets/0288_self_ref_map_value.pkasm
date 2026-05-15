@@ -1,0 +1,139 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function find
+;   registers: int=6 string=2 general=5 sliceString=1
+;   params:    (general, sliceString)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=1
+;   strings: [0]=""
+
+0000  0:MOVE_GENERAL               1   0   1
+0001  1:LEN_SLICE_STRING_DIRECT   25   0   0
+0002  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0003  1:LT_INT_JUMP_FALSE        116   1   0
+0004  0:EXT                       16   0   0
+0005  1:SLICE_GET_STRING_DIRECT   23   0   0
+0006  0:EXT                        1   0   0
+0007  0:GET_STRUCT_FIELD_GENERAL_T0   2   1   0
+0008  0:MAP_INDEX_OK_STRING_GENERAL   4   2   0
+0009  0:EXT                        4   0   0
+0010  0:MOVE_GENERAL               3   4   0
+0011  1:MOVE_INT                  35   3   4
+0012  1:NOT                       52   5   3
+0013  0:JUMP_IF_FALSE              5   3   0    ; if ints[5] == 0 goto +3
+0014  0:LOAD_STRING_CONST          1   0   0    ; strings[1] = ""
+0015  1:MOVE_STRING               37   0   1
+0016  2:TIER2_RETURN               0  10   1    ; 1 values
+0017  0:MOVE_GENERAL               1   3   1
+0018  1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0019  0:ADD_INT                    1   1   3
+0020  1:JUMP                      74 238 255    ; goto -18
+0021  1:GET_STRUCT_FIELD_STRING   90   0   1
+0022  0:EXT                        1   0   0
+0023  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=1 string=4 general=9
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=3  [1]=0  [2]=1  [3]=2
+;   strings: [0]="root"  [1]="a"  [2]="a1"  [3]="a2"  [4]="a2a"  [5]="leaf"  [6]="b"  [7]="/"
+
+0000  2:MAKE_MAP                   0  12   0
+0001  0:EXT                        0   0   0
+0002  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "root"
+0003  1:SET_STRUCT_FIELD_STRING   95   0   0
+0004  0:EXT                        0   0   0
+0005  2:MAKE_MAP                   0  12   1
+0006  0:EXT                        1   0   1
+0007  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "a"
+0008  2:MAKE_MAP                   0  12   2
+0009  0:EXT                        0   0   0
+0010  0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "a"
+0011  1:SET_STRUCT_FIELD_STRING   95   2   1
+0012  0:EXT                        0   0   0
+0013  2:MAKE_MAP                   0  12   3
+0014  0:EXT                        1   0   1
+0015  0:LOAD_STRING_CONST          1   2   0    ; strings[1] = "a1"
+0016  2:MAKE_MAP                   0  12   4
+0017  0:EXT                        0   0   0
+0018  0:LOAD_STRING_CONST          2   2   0    ; strings[2] = "a1"
+0019  1:SET_STRUCT_FIELD_STRING   95   4   2
+0020  0:EXT                        0   0   0
+0021  0:ADDR                       5   4   0
+0022  1:MOVE_STRING_TO_GENERAL    44   6   1
+0023  0:MAP_SET                    3   6   5
+0024  0:LOAD_STRING_CONST          1   3   0    ; strings[1] = "a2"
+0025  2:MAKE_MAP                   0  12   4
+0026  0:EXT                        0   0   0
+0027  0:LOAD_STRING_CONST          2   3   0    ; strings[2] = "a2"
+0028  1:SET_STRUCT_FIELD_STRING   95   4   2
+0029  0:EXT                        0   0   0
+0030  2:MAKE_MAP                   0  12   5
+0031  0:EXT                        1   0   1
+0032  0:LOAD_STRING_CONST          2   4   0    ; strings[2] = "a2a"
+0033  2:MAKE_MAP                   0  12   6
+0034  0:EXT                        0   0   0
+0035  0:LOAD_STRING_CONST          3   5   0    ; strings[3] = "leaf"
+0036  1:SET_STRUCT_FIELD_STRING   95   6   3
+0037  0:EXT                        0   0   0
+0038  0:ADDR                       7   6   0
+0039  1:MOVE_STRING_TO_GENERAL    44   8   2
+0040  0:MAP_SET                    5   8   7
+0041  0:SET_STRUCT_FIELD_GENERAL_T0   4   5   1
+0042  0:ADDR                       5   4   0
+0043  1:MOVE_STRING_TO_GENERAL    44   6   1
+0044  0:MAP_SET                    3   6   5
+0045  0:SET_STRUCT_FIELD_GENERAL_T0   2   3   1
+0046  0:ADDR                       3   2   0
+0047  1:MOVE_STRING_TO_GENERAL    44   4   0
+0048  0:MAP_SET                    1   4   3
+0049  0:LOAD_STRING_CONST          0   6   0    ; strings[0] = "b"
+0050  2:MAKE_MAP                   0  12   2
+0051  0:EXT                        0   0   0
+0052  0:LOAD_STRING_CONST          1   6   0    ; strings[1] = "b"
+0053  1:SET_STRUCT_FIELD_STRING   95   2   1
+0054  0:EXT                        0   0   0
+0055  0:ADDR                       3   2   0
+0056  1:MOVE_STRING_TO_GENERAL    44   4   0
+0057  0:MAP_SET                    1   4   3
+0058  0:SET_STRUCT_FIELD_GENERAL_T0   0   1   1
+0059  0:ADDR                       1   0   0
+0060  0:MOVE_GENERAL               0   1   1
+0061  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0062  0:MAKE_SLICE                 1   0   0
+0063  0:EXT                        3   0   0
+0064  0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "a"
+0065  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0066  1:MOVE_STRING_TO_GENERAL    44   2   0
+0067  0:INDEX_SET                  1   0   2
+0068  0:LOAD_STRING_CONST          0   3   0    ; strings[0] = "a2"
+0069  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0070  1:MOVE_STRING_TO_GENERAL    44   2   0
+0071  0:INDEX_SET                  1   0   2
+0072  0:LOAD_STRING_CONST          0   4   0    ; strings[0] = "a2a"
+0073  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0074  1:MOVE_STRING_TO_GENERAL    44   2   0
+0075  0:INDEX_SET                  1   0   2
+0076  1:CALL                     128   0   0    ; call (site 0)
+0077  0:LOAD_STRING_CONST          1   7   0    ; strings[1] = "/"
+0078  0:CONCAT_STRING              2   0   1
+0079  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0080  0:MAKE_SLICE                 2   0   0
+0081  0:EXT                        3   0   0
+0082  0:LOAD_STRING_CONST          3   6   0    ; strings[3] = "b"
+0083  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0084  1:MOVE_STRING_TO_GENERAL    44   3   3
+0085  0:INDEX_SET                  2   0   3
+0086  1:CALL                     128   1   0    ; call (site 1)
+0087  0:CONCAT_STRING              0   2   3
+0088  2:TIER2_RETURN               0  10   1    ; 1 values

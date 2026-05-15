@@ -1,0 +1,279 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function pointerReceiver
+;   registers: int=8 float=5 string=2 general=10 bool=1 uint=5
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=-1  [1]=-300  [2]=-70000  [3]=0  [4]=50  [5]=3  [6]=2  [7]=1
+;   floats:  [0]=0.5  [1]=0.25
+;   strings: [0]="%d %d %d %d %.2f %.2f %v %d %d %d %d %d"
+;   uints:   [0]=7  [1]=11
+
+0000  2:ALLOC_STRUCT_LITERAL       0  14   0
+0001  0:EXT                        0   0   0
+0002  0:LOAD_INT_CONST             0   0   0    ; ints[0] = -1
+0003  0:SET_STRUCT_FIELD_INT_T0    0   0   0
+0004  0:LOAD_INT_CONST             0   1   0    ; ints[0] = -300
+0005  0:SET_STRUCT_FIELD_INT_T0    0   0   1
+0006  0:LOAD_INT_CONST             0   2   0    ; ints[0] = -70000
+0007  0:SET_STRUCT_FIELD_INT_T0    0   0   2
+0008  0:ADDR                       1   0   0
+0009  0:MOVE_GENERAL               0   1   1
+0010  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0011  1:LT_INT_CONST_JUMP_FALSE  123   0   4
+0012  0:EXT                       57   0   0
+0013  3:TIER3_NOP                  0   0   0
+0014  0:GET_STRUCT_FIELD_INT_T0    3   0   3
+0015  0:ADD_INT                    4   3   0
+0016  0:SET_STRUCT_FIELD_INT_T0    0   4   3
+0017  1:LOAD_INT_CONST_SMALL      75   3   3    ; ints[3] = 3
+0018  0:MUL_INT                    4   0   3
+0019  0:GET_STRUCT_FIELD_INT_T0    5   0   4
+0020  0:ADD_INT                    6   5   4
+0021  0:SET_STRUCT_FIELD_INT_T0    0   6   4
+0022  1:INT_TO_UINT               55   0   0
+0023  0:GET_STRUCT_FIELD_UINT_T0   1   0   5
+0024  0:ADD_UINT                   2   1   0
+0025  0:SET_STRUCT_FIELD_UINT_T0   0   2   5
+0026  1:INT_TO_UINT               55   0   0
+0027  1:LOAD_UINT_CONST_SMALL     99   1   7    ; uints[1] = 7
+0028  0:MUL_UINT                   2   0   1
+0029  0:GET_STRUCT_FIELD_UINT_T0   3   0   6
+0030  0:ADD_UINT                   4   3   2
+0031  0:SET_STRUCT_FIELD_UINT_T0   0   4   6
+0032  1:INT_TO_FLOAT              50   0   0
+0033  0:LOAD_FLOAT_CONST           1   0   0    ; floats[1] = 0.5
+0034  0:MUL_FLOAT                  2   0   1
+0035  0:GET_STRUCT_FIELD_FLOAT_T0   3   0   7
+0036  0:ADD_FLOAT                  4   3   2
+0037  0:SET_STRUCT_FIELD_FLOAT_T0   0   4   7
+0038  1:INT_TO_FLOAT              50   0   0
+0039  1:ROUND_FLOAT32            210   0   0
+0040  0:LOAD_FLOAT_CONST           1   1   0    ; floats[1] = 0.25
+0041  0:MUL_FLOAT                  2   0   1
+0042  1:ROUND_FLOAT32            210   2   2
+0043  0:GET_STRUCT_FIELD_FLOAT_T0   3   0   8
+0044  0:ADD_FLOAT                  4   3   2
+0045  0:SET_STRUCT_FIELD_FLOAT_T0   0   4   8
+0046  0:GET_STRUCT_FIELD_INT_T0    3   0   3
+0047  1:LOAD_INT_CONST_SMALL      75   4   2    ; ints[4] = 2
+0048  0:REM_INT                    5   3   4
+0049  1:LOAD_INT_CONST_SMALL      75   6   1    ; ints[6] = 1
+0050  0:EQ_INT                     7   5   6
+0051  1:INT_TO_BOOL               54   0   7
+0052  0:PACK_TYPED                 1   0   4
+0053  0:EXT                        1   0   0
+0054  0:SET_FIELD                  0   9   1
+0055  1:INT_TO_UINT               55   0   0
+0056  0:TRUNCATE_NARROW            0   8   5
+0057  0:GET_STRUCT_FIELD_UINT_T0   1   0  10
+0058  0:ADD_UINT                   2   1   0
+0059  0:SET_STRUCT_FIELD_UINT_T0   0   2  10
+0060  1:INT_TO_UINT               55   0   0
+0061  0:TRUNCATE_NARROW            0  32   5
+0062  1:LOAD_UINT_CONST_SMALL     99   1  11    ; uints[1] = 11
+0063  0:MUL_UINT                   2   0   1
+0064  0:TRUNCATE_NARROW            2  32   5
+0065  0:GET_STRUCT_FIELD_UINT_T0   3   0  11
+0066  0:ADD_UINT                   4   3   2
+0067  0:SET_STRUCT_FIELD_UINT_T0   0   4  11
+0068  2:TIER2_INC_INT              0   1   0
+0069  1:JUMP                      74 197 255    ; goto -59
+0070  0:LOAD_GENERAL_CONST         1   0   0
+0071  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "%d %d %d %d %.2f %.2f %v %d %d %d %d %d"
+0072  0:GET_STRUCT_FIELD_INT_T0    0   0   3
+0073  0:GET_STRUCT_FIELD_INT_T0    1   0   4
+0074  0:PACK_TYPED                 2   1   0
+0075  0:EXT                        2   0   0
+0076  0:GET_STRUCT_FIELD_UINT_T0   0   0   5
+0077  0:PACK_TYPED                 3   0   5
+0078  0:EXT                        3   0   0
+0079  0:GET_STRUCT_FIELD_UINT_T0   1   0   6
+0080  0:GET_STRUCT_FIELD_FLOAT_T0   0   0   7
+0081  0:GET_STRUCT_FIELD_FLOAT_T0   1   0   8
+0082  0:PACK_TYPED                 4   1   1
+0083  0:EXT                        4   0   0
+0084  0:GET_STRUCT_FIELD_BOOL_T0   0   0   9
+0085  0:GET_STRUCT_FIELD_UINT_T0   2   0  10
+0086  0:PACK_TYPED                 5   2   5
+0087  0:EXT                        5   0   0
+0088  0:GET_STRUCT_FIELD_UINT_T0   3   0  11
+0089  0:PACK_TYPED                 6   3   5
+0090  0:EXT                        6   0   0
+0091  0:GET_STRUCT_FIELD_INT_T0    2   0   0
+0092  0:PACK_TYPED                 7   2   0
+0093  0:EXT                        7   0   0
+0094  0:GET_STRUCT_FIELD_INT_T0    3   0   1
+0095  0:PACK_TYPED                 8   3   0
+0096  0:EXT                        8   0   0
+0097  0:GET_STRUCT_FIELD_INT_T0    4   0   2
+0098  0:PACK_TYPED                 9   4   0
+0099  0:EXT                        9   0   0
+0100  1:CALL_NATIVE              130   0   0    ; call native general[1] (site 0)
+0101  1:MOVE_STRING               37   0   1
+0102  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function sliceElementReceiver
+;   registers: int=10 float=5 string=2 general=3 bool=1 uint=3
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=4  [1]=0  [2]=25  [3]=30  [4]=1
+;   floats:  [0]=0.125
+;   strings: [0]="%d %.3f %d %d"
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   4    ; ints[0] = 4
+0001  0:MAKE_SLICE                 0   0   0
+0002  0:EXT                        0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0004  0:LOAD_FLOAT_CONST           1   0   0    ; LICM hoist of PC 9
+0005  1:LT_INT_CONST_JUMP_FALSE  123   0   2
+0006  0:EXT                       36   0   0
+0007  3:TIER3_NOP                  0   0   0
+0008  1:LEN                       70   3   0
+0009  1:LOAD_INT_CONST_SMALL      75   4   0    ; ints[4] = 0
+0010  1:LT_INT_JUMP_FALSE        116   4   3
+0011  0:EXT                       29   0   0
+0012  1:MOVE_INT                  35   6   4
+0013  0:INDEX                      1   0   6
+0014  0:ADD_INT                    7   6   0
+0015  0:GET_STRUCT_FIELD_INT_T0    8   1   0
+0016  0:ADD_INT                    9   8   7
+0017  0:SET_STRUCT_FIELD_INT_T0    1   9   0
+0018  0:INDEX                      1   0   6
+0019  1:INT_TO_FLOAT              50   0   6
+0020  0:ADD_FLOAT                  2   0   1
+0021  0:GET_STRUCT_FIELD_FLOAT_T0   3   1   1
+0022  0:ADD_FLOAT                  4   3   2
+0023  0:SET_STRUCT_FIELD_FLOAT_T0   1   4   1
+0024  0:INDEX                      1   0   6
+0025  1:INT_TO_UINT               55   0   0
+0026  0:GET_STRUCT_FIELD_UINT_T0   1   1   2
+0027  0:ADD_UINT                   2   1   0
+0028  0:SET_STRUCT_FIELD_UINT_T0   1   2   2
+0029  0:SLICE_INDEX_STRUCT_FIELD_INT   7   0   6
+0030  0:EXT                        0   0   0
+0031  1:LOAD_INT_CONST_SMALL      75   8  30    ; ints[8] = 30
+0032  0:GT_INT                     9   7   8
+0033  0:INDEX                      1   0   6
+0034  1:INT_TO_BOOL               54   0   9
+0035  0:PACK_TYPED                 2   0   4
+0036  0:EXT                        2   0   0
+0037  0:SET_FIELD                  1   9   2
+0038  1:LOAD_INT_CONST_SMALL      75   7   1    ; ints[7] = 1
+0039  0:ADD_INT                    4   4   7
+0040  1:JUMP                      74 225 255    ; goto -31
+0041  2:TIER2_INC_INT              0   1   0
+0042  1:JUMP                      74 218 255    ; goto -38
+0043  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0044  1:LOAD_ZERO                 79   0   1
+0045  1:LOAD_ZERO                 79   0   5
+0046  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0047  1:LEN                       70   2   0
+0048  1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
+0049  1:LT_INT_JUMP_FALSE        116   3   2
+0050  0:EXT                       21   0   0
+0051  1:MOVE_INT                  35   5   3
+0052  0:SLICE_INDEX_STRUCT_FIELD_INT   6   0   5
+0053  0:EXT                        0   0   0
+0054  0:ADD_INT                    7   0   6
+0055  1:MOVE_INT                  35   0   7
+0056  0:SLICE_INDEX_STRUCT_FIELD_FLOAT   1   0   5
+0057  0:EXT                        1   0   0
+0058  0:ADD_FLOAT                  2   0   1
+0059  1:MOVE_FLOAT                36   0   2
+0060  0:SLICE_INDEX_STRUCT_FIELD_UINT   1   0   5
+0061  0:EXT                        2   0   0
+0062  0:ADD_UINT                   2   0   1
+0063  1:MOVE_UINT                 39   0   2
+0064  0:SLICE_INDEX_STRUCT_FIELD_BOOL   0   0   5
+0065  0:EXT                        3   0   0
+0066  1:BOOL_TO_INT               53   6   0
+0067  0:JUMP_IF_FALSE              6   1   0    ; if ints[6] == 0 goto +1
+0068  2:TIER2_INC_INT              0   1   1
+0069  1:LOAD_INT_CONST_SMALL      75   6   1    ; ints[6] = 1
+0070  0:ADD_INT                    3   3   6
+0071  1:JUMP                      74 233 255    ; goto -23
+0072  0:LOAD_GENERAL_CONST         1   0   0
+0073  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "%d %.3f %d %d"
+0074  1:CALL_NATIVE              130   0   0    ; call native general[1] (site 0)
+0075  1:MOVE_STRING               37   0   1
+0076  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function embeddedFields
+;   registers: int=8 float=5 string=2 general=2 bool=1
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=20  [2]=3
+;   floats:  [0]=1.5
+;   strings: [0]="%d %.1f %v"
+
+0000  2:ALLOC_STRUCT_LITERAL       0  14   0
+0001  0:EXT                        0   0   0
+0002  0:ADDR                       1   0   0
+0003  0:MOVE_GENERAL               0   1   1
+0004  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0005  0:LOAD_FLOAT_CONST           1   0   0    ; LICM hoist of PC 13
+0006  1:LOAD_INT_CONST_SMALL      75   6   0    ; LICM hoist of PC 20
+0007  1:LT_INT_CONST_JUMP_FALSE  123   0   1
+0008  0:EXT                       19   0   0
+0009  3:TIER3_NOP                  0   0   0
+0010  0:GET_STRUCT_FIELD_INT_T0    3   0   0
+0011  0:ADD_INT                    4   3   0
+0012  0:SET_STRUCT_FIELD_INT_T0    0   4   0
+0013  1:INT_TO_FLOAT              50   0   0
+0014  0:MUL_FLOAT                  2   0   1
+0015  0:GET_STRUCT_FIELD_FLOAT_T0   3   0   1
+0016  0:ADD_FLOAT                  4   3   2
+0017  0:SET_STRUCT_FIELD_FLOAT_T0   0   4   1
+0018  0:GET_STRUCT_FIELD_INT_T0    3   0   0
+0019  1:LOAD_INT_CONST_SMALL      75   4   3    ; ints[4] = 3
+0020  0:REM_INT                    5   3   4
+0021  0:EQ_INT                     7   5   6
+0022  1:INT_TO_BOOL               54   0   7
+0023  0:PACK_TYPED                 1   0   4
+0024  0:EXT                        1   0   0
+0025  0:SET_FIELD                  0   1   1
+0026  2:TIER2_INC_INT              0   1   0
+0027  1:JUMP                      74 235 255    ; goto -21
+0028  0:LOAD_GENERAL_CONST         1   0   0
+0029  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "%d %.1f %v"
+0030  0:GET_STRUCT_FIELD_INT_T0    0   0   0
+0031  0:GET_STRUCT_FIELD_FLOAT_T0   0   0   1
+0032  0:GET_STRUCT_FIELD_BOOL_T0   0   0   2
+0033  1:CALL_NATIVE              130   0   0    ; call native general[1] (site 0)
+0034  1:MOVE_STRING               37   0   1
+0035  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: string=8
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]=" | "
+
+0000  1:CALL_SCALAR              134   0   0
+0001  1:CALL_SCALAR              134   1   0
+0002  1:CALL_SCALAR              134   2   0
+0003  0:LOAD_STRING_CONST          3   0   0    ; strings[3] = " | "
+0004  0:CONCAT_STRING              4   0   3
+0005  0:CONCAT_STRING              5   4   1
+0006  0:LOAD_STRING_CONST          6   0   0    ; strings[6] = " | "
+0007  0:CONCAT_STRING              7   5   6
+0008  0:CONCAT_STRING              0   7   2
+0009  2:TIER2_RETURN               0  10   1    ; 1 values

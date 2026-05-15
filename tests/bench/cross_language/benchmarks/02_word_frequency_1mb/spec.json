@@ -1,0 +1,14 @@
+{
+  "name": "02_word_frequency_1mb",
+  "description": "Generate 1 MiB corpus from a deterministic LCG over a 64-word vocabulary, tokenise by hand, count via map, return top-10 by (count desc, word asc) via insertion sort.",
+  "args": [],
+  "expected_stdout_sha256": "c48a2a2a592de5941700804059c7006e1dca4853adff0b7aafb5c0bceda69c12",
+  "k_inner": 3,
+  "timeout_seconds": 180,
+  "source_sha256": {
+    "go/native_main.go": "8c119ceca22e7aa65af3a44a2742b0145c622eb9df50642431d979a9d3a6c40f",
+    "go/pipit_source.go": "f15f8b5bc48bcd84efe71b9b808988f5bf13e736b7334a5d8890f5227e12f4c5",
+    "py/cpython.py": "350a77c4687f3f9acff2c86ffe777e8a6388453c1f1535d1d6d313ce25c36ccb",
+    "py/pypy.py": "350a77c4687f3f9acff2c86ffe777e8a6388453c1f1535d1d6d313ce25c36ccb"
+  }
+}

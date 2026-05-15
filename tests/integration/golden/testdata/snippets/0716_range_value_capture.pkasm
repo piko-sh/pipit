@@ -1,0 +1,249 @@
+; pkasm - pipit bytecode assembly
+
+
+; ═════════════════════════════════════════════════════════════
+; function collectViaClosure
+;   registers: int=7 general=3 sliceInt=2
+;   params:    (none)
+;   returns:   (sliceInt)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=4  [2]=10  [3]=20  [4]=1  [5]=30  [6]=2  [7]=40  [8]=3
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0001  0:MAKE_SLICE                 0   0   0
+0002  0:EXT                        0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   0   4    ; ints[0] = 4
+0004  0:MAKE_SLICE                 1   0   0
+0005  0:EXT                        1   0   0
+0006  1:LOAD_INT_CONST_SMALL      75   0  10    ; ints[0] = 10
+0007  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0008  1:MOVE_INT_TO_GENERAL       40   2   0
+0009  0:INDEX_SET                  1   1   2
+0010  1:LOAD_INT_CONST_SMALL      75   0  20    ; ints[0] = 20
+0011  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0012  1:MOVE_INT_TO_GENERAL       40   2   0
+0013  0:INDEX_SET                  1   1   2
+0014  1:LOAD_INT_CONST_SMALL      75   0  30    ; ints[0] = 30
+0015  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0016  1:MOVE_INT_TO_GENERAL       40   2   0
+0017  0:INDEX_SET                  1   1   2
+0018  1:LOAD_INT_CONST_SMALL      75   0  40    ; ints[0] = 40
+0019  1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
+0020  1:MOVE_INT_TO_GENERAL       40   2   0
+0021  0:INDEX_SET                  1   1   2
+0022  1:LEN                       70   0   1
+0023  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0024  1:LOAD_INT_CONST_SMALL      75   4   1    ; LICM hoist of PC 30
+0025  1:LT_INT_JUMP_FALSE        116   1   0
+0026  0:EXT                        6   0   0
+0027  1:RESET_SHARED_CELL        139   3   0
+0028  0:SLICE_GET_INT              3   1   1
+0029  0:MAKE_CLOSURE               2   4   0    ; closure (func 4)
+0030  0:APPEND_INPLACE             0   0   2
+0031  0:ADD_INT                    1   1   4
+0032  1:JUMP                      74 248 255    ; goto -8
+0033  1:LEN                       70   0   0
+0034  1:MAKE_SLICE_HEAP          208   0   0
+0035  0:EXT                        0   7   0
+0036  1:LEN                       70   1   0
+0037  1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0038  1:LT_INT_JUMP_FALSE        116   2   1
+0039  0:EXT                       10   0   0
+0040  1:MOVE_INT                  35   4   2
+0041  0:INDEX                      1   0   2
+0042  1:MOVE_SLICE_INT           165   1   0
+0043  1:MOVE_INT                  35   5   4
+0044  1:CALL                     128   0   0    ; call closure general[1] (site 0)
+0045  2:SYNC_CLOSURE_UPVALUES      0  15   1
+0046  0:SLICE_SET_INT_DIRECT       1   5   6
+0047  1:LOAD_INT_CONST_SMALL      75   5   1    ; ints[5] = 1
+0048  0:ADD_INT                    2   2   5
+0049  1:JUMP                      74 244 255    ; goto -12
+0050  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function collectViaPointer
+;   registers: int=6 general=3 sliceInt=1
+;   params:    (none)
+;   returns:   (sliceInt)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=3  [2]=1  [3]=2
+
+0000  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0001  0:MAKE_SLICE                 0   0   0
+0002  0:EXT                        0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0004  0:MAKE_SLICE                 1   0   0
+0005  0:EXT                        1   0   0
+0006  1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0007  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0008  1:MOVE_INT_TO_GENERAL       40   2   0
+0009  0:INDEX_SET                  1   1   2
+0010  1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0011  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0012  1:MOVE_INT_TO_GENERAL       40   2   0
+0013  0:INDEX_SET                  1   1   2
+0014  1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0015  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0016  1:MOVE_INT_TO_GENERAL       40   2   0
+0017  0:INDEX_SET                  1   1   2
+0018  1:LEN                       70   0   1
+0019  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0020  1:LOAD_INT_CONST_SMALL      75   4   1    ; LICM hoist of PC 26
+0021  1:LT_INT_JUMP_FALSE        116   1   0
+0022  0:EXT                        6   0   0
+0023  0:SLICE_GET_INT              3   1   1
+0024  0:ALLOC_INDIRECT             2   3   0
+0025  0:EXT                        2   0   0
+0026  0:APPEND_INPLACE             0   0   2
+0027  0:ADD_INT                    1   1   4
+0028  1:JUMP                      74 248 255    ; goto -8
+0029  1:LEN                       70   0   0
+0030  1:MAKE_SLICE_HEAP          208   0   0
+0031  0:EXT                        0   7   0
+0032  1:LEN                       70   1   0
+0033  1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0034  1:LT_INT_JUMP_FALSE        116   2   1
+0035  0:EXT                        8   0   0
+0036  1:MOVE_INT                  35   4   2
+0037  0:INDEX                      1   0   2
+0038  0:DEREF                      2   1   0
+0039  1:MOVE_GENERAL_TO_INT       41   5   2
+0040  0:SLICE_SET_INT_DIRECT       0   4   5
+0041  1:LOAD_INT_CONST_SMALL      75   5   1    ; ints[5] = 1
+0042  0:ADD_INT                    2   2   5
+0043  1:JUMP                      74 246 255    ; goto -10
+0044  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function collectViaGoroutine
+;   registers: int=5 general=9 sliceInt=1
+;   params:    (none)
+;   returns:   (sliceInt)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=4  [2]=100  [3]=200  [4]=1  [5]=300  [6]=2  [7]=400  [8]=3
+;   strings: [0]="Add"  [1]="Wait"
+
+0000  0:LOAD_GENERAL_CONST         0   0   0
+0001  0:ALLOC_INDIRECT             1   0   3
+0002  0:EXT                        0   0   0
+0003  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0004  1:LOAD_INT_CONST_SMALL      75   1   4    ; ints[1] = 4
+0005  0:MAKE_SLICE                 2   0   1
+0006  0:EXT                        1   0   1
+0007  0:ALLOC_INDIRECT             3   2   3
+0008  0:EXT                        1   0   0
+0009  0:LOAD_GENERAL_CONST         4   1   0
+0010  0:ALLOC_INDIRECT             5   4   3
+0011  0:EXT                        2   0   0
+0012  1:LOAD_INT_CONST_SMALL      75   0   4    ; ints[0] = 4
+0013  0:MAKE_SLICE                 6   0   0
+0014  0:EXT                        1   0   0
+0015  1:LOAD_INT_CONST_SMALL      75   0 100    ; ints[0] = 100
+0016  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0017  1:MOVE_INT_TO_GENERAL       40   7   0
+0018  0:INDEX_SET                  6   1   7
+0019  1:LOAD_INT_CONST_SMALL      75   0 200    ; ints[0] = 200
+0020  1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0021  1:MOVE_INT_TO_GENERAL       40   7   0
+0022  0:INDEX_SET                  6   1   7
+0023  0:LOAD_INT_CONST             0   5   0    ; ints[0] = 300
+0024  1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0025  1:MOVE_INT_TO_GENERAL       40   7   0
+0026  0:INDEX_SET                  6   1   7
+0027  0:LOAD_INT_CONST             0   7   0    ; ints[0] = 400
+0028  1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
+0029  1:MOVE_INT_TO_GENERAL       40   7   0
+0030  0:INDEX_SET                  6   1   7
+0031  1:LEN                       70   0   6
+0032  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0033  1:LT_INT_JUMP_FALSE        116   1   0
+0034  0:EXT                       12   0   0
+0035  1:RESET_SHARED_CELL        139   3   0
+0036  0:SLICE_GET_INT              3   6   1
+0037  0:DEREF                      7   1   0
+0038  1:GET_METHOD                83   8   7
+0039  0:EXT                        0   0   0
+0040  1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
+0041  1:CALL_NATIVE              130   0   0    ; call native method general[8] (site 0)
+0042  0:MAKE_CLOSURE               7   5   0    ; closure (func 5)
+0043  0:GO                         7   0   0
+0044  1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
+0045  0:ADD_INT                    1   1   4
+0046  1:JUMP                      74 242 255    ; goto -14
+0047  0:DEREF                      6   1   0
+0048  1:GET_METHOD                83   7   6
+0049  0:EXT                        1   0   0
+0050  1:CALL_NATIVE              130   1   0    ; call native method general[7] (site 1)
+0051  0:LOAD_GENERAL_CONST         6   2   0
+0052  0:DEREF                      7   3   0
+0053  1:CALL_NATIVE              130   2   0    ; call native general[6] (site 2)
+0054  0:DEREF                      6   3   0
+0055  0:DEREF                      7   6   1
+0056  1:ADOPT_GENERAL_TO_SLICES_INT 156   0   7
+0057  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: string=2 general=4 sliceInt=1
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]="closure:%v;pointer:%v;goroutine:%v"
+
+0000  1:CALL                     128   0   0    ; call (site 0)
+0001  1:BOX_SLICE_INT             34   0   0
+0002  1:CALL                     128   1   0    ; call (site 1)
+0003  1:BOX_SLICE_INT             34   1   0
+0004  1:CALL                     128   2   0    ; call (site 2)
+0005  1:BOX_SLICE_INT             34   2   0
+0006  0:LOAD_GENERAL_CONST         3   0   0
+0007  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "closure:%v;pointer:%v;goroutine:%v"
+0008  1:CALL_NATIVE              130   3   0    ; call native general[3] (site 3)
+0009  1:MOVE_STRING               37   0   1
+0010  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=1
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+0000  0:GET_UPVALUE                0   0   0
+0001  2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=1 general=2
+;   params:    (none)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]="Done"  [1]="Lock"  [2]="Unlock"
+
+0000  0:GET_UPVALUE                0   3   3
+0001  1:GET_METHOD                83   1   0
+0002  0:EXT                        0   0   0
+0003  0:DEFER                      1   0   1
+0004  0:GET_UPVALUE                0   1   3
+0005  1:GET_METHOD                83   1   0
+0006  0:EXT                        1   0   0
+0007  1:CALL_NATIVE              130   0   0    ; call native method general[1] (site 0)
+0008  0:GET_UPVALUE                0   0   3
+0009  0:GET_UPVALUE                0   2   0
+0010  0:APPEND_INT_FAST            1   0   0
+0011  0:SET_UPVALUE                1   0   3
+0012  0:GET_UPVALUE                0   1   3
+0013  1:GET_METHOD                83   1   0
+0014  0:EXT                        2   0   0
+0015  1:CALL_NATIVE              130   1   0    ; call native method general[1] (site 1)
