@@ -28,8 +28,8 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/traefik/yaegi v0.16.1
-	pipit.sh/pipit v0.1.0-alpha
-	pipit.sh/pipit/sdk/stdlib v0.1.0-alpha
+	pipit.sh/pipit v0.0.0-alpha.1
+	pipit.sh/pipit/sdk/stdlib v0.0.0-alpha.1
 )
 
 require (

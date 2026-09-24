@@ -108,8 +108,10 @@ pipit::go::with_local_replace() {
 pipit::go::existing_replaces() {
     local dir="$1"
 
-    grep -oE "^(replace[[:space:]]+|[[:space:]]+)[^[:space:]]+[[:space:]]+=>" \
-        "${PIPIT_ROOT}/${dir}/go.mod" |
+    {
+        grep -oE "^(replace[[:space:]]+|[[:space:]]+)[^[:space:]]+[[:space:]]+=>" \
+            "${PIPIT_ROOT}/${dir}/go.mod" || true
+    } |
         sed -E 's/^(replace)?[[:space:]]*//; s/[[:space:]]+=>$//' |
         sort -u
 }

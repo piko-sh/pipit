@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	piko.sh/asmgen v0.2.0
-	pipit.sh/pipit v0.1.0-alpha
+	pipit.sh/pipit v0.0.0-alpha.1
 )
 
 require (
