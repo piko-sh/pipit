@@ -439,10 +439,10 @@ func TestPeepholeJumpOffsetAdjustment(t *testing.T) {
 			body: []isa.Instruction{
 				mk(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2IncInt), 0),
 				mk(isa.OpLtInt, 2, 0, 1),
-				mk(isa.OpJumpIfTrue, 2, 252, 255),
+				mk(isa.OpJumpIfTrue, 2, 253, 255),
 			},
 			fusedOp:      isa.OpDrillTier1,
-			expectOffset: -3,
+			expectOffset: -2,
 		},
 		{
 			name: "LenStringLtJumpFalse adjusts offset by +1",

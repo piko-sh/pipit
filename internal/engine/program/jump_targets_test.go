@@ -38,6 +38,11 @@ func wordJump(op isa.Opcode, a uint8, offset int16) isa.Instruction {
 
 func nop() isa.Instruction { return isa.NewInstruction(isa.OpNop, 0, 0, 0) }
 
+func okRegisterExt(okRegister uint8, offset int16) isa.Instruction {
+	lo, hi := isa.SplitOffset(offset)
+	return isa.NewInstruction(isa.OpExt, okRegister, lo, hi)
+}
+
 func TestJumpTargetAtMatchesHandlerArithmetic(t *testing.T) {
 	t.Parallel()
 
@@ -116,6 +121,11 @@ func TestJumpTargetAtMatchesHandlerArithmetic(t *testing.T) {
 			target: 3 + isa.RangeCheckUintFusionNopCount + offset,
 		},
 		{
+			name:   "map index ok branch lands at pc+2+offset, reading the offset from B|C",
+			body:   []isa.Instruction{isa.NewInstruction(isa.OpMapIndexOkJumpIfFalseStringInt, 0, 1, 2), okRegisterExt(9, offset), nop()},
+			target: 2 + offset,
+		},
+		{
 			name:   "range next slice int lands at pc+2 plus a 24-bit forward offset",
 			body:   []isa.Instruction{isa.NewInstruction(isa.OpRangeNextSliceInt, 0, 1, 2), isa.NewInstruction(isa.OpExt, 0x34, 0x12, 0x01)},
 			target: 2 + 0x011234,
@@ -146,6 +156,8 @@ func TestJumpTargetAtRefusesNonJumps(t *testing.T) {
 		{name: "call method with extension", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpCallMethod, 0, 1), misleading}},
 		{name: "tier-2 make map with extension", body: []isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2MakeMap, 0), misleading}},
 		{name: "fused jump missing its extension word", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 0, 1)}},
+		{name: "map index ok branch missing its extension word", body: []isa.Instruction{isa.NewInstruction(isa.OpMapIndexOkJumpIfFalseIntInt, 0, 1, 2)}},
+		{name: "unfused map index ok", body: []isa.Instruction{isa.NewInstruction(isa.OpMapIndexOkIntInt, 0, 1, 2), okRegisterExt(9, 3)}},
 		{name: "tail call", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpTailCall, 0, 0)}},
 	}
 
@@ -172,6 +184,7 @@ func TestSetJumpTargetRoundTripsEveryLayout(t *testing.T) {
 		{name: "extension layout with nop padding", body: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpEqUintConstJumpFalse, 4, 5), offsetExt(1), nop(), nop(), nop()}},
 		{name: "second extension layout", body: []isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2RangeCheckUintJumpFalse, 4), isa.NewInstruction(isa.OpExt, 1, 2, 0), offsetExt(1), nop(), nop(), nop(), nop(), nop(), nop(), nop()}},
 		{name: "24-bit extension layout", body: []isa.Instruction{isa.NewInstruction(isa.OpRangeNextSliceByte, 0, 1, 2), isa.NewInstruction(isa.OpExt, 1, 0, 0), nop(), nop()}},
+		{name: "extension layout with the offset in B and C", body: []isa.Instruction{isa.NewInstruction(isa.OpMapIndexOkJumpIfFalseIntGeneral, 4, 5, 6), okRegisterExt(9, 1), nop(), nop(), nop()}},
 	}
 
 	for _, testCase := range cases {
@@ -207,6 +220,25 @@ func TestSetJumpTargetRefusesWhatItCannotEncode(t *testing.T) {
 
 	missingExt := []isa.Instruction{isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 0, 1)}
 	require.False(t, SetJumpTarget(missingExt, 0, 0))
+
+	missingOkExt := []isa.Instruction{isa.NewInstruction(isa.OpMapIndexOkJumpIfFalseIntInt, 0, 1, 2)}
+	require.False(t, SetJumpTarget(missingOkExt, 0, 0))
+}
+
+func TestSetJumpTargetKeepsTheOkRegisterOfAMapIndexOkBranch(t *testing.T) {
+	t.Parallel()
+
+	const okRegister = 9
+	body := []isa.Instruction{
+		isa.NewInstruction(isa.OpMapIndexOkJumpIfFalseStringString, 4, 5, 6),
+		okRegisterExt(okRegister, 1),
+		nop(), nop(), nop(), nop(),
+	}
+	require.True(t, SetJumpTarget(body, 0, 5))
+	require.Equal(t, uint8(okRegister), body[1].A, "the ok register the branch writes must survive a repoint")
+	target, ok := JumpTargetAt(body, 0)
+	require.True(t, ok)
+	require.Equal(t, 5, target)
 }
 
 func TestJumpTargetsOfCollectsEveryLayout(t *testing.T) {
@@ -239,4 +271,6 @@ func TestJumpWordCountAndFootprint(t *testing.T) {
 	require.Equal(t, 2+isa.EqUintConstJumpFalseNopCount, JumpFootprint(isa.NewTier1Instruction(isa.SubOpEqUintConstJumpFalse, 0, 1)))
 	require.Equal(t, 3+isa.RangeCheckUintFusionNopCount, JumpFootprint(isa.NewTier2Instruction(isa.SubOpTier2RangeCheckUintJumpFalse, 0)))
 	require.Equal(t, 1, JumpFootprint(nop()))
+	require.Equal(t, 2, JumpFootprint(isa.NewInstruction(isa.OpMapIndexOkJumpIfFalseIntInt, 0, 1, 2)),
+		"a map index ok branch falls through onto the nop its fusion leaves")
 }

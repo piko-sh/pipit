@@ -66,41 +66,59 @@ type registerLivenessWalk struct {
 	reg uint8
 }
 
-// conditionRegisterDeadAfterBranch reports whether ints[reg] is provably dead on both
-// edges of the branch at branchPC.
+// registerDeadAfterBranch reports whether the register reg of bank kind is provably dead
+// on both edges of the branch at branchPC.
 //
-// The compare-and-branch fusions stop writing the condition register, so they are sound
-// only when nothing reads it afterwards. The compiler reclaims that temporary as soon as
-// the branch is emitted, which makes the write dead by construction in code it emits, but
-// the fusers run after inlining and register remapping and nothing else re-checks the
-// invariant; this does. A register that is one of the function's int result slots is read
-// by every return, so it is never dead.
+// The compare-and-branch fusions stop writing the condition register, and some also stop
+// writing a loaded constant, a nil operand or a length, so they are sound only when each
+// of those registers is dead on both edges, whatever bank it lives in. The compiler
+// reclaims such temporaries as soon as the branch is emitted, but the fusers run after
+// inlining and register remapping and nothing else re-checks the invariant; this does.
+//
+// A result slot is treated as registerDeadFrom treats it: every return the walk reaches
+// reads it, and when the function defers a call it is never dead, because a recovered
+// panic returns its current contents. A result slot every path overwrites before
+// returning, as a `switch` whose cases each `return`, is therefore still dead.
 //
 // Takes compiledFunction (*CompiledFunction) whose call sites and result kinds say what
 // calls and returns read.
-// Takes body ([]isa.Instruction) which is the instruction stream.
+// Takes body ([]isa.Instruction) which is the instruction stream, before any rewrite.
 // Takes branchPC (int) which is the branch whose two edges are searched.
-// Takes reg (uint8) which is the int register the fusion would stop writing.
+// Takes kind (isa.RegisterKind) which is the register's bank.
+// Takes reg (uint8) which is the register the fusion would stop writing.
 //
 // Returns true when every path out of the branch writes reg, or ends the frame, before
 // any read of it.
-func conditionRegisterDeadAfterBranch(compiledFunction *program.CompiledFunction, body []isa.Instruction, branchPC int, reg uint8) bool {
-	if int(reg) < returnSlotCount(compiledFunction, isa.RegisterInt) {
+func registerDeadAfterBranch(compiledFunction *program.CompiledFunction, body []isa.Instruction, branchPC int, kind isa.RegisterKind, reg uint8) bool {
+	if resultSlotReadByRecover(compiledFunction, kind, reg) {
 		return false
 	}
 	target, ok := program.JumpTargetAt(body, branchPC)
 	if !ok {
 		return false
 	}
-	walk := newRegisterLivenessWalk(compiledFunction, body, isa.RegisterInt, reg)
+	walk := newRegisterLivenessWalk(compiledFunction, body, kind, reg)
 	return walk.deadFrom(branchPC+program.JumpFootprint(body[branchPC])) && walk.deadFrom(target)
+}
+
+// writeDroppedSafely reports whether a straight-line fusion may stop writing the register
+// reg of bank kind.
+//
+// Takes compiledFunction (*CompiledFunction) whose call sites and result kinds say what
+// calls and returns read.
+// Takes body ([]isa.Instruction) which is the instruction stream, before any rewrite.
+// Takes resumePC (int) which is the first program counter after the fused window.
+// Takes kind (isa.RegisterKind) which is the register's bank.
+// Takes reg (uint8) which is the register the fusion would stop writing.
+// Takes stillWritten (uint8) which is the same-bank register the fused form writes.
+//
+// Returns true when dropping the write cannot change what any later read observes.
+func writeDroppedSafely(compiledFunction *program.CompiledFunction, body []isa.Instruction, resumePC int, kind isa.RegisterKind, reg, stillWritten uint8) bool {
+	return reg == stillWritten || registerDeadFrom(compiledFunction, body, resumePC, kind, reg)
 }
 
 // registerDeadFrom reports whether the register reg of bank kind is provably dead at
 // startPC.
-//
-// When the function defers a call, a result slot is never dead because a recovered panic
-// returns the slot's current contents.
 //
 // Takes compiledFunction (*CompiledFunction) whose call sites and result kinds say what
 // calls and returns read.
@@ -164,6 +182,9 @@ func newRegisterLivenessWalk(compiledFunction *program.CompiledFunction, body []
 //
 // Returns true when the register is provably dead from start.
 func (w *registerLivenessWalk) deadFrom(start int) bool {
+	if start < 0 {
+		return false
+	}
 	if w.entered[start] {
 		return true
 	}
@@ -268,7 +289,9 @@ func (w *registerLivenessWalk) branch(pc int) bool {
 // provably writes it, as part of the instruction at ownerPC.
 //
 // An unknown owner or unrecorded layout is read conservatively. Only the int bank has
-// recorded layouts via isa.ExtensionIntUse(); other banks are always conservative.
+// recorded layouts via isa.ExtensionIntUse(); other banks are conservative except for
+// owners whose extension words name only int registers and immediates
+// (isa.ExtensionNamesOnlyIntRegisters()).
 //
 // Takes ownerPC (int) which is the program counter of the owning instruction, or -1.
 // Takes pc (int) which is the extension word's program counter.
@@ -278,7 +301,13 @@ func (w *registerLivenessWalk) branch(pc int) bool {
 func (w *registerLivenessWalk) extensionWordUse(ownerPC, pc int) (reads, writes bool) {
 	word := w.body[pc]
 	anyByte := word.A == w.reg || word.B == w.reg || word.C == w.reg
-	if ownerPC < 0 || w.kind != isa.RegisterInt {
+	if ownerPC < 0 {
+		return anyByte, false
+	}
+	if w.kind != isa.RegisterInt {
+		if isa.ExtensionNamesOnlyIntRegisters(w.body[ownerPC]) {
+			return false, false
+		}
 		return anyByte, false
 	}
 	readMask, writeMask, ok := isa.ExtensionIntUse(w.body[ownerPC], w.body[ownerPC+1:pc+1])

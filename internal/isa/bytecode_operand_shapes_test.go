@@ -61,6 +61,53 @@ func TestOperandShapesDescribeEveryCriticalOpcode(t *testing.T) {
 	}
 }
 
+func TestAppendReadsItsElementAndCarriesNoExtensionWord(t *testing.T) {
+	t.Parallel()
+
+	appendShape := OperandShapeFor(OpAppend)
+	require.Equal(t, RoleRegGeneral, appendShape.C, "the handler reads general[C] as the element")
+	require.Equal(t, [NumInstructionOperands]bool{false, true, true}, appendShape.Reads)
+	require.Zero(t, appendShape.Flags&ShapeFlagFollowsExtension, "append is a single word")
+
+	spreadShape := OperandShapeFor(OpAppendSpread)
+	require.Zero(t, spreadShape.Flags&ShapeFlagFollowsExtension, "append-spread is a single word")
+}
+
+func TestOperationsWithExtensionWordsDeclareThem(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		instr Instruction
+	}{
+		{name: "defer carries one word per argument", instr: NewInstruction(OpDefer, 1, 2, 0)},
+		{name: "go carries one word per argument", instr: NewInstruction(OpGo, 1, 2, 0)},
+		{name: "uint add-constant carries its pool index", instr: NewTier1Instruction(SubOpAddUintConst, 1, 2)},
+		{name: "uint subtract-constant carries its pool index", instr: NewTier1Instruction(SubOpSubUintConst, 1, 2)},
+		{name: "uint and-constant carries its pool index", instr: NewTier1Instruction(SubOpBitAndUintConst, 1, 2)},
+		{name: "interface method expression carries type and name indices", instr: NewTier2Instruction(SubOpTier2MakeInterfaceMethodExpr, 1)},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			require.NotZero(t, ShapeForInstruction(testCase.instr).Flags&ShapeFlagFollowsExtension)
+		})
+	}
+}
+
+func TestMapIndexOkBranchesAreControlFlow(t *testing.T) {
+	t.Parallel()
+
+	for _, op := range []Opcode{
+		OpMapIndexOkJumpIfFalseIntInt, OpMapIndexOkJumpIfFalseStringInt, OpMapIndexOkJumpIfFalseStringString,
+		OpMapIndexOkJumpIfFalseIntString, OpMapIndexOkJumpIfFalseIntGeneral, OpMapIndexOkJumpIfFalseStringGeneral,
+	} {
+		shape := OperandShapeFor(op)
+		require.NotZerof(t, shape.Flags&ShapeFlagControlFlow, "%s branches on a missing key", op)
+		require.NotZerof(t, shape.Flags&ShapeFlagOpaqueWrites, "%s writes the ok register its extension word names", op)
+	}
+}
+
 func TestOperandShapeReadKindsForTypedSliceGet(t *testing.T) {
 	t.Parallel()
 

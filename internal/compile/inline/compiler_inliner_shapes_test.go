@@ -83,6 +83,34 @@ func TestExtensionWordAgreesWithOperandShapes(t *testing.T) {
 			"isa.OpExt word; fix the wrong table. disagreements: %v", disagreements)
 }
 
+func TestEveryInlineExtensionEntryCarriesAnExtensionWord(t *testing.T) {
+	t.Parallel()
+
+	var stale []string
+	for flatIndex, poolShape := range inlinePoolShapes {
+		if !poolShape.hasExtensionWord {
+			continue
+		}
+		tier, code := isa.Tier(flatIndex/isa.SlotsPerTier), uint8(flatIndex%isa.SlotsPerTier)
+		if isa.OperandShapeAt(tier, code).Flags&isa.ShapeFlagFollowsExtension == 0 {
+			stale = append(stale, fmt.Sprintf("tier %d code %d", tier, code))
+		}
+	}
+
+	require.Emptyf(t, stale,
+		"inlinePoolShapes expects a trailing isa.OpExt word the ISA says the operation does not carry;\n"+
+			"a callee would then be refused or mis-spliced. stale entries: %v", stale)
+}
+
+func TestAppendCalleesAreNotInlined(t *testing.T) {
+	t.Parallel()
+
+	for _, op := range []isa.Opcode{isa.OpAppend, isa.OpAppendSpread} {
+		require.Falsef(t, phase2OperationAllowed(isa.NewInstruction(op, 1, 2, 3)),
+			"%s must stay off the inliner allow-list", op)
+	}
+}
+
 func TestInlinePoolShapesDescribeEveryIndexedOperand(t *testing.T) {
 	t.Parallel()
 

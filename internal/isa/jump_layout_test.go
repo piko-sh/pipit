@@ -48,6 +48,13 @@ func TestJumpLayoutOfClassifiesEveryLayout(t *testing.T) {
 		{name: "range next slice int", instr: NewInstruction(OpRangeNextSliceInt, 1, 2, 3), layout: JumpLayoutExtension24},
 		{name: "range next slice byte", instr: NewInstruction(OpRangeNextSliceByte, 1, 2, 3), layout: JumpLayoutExtension24},
 		{name: "type switch dispatch", instr: NewTier1Instruction(SubOpTypeSwitchJump, 1, 2), layout: JumpLayoutMultiWay},
+		{name: "map index ok int int branch", instr: NewInstruction(OpMapIndexOkJumpIfFalseIntInt, 1, 2, 3), layout: JumpLayoutExtensionBC},
+		{name: "map index ok string int branch", instr: NewInstruction(OpMapIndexOkJumpIfFalseStringInt, 1, 2, 3), layout: JumpLayoutExtensionBC},
+		{name: "map index ok string string branch", instr: NewInstruction(OpMapIndexOkJumpIfFalseStringString, 1, 2, 3), layout: JumpLayoutExtensionBC},
+		{name: "map index ok int string branch", instr: NewInstruction(OpMapIndexOkJumpIfFalseIntString, 1, 2, 3), layout: JumpLayoutExtensionBC},
+		{name: "map index ok int general branch", instr: NewInstruction(OpMapIndexOkJumpIfFalseIntGeneral, 1, 2, 3), layout: JumpLayoutExtensionBC},
+		{name: "map index ok string general branch", instr: NewInstruction(OpMapIndexOkJumpIfFalseStringGeneral, 1, 2, 3), layout: JumpLayoutExtensionBC},
+		{name: "unfused map index ok is not a branch", instr: NewInstruction(OpMapIndexOkIntInt, 1, 2, 3), layout: JumpLayoutNone},
 		{name: "make slice int carries an extension but no offset", instr: NewTier1Instruction(SubOpMakeSliceInt, 1, 2), layout: JumpLayoutNone},
 		{name: "call method carries an extension but no offset", instr: NewTier1Instruction(SubOpCallMethod, 1, 2), layout: JumpLayoutNone},
 		{name: "tier-2 make map carries an extension but no offset", instr: NewTier2Instruction(SubOpTier2MakeMap, 1), layout: JumpLayoutNone},
@@ -90,7 +97,7 @@ func TestJumpLayoutAgreesWithSpecAndShape(t *testing.T) {
 				"%s has ShapeFlagControlFlow but no SpecJump; every branch with a target must be decodable", row)
 		}
 		switch layout {
-		case JumpLayoutExtension, JumpLayoutSecondExtension, JumpLayoutExtension24:
+		case JumpLayoutExtension, JumpLayoutSecondExtension, JumpLayoutExtension24, JumpLayoutExtensionBC:
 			require.NotZerof(t, shape.Flags&ShapeFlagFollowsExtension,
 				"%s keeps its offset in an extension word but its shape does not declare one", row)
 		case JumpLayoutWord:
@@ -122,5 +129,6 @@ func TestJumpLayoutWordCount(t *testing.T) {
 	require.Equal(t, 1, JumpLayoutMultiWay.WordCount())
 	require.Equal(t, 2, JumpLayoutExtension.WordCount())
 	require.Equal(t, 2, JumpLayoutExtension24.WordCount())
+	require.Equal(t, 2, JumpLayoutExtensionBC.WordCount())
 	require.Equal(t, 3, JumpLayoutSecondExtension.WordCount())
 }

@@ -100,7 +100,7 @@ func classifyJumpScanStep(scan *moveScan, j int) (moveScanDecision, int) {
 		return moveScanEliminate, width
 	}
 	shape := isa.ShapeForInstruction(body[j])
-	if shape.Flags&isa.ShapeFlagDescribed == 0 {
+	if shape.Flags&isa.ShapeFlagDescribed == 0 || shape.Flags&isa.ShapeFlagOpaqueWrites != 0 {
 		return moveScanBail, width
 	}
 	decision := classifyDescribedScanStep(scan, j, shape)

@@ -30,6 +30,9 @@ var (
 	// ErrRegisterOperandOutOfRange signals a described register operand whose slot lies
 	// beyond the function's declared register count for that bank.
 	ErrRegisterOperandOutOfRange = errors.New("register operand beyond declared register count")
+
+	// extensionOperandNames labels the operand positions of an extension word in errors.
+	extensionOperandNames = [isa.NumInstructionOperands]string{"A", "B", "C"}
 )
 
 // VerifyRegisterOperandBounds checks that every described register operand in root and
@@ -56,18 +59,12 @@ func verifyFunctionOperandBounds(compiledFunction *program.CompiledFunction, vis
 		return nil
 	}
 	visited[compiledFunction] = true
-	body := compiledFunction.Body
-	for pc := 0; pc < len(body); pc++ {
-		instr := body[pc]
-		shape := isa.ShapeForInstruction(instr)
-		if shape.Flags&isa.ShapeFlagDescribed != 0 {
-			if err := checkOperandBounds(compiledFunction, pc, instr, shape); err != nil {
-				return err
-			}
+	for pc := 0; pc < len(compiledFunction.Body); pc++ {
+		last, err := checkInstructionBounds(compiledFunction, pc)
+		if err != nil {
+			return err
 		}
-		if shape.Flags&isa.ShapeFlagFollowsExtension != 0 {
-			pc++
-		}
+		pc = last
 	}
 	for _, child := range compiledFunction.Functions {
 		if err := verifyFunctionOperandBounds(child, visited); err != nil {
@@ -75,6 +72,63 @@ func verifyFunctionOperandBounds(compiledFunction *program.CompiledFunction, vis
 		}
 	}
 	return nil
+}
+
+// checkInstructionBounds checks the register operands of the instruction at pc and of the
+// extension words it owns.
+//
+// Takes compiledFunction (*CompiledFunction) which supplies the body and register counts.
+// Takes pc (int) which is the instruction's program counter.
+//
+// Returns the program counter of the last word the instruction occupies, and an error
+// naming the first out-of-range operand, or nil.
+func checkInstructionBounds(compiledFunction *program.CompiledFunction, pc int) (int, error) {
+	instr := compiledFunction.Body[pc]
+	shape := isa.ShapeForInstruction(instr)
+	if shape.Flags&isa.ShapeFlagDescribed != 0 {
+		if err := checkOperandBounds(compiledFunction, pc, instr, shape); err != nil {
+			return pc, err
+		}
+	}
+	if shape.Flags&isa.ShapeFlagFollowsExtension == 0 {
+		return pc, nil
+	}
+	return checkExtensionBounds(compiledFunction, pc)
+}
+
+// checkExtensionBounds checks the OpExt words that follow the instruction at pc, however
+// many there are (a defer or go with no arguments carries none).
+//
+// Takes compiledFunction (*CompiledFunction) which supplies the body and register counts.
+// Takes pc (int) which is the program counter of the instruction that owns the words.
+//
+// Returns the program counter of the last word consumed (pc itself when none follow), and
+// an error naming the first out-of-range int register, or nil.
+func checkExtensionBounds(compiledFunction *program.CompiledFunction, pc int) (int, error) {
+	body := compiledFunction.Body
+	owner := body[pc]
+	last := pc
+	for last+1 < len(body) && body[last+1].Op == isa.OpExt {
+		last++
+		reads, writes, ok := isa.ExtensionIntUse(owner, body[pc+1:last+1])
+		if !ok {
+			continue
+		}
+		word := body[last]
+		operands := [isa.NumInstructionOperands]uint8{word.A, word.B, word.C}
+		for position, slot := range operands {
+			if !reads[position] && !writes[position] {
+				continue
+			}
+			if uint32(slot) < compiledFunction.NumRegisters[isa.RegisterInt] {
+				continue
+			}
+			return last, fmt.Errorf("verifier: %s pc=%d op=%s extension pc=%d operand=%s bank=%d slot=%d count=%d: %w",
+				compiledFunction.Name, pc, owner.Op, last, extensionOperandNames[position], isa.RegisterInt, slot,
+				compiledFunction.NumRegisters[isa.RegisterInt], ErrRegisterOperandOutOfRange)
+		}
+	}
+	return last, nil
 }
 
 // checkOperandBounds checks the three operand bytes of one described instruction.

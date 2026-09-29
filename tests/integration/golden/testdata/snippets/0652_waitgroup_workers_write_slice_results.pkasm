@@ -16,12 +16,12 @@
 0001  0:EXT                        0   0   0
 0002  0:LOAD_INT_CONST             0   0   0    ; ints[0] = -1
 0003  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0004  1:LEN_SLICE_BYTE_DIRECT    114   2   0
-0005  1:LT_INT_JUMP_FALSE        116   1   2
-0006  0:EXT                       35   0   0
-0007  1:SLICE_GET_BYTE_DIRECT    112   0   0
-0008  0:EXT                        1   0   0
-0009  1:LOAD_UINT_CONST_SMALL     99   1  97    ; uints[1] = 97
+0004  1:LOAD_UINT_CONST_SMALL     99   1  97    ; LICM hoist of PC 9
+0005  1:LEN_SLICE_BYTE_DIRECT    114   2   0
+0006  1:LT_INT_JUMP_FALSE        116   1   2
+0007  0:EXT                       34   0   0
+0008  1:SLICE_GET_BYTE_DIRECT    112   0   0
+0009  0:EXT                        1   0   0
 0010  0:GE_UINT                    4   0   1
 0011  1:MOVE_INT                  35   5   4
 0012  0:JUMP_IF_FALSE              5   3   0    ; if ints[5] == 0 goto +3
@@ -53,7 +53,7 @@
 0038  0:LOAD_INT_CONST             4   0   0    ; ints[4] = -1
 0039  1:MOVE_INT                  35   0   4
 0040  2:TIER2_INC_INT              0   1   1
-0041  1:JUMP                      74 218 255    ; goto -38
+0041  1:JUMP                      74 219 255    ; goto -37
 0042  1:GE_INT_CONST_JUMP_FALSE  126   0   1
 0043  0:EXT                        4   0   0
 0044  3:TIER3_NOP                  0   0   0

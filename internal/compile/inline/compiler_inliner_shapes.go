@@ -194,13 +194,10 @@ func registerInlineMapIndexOkShapes() {
 }
 
 // registerInlineExtensionPassthroughShapes populates ops whose extension word carries
-// data that needs no remapping (append immediate length, global-wide high bits).
-// hasExtensionWord is set so the body walker advances past the ext without
-// misinterpreting it.
+// data that needs no remapping (the global-wide high bits). hasExtensionWord is set so
+// the body walker advances past the ext without misinterpreting it.
 func registerInlineExtensionPassthroughShapes() {
 	passthrough := inlinePoolShape{hasExtensionWord: true}
-	inlinePoolShapes[isa.FlatIndexOf(isa.OpAppend)] = passthrough
-	inlinePoolShapes[isa.FlatIndexOf(isa.OpAppendSpread)] = passthrough
 	inlinePoolShapes[isa.FlatIndexOfSub1(isa.SubOpGetGlobalWide)] = passthrough
 	inlinePoolShapes[isa.FlatIndexOfSub1(isa.SubOpSetGlobalWide)] = passthrough
 }

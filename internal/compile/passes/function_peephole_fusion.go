@@ -131,6 +131,8 @@ func FuseAddIntJump(_ *program.CompiledFunction,
 // isa.SubOpRuneToString, destination=B, source=C}. The fusion reads destination from
 // body[i].b and source from body[i].c.
 //
+// Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
+// the liveness guard reads.
 // Takes body ([]instruction) which specifies the instruction sequence.
 // Takes i (int) which specifies the current index.
 // Takes n (int) which specifies the length.
@@ -138,14 +140,18 @@ func FuseAddIntJump(_ *program.CompiledFunction,
 // destinations.
 //
 // Returns true if a pattern was matched and applied.
-func FuseConcatRune(_ *program.CompiledFunction,
+func FuseConcatRune(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
 	if i+1 >= n ||
 		!isa.InstrIsTier1SubOp(body[i], isa.SubOpRuneToString) || body[i+1].Op != isa.OpConcatString ||
 		body[i].B != body[i+1].C ||
+		body[i].B == body[i+1].B ||
 		jumpTargets[i+1] {
+		return false
+	}
+	if !writeDroppedSafely(compiledFunction, body, i+2, isa.RegisterString, body[i].B, body[i+1].A) {
 		return false
 	}
 	body[i] = isa.NewInstruction(isa.OpConcatRuneString, body[i+1].A, body[i+1].B, body[i].C)
@@ -157,6 +163,8 @@ func FuseConcatRune(_ *program.CompiledFunction,
 // destination equals the source-slice register, so the handler takes the in-place fast
 // path instead of wrapping a fresh reflect.Value.
 //
+// Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
+// the liveness guard reads.
 // Takes body ([]instruction) which specifies the instruction sequence.
 // Takes i (int) which specifies the current index.
 // Takes n (int) which specifies the length.
@@ -164,7 +172,7 @@ func FuseConcatRune(_ *program.CompiledFunction,
 // destinations.
 //
 // Returns true if a pattern was matched and applied.
-func FuseAppendMove(_ *program.CompiledFunction,
+func FuseAppendMove(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
@@ -173,9 +181,9 @@ func FuseAppendMove(_ *program.CompiledFunction,
 	}
 	appendInstr := body[i]
 	if appendInstr.Op == isa.OpAppend {
-		return tryFuseTier0AppendMove(body, i, appendInstr)
+		return tryFuseTier0AppendMove(compiledFunction, body, i, appendInstr)
 	}
-	return tryFuseTier1AppendMove(body, i, n, jumpTargets, appendInstr)
+	return tryFuseTier1AppendMove(compiledFunction, body, i, n, jumpTargets, appendInstr)
 }
 
 // OptimiseLoadIntConst rewrites LoadIntConst to LoadIntConstSmall when the constant value
@@ -230,6 +238,8 @@ func OptimiseLoadUintConst(compiledFunction *program.CompiledFunction, body []is
 // STRING_INDEX_TO_INT(R_int, R_str, R_idx) + NOP. isa.SubOpUintToInt lives in tier-1 form
 // {isa.OpDrillTier1, isa.SubOpUintToInt, destination=B, source=C}.
 //
+// Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
+// the liveness guard reads.
 // Takes body ([]instruction) which specifies the instruction sequence.
 // Takes i (int) which specifies the current index.
 // Takes n (int) which specifies the length.
@@ -237,7 +247,7 @@ func OptimiseLoadUintConst(compiledFunction *program.CompiledFunction, body []is
 // destinations.
 //
 // Returns true if a pattern was matched and applied.
-func FuseStringIndexToInt(_ *program.CompiledFunction,
+func FuseStringIndexToInt(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
@@ -245,6 +255,9 @@ func FuseStringIndexToInt(_ *program.CompiledFunction,
 		body[i].Op != isa.OpStringIndex || !isa.InstrIsTier1SubOp(body[i+1], isa.SubOpUintToInt) ||
 		body[i].A != body[i+1].C ||
 		jumpTargets[i+1] {
+		return false
+	}
+	if !registerDeadFrom(compiledFunction, body, i+2, isa.RegisterUint, body[i].A) {
 		return false
 	}
 	body[i] = isa.NewInstruction(isa.OpStringIndexToInt, body[i+1].B, body[i].B, body[i].C)
@@ -317,12 +330,15 @@ func fuseRangeCheckUintJumpFalse(compiledFunction *program.CompiledFunction,
 	if !rangeCheckJumpTargetsClear(compiledFunction, body, i, jumpTargets) {
 		return false
 	}
-	valueReg, _, ok := matchRangeCheckRegisters(body, i, shape.vRegLo, shape.vRegHi)
+	valueReg, condReg, ok := matchRangeCheckRegisters(body, i, shape.vRegLo, shape.vRegHi)
 	if !ok {
 		return false
 	}
 	off2, ok := validateRangeCheckOffsets(body, i)
 	if !ok {
+		return false
+	}
+	if !rangeCheckDroppedWritesDead(compiledFunction, body, i, shape, valueReg, condReg) {
 		return false
 	}
 	offLo, offHi := isa.SplitOffset(off2)
@@ -443,7 +459,11 @@ func fuseEqUintConstJumpFalse(compiledFunction *program.CompiledFunction,
 		return false
 	}
 	condReg := body[i+1].A
-	if body[i+2].A != condReg {
+	if body[i+2].A != condReg || valueReg == constReg {
+		return false
+	}
+	if !registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterUint, constReg) ||
+		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt, condReg) {
 		return false
 	}
 	rawOffset := body[i+2].SignedOffset()
@@ -740,6 +760,42 @@ func matchRangeCheckRegisters(body []isa.Instruction, i int, vRegLo, vRegHi uint
 	return valueReg, condReg, true
 }
 
+// rangeCheckDroppedWritesDead reports whether the range-check fusion may stop writing the
+// five registers the unfused window writes: the two loaded bounds, the two comparison
+// results and the shared condition.
+//
+// Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
+// the liveness guard reads.
+// Takes body ([]isa.Instruction) which is the instruction sequence, before the rewrite.
+// Takes i (int) which is the window start.
+// Takes shape (rangeCheckShape) which holds the bound registers.
+// Takes valueReg (uint8) which is the uint register being classified.
+// Takes condReg (uint8) which is the int condition register.
+//
+// Returns true when none of the dropped writes can be observed.
+func rangeCheckDroppedWritesDead(compiledFunction *program.CompiledFunction, body []isa.Instruction, i int, shape rangeCheckShape, valueReg, condReg uint8) bool {
+	if valueReg == shape.vRegLo || valueReg == shape.vRegHi {
+		return false
+	}
+	branchPC := i + program.RangeCheckSecondJumpOffset
+	dropped := []struct {
+		kind isa.RegisterKind
+		reg  uint8
+	}{
+		{kind: isa.RegisterUint, reg: shape.vRegLo},
+		{kind: isa.RegisterUint, reg: shape.vRegHi},
+		{kind: isa.RegisterInt, reg: body[i+1].A},
+		{kind: isa.RegisterInt, reg: body[i+program.RangeCheckSecondLoadOffset+1].A},
+		{kind: isa.RegisterInt, reg: condReg},
+	}
+	for _, write := range dropped {
+		if !registerDeadAfterBranch(compiledFunction, body, branchPC, write.kind, write.reg) {
+			return false
+		}
+	}
+	return true
+}
+
 // validateRangeCheckOffsets ensures the first jump chains to the second jump's position
 // and the second jump's offset is non-negative (forward only).
 //
@@ -763,17 +819,22 @@ func validateRangeCheckOffsets(body []isa.Instruction, i int) (int16, bool) {
 // tryFuseTier0AppendMove handles the contiguous isa.OpAppend + isa.OpMoveGeneral pattern.
 // Returns true when the fusion fires.
 //
+// Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
+// the liveness guard reads.
 // Takes body ([]instruction) which is the instruction sequence to rewrite.
 // Takes i (int) which is the isa.OpAppend index.
 // Takes appendInstr (instruction) which is body[i].
 //
 // Returns true when the fusion fires.
-func tryFuseTier0AppendMove(body []isa.Instruction, i int, appendInstr isa.Instruction) bool {
+func tryFuseTier0AppendMove(compiledFunction *program.CompiledFunction, body []isa.Instruction, i int, appendInstr isa.Instruction) bool {
 	moveInstr := body[i+1]
 	if moveInstr.Op != isa.OpMoveGeneral {
 		return false
 	}
 	if moveInstr.A != appendInstr.B || moveInstr.B != appendInstr.A {
+		return false
+	}
+	if !writeDroppedSafely(compiledFunction, body, i+2, isa.RegisterGeneral, appendInstr.A, appendInstr.B) {
 		return false
 	}
 	body[i] = isa.NewInstruction(appendInstr.Op, appendInstr.B, appendInstr.B, appendInstr.C)
@@ -785,6 +846,8 @@ func tryFuseTier0AppendMove(body []isa.Instruction, i int, appendInstr isa.Instr
 // The MOVE_GEN lives at body[i+2] (after the extension word) and the rewrite rebrands the
 // append destination so the runtime adapter takes the in-place helper path.
 //
+// Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
+// the liveness guard reads.
 // Takes body ([]instruction) which is the instruction sequence to rewrite.
 // Takes i (int) which is the isa.OpDrillTier1 index.
 // Takes n (int) which is the body length.
@@ -792,7 +855,7 @@ func tryFuseTier0AppendMove(body []isa.Instruction, i int, appendInstr isa.Instr
 // Takes appendInstr (instruction) which is body[i].
 //
 // Returns true when the fusion fires.
-func tryFuseTier1AppendMove(body []isa.Instruction, i, n int, jumpTargets map[int]bool, appendInstr isa.Instruction) bool {
+func tryFuseTier1AppendMove(compiledFunction *program.CompiledFunction, body []isa.Instruction, i, n int, jumpTargets map[int]bool, appendInstr isa.Instruction) bool {
 	if appendInstr.Op != isa.OpDrillTier1 {
 		return false
 	}
@@ -810,6 +873,9 @@ func tryFuseTier1AppendMove(body []isa.Instruction, i, n int, jumpTargets map[in
 		return false
 	}
 	if moveInstr.A != appendInstr.C || moveInstr.B != appendInstr.B {
+		return false
+	}
+	if !writeDroppedSafely(compiledFunction, body, i+3, isa.RegisterGeneral, appendInstr.B, appendInstr.C) {
 		return false
 	}
 	body[i] = isa.NewInstruction(isa.OpDrillTier1, appendInstr.A, appendInstr.C, appendInstr.C)

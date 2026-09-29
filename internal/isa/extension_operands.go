@@ -32,6 +32,58 @@ var (
 	extensionByteC = ExtensionIntMask{false, false, true}
 )
 
+// ExtensionNamesOnlyIntRegisters reports whether every byte of the owner's extension
+// words is an int register or an immediate, so no byte names a register of any other
+// bank.
+//
+// Takes owner (Instruction) which is the operation the extension words belong to.
+//
+// Returns true when the owner's extension words name no register outside the int bank.
+func ExtensionNamesOnlyIntRegisters(owner Instruction) bool {
+	switch owner.Op {
+	case OpGetStructFieldIndexGeneral, OpSetStructFieldIndexGeneral,
+		OpTypeAssert, OpPackTyped, OpAllocIndirect, OpAppendStructFast, OpSliceString:
+		return true
+	case OpDrillTier1:
+		return tier1ExtensionNamesOnlyIntRegisters(owner)
+	default:
+		return false
+	}
+}
+
+// tier1ExtensionNamesOnlyIntRegisters answers ExtensionNamesOnlyIntRegisters() for the
+// tier-1 and tier-2 operations.
+//
+// Takes owner (Instruction) which is the drilled instruction.
+//
+// Returns true when the owner's extension words name no register outside the int bank.
+func tier1ExtensionNamesOnlyIntRegisters(owner Instruction) bool {
+	switch SubOpcode(owner.A) {
+	case SubOpDrillTier2:
+		switch SubOpcodeTier2(owner.B) {
+		case SubOpTier2MakeMap, SubOpTier2AllocStructLiteral:
+			return true
+		default:
+			return false
+		}
+	case SubOpSliceGetFloatDirect, SubOpSliceGetStringDirect, SubOpSliceGetBoolDirect,
+		SubOpSliceGetUintDirect, SubOpSliceGetByteDirect,
+		SubOpSliceOp, SubOpSliceByteSlice, SubOpSliceSliceIntDirect, SubOpSliceSliceFloatDirect,
+		SubOpSliceSliceStringDirect, SubOpSliceSliceBoolDirect, SubOpSliceSliceUintDirect,
+		SubOpGetStructFieldInt, SubOpGetStructFieldUint, SubOpGetStructFieldFloat,
+		SubOpGetStructFieldBool, SubOpGetStructFieldString,
+		SubOpSetStructFieldInt, SubOpSetStructFieldUint, SubOpSetStructFieldFloat,
+		SubOpSetStructFieldBool, SubOpSetStructFieldString,
+		SubOpGetStructFieldSliceInt, SubOpGetStructFieldSliceFloat, SubOpGetStructFieldSliceUint,
+		SubOpGetStructFieldSliceString, SubOpGetStructFieldSliceBool, SubOpGetStructFieldSliceByte,
+		SubOpSetStructFieldSliceInt, SubOpSetStructFieldSliceFloat, SubOpSetStructFieldSliceUint,
+		SubOpSetStructFieldSliceString, SubOpSetStructFieldSliceBool, SubOpSetStructFieldSliceByte:
+		return true
+	default:
+		return false
+	}
+}
+
 // ExtensionIntUse reports which bytes of an extension word name int registers that the
 // owning operation reads, and which name int registers it writes. When the layout is not
 // recorded, ok is false and the caller must assume any byte may name an int register.

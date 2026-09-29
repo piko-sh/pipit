@@ -129,3 +129,82 @@ func TestScanAndEliminateMoveKeepsMoveReadByFusedJump(t *testing.T) {
 	require.False(t, eliminated)
 	require.Equal(t, original, body[0])
 }
+
+func mapBranch(okRegister uint8, offset int16) []isa.Instruction {
+	lo, hi := isa.SplitOffset(offset)
+	return []isa.Instruction{
+		mk(isa.OpMapIndexOkJumpIfFalseIntInt, 8, 0, 9),
+		mk(isa.OpExt, okRegister, lo, hi),
+	}
+}
+
+func TestApplyLoopHoistRetargetsAMapIndexOkBranch(t *testing.T) {
+	t.Parallel()
+
+	const okRegister = 6
+	branch := mapBranch(okRegister, 3)
+	body := []isa.Instruction{
+		mk(isa.OpLoadIntConst, 7, 0, 0),
+		branch[0],
+		branch[1],
+		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
+		tier1Jump(-5),
+		mk(isa.OpNop, 0, 0, 0),
+		returnVoid(),
+	}
+	before, ok := program.JumpTargetAt(body, 1)
+	require.True(t, ok)
+	require.Equal(t, 6, before)
+
+	compiledFunction := &program.CompiledFunction{Body: body}
+	applyLoopHoist(compiledFunction, nil, 0, 3)
+
+	require.Equal(t, isa.OpMapIndexOkJumpIfFalseIntInt, compiledFunction.Body[2].Op)
+	after, ok := program.JumpTargetAt(compiledFunction.Body, 2)
+	require.True(t, ok)
+	require.Equal(t, 6, after, "a miss must still leave the loop at the same word after the rotation")
+	require.Equal(t, uint8(okRegister), compiledFunction.Body[3].A, "the repoint must keep the ok register")
+}
+
+func TestLoopExitsBeforeReadSeesAMapIndexOkBranch(t *testing.T) {
+	t.Parallel()
+
+	branch := mapBranch(6, 3)
+	body := []isa.Instruction{
+		mk(isa.OpLoadIntConst, 7, 0, 0),
+		branch[0],
+		branch[1],
+		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
+		tier1Jump(-5),
+		mk(isa.OpNop, 0, 0, 0),
+		returnVoid(),
+	}
+
+	exits, ok := loopExitsBeforeRead(body, loopRange{header: 0, latch: 4}, 3)
+	require.True(t, ok)
+	require.Equal(t, []int{6}, exits, "a miss leaves the loop before the read")
+}
+
+func TestMoveEliminationKeepsMoveOverwrittenByAMapIndexOkBranch(t *testing.T) {
+	t.Parallel()
+
+	branch := mapBranch(2, 3)
+	body := []isa.Instruction{
+		isa.NewTier1Instruction(isa.SubOpMoveInt, 2, 1),
+		branch[0],
+		branch[1],
+		mk(isa.OpAddInt, 4, 2, 0),
+		isa.NewTier1Instruction(isa.SubOpMoveInt, 2, 7),
+		returnVoid(),
+		isa.NewTier1Instruction(isa.SubOpMoveInt, 2, 7),
+		returnVoid(),
+	}
+	original := append([]isa.Instruction(nil), body...)
+	compiledFunction := &program.CompiledFunction{Body: body}
+	dom := ComputeFunctionDominators(body)
+	require.NotNil(t, dom)
+
+	EliminateMovesAcrossDominatedJumps(compiledFunction, body, dom)
+
+	require.Equal(t, original, compiledFunction.Body, "the MOVE's destination is overwritten by the branch")
+}

@@ -68,7 +68,7 @@ func (c *Compiler) compileStringSlice(ctx context.Context, expression *ast.Slice
 	var lowRegister, highRegister uint8
 
 	if expression.Low != nil {
-		reg, err := c.compileSliceBound(ctx, expression.Low, true)
+		reg, err := c.compileSliceBound(ctx, expression.Low)
 		if err != nil {
 			return program.VarLocation{}, err
 		}
@@ -76,7 +76,7 @@ func (c *Compiler) compileStringSlice(ctx context.Context, expression *ast.Slice
 		flags |= isa.SliceLowBoundFlag
 	}
 	if expression.High != nil {
-		reg, err := c.compileSliceBound(ctx, expression.High, true)
+		reg, err := c.compileSliceBound(ctx, expression.High)
 		if err != nil {
 			return program.VarLocation{}, err
 		}
@@ -110,7 +110,7 @@ func (c *Compiler) compileGeneralSlice(ctx context.Context, expression *ast.Slic
 	var lowRegister, highRegister, maxRegister uint8
 
 	if expression.Low != nil {
-		reg, err := c.compileSliceBound(ctx, expression.Low, false)
+		reg, err := c.compileSliceBound(ctx, expression.Low)
 		if err != nil {
 			return program.VarLocation{}, err
 		}
@@ -118,7 +118,7 @@ func (c *Compiler) compileGeneralSlice(ctx context.Context, expression *ast.Slic
 		flags |= isa.SliceLowBoundFlag
 	}
 	if expression.High != nil {
-		reg, err := c.compileSliceBound(ctx, expression.High, false)
+		reg, err := c.compileSliceBound(ctx, expression.High)
 		if err != nil {
 			return program.VarLocation{}, err
 		}
@@ -126,7 +126,7 @@ func (c *Compiler) compileGeneralSlice(ctx context.Context, expression *ast.Slic
 		flags |= isa.SliceHighBoundFlag
 	}
 	if expression.Max != nil {
-		reg, err := c.compileSliceBound(ctx, expression.Max, false)
+		reg, err := c.compileSliceBound(ctx, expression.Max)
 		if err != nil {
 			return program.VarLocation{}, err
 		}
@@ -164,7 +164,7 @@ func (c *Compiler) tryCompileTypedDirectSlice(ctx context.Context, expression *a
 	var lowRegister, highRegister, maxRegister uint8
 
 	if expression.Low != nil {
-		reg, err := c.compileSliceBound(ctx, expression.Low, false)
+		reg, err := c.compileSliceBound(ctx, expression.Low)
 		if err != nil {
 			return program.VarLocation{}, false, err
 		}
@@ -172,7 +172,7 @@ func (c *Compiler) tryCompileTypedDirectSlice(ctx context.Context, expression *a
 		flags |= isa.SliceLowBoundFlag
 	}
 	if expression.High != nil {
-		reg, err := c.compileSliceBound(ctx, expression.High, false)
+		reg, err := c.compileSliceBound(ctx, expression.High)
 		if err != nil {
 			return program.VarLocation{}, false, err
 		}
@@ -180,7 +180,7 @@ func (c *Compiler) tryCompileTypedDirectSlice(ctx context.Context, expression *a
 		flags |= isa.SliceHighBoundFlag
 	}
 	if expression.Max != nil {
-		reg, err := c.compileSliceBound(ctx, expression.Max, false)
+		reg, err := c.compileSliceBound(ctx, expression.Max)
 		if err != nil {
 			return program.VarLocation{}, false, err
 		}
@@ -197,22 +197,21 @@ func (c *Compiler) tryCompileTypedDirectSlice(ctx context.Context, expression *a
 	return program.VarLocation{Register: dest, Kind: collectionLocation.Kind}, true, nil
 }
 
-// compileSliceBound compiles a single slice bound expression and returns the register
-// holding the result. When ensureInt is true the bound is coerced into the int bank
-// (required by isa.OpSliceString).
+// compileSliceBound compiles a slice bound expression into an int register.
+//
+// A bound of any integer type is coerced into the int bank, because every slice handler
+// reads its bounds from ints; a uint8 or uint bound left in the uint bank would be read
+// from the wrong bank.
 //
 // Takes boundExpr (ast.Expr) which is the bound expression.
-// Takes ensureInt (bool) which selects int-bank coercion.
 //
-// Returns the register holding the bound and any compilation error.
-func (c *Compiler) compileSliceBound(ctx context.Context, boundExpr ast.Expr, ensureInt bool) (uint8, error) {
+// Returns the int register holding the bound and any compilation error.
+func (c *Compiler) compileSliceBound(ctx context.Context, boundExpr ast.Expr) (uint8, error) {
 	location, err := c.compileExpression(ctx, boundExpr)
 	if err != nil {
 		return 0, err
 	}
-	if ensureInt {
-		c.ensureIntRegister(ctx, &location)
-	}
+	c.ensureIntRegister(ctx, &location)
 	return location.Register, nil
 }
 

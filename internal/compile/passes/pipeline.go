@@ -75,9 +75,9 @@ type peepholeFusionPass struct{}
 // Returns string which is the pass identifier.
 func (peepholeFusionPass) Name() string { return "peephole-fusion" }
 
-// Run applies runPeepholeFusions(), then invalidates the analysis. Some fused jump forms
-// are not decoded by JumpTargetAt(), so the jump-target set the later passes consult must
-// be rebuilt from the fused body.
+// Run applies runPeepholeFusions(), then invalidates the analysis. The fusions replace
+// jumps with fused forms whose footprints and offsets differ, so the jump-target set the
+// later passes consult must be rebuilt from the fused body.
 //
 // Takes state (*PassContext) which carries the options and the shared analysis.
 // Takes compiledFunction (*program.CompiledFunction) whose body is rewritten in place.

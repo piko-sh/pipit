@@ -5,7 +5,7 @@
 package selfhost
 
 // typesExportGoVersion is the toolchain that produced the embedded export data.
-const typesExportGoVersion = "go1.27.0"
+const typesExportGoVersion = "go1.27.1"
 
 // typesExportEntry describes one embedded gcexportdata blob.
 type typesExportEntry struct {

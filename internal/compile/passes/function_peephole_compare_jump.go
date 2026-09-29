@@ -76,7 +76,7 @@ func fuseCompareRegJump(
 		jumpTargets[i+1] {
 		return false
 	}
-	if !conditionRegisterDeadAfterBranch(compiledFunction, body, i+1, body[i].A) {
+	if !registerDeadAfterBranch(compiledFunction, body, i+1, isa.RegisterInt, body[i].A) {
 		return false
 	}
 	lo, hi := isa.SplitOffset(body[i+1].SignedOffset())
@@ -103,7 +103,7 @@ type compareConstFusion struct {
 //
 // The fused form writes neither the loaded constant's register nor the condition
 // register, so the fusion is refused unless both are provably dead on both edges of the
-// branch (conditionRegisterDeadAfterBranch()).
+// branch (registerDeadAfterBranch()).
 //
 // Takes compiledFunction (*CompiledFunction) whose call sites and result kinds the
 // liveness guard reads.
@@ -128,11 +128,12 @@ func fuseCompareConstJump(
 		body[i].A != body[i+1].C ||
 		body[i+1].A != body[i+2].A ||
 		body[i].C != 0 ||
+		body[i+1].B == body[i].A ||
 		jumpTargets[i+1] || jumpTargets[i+2] {
 		return false
 	}
-	if !conditionRegisterDeadAfterBranch(compiledFunction, body, i+2, body[i+1].A) ||
-		!conditionRegisterDeadAfterBranch(compiledFunction, body, i+2, body[i].A) {
+	if !registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt, body[i+1].A) ||
+		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt, body[i].A) {
 		return false
 	}
 	raw := body[i+2].SignedOffset()
@@ -150,6 +151,8 @@ func fuseCompareConstJump(
 // Operand layout: isa.SubOpTier2IncInt lives in tier-2 form {isa.OpDrillTier1,
 // isa.SubOpDrillTier2, isa.SubOpTier2IncInt, R=C}.
 //
+// Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
+// the liveness guard reads.
 // Takes body ([]instruction) which specifies the instruction sequence.
 // Takes i (int) which specifies the current index.
 // Takes n (int) which specifies the length.
@@ -157,7 +160,7 @@ func fuseCompareConstJump(
 // destinations.
 //
 // Returns true if a pattern was matched and applied.
-func fuseIncIntJumpLt(_ *program.CompiledFunction,
+func fuseIncIntJumpLt(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
@@ -166,7 +169,11 @@ func fuseIncIntJumpLt(_ *program.CompiledFunction,
 		body[i+2].Op != isa.OpJumpIfTrue ||
 		body[i+1].B != body[i].C ||
 		body[i+2].A != body[i+1].A ||
+		body[i+1].A == body[i].C ||
 		jumpTargets[i+1] || jumpTargets[i+2] {
+		return false
+	}
+	if !registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt, body[i+1].A) {
 		return false
 	}
 	raw := body[i+2].SignedOffset()
@@ -186,6 +193,8 @@ func fuseIncIntJumpLt(_ *program.CompiledFunction,
 // R_i, R_len) + JUMP_IF_FALSE(R_bool, lo, hi) and rewrites them to
 // LEN_STRING_LT_JUMP_FALSE(R_i, R_str, 0) + EXT(lo, hi, 0) + NOP.
 //
+// Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
+// the liveness guard reads.
 // Takes body ([]instruction) which specifies the instruction sequence.
 // Takes i (int) which specifies the current index.
 // Takes n (int) which specifies the length.
@@ -193,7 +202,7 @@ func fuseIncIntJumpLt(_ *program.CompiledFunction,
 // destinations.
 //
 // Returns true if a pattern was matched and applied.
-func fuseLenStringLtJump(_ *program.CompiledFunction,
+func fuseLenStringLtJump(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
@@ -202,7 +211,12 @@ func fuseLenStringLtJump(_ *program.CompiledFunction,
 		body[i+2].Op != isa.OpJumpIfFalse ||
 		body[i].B != body[i+1].C ||
 		body[i+1].A != body[i+2].A ||
+		body[i+1].B == body[i].B ||
 		jumpTargets[i+1] || jumpTargets[i+2] {
+		return false
+	}
+	if !registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt, body[i].B) ||
+		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt, body[i+1].A) {
 		return false
 	}
 	raw := body[i+2].SignedOffset()
@@ -220,6 +234,8 @@ func fuseLenStringLtJump(_ *program.CompiledFunction,
 // Operand layout: isa.SubOpTier2LoadNil lives in tier-2 form {isa.OpDrillTier1,
 // isa.SubOpDrillTier2, isa.SubOpTier2LoadNil, R=C}.
 //
+// Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
+// the liveness guard reads.
 // Takes body ([]instruction) which specifies the instruction sequence.
 // Takes i (int) which specifies the current index.
 // Takes n (int) which specifies the length.
@@ -227,7 +243,7 @@ func fuseLenStringLtJump(_ *program.CompiledFunction,
 // destinations.
 //
 // Returns true if a pattern was matched and applied.
-func fuseNilTestJump(_ *program.CompiledFunction,
+func fuseNilTestJump(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
@@ -246,6 +262,11 @@ func fuseNilTestJump(_ *program.CompiledFunction,
 	} else if body[i+1].C == nilRegister {
 		testRegister = body[i+1].B
 	} else {
+		return false
+	}
+	if testRegister == nilRegister ||
+		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterGeneral, nilRegister) ||
+		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt, body[i+1].A) {
 		return false
 	}
 	wantNilJump := (body[i+1].Op == isa.OpEqGeneral && body[i+2].Op == isa.OpJumpIfTrue) ||
@@ -269,6 +290,8 @@ func fuseNilTestJump(_ *program.CompiledFunction,
 // JumpIfFalse(C, off) into isa.OpEqStringConstJumpFalse(X, index, 0) + isa.OpExt(lo, hi,
 // 0) + isa.OpNop.
 //
+// Takes compiledFunction (*program.CompiledFunction) whose call sites and result kinds
+// the liveness guard reads.
 // Takes body ([]instruction) which specifies the instruction sequence.
 // Takes i (int) which specifies the current index.
 // Takes n (int) which specifies the length.
@@ -276,7 +299,7 @@ func fuseNilTestJump(_ *program.CompiledFunction,
 // destinations.
 //
 // Returns true if a pattern was matched and applied.
-func fuseStringConstJump(_ *program.CompiledFunction,
+func fuseStringConstJump(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
@@ -286,7 +309,12 @@ func fuseStringConstJump(_ *program.CompiledFunction,
 		body[i].C != 0 ||
 		body[i].A != body[i+1].C ||
 		body[i+1].A != body[i+2].A ||
+		body[i+1].B == body[i].A ||
 		jumpTargets[i+1] || jumpTargets[i+2] {
+		return false
+	}
+	if !registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterString, body[i].A) ||
+		!registerDeadAfterBranch(compiledFunction, body, i+2, isa.RegisterInt, body[i+1].A) {
 		return false
 	}
 	raw := body[i+2].SignedOffset()

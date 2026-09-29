@@ -45,8 +45,8 @@ const (
 )
 
 var (
-	// flatGoFallback[index] is true when flatJumpTable[index] points at a Go exit,
-	// mirroring flatJumpTable's four 256-slot tiers and populated once at init by
+	// flatGoFallback[index] is true when flatJumpTable[index] points at a Go exit, mirroring
+	// flatJumpTable's four 256-slot tiers and populated once at init by
 	// initOpNeedsGoFallback.
 	flatGoFallback [flatJumpTableSize]bool
 )
@@ -55,7 +55,9 @@ var (
 // after installFlatJumpTableASM.
 func initOpNeedsGoFallback() {
 	exitAddresses := make(map[uintptr]struct{}, exitAddressMapInitialCapacity)
-	for _, row := range isa.AllSpecs() {
+	specs := isa.AllSpecs()
+	for i := range specs {
+		row := &specs[i]
 		if row.Code == 0 || row.Handler == "" {
 			continue
 		}

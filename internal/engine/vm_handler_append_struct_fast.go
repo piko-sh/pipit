@@ -65,6 +65,17 @@ func (vm *VM) publishStructAppend(frame *CallFrame, registers *Registers, instru
 	return opContinue
 }
 
+// appendStructFastTypeIndex decodes the element's type-table index from the extension
+// word of an isa.OpAppendStructFast, which the compiler writes with
+// program.EmitExtension: the low byte in A and the high byte in B.
+//
+// Takes extensionWord (isa.Instruction) which is the word after the append.
+//
+// Returns the type-table index.
+func appendStructFastTypeIndex(extensionWord isa.Instruction) int {
+	return int(isa.JoinWide(extensionWord.A, extensionWord.B))
+}
+
 // handleAppendStructFast appends a pointer-free struct or array element to a general-bank
 // slice with raw header arithmetic.
 //
@@ -88,7 +99,7 @@ func handleAppendStructFast(vm *VM, frame *CallFrame, registers *Registers, inst
 	frame.ProgramCounter++
 	sliceValue := registers.General[instruction.B]
 	element := registers.General[instruction.C]
-	typeIndex := int(extensionWord.WideIndex())
+	typeIndex := appendStructFastTypeIndex(extensionWord)
 	header := arenaOwnedSliceHeader(vm.Arena, sliceValue)
 	if header == nil || typeIndex >= len(frame.Function.TypeTable) || !element.IsValid() || !element.CanAddr() {
 		return handleAppend(vm, frame, registers, instruction)

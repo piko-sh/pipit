@@ -88,14 +88,11 @@ const (
 
 // model holds the REPL's UI and interpreter state. Must not be copied by value.
 type model struct {
-	// input is the bottom-pane text area where the operator types code.
-	input textarea.Model
+	// ctx threads cancellation from the parent context.
+	ctx context.Context
 
 	// theme supplies the colour and style settings for rendering.
 	theme *styles.Theme
-
-	// ctx threads cancellation from the parent context.
-	ctx context.Context
 
 	// session evaluates submitted input against the interpreter.
 	session *pipit.Session
@@ -114,6 +111,9 @@ type model struct {
 
 	// transcript is the scrollable upper pane showing evaluation results.
 	transcript viewport.Model
+
+	// input is the bottom-pane text area where the operator types code.
+	input textarea.Model
 
 	// view selects which pane the model is currently rendering.
 	view viewMode

@@ -131,9 +131,11 @@ const (
 	// treats the opcode as opaque (matching roleUnknown per-operand entries).
 	ShapeFlagDescribed shapeFlag = 1 << iota
 
-	// ShapeFlagFollowsExtension marks an opcode that consumes one or more OpExt words after
-	// it. The verifier skips those words rather than treating them as standalone
-	// instructions.
+	// ShapeFlagFollowsExtension marks an opcode that may consume OpExt words after it.
+	//
+	// The number of words varies, and a defer or go with no arguments carries none, so a
+	// consumer such as the verifier skips every consecutive OpExt word rather than a fixed
+	// count, and never reads those words as standalone instructions.
 	ShapeFlagFollowsExtension
 
 	// ShapeFlagControlFlow marks ops that change the program counter in non-fallthrough ways
@@ -1050,10 +1052,10 @@ func populateCollectionShapes() {
 // populateAppendShapes describes the append opcode family: the generic append, the byte
 // and typed fast paths, and the in-place variants that reuse the destination header.
 func populateAppendShapes() {
-	described3(OpAppend, RoleRegGeneral, RoleRegGeneral, RoleImmediate,
-		[NumInstructionOperands]bool{false, true, false},
+	described3(OpAppend, RoleRegGeneral, RoleRegGeneral, RoleRegGeneral,
+		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
-		ShapeFlagFollowsExtension)
+		0)
 	described3(OpAppendByteFast, RoleRegGeneral, RoleRegGeneral, RoleRegUint,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
@@ -1074,7 +1076,7 @@ func populateAppendShapes() {
 	described3(OpAppendSpread, RoleRegGeneral, RoleRegGeneral, RoleRegGeneral,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
-		ShapeFlagFollowsExtension)
+		0)
 }
 
 // populateFusedStructFieldCopyShape describes the fused get/set pair produced by
@@ -1118,27 +1120,27 @@ func populateTypedMapIndexOkShapes() {
 	described3(OpMapIndexOkJumpIfFalseIntInt, RoleRegInt, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
-		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites)
+		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites|ShapeFlagControlFlow)
 	described3(OpMapIndexOkJumpIfFalseStringInt, RoleRegInt, RoleRegGeneral, RoleRegString,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
-		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites)
+		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites|ShapeFlagControlFlow)
 	described3(OpMapIndexOkJumpIfFalseStringString, RoleRegString, RoleRegGeneral, RoleRegString,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
-		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites)
+		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites|ShapeFlagControlFlow)
 	described3(OpMapIndexOkJumpIfFalseIntString, RoleRegString, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
-		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites)
+		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites|ShapeFlagControlFlow)
 	described3(OpMapIndexOkJumpIfFalseIntGeneral, RoleRegGeneral, RoleRegGeneral, RoleRegInt,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
-		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites)
+		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites|ShapeFlagControlFlow)
 	described3(OpMapIndexOkJumpIfFalseStringGeneral, RoleRegGeneral, RoleRegGeneral, RoleRegString,
 		[NumInstructionOperands]bool{false, true, true},
 		[NumInstructionOperands]bool{true, false, false},
-		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites)
+		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites|ShapeFlagControlFlow)
 }
 
 // populateAddressTypeShapes describes address-of, dereference, type-assertion, and
@@ -1241,11 +1243,11 @@ func populateCallAndFrameShapes() {
 	described3(OpDefer, RoleRegGeneral, RoleImmediate, RoleImmediate,
 		[NumInstructionOperands]bool{true, false, false},
 		[NumInstructionOperands]bool{false, false, false},
-		0|ShapeFlagOpaqueWrites)
+		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites)
 	described3(OpGo, RoleRegGeneral, RoleImmediate, RoleImmediate,
 		[NumInstructionOperands]bool{true, false, false},
 		[NumInstructionOperands]bool{false, false, false},
-		0|ShapeFlagOpaqueWrites)
+		ShapeFlagFollowsExtension|ShapeFlagOpaqueWrites)
 
 	described3(OpGetStructFieldSliceLen, RoleRegInt, RoleRegGeneral, roleFieldIndex,
 		[NumInstructionOperands]bool{false, true, false},

@@ -1186,7 +1186,7 @@ const (
 	// SubOpSliceGetByteDirect sets uints[B] = uint64(slicesByte[C][ints[ext.A]]).
 	SubOpSliceGetByteDirect
 
-	// SubOpSliceSetByteDirect sets slicesByte[B][ints[ext.A]] = byte(uints[ext.B]).
+	// SubOpSliceSetByteDirect sets slicesByte[B][ints[C]] = byte(uints[ext.A]).
 	SubOpSliceSetByteDirect
 
 	// SubOpLenSliceByteDirect sets ints[B] = int64(len(slicesByte[C])).

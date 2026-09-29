@@ -42,6 +42,12 @@ const (
 	// that follow it, each of which is a JumpLayoutWord jump of its own, terminated by the
 	// default SubOpJump. It has no single target to decode.
 	JumpLayoutMultiWay
+
+	// JumpLayoutExtensionBC keeps a signed 16-bit offset in B|(C<<8) of the next OpExt word.
+	//
+	// The target is pc + 2 + offset. The word's A byte names a register the operation
+	// writes; the fused map-index-ok branches keep their ok register there.
+	JumpLayoutExtensionBC
 )
 
 const (
@@ -93,6 +99,9 @@ func JumpLayoutOf(instr Instruction) (layout JumpLayout, trailingNops int) {
 	if InstrIsTier1SubOp(instr, SubOpTypeSwitchJump) {
 		return JumpLayoutMultiWay, 0
 	}
+	if isMapIndexOkJump(instr.Op) {
+		return JumpLayoutExtensionBC, 0
+	}
 	if instr.Op == OpRangeNextSliceInt || instr.Op == OpRangeNextSliceByte {
 		return JumpLayoutExtension24, 0
 	}
@@ -102,6 +111,23 @@ func JumpLayoutOf(instr Instruction) (layout JumpLayout, trailingNops int) {
 	return JumpLayoutWord, 0
 }
 
+// isMapIndexOkJump reports whether op is one of the fused map-index-ok branches, whose
+// extension word carries the ok register in A and the offset in B|(C<<8).
+//
+// Takes op (Opcode) which is the operation to test.
+//
+// Returns true for the six OpMapIndexOkJumpIfFalse* operations.
+func isMapIndexOkJump(op Opcode) bool {
+	switch op {
+	case OpMapIndexOkJumpIfFalseIntInt, OpMapIndexOkJumpIfFalseStringInt,
+		OpMapIndexOkJumpIfFalseStringString, OpMapIndexOkJumpIfFalseIntString,
+		OpMapIndexOkJumpIfFalseIntGeneral, OpMapIndexOkJumpIfFalseStringGeneral:
+		return true
+	default:
+		return false
+	}
+}
+
 // WordCount returns how many instruction words an operation with this layout occupies
 // before any OpNop padding: one for a word-layout jump, two when the offset lives in the
 // first extension word, three when it lives in the second.
@@ -109,7 +135,7 @@ func JumpLayoutOf(instr Instruction) (layout JumpLayout, trailingNops int) {
 // Returns int which is the word count, and 1 for layouts that carry no offset.
 func (layout JumpLayout) WordCount() int {
 	switch layout {
-	case JumpLayoutExtension, JumpLayoutExtension24:
+	case JumpLayoutExtension, JumpLayoutExtension24, JumpLayoutExtensionBC:
 		return extensionJumpWordCount
 	case JumpLayoutSecondExtension:
 		return secondExtensionJumpWordCount

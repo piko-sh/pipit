@@ -41,6 +41,7 @@ func TestControlFlowSuccessorsDecodeEveryJumpLayout(t *testing.T) {
 		{name: "extension layout with padding", branch: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpEqUintConstJumpFalse, 1, 2), isa.NewInstruction(isa.OpExt, lo, hi, 0), nop}},
 		{name: "second extension layout", branch: []isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2RangeCheckUintJumpFalse, 1), isa.NewInstruction(isa.OpExt, 3, 9, 0), isa.NewInstruction(isa.OpExt, lo, hi, 0), nop, nop, nop, nop, nop}},
 		{name: "twenty-four bit layout", branch: []isa.Instruction{isa.NewInstruction(isa.OpRangeNextSliceInt, 1, 2, 3), isa.NewInstruction(isa.OpExt, 2, 0, 0)}},
+		{name: "extension layout with the offset in B and C", branch: []isa.Instruction{isa.NewInstruction(isa.OpMapIndexOkJumpIfFalseIntInt, 1, 2, 3), isa.NewInstruction(isa.OpExt, 4, lo, hi), nop}},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

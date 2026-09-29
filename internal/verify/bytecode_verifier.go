@@ -461,7 +461,7 @@ func walkBlock(compiledFunction *program.CompiledFunction, body []isa.Instructio
 		if layout, _ := isa.JumpLayoutOf(instr); layout != isa.JumpLayoutNone {
 			next = pc + program.JumpFootprint(instr)
 		} else if shape.Flags&isa.ShapeFlagFollowsExtension != 0 {
-			next++
+			next = skipExtensionWords(body, next)
 		}
 
 		if shape.Flags&isa.ShapeFlagTerminator != 0 {
@@ -476,6 +476,19 @@ func walkBlock(compiledFunction *program.CompiledFunction, body []isa.Instructio
 		pc = next
 	}
 	return nil
+}
+
+// skipExtensionWords returns the first program counter at or after pc that is not OpExt.
+//
+// Takes body ([]isa.Instruction) which is the instruction stream.
+// Takes pc (int) which is the first word after the owning operation.
+//
+// Returns the program counter of the next instruction.
+func skipExtensionWords(body []isa.Instruction, pc int) int {
+	for pc < len(body) && body[pc].Op == isa.OpExt {
+		pc++
+	}
+	return pc
 }
 
 // checkInstructionReads asserts that every register-read operand targets a slot that has

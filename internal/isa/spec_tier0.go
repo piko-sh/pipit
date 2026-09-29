@@ -231,17 +231,17 @@ var tierMainSpecs = []OpSpec{
 	main0(OpSliceIndexStructFieldBool, "SLICE_INDEX_STRUCT_FIELD_BOOL").handler("handleSliceIndexStructFieldBool").pure(),
 	main0(OpSliceIndexStructFieldString, "SLICE_INDEX_STRUCT_FIELD_STRING").handler("handleSliceIndexStructFieldString").pure(),
 	main0(OpMapIndexOkJumpIfFalseIntInt, "MAP_INDEX_OK_JUMP_IF_FALSE_INT_INT").cost(costModerate).handler("handleMapIndexOkJumpIfFalseIntInt").
-		shim("HandleMapIndexOkJumpIfFalseIntInt", "MapIndexOkJumpIfFalseIntInt").pure(),
+		shim("HandleMapIndexOkJumpIfFalseIntInt", "MapIndexOkJumpIfFalseIntInt").flags(SpecJump).pure(),
 	main0(OpMapIndexOkJumpIfFalseStringInt, "MAP_INDEX_OK_JUMP_IF_FALSE_STRING_INT").cost(costModerate).handler("handleMapIndexOkJumpIfFalseStringInt").
-		shim("HandleMapIndexOkJumpIfFalseStringInt", "MapIndexOkJumpIfFalseStringInt").pure(),
+		shim("HandleMapIndexOkJumpIfFalseStringInt", "MapIndexOkJumpIfFalseStringInt").flags(SpecJump).pure(),
 	main0(OpMapIndexOkJumpIfFalseStringString, "MAP_INDEX_OK_JUMP_IF_FALSE_STRING_STRING").cost(costModerate).handler("handleMapIndexOkJumpIfFalseStringString").
-		shim("HandleMapIndexOkJumpIfFalseStringString", "MapIndexOkJumpIfFalseStringString").pure(),
+		shim("HandleMapIndexOkJumpIfFalseStringString", "MapIndexOkJumpIfFalseStringString").flags(SpecJump).pure(),
 	main0(OpMapIndexOkJumpIfFalseIntString, "MAP_INDEX_OK_JUMP_IF_FALSE_INT_STRING").cost(costModerate).handler("handleMapIndexOkJumpIfFalseIntString").
-		shim("HandleMapIndexOkJumpIfFalseIntString", "MapIndexOkJumpIfFalseIntString").pure(),
+		shim("HandleMapIndexOkJumpIfFalseIntString", "MapIndexOkJumpIfFalseIntString").flags(SpecJump).pure(),
 	main0(OpMapIndexOkJumpIfFalseIntGeneral, "MAP_INDEX_OK_JUMP_IF_FALSE_INT_GENERAL").cost(costModerate).handler("handleMapIndexOkJumpIfFalseIntGeneral").
-		shim("HandleMapIndexOkJumpIfFalseIntGeneral", "MapIndexOkJumpIfFalseIntGeneral").pure(),
+		shim("HandleMapIndexOkJumpIfFalseIntGeneral", "MapIndexOkJumpIfFalseIntGeneral").flags(SpecJump).pure(),
 	main0(OpMapIndexOkJumpIfFalseStringGeneral, "MAP_INDEX_OK_JUMP_IF_FALSE_STRING_GENERAL").cost(costModerate).handler("handleMapIndexOkJumpIfFalseStringGeneral").
-		shim("HandleMapIndexOkJumpIfFalseStringGeneral", "MapIndexOkJumpIfFalseStringGeneral").pure(),
+		shim("HandleMapIndexOkJumpIfFalseStringGeneral", "MapIndexOkJumpIfFalseStringGeneral").flags(SpecJump).pure(),
 	main0(OpSwapStructFieldsGeneralT0, "SWAP_STRUCT_FIELDS_GENERAL_T0").handler("handleSwapStructFieldsGeneralT0").shim("HandleSwapStructFieldsGeneralT0", "SwapStructFieldsGeneralT0").
 		flags(SpecShimNarrow).mutates(),
 	main0(OpGetStructFieldRawPointerT0, "GET_STRUCT_FIELD_RAW_POINTER_T0").handler("handleGetStructFieldRawPointerT0").asm("handlerGetStructFieldRawPointerT0").

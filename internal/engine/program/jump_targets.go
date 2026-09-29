@@ -32,9 +32,11 @@ const (
 //
 // Every layout isa.JumpLayoutOf() knows is decoded here, with the same arithmetic the
 // handlers use: word-layout jumps land at pc+1+offset, extension-layout jumps at the word
-// after their extension words and any OpNop padding, and the range-next steps at pc+2
-// plus their 24-bit forward offset. The type-switch dispatch has no single target and is
-// reported as not a jump; its OpTypeSwitchCase rows and default jump decode on their own.
+// after their extension words and any OpNop padding (the fused map-index-ok branches keep
+// that offset in B|C of their extension word, beside the ok register in A), and the
+// range-next steps at pc+2 plus their 24-bit forward offset. The type-switch dispatch has
+// no single target and is reported as not a jump; its OpTypeSwitchCase rows and default
+// jump decode on their own.
 //
 // Takes body ([]isa.Instruction) which is the instruction stream.
 // Takes pc (int) which is the candidate jump's program counter.
@@ -72,6 +74,12 @@ func JumpTargetAt(body []isa.Instruction, pc int) (target int, ok bool) {
 			return 0, false
 		}
 		return pc + layout.WordCount() + isa.DecodeExtension24(ext), true
+	case isa.JumpLayoutExtensionBC:
+		ext, found := extensionWordAt(body, pc+1)
+		if !found {
+			return 0, false
+		}
+		return pc + layout.WordCount() + int(isa.JoinOffset(ext.B, ext.C)), true
 	default:
 		return 0, false
 	}
@@ -112,13 +120,12 @@ func SetJumpTarget(body []isa.Instruction, pc, target int) (ok bool) {
 		if _, found := extensionWordAt(body, pc+1); !found {
 			return false
 		}
-		offset := target - (pc + layout.WordCount())
-		if offset < 0 || offset >= extension24Limit {
+		return setExtension24Offset(&body[pc+1], target-(pc+layout.WordCount()))
+	case isa.JumpLayoutExtensionBC:
+		if _, found := extensionWordAt(body, pc+1); !found {
 			return false
 		}
-		body[pc+1] = isa.NewInstruction(isa.OpExt,
-			uint8(offset), uint8(offset>>isa.WideBitShift), uint8(offset>>(2*isa.WideBitShift))) //nolint:gosec // range-checked above
-		return true
+		return setWordOffset(&body[pc+1].B, &body[pc+1].C, target-(pc+layout.WordCount()))
 	default:
 		return false
 	}
@@ -200,5 +207,21 @@ func setWordOffset(lo, hi *uint8, offset int) (ok bool) {
 		return false
 	}
 	*lo, *hi = isa.SplitOffset(safeconv.MustIntToInt16(offset))
+	return true
+}
+
+// setExtension24Offset stores an unsigned 24-bit forward offset across all three bytes of
+// the extension word of a 24-bit layout jump, refusing an offset outside that range.
+//
+// Takes ext (*isa.Instruction) which is the extension word to overwrite.
+// Takes offset (int) which is the forward distance from the word after the extension.
+//
+// Returns ok (bool) which is false when offset is negative or does not fit in 24 bits.
+func setExtension24Offset(ext *isa.Instruction, offset int) (ok bool) {
+	if offset < 0 || offset >= extension24Limit {
+		return false
+	}
+	*ext = isa.NewInstruction(isa.OpExt,
+		uint8(offset), uint8(offset>>isa.WideBitShift), uint8(offset>>(2*isa.WideBitShift))) //nolint:gosec // range-checked above
 	return true
 }

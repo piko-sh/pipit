@@ -241,9 +241,6 @@ var (
 		SubOpStringToBytes:              {RoleRegGeneral, RoleRegString},
 		SubOpUnsafeStringData:           {RoleRegGeneral, RoleRegString},
 		SubOpUnsafeSliceData:            {RoleRegGeneral, RoleRegGeneral},
-		SubOpAddUintConst:               {RoleRegUint, RoleRegUint},
-		SubOpSubUintConst:               {RoleRegUint, RoleRegUint},
-		SubOpBitAndUintConst:            {RoleRegUint, RoleRegUint},
 		SubOpLenSliceByteDirect:         {RoleRegInt, roleRegSliceByte},
 		SubOpBoxSliceByte:               {RoleRegGeneral, roleRegSliceByte},
 		SubOpSliceByteToString:          {RoleRegString, roleRegSliceByte},
@@ -273,9 +270,12 @@ var (
 		SubOpRoundComplex64:             {RoleRegComplex, RoleRegComplex},
 	}
 
-	// sub1DstSrcExtensionShapes holds the tier-1 "B = f(C)" operations whose layout or index
-	// travels in the following OpExt word.
+	// sub1DstSrcExtensionShapes holds the tier-1 "B = f(C)" operations whose layout,
+	// constant-pool index or other index travels in the following OpExt word.
 	sub1DstSrcExtensionShapes = map[SubOpcode]dstSrcShape{
+		SubOpAddUintConst:              {RoleRegUint, RoleRegUint},
+		SubOpSubUintConst:              {RoleRegUint, RoleRegUint},
+		SubOpBitAndUintConst:           {RoleRegUint, RoleRegUint},
 		SubOpGetStructFieldInt:         {RoleRegInt, RoleRegGeneral},
 		SubOpGetStructFieldUint:        {RoleRegUint, RoleRegGeneral},
 		SubOpGetStructFieldFloat:       {RoleRegFloat, RoleRegGeneral},
@@ -326,7 +326,7 @@ var (
 
 	// sub2Shapes holds the tier-2 operations.
 	sub2Shapes = map[SubOpcodeTier2]sub2Shape{
-		SubOpTier2MakeInterfaceMethodExpr: {RoleRegGeneral, accessNone, accessC, 0},
+		SubOpTier2MakeInterfaceMethodExpr: {RoleRegGeneral, accessNone, accessC, ShapeFlagFollowsExtension},
 		SubOpTier2MakeMap:                 {RoleRegGeneral, accessNone, accessC, ShapeFlagFollowsExtension},
 		SubOpTier2RangeCheckUintJumpFalse: {RoleRegUint, accessC, accessNone, ShapeFlagFollowsExtension | ShapeFlagControlFlow},
 		SubOpTier2AllocStructLiteral:      {RoleRegGeneral, accessNone, accessC, ShapeFlagFollowsExtension},

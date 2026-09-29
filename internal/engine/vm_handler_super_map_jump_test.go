@@ -24,6 +24,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -258,6 +259,25 @@ func TestFusedMapLookupOnAnEmptyMapAlwaysMisses(t *testing.T) {
 	require.Equal(t, opContinue, got)
 	require.Equal(t, int64(0), registers.Ints[fusedMapOkRegister])
 	require.Equal(t, 2+fusedMapMissOffset, frame.ProgramCounter)
+}
+
+func TestFusedMapLookupMissLandsWhereJumpTargetAtSays(t *testing.T) {
+	t.Parallel()
+
+	vm, frame, registers := newFusedMapFrame(t)
+	registers.General[fusedMapMapRegister] = reflect.ValueOf(map[int]int{})
+	registers.Ints[fusedMapKeyRegister] = 0
+
+	handleMapIndexOkJumpIfFalseIntInt(vm, frame, registers, op(fusedMapValueRegister, fusedMapMapRegister, fusedMapKeyRegister))
+
+	low, high := isa.SplitOffset(fusedMapMissOffset)
+	fused := []isa.Instruction{
+		isa.NewInstruction(isa.OpMapIndexOkJumpIfFalseIntInt, fusedMapValueRegister, fusedMapMapRegister, fusedMapKeyRegister),
+		isa.NewInstruction(isa.OpExt, fusedMapOkRegister, low, high),
+	}
+	target, ok := program.JumpTargetAt(fused, 0)
+	require.True(t, ok, "the compiler passes must decode the fused branch")
+	require.Equal(t, target, frame.ProgramCounter, "the decoded target must be where the handler jumps")
 }
 
 func TestFusedMapLookupRefusesANonMapRegister(t *testing.T) {

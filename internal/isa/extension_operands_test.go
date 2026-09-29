@@ -106,7 +106,7 @@ func TestExtensionIntUseOnlyDescribesExtensionCarriers(t *testing.T) {
 	blank := []Instruction{NewInstruction(OpExt, 0, 0, 0)}
 	for code := range math.MaxUint8 + 1 {
 		op := Opcode(code)
-		if op == OpDrillTier1 || op == OpGo || op == OpDefer {
+		if op == OpDrillTier1 {
 			continue
 		}
 		instr := NewInstruction(op, 0, 0, 0)
@@ -131,5 +131,65 @@ func TestExtensionIntUseOnlyDescribesExtensionCarriers(t *testing.T) {
 		}
 		require.NotZero(t, ShapeForInstruction(instr).Flags&ShapeFlagFollowsExtension,
 			"tier-2 sub-op %d has a recorded extension layout but its shape declares no extension word", code)
+	}
+}
+
+func TestExtensionNamesOnlyIntRegisters(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		owner Instruction
+		want  bool
+	}{
+		{name: "array field index read", owner: NewInstruction(OpGetStructFieldIndexGeneral, 1, 2, 3), want: true},
+		{name: "array field index write", owner: NewInstruction(OpSetStructFieldIndexGeneral, 1, 2, 3), want: true},
+		{name: "type assertion", owner: NewInstruction(OpTypeAssert, 1, 2, 3), want: true},
+		{name: "typed pack", owner: NewInstruction(OpPackTyped, 1, 2, 3), want: true},
+		{name: "indirect allocation", owner: NewInstruction(OpAllocIndirect, 1, 2, 3), want: true},
+		{name: "struct fast append carries a type index", owner: NewInstruction(OpAppendStructFast, 1, 2, 3), want: true},
+		{name: "string slice names its int bounds", owner: NewInstruction(OpSliceString, 1, 2, 3), want: true},
+		{name: "general slice names its int bounds and flags", owner: NewTier1Instruction(SubOpSliceOp, 1, 2), want: true},
+		{name: "typed slice expression names its int bounds and flags", owner: NewTier1Instruction(SubOpSliceSliceStringDirect, 1, 2), want: true},
+		{name: "map construction", owner: NewTier2Instruction(SubOpTier2MakeMap, 1), want: true},
+		{name: "struct literal construction", owner: NewTier2Instruction(SubOpTier2AllocStructLiteral, 1), want: true},
+		{name: "typed slice read names its int index", owner: NewTier1Instruction(SubOpSliceGetByteDirect, 1, 2), want: true},
+		{name: "typed string slice read names its int index", owner: NewTier1Instruction(SubOpSliceGetStringDirect, 1, 2), want: true},
+		{name: "struct field read carries a layout index", owner: NewTier1Instruction(SubOpGetStructFieldString, 1, 2), want: true},
+		{name: "struct field write carries a layout index", owner: NewTier1Instruction(SubOpSetStructFieldUint, 1, 2), want: true},
+		{name: "struct slice field read carries a layout index", owner: NewTier1Instruction(SubOpGetStructFieldSliceInt, 1, 2), want: true},
+		{name: "struct slice field write carries a layout index", owner: NewTier1Instruction(SubOpSetStructFieldSliceByte, 1, 2), want: true},
+		{name: "a typed slice store names the stored value in its element bank", owner: NewTier1Instruction(SubOpSliceSetStringDirect, 1, 2), want: false},
+		{name: "a byte slice store names the stored value as a uint", owner: NewTier1Instruction(SubOpSliceSetByteDirect, 1, 2), want: false},
+		{name: "a deferred call names registers of any bank", owner: NewInstruction(OpDefer, 1, 2, 0), want: false},
+		{name: "a builtin call names registers of any bank", owner: NewTier1Instruction(SubOpCallBuiltin, 0, 1), want: false},
+		{name: "another tier-2 operation", owner: NewTier2Instruction(SubOpTier2IncInt, 1), want: false},
+		{name: "an unlisted operation", owner: NewInstruction(OpAppend, 1, 2, 3), want: false},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, testCase.want, ExtensionNamesOnlyIntRegisters(testCase.owner))
+		})
+	}
+}
+
+func TestExtensionNamesOnlyIntRegistersImpliesARecordedIntLayout(t *testing.T) {
+	t.Parallel()
+
+	blank := []Instruction{NewInstruction(OpExt, 0, 0, 0)}
+	owners := make([]Instruction, 0, 3*(math.MaxUint8+1))
+	for code := range math.MaxUint8 + 1 {
+		owners = append(owners,
+			NewInstruction(Opcode(code), 0, 0, 0),
+			NewTier1Instruction(SubOpcode(code), 0, 0),
+			NewTier2Instruction(SubOpcodeTier2(code), 0))
+	}
+	for _, owner := range owners {
+		if !ExtensionNamesOnlyIntRegisters(owner) {
+			continue
+		}
+		_, _, ok := ExtensionIntUse(owner, blank)
+		require.Truef(t, ok, "%s is cleared as naming only int registers but has no recorded int layout",
+			InstructionDisplayName(owner))
 	}
 }

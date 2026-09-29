@@ -108,3 +108,4 @@
 1674_make_slice_pointer_param_confined
 1686_typed_slice_from_map_lookup
 1687_arena_struct_literal_confined
+1680_byte_switch_chain
