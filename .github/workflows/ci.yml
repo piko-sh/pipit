@@ -111,6 +111,13 @@ jobs:
         with:
           go-version-file: ${{ env.GO_VERSION_FILE }}
 
+      - name: Allow unprivileged user namespaces
+        if: runner.os == 'Linux'
+        run: |
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
       - name: Test worker protocol, broker validation and fuzz seeds
         run: go test ./internal/sandboxwire ./internal/sandboxbroker -count=1 -timeout=60s
 

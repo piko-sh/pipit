@@ -15,7 +15,7 @@ Pipit compiles Go source to bytecode and executes it on a register machine. No b
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Alpha-orange.svg)]()
 
-[![Library Coverage](https://img.shields.io/badge/Library_Coverage-80%25-yellowgreen?logo=go)](hack/test/coverage.sh)
+[![Library Coverage](https://img.shields.io/badge/Library_Coverage-81%25-yellowgreen?logo=go)](hack/test/coverage.sh)
 [![CLI Coverage](https://img.shields.io/badge/CLI_Coverage-60%25-orange?logo=go)](hack/test/coverage.sh)
 
 [Getting Started](#getting-started) |

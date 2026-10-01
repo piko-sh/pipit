@@ -48,7 +48,7 @@ func TestEmitCallInlineMaybeSetupGeneralBankFastArm(t *testing.T) {
 		"R3, CTX_ARENA_BANKS_DIRTY(R19)",
 		"ci_general_bank_copy_loop:", "ci_general_bank_save:",
 		"CTX_DISPATCH_SAVES(R19), R3",
-		"ACI_CALLEE_BODY(R2), R11", "ACI_CALLEE_UINT_CONSTS(R2), R11", "R11, 48(R3)",
+		"ACI_CALLEE_BODY(R2), R11", "ACI_CALLEE_UINT_CONSTS(R2), R11", "R11, DS_UINT_CONSTS(R3)",
 		"ci_general_bank_slow:",
 		"·handlerCallInlineSetupGeneralBank(SB)",
 		"ci_no_general_bank:",

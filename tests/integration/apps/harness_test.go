@@ -41,12 +41,12 @@ import (
 )
 
 type testSpec struct {
-	Description   string `json:"description"`
-	ShouldError   bool   `json:"shouldError"`
-	ErrorContains string `json:"errorContains"`
-	Expected      string `json:"expected"`
-	ModulePath    string `json:"modulePath,omitempty"`
-	KnownBug      string `json:"knownBug,omitempty"`
+	Description    string `json:"description"`
+	ShouldError    bool   `json:"shouldError"`
+	ErrorContains  string `json:"errorContains"`
+	Expected       string `json:"expected"`
+	ModulePath     string `json:"modulePath,omitempty"`
+	KnownBug       string `json:"knownBug,omitempty"`
 	BundleKnownBug string `json:"bundleKnownBug,omitempty"`
 }
 
