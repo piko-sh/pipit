@@ -36,6 +36,10 @@ import (
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
+// evalFileName is the file name EvalFile compiles its source under. Breakpoints are keyed
+// by it rather than by the script's path on disk.
+const evalFileName = "main.go"
+
 // model holds the debugger's UI state.
 type model struct {
 	// theme supplies the colour and style settings for rendering.
@@ -310,7 +314,7 @@ func (m *model) applyCommandInput() {
 	if after, ok := strings.CutPrefix(m.commandInput, "b "); ok {
 		line, err := strconv.Atoi(strings.TrimSpace(after))
 		if err == nil {
-			m.debugger.SetBreakpoint(m.scriptPath, line)
+			m.debugger.SetBreakpoint(evalFileName, line)
 			m.runStatus = fmt.Sprintf("breakpoint set at %s:%d", m.scriptPath, line)
 		}
 	}

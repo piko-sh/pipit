@@ -19,12 +19,17 @@
 package dap
 
 import (
+	"context"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/google/go-dap"
+
 	"pipit.sh/pipit"
 	"pipit.sh/pipit/internal/debug"
+	"pipit.sh/pipit/internal/debug/debugview"
+	"pipit.sh/pipit/internal/isa"
 )
 
 func TestExpandReflectValueStruct(t *testing.T) {
@@ -37,7 +42,7 @@ func TestExpandReflectValueStruct(t *testing.T) {
 	}
 	value := reflect.ValueOf(point{X: 3, Y: 4})
 
-	variables := srv.expandReflectValue(stop, value)
+	variables := srv.expandReflectValue(stop, value, 0, 0)
 	if got := len(variables); got != 2 {
 		t.Fatalf("expanded fields: got %d, want 2", got)
 	}
@@ -55,7 +60,7 @@ func TestExpandReflectValueMapSortsByKey(t *testing.T) {
 	srv := &server{}
 
 	value := reflect.ValueOf(map[string]int{"b": 2, "a": 1, "c": 3})
-	variables := srv.expandReflectValue(stop, value)
+	variables := srv.expandReflectValue(stop, value, 0, 0)
 
 	if got := len(variables); got != 3 {
 		t.Fatalf("map entries: got %d, want 3", got)
@@ -71,7 +76,7 @@ func TestExpandReflectValueSlice(t *testing.T) {
 	srv := &server{}
 
 	value := reflect.ValueOf([]string{"alpha", "beta"})
-	variables := srv.expandReflectValue(stop, value)
+	variables := srv.expandReflectValue(stop, value, 0, 0)
 
 	if got := len(variables); got != 2 {
 		t.Fatalf("slice elements: got %d, want 2", got)
@@ -121,7 +126,7 @@ func TestExpandReflectValueWalksThroughPointer(t *testing.T) {
 	type box struct{ N int }
 	value := reflect.ValueOf(&box{N: 7})
 
-	variables := srv.expandReflectValue(stop, value)
+	variables := srv.expandReflectValue(stop, value, 0, 0)
 	if got := len(variables); got != 1 {
 		t.Fatalf("pointer-to-struct fields: got %d, want 1", got)
 	}
@@ -137,14 +142,14 @@ func TestExpandReflectValueNilPointerYieldsNothing(t *testing.T) {
 	type box struct{ N int }
 	var nilBox *box
 
-	if got := srv.expandReflectValue(stop, reflect.ValueOf(nilBox)); got != nil {
+	if got := srv.expandReflectValue(stop, reflect.ValueOf(nilBox), 0, 0); got != nil {
 		t.Fatalf("nil pointer expansion: got %v, want nil", got)
 	}
 }
 
 func TestFormatLeafQuotesStrings(t *testing.T) {
-	if got := formatLeaf(reflect.ValueOf("hi")); got != `"hi"` {
-		t.Fatalf("formatLeaf(\"hi\"): got %q, want \"hi\" with quotes", got)
+	if got := debugview.Leaf(reflect.ValueOf("hi")); got != `"hi"` {
+		t.Fatalf("debugview.Leaf(\"hi\"): got %q, want \"hi\" with quotes", got)
 	}
 }
 
@@ -166,5 +171,70 @@ func TestStoppedReasonMapsKnownEvents(t *testing.T) {
 		if got := stoppedReason(c.reason); got != c.want {
 			t.Fatalf("stoppedReason(%v): got %q, want %q", c.reason, got, c.want)
 		}
+	}
+}
+
+func TestExpandReflectValueRendersAWindow(t *testing.T) {
+	type pair struct {
+		left  int
+		right bool
+	}
+	elements := reflect.ValueOf([]int{10, 11, 12, 13, 14})
+
+	testCases := []struct {
+		name       string
+		value      reflect.Value
+		start      int
+		count      int
+		wantNames  []string
+		wantValues []string
+	}{
+		{name: "lowercase fields render their values", value: reflect.ValueOf(pair{left: 3, right: true}), wantNames: []string{"left", "right"}, wantValues: []string{"3", "true"}},
+		{name: "a window of a slice", value: elements, start: 1, count: 2, wantNames: []string{"[1]", "[2]"}, wantValues: []string{"11", "12"}},
+		{name: "a window running past the end", value: elements, start: 4, count: 3, wantNames: []string{"[4]"}, wantValues: []string{"14"}},
+		{name: "numeric map keys in numeric order", value: reflect.ValueOf(map[int]int{10: 1, 2: 2}), wantNames: []string{"2", "10"}, wantValues: []string{"2", "1"}},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := &server{}
+			variables := srv.expandReflectValue(newStopState(pipit.DebugEvent{}), tc.value, tc.start, tc.count)
+			names := make([]string, 0, len(variables))
+			values := make([]string, 0, len(variables))
+			for _, variable := range variables {
+				names = append(names, variable.Name)
+				values = append(values, variable.Value)
+			}
+			if !reflect.DeepEqual(names, tc.wantNames) || !reflect.DeepEqual(values, tc.wantValues) {
+				t.Fatalf("got %v = %v, want %v = %v", names, values, tc.wantNames, tc.wantValues)
+			}
+		})
+	}
+}
+
+func TestMakeVariableCountsOnlyUserFields(t *testing.T) {
+	synthesised := reflect.StructOf([]reflect.StructField{
+		{Name: "A", Type: reflect.TypeFor[int]()},
+		{Name: isa.SynthesisedIDFieldPrefix + "pair", Type: reflect.TypeFor[struct{}](), PkgPath: "main"},
+	})
+	variable := (&server{}).makeVariable(newStopState(pipit.DebugEvent{}), "p", "pair", reflect.New(synthesised).Elem())
+	if variable.NamedVariables != 1 {
+		t.Fatalf("NamedVariables = %d, want 1 (the interpreter's name marker is not a field)", variable.NamedVariables)
+	}
+}
+
+func TestDispatchAnswersAPanickingRequest(t *testing.T) {
+	srv, out, _ := newTestServer()
+	srv.debugger = nil
+	request := &dap.ThreadsRequest{Request: dap.Request{ProtocolMessage: dap.ProtocolMessage{Seq: 7, Type: "request"}, Command: "threads"}}
+
+	srv.dispatch(context.Background(), request)
+
+	messages := readOutMessages(t, out)
+	if len(messages) != 1 {
+		t.Fatalf("messages: got %d, want 1 error response", len(messages))
+	}
+	response, ok := messages[0].(*dap.ErrorResponse)
+	if !ok || response.Success || response.RequestSeq != 7 || !strings.Contains(response.Message, "internal error") {
+		t.Fatalf("response = %#v, want a failed response to request 7 (the handler has no debugger)", messages[0])
 	}
 }

@@ -154,5 +154,5 @@ You have now embedded Pipit in an application and run a standalone script. The
 - [Embedding](api.md): host functions, state, concurrency, and errors.
 - [CLI reference](cli.md): commands, flags, modules, and approvals.
 - [Compatibility](compatibility.md): known differences from native Go.
-- [Examples](../examples/README.md): programs to run from the checkout.
+- [Examples](https://github.com/piko-sh/pipit/blob/master/examples/README.md): programs to run from the checkout.
 - [Debugging](api.md#attach-a-debugger): pause and inspect a script from Go.

@@ -82,4 +82,4 @@ See [isolated execution](isolated-execution.md) for setup and cleanup responsibi
 A separately confined [filesystem broker](filesystem-isolation.md) provides named-root
 file access. Filesystem sessions and HTTP/custom brokers are not available.
 
-Report vulnerabilities using the [security policy](../SECURITY.md).
+Report vulnerabilities using the [security policy](https://github.com/piko-sh/pipit/blob/master/SECURITY.md).

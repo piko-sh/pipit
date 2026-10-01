@@ -106,8 +106,12 @@ func applyLoopHoist(compiledFunction *program.CompiledFunction, analysis *functi
 	pcMap := loopHoistPCMap{HeaderPC: headerPC, ReadPC: readPC, Width: hoistedReadWordCount(body, readPC)}
 	retargets := collectJumpRetargets(body, pcMap)
 	rotateWordsToFront(body, headerPC, readPC, pcMap.Width)
-	if compiledFunction.DebugSourceMap != nil && readPC+pcMap.Width <= len(compiledFunction.DebugSourceMap.Positions) {
-		rotateWordsToFront(compiledFunction.DebugSourceMap.Positions, headerPC, readPC, pcMap.Width)
+	if sourceMap := compiledFunction.DebugSourceMap; sourceMap != nil && readPC+pcMap.Width <= len(sourceMap.Positions) {
+		rotateWordsToFront(sourceMap.Positions, headerPC, readPC, pcMap.Width)
+		header := sourceMap.Positions[headerPC+pcMap.Width]
+		for offset := range pcMap.Width {
+			sourceMap.Positions[headerPC+offset] = header
+		}
 	}
 	compiledFunction.PeepholeProvenance = remapPeepholeProvenance(compiledFunction.PeepholeProvenance, pcMap)
 	compiledFunction.ArenaSafeAllocPCs = remapPCKeyedSet(compiledFunction.ArenaSafeAllocPCs, pcMap)

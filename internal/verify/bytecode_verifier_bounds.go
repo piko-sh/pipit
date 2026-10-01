@@ -44,8 +44,8 @@ var (
 //
 // Takes root (*CompiledFunction) which is the top-level function to check.
 //
-// Returns ErrRegisterOperandOutOfRange or ErrCallSiteOutOfRange wrapped with the offending
-// location, or nil when every operand is in range.
+// Returns ErrRegisterOperandOutOfRange or ErrCallSiteOutOfRange wrapped with the
+// offending location, or nil when every operand is in range.
 func VerifyOperandBounds(root *program.CompiledFunction) error {
 	visited := make(map[*program.CompiledFunction]bool)
 	return verifyFunctionOperandBounds(root, visited)

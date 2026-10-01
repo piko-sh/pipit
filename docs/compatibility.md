@@ -13,8 +13,8 @@ upgrading it, especially code that relies on reflection or native interfaces.
 
 ## Language and packages
 
-The [language tests](../tests/integration/language) and
-[parity corpus](../tests/integration/snippets) exercise functions, methods,
+The [language tests](https://github.com/piko-sh/pipit/tree/master/tests/integration/language) and
+[parity corpus](https://github.com/piko-sh/pipit/tree/master/tests/integration/snippets) exercise functions, methods,
 interfaces, generics, closures, slices, maps, channels, goroutines, defer, and
 panic/recover. The corpus compares interpreted results with native Go. Passing
 these cases does not imply every combination is supported. Restricted execution

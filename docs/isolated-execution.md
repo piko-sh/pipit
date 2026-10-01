@@ -110,7 +110,7 @@ this host; it does not replace a security review.
 ## Embed a worker
 
 For a Go host, pass the same policy to `NewIsolatedWorker(ctx, config)` using
-[IsolatedConfig](../isolated.go). The required fields are `WorkerPath`,
+[IsolatedConfig](https://github.com/piko-sh/pipit/blob/master/isolated.go). The required fields are `WorkerPath`,
 `WorkerSHA256`, `WatchdogPath`, `WatchdogSHA256`, `LinuxCgroupParent`,
 `StateDirectory`, and `Tenant`. Digests are `[32]byte` values. Set `Imports` to
 select the packages scripts may import.

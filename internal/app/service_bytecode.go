@@ -60,7 +60,7 @@ func (s *Service) LoadCompiled(ctx context.Context, key string) (*program.Compil
 	if err != nil {
 		return nil, fmt.Errorf("loading compiled bytecode %q: %w", key, err)
 	}
-	if verifyErr := verifyLoadedFileSet(ctx, cfs); verifyErr != nil {
+	if verifyErr := verify.VerifyLoadedFileSet(ctx, cfs); verifyErr != nil {
 		return nil, fmt.Errorf("loading compiled bytecode %q: %w", key, verifyErr)
 	}
 	return cfs, nil
@@ -76,35 +76,4 @@ func WithBytecodeStore(store program.BytecodeStorePort) Option {
 	return func(c *serviceConfig) {
 		c.bytecodeStore = store
 	}
-}
-
-// verifyLoadedFileSet re-runs the bytecode verifier over a persisted file set.
-//
-// Persisted bytecode is untrusted input, so verification always runs here regardless of
-// the post-compile opt-out. Every described register operand is bounds-checked against
-// the function's declared register counts.
-//
-// Takes cfs (*CompiledFileSet) which was just decoded from the store.
-//
-// Returns an error when any reachable function fails verification.
-func verifyLoadedFileSet(ctx context.Context, cfs *program.CompiledFileSet) error {
-	if cfs == nil {
-		return nil
-	}
-	for _, root := range [...]*program.CompiledFunction{cfs.Root(), cfs.VariableInitFunction()} {
-		if root == nil {
-			continue
-		}
-		report, err := verify.VerifyBytecode(ctx, root)
-		if err != nil {
-			return fmt.Errorf("verifying loaded bytecode: %w", err)
-		}
-		if report.HasErrors() {
-			return fmt.Errorf("loaded %w:\n%w", fault.ErrBytecodeVerification, report.Err())
-		}
-		if err := verify.VerifyOperandBounds(root); err != nil {
-			return fmt.Errorf("loaded bytecode failed verification: %w", err)
-		}
-	}
-	return nil
 }

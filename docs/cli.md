@@ -259,7 +259,7 @@ Keep the producer and consumer versions and host symbols compatible; see
 Generate the symbol tables that let scripts import native Go packages. A YAML
 manifest, `pipit-symbols.yaml` by default, lists the packages; the generated
 `gen_*.go` files are committed and registered with `cli.WithSymbols` or
-`WithSymbolProvider`. The [webserver example](../examples/README.md#webserver)
+`WithSymbolProvider`. The [webserver example](https://github.com/piko-sh/pipit/blob/master/examples/README.md#webserver)
 shows the whole flow.
 
 - `generate` - write the tables for the manifest. Flags: `--manifest`,
@@ -292,7 +292,7 @@ printed in full. `-d` takes precedence over `-w`.
 ## `pipit debug <file>`
 
 Terminal debugger. Running and quitting work, but line breakpoints did not pause
-execution in the [Fibonacci example](../examples/fibonacci/main.go) during testing. Use the
+execution in the [Fibonacci example](https://github.com/piko-sh/pipit/blob/master/examples/fibonacci/main.go) during testing. Use the
 [Go debugger example](api.md#attach-a-debugger) to pause and inspect a script.
 The terminal controls are:
 

@@ -35,7 +35,7 @@ The VM stores working values in registers. On amd64 and arm64, an assembly loop
 selects and runs bytecode instructions. Other platforms use a Go loop. The `safe`
 build tag also selects the Go loop and disables unsafe fast paths.
 
-The [execution model](../internal/engine/doc_execution_model.go) describes call
+The [execution model](https://github.com/piko-sh/pipit/blob/master/internal/engine/doc_execution_model.go) describes call
 frames and how the assembly and Go execution paths interact.
 
 ## Package boundaries
@@ -94,7 +94,7 @@ execution paths consistent.
 | Self-hosting symbol tables | `pipit-symbols-selfhost.yaml`, using `pipit extract` |
 
 Generated-file checks compare committed output with these sources. See
-[Contributing](../CONTRIBUTING.md) for generation and validation commands.
+[Contributing](https://github.com/piko-sh/pipit/blob/master/CONTRIBUTING.md) for generation and validation commands.
 
 ## Build configurations
 

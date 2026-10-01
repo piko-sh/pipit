@@ -23,6 +23,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"pipit.sh/pipit"
 	"pipit.sh/pipit/cmd/pipit/internal/styles"
@@ -124,5 +125,28 @@ func TestStepCommandsNeedAPausedProgram(t *testing.T) {
 	m.stepCommand("n")
 	if !strings.Contains(m.runStatus, "debugger:") {
 		t.Fatalf("a step without a paused debugger must report the debugger's error, got %q", m.runStatus)
+	}
+}
+
+func TestBreakpointCommandFiresForAnyScriptPath(t *testing.T) {
+	debugger := pipit.NewDebugger()
+	interpreter := pipit.NewInterpreter(pipit.WithDebugger(debugger))
+	const source = "package main\n\nfunc main() {\n\tx := 1\n\t_ = x\n}\n"
+	m := newModel(context.Background(), interpreter, debugger, "/scripts/tool.go", source, styles.For(false))
+	m.commandInput = "b 4"
+	m.applyCommandInput()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = interpreter.EvalFile(ctx, source, "main")
+	}()
+	defer func() { debugger.Stop(); <-done }()
+
+	event, err := debugger.WaitForPause(ctx)
+	if err != nil || event.Location.Line != 4 {
+		t.Fatalf("breakpoint set from /scripts/tool.go did not fire: line=%d err=%v", event.Location.Line, err)
 	}
 }

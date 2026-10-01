@@ -92,12 +92,48 @@ func TestBrowserSourceBounds(t *testing.T) {
 	if result := formatSource(source); result[resultKeyOK] != false || result[resultKeyError] != "browser source exceeds 1 MiB" {
 		t.Fatalf("oversized formatting accepted: %+v", result)
 	}
+	if result := disassembleSource(source); result[resultKeyOK] != false || result[resultKeyError] != "browser source exceeds 1 MiB" {
+		t.Fatalf("oversized disassembly accepted: %+v", result)
+	}
+}
+
+func TestBrowserDisassemble(t *testing.T) {
+	result := disassembleSource("package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"hi\")\n}\n")
+	assembly, _ := result["assembly"].(string)
+	if result[resultKeyOK] != true || result[resultKeyError] != "" || result["truncated"] != false {
+		t.Fatalf("disassembly failed: %+v", result)
+	}
+	for _, want := range []string{"; pkasm - pipit bytecode assembly", "; function main", "; main.go:6", "CALL_NATIVE"} {
+		if !strings.Contains(assembly, want) {
+			t.Fatalf("listing lacks %q:\n%s", want, assembly)
+		}
+	}
+	failed := disassembleSource("package main\nfunc main() { undefined() }")
+	if failed[resultKeyOK] != false || failed[resultKeyError] == "" || failed["assembly"] != "" {
+		t.Fatalf("compile error not reported: %+v", failed)
+	}
+}
+
+func TestClipListing(t *testing.T) {
+	for _, test := range []struct {
+		listing, want string
+		limit         int
+		truncated     bool
+	}{
+		{listing: "a\nb\n", limit: 4, want: "a\nb\n"},
+		{listing: "a\nbc\n", limit: 4, want: "a\n", truncated: true},
+		{listing: "abcdef", limit: 4, want: "", truncated: true},
+	} {
+		if got, truncated := clipListing(test.listing, test.limit); got != test.want || truncated != test.truncated {
+			t.Fatalf("clipListing(%q, %d) = %q, %v", test.listing, test.limit, got, truncated)
+		}
+	}
 }
 
 func TestBrowserRejectsConcurrentOperations(t *testing.T) {
 	browserBusy.Store(true)
 	defer browserBusy.Store(false)
-	for _, operation := range []func(js.Value, []js.Value) any{jsRun, jsFormat} {
+	for _, operation := range []func(js.Value, []js.Value) any{jsRun, jsFormat, jsDisassemble} {
 		completed := make(chan js.Value, 1)
 		callback := js.FuncOf(func(_ js.Value, arguments []js.Value) any {
 			completed <- arguments[0]

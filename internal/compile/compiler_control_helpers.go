@@ -1028,19 +1028,12 @@ func (c *Compiler) emitMethodCallWithReturns(ctx context.Context,
 	fieldPath []int,
 	returnLocations []program.VarLocation,
 ) error {
-	receiverLocation, err := c.compileExpression(ctx, selectorExpression.X)
+	callee := c.RootFunction.Functions[functionIndex]
+	receiverLocation, err := c.compileMethodReceiverWithPath(ctx, selectorExpression.X, fieldPath, callee)
 	if err != nil {
 		return err
 	}
-	c.boxToGeneral(ctx, &receiverLocation)
 
-	for _, fieldIndex := range fieldPath {
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-		program.Emit(c.Function, isa.OpGetField, dest, receiverLocation.Register, safeconv.MustIntToUint8(fieldIndex))
-		receiverLocation = program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}
-	}
-
-	callee := c.RootFunction.Functions[functionIndex]
 	compiledArguments, err := c.compileCallArguments(ctx, callExpression, callee)
 	if err != nil {
 		return err

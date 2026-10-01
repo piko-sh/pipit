@@ -39,6 +39,7 @@ import (
 	"pipit.sh/pipit/internal/logging"
 	"pipit.sh/pipit/internal/module"
 	"pipit.sh/pipit/internal/safeconv"
+	"pipit.sh/pipit/internal/verify"
 )
 
 // PackageModule compiles a multi-package Go program and packages it as a module bundle.
@@ -129,7 +130,7 @@ func (s *Service) LoadModule(
 	if err != nil {
 		return nil, fmt.Errorf("app: LoadModule unpack: %w", err)
 	}
-	if err := verifyLoadedFileSet(ctx, cfs); err != nil {
+	if err := verify.VerifyLoadedFileSet(ctx, cfs); err != nil {
 		return nil, fmt.Errorf("app: LoadModule %s: %w", bundle.Descriptor.Ref.Path, err)
 	}
 

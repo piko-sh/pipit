@@ -186,6 +186,11 @@ func (s *server) dispatch(ctx context.Context, message dap.Message) {
 	if !ok {
 		return
 	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			s.answerPanickedRequest(request.GetRequest(), recovered)
+		}
+	}()
 	command := request.GetRequest().Command
 	if s.dispatchSession(ctx, message) {
 		return
@@ -218,6 +223,15 @@ func (s *server) dispatch(ctx context.Context, message dap.Message) {
 	default:
 		s.writeError(request.GetRequest(), fmt.Sprintf("pipit dap: unsupported command %q", command))
 	}
+}
+
+// answerPanickedRequest answers a request whose handler panicked with an error response,
+// so one failing request cannot take the adapter down.
+//
+// Takes request (*dap.Request) which is the request being handled.
+// Takes recovered (any) which is the value the handler panicked with.
+func (s *server) answerPanickedRequest(request *dap.Request, recovered any) {
+	s.writeError(request, fmt.Sprintf("pipit dap: internal error handling %q: %v", request.Command, recovered))
 }
 
 // dispatchSession handles the session-level requests: initialise, launch, breakpoints,

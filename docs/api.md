@@ -61,7 +61,7 @@ provider to `WithSymbolProvider`. Later providers override earlier symbols with
 the same package and name. Symbols passed to `NewInterpreterWithSymbols` override
 all providers supplied through options.
 
-For larger packages, the [webserver example](../examples/README.md#webserver)
+For larger packages, the [webserver example](https://github.com/piko-sh/pipit/blob/master/examples/README.md#webserver)
 shows symbol generation with [`pipit extract`](cli.md#pipit-extract). Generated
 tables are committed, so running that example does not require the generator.
 
@@ -534,7 +534,7 @@ otherwise they return `ErrDebugNotPaused`. `WaitForEvent` also reports thread
 starts, thread exits, and the final execution result. See the
 [debugger reference](api-reference.md#debugger-operations).
 
-See [debugging.go](../debugging.go) for the public API and [the DAP guide](dap.md)
+See [debugging.go](https://github.com/piko-sh/pipit/blob/master/debugging.go) for the public API and [the DAP guide](dap.md)
 for editor usage and supported behaviour.
 
 See the [option and error reference](api-reference.md) for configuration details.

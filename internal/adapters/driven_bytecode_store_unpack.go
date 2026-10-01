@@ -36,6 +36,7 @@ import (
 	"pipit.sh/pipit/internal/mem"
 	"pipit.sh/pipit/internal/schema"
 	"pipit.sh/pipit/internal/schema/schemagen"
+	"pipit.sh/pipit/internal/verify"
 )
 
 const (
@@ -90,9 +91,9 @@ var (
 // Takes registry (*symtab.SymbolRegistry) which provides symbol and type lookups for
 // runtime reconstruction.
 //
-// Returns *program.CompiledFileSet which is the reconstructed file set.
-// Returns error when the schema header does not match the current binary or the payload
-// is corrupt.
+// Returns *program.CompiledFileSet which is the reconstructed, verified file set.
+// Returns error when the schema header does not match the current binary, the payload is
+// corrupt, or the bytecode fails verification.
 func LoadCompiledFromBytes(data []byte, registry *symtab.SymbolRegistry) (*program.CompiledFileSet, error) {
 	if len(data) == 0 {
 		return nil, errors.New("bytecode payload is empty")
@@ -101,7 +102,15 @@ func LoadCompiledFromBytes(data []byte, registry *symtab.SymbolRegistry) (*progr
 	if err != nil {
 		return nil, fmt.Errorf("unpacking bytecode header: %w", err)
 	}
-	return decodeCompiledFileSet(context.Background(), payload, registry)
+	ctx := context.Background()
+	fileSet, err := decodeCompiledFileSet(ctx, payload, registry)
+	if err != nil {
+		return nil, err
+	}
+	if err := verify.VerifyLoadedFileSet(ctx, fileSet); err != nil {
+		return nil, err
+	}
+	return fileSet, nil
 }
 
 // boundedCount validates a FlatBuffer vector length.

@@ -19,26 +19,13 @@
 package dap
 
 import (
-	"cmp"
-	"fmt"
 	"reflect"
-	"slices"
-	"strconv"
 
 	"github.com/google/go-dap"
 
 	"pipit.sh/pipit/internal/debug"
+	"pipit.sh/pipit/internal/debug/debugview"
 )
-
-// mapEntry pairs a map key's display name with the value it addresses, so entries can be
-// sorted by name before they are turned into DAP variables.
-type mapEntry struct {
-	// name is the stringified map key shown to the IDE.
-	name string
-
-	// value is the reflect.Value the key addresses.
-	value reflect.Value
-}
 
 // handleVariables expands the container referenced by VariablesReference and returns its
 // child variables.
@@ -68,13 +55,13 @@ func (s *server) handleVariables(request *dap.VariablesRequest) {
 			s.writeError(&request.Request, "pipit dap: "+err.Error())
 			return
 		}
+		variables = pageVariables(variables, request.Arguments.Start, request.Arguments.Count)
 	case containerKindReflectValue:
-		variables = s.expandReflectValue(stop, container.value)
+		variables = s.expandReflectValue(stop, container.value, request.Arguments.Start, request.Arguments.Count)
 	default:
 		s.writeError(&request.Request, "pipit dap: empty variablesReference")
 		return
 	}
-	variables = pageVariables(variables, request.Arguments.Start, request.Arguments.Count)
 
 	s.writeMessage(&dap.VariablesResponse{
 		Response: s.newResponse(request.Request, true),
@@ -130,97 +117,23 @@ func pageVariables(variables []dap.Variable, start, count int) []dap.Variable {
 	return variables[start:end]
 }
 
-// expandReflectValue converts one composite value into its child variables.
+// expandReflectValue converts a window of one composite value's children into variables,
+// rendering only the children inside it.
 //
 // Takes stop (*stopState) which owns the container reference table.
 // Takes value (reflect.Value) which holds the composite to expand.
+// Takes start (int) which is the zero-based index of the first child.
+// Takes count (int) which is the most children to return; zero means to the end.
 //
-// Returns []Variable which lists the composite's child variables.
-func (s *server) expandReflectValue(stop *stopState, value reflect.Value) []dap.Variable {
-	if !value.IsValid() {
+// Returns []Variable which lists the window's child variables.
+func (s *server) expandReflectValue(stop *stopState, value reflect.Value, start, count int) []dap.Variable {
+	children := debugview.ChildrenRange(value, start, count)
+	if children == nil {
 		return nil
 	}
-	for value.Kind() == reflect.Interface && !value.IsNil() {
-		value = value.Elem()
-	}
-	for value.Kind() == reflect.Pointer {
-		if value.IsNil() {
-			return nil
-		}
-		value = value.Elem()
-	}
-
-	switch value.Kind() {
-	case reflect.Struct:
-		return s.expandStruct(stop, value)
-	case reflect.Map:
-		return s.expandMap(stop, value)
-	case reflect.Slice, reflect.Array:
-		return s.expandIndexed(stop, value)
-	default:
-
-		return nil
-	}
-}
-
-// expandStruct returns one Variable per struct field.
-//
-// Takes stop (*stopState) which owns the container reference table.
-// Takes value (reflect.Value) which holds the struct to expand.
-//
-// Returns []Variable which lists one entry per struct field.
-func (s *server) expandStruct(stop *stopState, value reflect.Value) []dap.Variable {
-	typ := value.Type()
-	out := make([]dap.Variable, 0, value.NumField())
-	for index := 0; index < value.NumField(); index++ {
-		field := value.Field(index)
-		name := typ.Field(index).Name
-		out = append(out, s.makeVariable(stop, name, fieldTypeName(typ.Field(index).Type), field))
-	}
-	return out
-}
-
-// expandMap returns one Variable per map entry, sorted by the stringified key for stable
-// IDE ordering.
-//
-// Takes stop (*stopState) which owns the container reference table.
-// Takes value (reflect.Value) which holds the map to expand.
-//
-// Returns []Variable which lists the map entries in key order.
-func (s *server) expandMap(stop *stopState, value reflect.Value) []dap.Variable {
-	keys := value.MapKeys()
-	entries := make([]mapEntry, 0, len(keys))
-	for _, key := range keys {
-		entries = append(entries, mapEntry{
-			name:  fmt.Sprintf("%v", key.Interface()),
-			value: value.MapIndex(key),
-		})
-	}
-	slices.SortFunc(entries, func(a, b mapEntry) int {
-		return cmp.Compare(a.name, b.name)
-	})
-
-	elemType := fieldTypeName(value.Type().Elem())
-	out := make([]dap.Variable, 0, len(entries))
-	for _, entry := range entries {
-		out = append(out, s.makeVariable(stop, entry.name, elemType, entry.value))
-	}
-	return out
-}
-
-// expandIndexed returns one Variable per element of a slice or array, with names "[0]",
-// "[1]", and so on.
-//
-// Takes stop (*stopState) which owns the container reference table.
-// Takes value (reflect.Value) which holds the slice or array.
-//
-// Returns []Variable which lists one entry per element.
-func (s *server) expandIndexed(stop *stopState, value reflect.Value) []dap.Variable {
-	count := value.Len()
-	elemType := fieldTypeName(value.Type().Elem())
-	out := make([]dap.Variable, 0, count)
-	for index := range count {
-		out = append(out, s.makeVariable(stop, "["+strconv.Itoa(index)+"]", elemType, value.Index(index)))
+	out := make([]dap.Variable, 0, len(children))
+	for _, child := range children {
+		out = append(out, s.makeVariable(stop, child.Name, child.Type, child.Value))
 	}
 	return out
 }
@@ -236,23 +149,17 @@ func (s *server) expandIndexed(stop *stopState, value reflect.Value) []dap.Varia
 func (*server) makeVariable(stop *stopState, name, typeHint string, value reflect.Value) dap.Variable {
 	displayType := typeHint
 	if displayType == "" && value.IsValid() {
-		displayType = fieldTypeName(value.Type())
+		displayType = debugview.TypeName(value.Type())
 	}
 
 	variable := dap.Variable{
 		Name:  name,
-		Value: formatLeaf(value),
+		Value: debugview.Leaf(value),
 		Type:  displayType,
 	}
 
-	if isExpandable(value) {
-		walked := value
-		for walked.Kind() == reflect.Interface && !walked.IsNil() {
-			walked = walked.Elem()
-		}
-		for walked.Kind() == reflect.Pointer && !walked.IsNil() {
-			walked = walked.Elem()
-		}
+	if debugview.Expandable(value) {
+		walked := debugview.Deref(value)
 		variable.VariablesReference = stop.allocateContainer(variableContainer{
 			kind:  containerKindReflectValue,
 			value: walked,
@@ -262,98 +169,11 @@ func (*server) makeVariable(stop *stopState, name, typeHint string, value reflec
 		case reflect.Slice, reflect.Array, reflect.Map:
 			variable.IndexedVariables = walked.Len()
 		case reflect.Struct:
-			variable.NamedVariables = walked.NumField()
+			variable.NamedVariables = debugview.ChildCount(walked)
 		default:
 		}
 	}
 	return variable
-}
-
-// isExpandable reports whether value has at least one child the IDE could drill into.
-//
-// Takes value (reflect.Value) which is inspected for children.
-//
-// Returns bool which is true when the value has expandable children.
-func isExpandable(value reflect.Value) bool {
-	if !value.IsValid() {
-		return false
-	}
-	current := value
-	for current.Kind() == reflect.Interface {
-		if current.IsNil() {
-			return false
-		}
-		current = current.Elem()
-	}
-	for current.Kind() == reflect.Pointer {
-		if current.IsNil() {
-			return false
-		}
-		current = current.Elem()
-	}
-	switch current.Kind() {
-	case reflect.Struct:
-		return current.NumField() > 0
-	case reflect.Map, reflect.Slice, reflect.Array:
-		return current.Len() > 0
-	default:
-		return false
-	}
-}
-
-// formatLeaf returns the IDE-visible value string for a reflect.Value.
-//
-// Takes value (reflect.Value) which holds the value to render.
-//
-// Returns string which is the display text for the value.
-func formatLeaf(value reflect.Value) string {
-	if !value.IsValid() {
-		return "<invalid>"
-	}
-	switch value.Kind() {
-	case reflect.Interface:
-		if value.IsNil() {
-			return "nil"
-		}
-		return formatLeaf(value.Elem())
-	case reflect.Pointer:
-		if value.IsNil() {
-			return "nil"
-		}
-		return "&" + formatLeaf(value.Elem())
-	case reflect.Struct:
-		return fmt.Sprintf("%s{...}", fieldTypeName(value.Type()))
-	case reflect.Map:
-		return fmt.Sprintf("%s (%d entries)", fieldTypeName(value.Type()), value.Len())
-	case reflect.Slice:
-		if value.IsNil() {
-			return "nil"
-		}
-		return fmt.Sprintf("%s (len=%d)", fieldTypeName(value.Type()), value.Len())
-	case reflect.Array:
-		return fmt.Sprintf("%s (len=%d)", fieldTypeName(value.Type()), value.Len())
-	case reflect.Chan, reflect.Func:
-		return fieldTypeName(value.Type())
-	case reflect.String:
-		return strconv.Quote(value.String())
-	default:
-		return fmt.Sprintf("%v", value.Interface())
-	}
-}
-
-// fieldTypeName returns a short, human-friendly type name.
-//
-// Takes typ (reflect.Type) which is the type to name.
-//
-// Returns string which is the display name for the type.
-func fieldTypeName(typ reflect.Type) string {
-	if typ == nil {
-		return ""
-	}
-	if typ.Name() != "" {
-		return typ.Name()
-	}
-	return typ.String()
 }
 
 // reflectZero is the invalid reflect.Value scope containers carry.

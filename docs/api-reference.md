@@ -78,14 +78,14 @@ Use `errors.Is` to check for these exported error values:
 
 The string-size and literal-element limits have no exported error value.
 `UncaughtPanicValue(err)` retrieves the value of an unrecovered panic. The exported
-errors and their descriptions are listed in [errors.go](../errors.go).
+errors and their descriptions are listed in [errors.go](https://github.com/piko-sh/pipit/blob/master/errors.go).
 
 ## Options
 
 Pass these options to `NewInterpreter`. Limits cover interpreter operations, not
 all native CPU or memory use. Cost metering is disabled by default. A cost budget
 or a yield interval selects the Go dispatch loop. The public
-[option declarations](../options.go) describe their individual semantics.
+[option declarations](https://github.com/piko-sh/pipit/blob/master/options.go) describe their individual semantics.
 
 | Option | Unit | Default and meaning of zero |
 |---|---|---|

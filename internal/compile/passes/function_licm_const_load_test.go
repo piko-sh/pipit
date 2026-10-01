@@ -189,6 +189,36 @@ func TestHoistLoopInvariantConstantLoadsPlacesTheLoadAtTheHeader(t *testing.T) {
 	require.Equal(t, program.PeepholeAnnotation{Kind: peepholeRewriteLicmHoist, Origin: 2, OriginFunction: -1}, compiledFunction.PeepholeProvenance[1])
 }
 
+func TestHoistLoopInvariantConstantLoadsTakeTheHeaderPosition(t *testing.T) {
+	t.Parallel()
+	body := exitTestedConstLoop(mk(isa.OpLoadStringConst, 0, 3, 0), mk(isa.OpStringIndex, 1, 0, 2), mk(isa.OpLoadStringConst, 0, 1, 0))
+	position := func(line int32, column int16) program.SourcePosition {
+		return program.SourcePosition{Line: line, Column: column, FileID: 0, Inlined: false}
+	}
+	sourceMap := &program.SourceMap{
+		Files:     &[]string{"main.go"},
+		Positions: []program.SourcePosition{position(4, 2), position(5, 2), position(6, 14), position(6, 3), position(5, 2), position(8, 2)},
+		Epilogue:  position(9, 1),
+	}
+	compiledFunction := &program.CompiledFunction{Body: body, DebugSourceMap: sourceMap}
+	require.NoError(t, hoistLoopInvariantConstantLoads(context.Background(), compiledFunction, nil))
+	require.Equal(t, isa.OpLoadStringConst, compiledFunction.Body[1].Op, "load was hoisted")
+	require.Equal(t, position(5, 2), sourceMap.Positions[1], "hoisted load reports the loop header, not line 6")
+	require.Equal(t, position(5, 2), sourceMap.Positions[2], "header keeps its position")
+	require.Equal(t, position(6, 3), sourceMap.Positions[3], "body keeps its position")
+	require.Equal(t, 1, countLines(sourceMap, 6), "line 6 is entered only inside the loop body")
+}
+
+func countLines(sourceMap *program.SourceMap, line int32) int {
+	count := 0
+	for _, position := range sourceMap.Positions {
+		if position.Line == line {
+			count++
+		}
+	}
+	return count
+}
+
 func TestHoistLoopInvariantConstantLoadsHonoursTheCap(t *testing.T) {
 	t.Parallel()
 	const loads = maxLicmConstHoistsPerFunction + 2

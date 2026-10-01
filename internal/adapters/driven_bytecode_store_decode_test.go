@@ -25,7 +25,10 @@ import (
 	"testing"
 
 	"pipit.sh/pipit/internal/app"
+	"pipit.sh/pipit/internal/engine/program"
+	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/symtab"
+	"pipit.sh/pipit/internal/verify"
 
 	"github.com/stretchr/testify/require"
 )
@@ -44,6 +47,42 @@ func TestLoadCompiledFromBytesRoundTripsTrivialProgram(t *testing.T) {
 	loaded, err := LoadCompiledFromBytes(data, symtab.NewSymbolRegistry(nil))
 	require.NoError(t, err)
 	require.NotNil(t, loaded)
+}
+
+func TestLoadCompiledFromBytesVerifiesTheBytecode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		body    []isa.Instruction
+		wantErr error
+	}{
+		{
+			name:    "a call-site index past the table",
+			body:    []isa.Instruction{isa.NewTier1Instruction(isa.SubOpCall, 99, 0)},
+			wantErr: verify.ErrCallSiteOutOfRange,
+		},
+		{
+			name:    "a register operand past the frame",
+			body:    []isa.Instruction{{Op: isa.OpAddInt, A: 0, B: 1, C: 7}},
+			wantErr: verify.ErrRegisterOperandOutOfRange,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := &program.CompiledFunction{Name: "tampered", Body: tt.body}
+			root.NumRegisters[isa.RegisterInt] = 2
+			data := PackCompiledFileSetToBytes(program.NewCompiledFileSet(root, nil, nil, nil))
+
+			loaded, err := LoadCompiledFromBytes(data, symtab.NewSymbolRegistry(nil))
+
+			require.ErrorIs(t, err, tt.wantErr)
+			require.Nil(t, loaded, "unverified bytecode must not be returned")
+		})
+	}
 }
 
 func TestLoadCompiledFromBytesRejectsTruncatedPayloads(t *testing.T) {

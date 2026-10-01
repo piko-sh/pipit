@@ -229,8 +229,8 @@ func ShapeForInstruction(instr Instruction) OperandShape {
 	return OperandShapeAt(TierSub3, instr.C)
 }
 
-// CallSiteIndex returns the call-site index a call instruction carries in B|(C<<8), as the
-// shape table marks it.
+// CallSiteIndex returns the call-site index a call instruction carries in B|(C<<8), as
+// the shape table marks it.
 //
 // Takes instr (Instruction) which is the instruction word.
 //

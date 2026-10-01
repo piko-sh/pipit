@@ -7,7 +7,7 @@ order: 5
 
 # Verify a release
 
-The [release workflow](../.github/workflows/release.yml) is configured to publish
+The [release workflow](https://github.com/piko-sh/pipit/blob/master/.github/workflows/release.yml) is configured to publish
 CLI archives, detached signatures (`.sig`), signing certificates (`.cert`), and
 CycloneDX/SPDX software bills of materials (SBOMs), which list packaged components. Verify the files attached to your
 selected release before using them. You need its signatures and certificates
