@@ -18,13 +18,66 @@
 
 package pipit
 
-const (
-	// Version is the released semver of the pipit library module. It is updated by release
-	// tooling at tag time.
-	Version = "0.1.0-alpha"
+import (
+	"runtime/debug"
+	"strings"
+)
 
+const (
 	// BytecodeVersion is the on-disk bytecode schema version produced by the embedded
 	// interpreter. Stored separately so consumers can communicate compatibility without
 	// importing internal packages.
 	BytecodeVersion = "v12"
+
+	// modulePath is this module's path as it appears in a binary's build info.
+	modulePath = "pipit.sh/pipit"
+
+	// develVersion is the Version of a binary that carries no released pipit.
+	develVersion = "devel"
 )
+
+// Version holds the released semver of the pipit library module, without the leading
+// v. Release builds set it using: go build -ldflags "-X pipit.sh/pipit.Version=1.0.0".
+var Version string
+
+func init() {
+	if Version == "" {
+		info, ok := debug.ReadBuildInfo()
+		Version = moduleVersion(info, ok)
+	}
+}
+
+// moduleVersion finds this module's version in a binary's build info.
+//
+// Takes info (*debug.BuildInfo) which is the binary's build info.
+// Takes ok (bool) which reports whether the build info was available.
+//
+// Returns string which is the version without its leading v, or "devel" when the
+// module is absent, replaced by a directory, or built from a working copy.
+func moduleVersion(info *debug.BuildInfo, ok bool) string {
+	if !ok || info == nil {
+		return develVersion
+	}
+
+	module := &info.Main
+	if module.Path != modulePath {
+		module = nil
+		for _, dep := range info.Deps {
+			if dep.Path == modulePath {
+				module = dep
+				break
+			}
+		}
+	}
+	if module == nil {
+		return develVersion
+	}
+	if module.Replace != nil {
+		module = module.Replace
+	}
+
+	if module.Version == "" || module.Version == "(devel)" {
+		return develVersion
+	}
+	return strings.TrimPrefix(module.Version, "v")
+}

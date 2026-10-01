@@ -44,7 +44,9 @@ build_version() {
 # Outputs:
 #   Writes the ldflags string to stdout
 build_ldflags() {
-    echo "-X pipit.sh/pipit/cmd/pipit/internal/buildinfo.Version=$(build_version)"
+    local version
+    version=$(build_version)
+    echo "-X pipit.sh/pipit/cmd/pipit/internal/buildinfo.Version=${version} -X pipit.sh/pipit.Version=${version#v}"
 }
 
 # build_current builds the CLI for the host platform.

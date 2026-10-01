@@ -81,7 +81,7 @@ jobs:
           ext=""
           if [ "${{ matrix.goos }}" = "windows" ]; then ext=".exe"; fi
           go build -trimpath \
-            -ldflags "-s -w -X 'pipit.sh/pipit/cmd/pipit/internal/buildinfo.Version=${GITHUB_REF_NAME}'" \
+            -ldflags "-s -w -X 'pipit.sh/pipit/cmd/pipit/internal/buildinfo.Version=${GITHUB_REF_NAME}' -X 'pipit.sh/pipit.Version=${{ steps.version.outputs.version }}'" \
             -o "dist/pipit${ext}" ./cmd/pipit
 
       - name: Build Linux isolation helpers
@@ -134,6 +134,29 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+
+      - name: Tag SDK and command sub-modules
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+
+          modules=$(grep -oP '^\s+\./\K(sdk|cmd)/\S+' go.work)
+
+          echo "${modules}" | while read -r module; do
+            sed -i "s|pipit.sh/pipit\(.*\) v0\.0\.0|pipit.sh/pipit\1 ${version}|g" "${module}/go.mod"
+          done
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sdk/ cmd/
+          git commit -m "release: update SDK and command module versions to ${version}"
+
+          echo "${modules}" | while read -r module; do
+            tag="${module}/${version}"
+            echo "Creating tag: ${tag}"
+            git tag "${tag}"
+          done
+          git push origin --tags
 
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:

@@ -21,8 +21,8 @@ module pipit.sh/pipit/tests/facade
 go 1.27.0
 
 require (
-	pipit.sh/pipit v0.0.0-alpha.1
-	pipit.sh/pipit/sdk/stdlib v0.0.0-alpha.1
+	pipit.sh/pipit v0.0.0
+	pipit.sh/pipit/sdk/stdlib v0.0.0
 )
 
 require (
