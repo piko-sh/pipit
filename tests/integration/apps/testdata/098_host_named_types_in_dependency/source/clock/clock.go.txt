@@ -1,0 +1,63 @@
+package clock
+
+import (
+	"fmt"
+	"io/fs"
+	"net/http"
+	"sort"
+	"time"
+)
+
+var Timeout = 3 * time.Second
+
+func Direct(d time.Duration) string {
+	return d.String()
+}
+
+func MethodValue(d time.Duration) string {
+	format := d.String
+	return format()
+}
+
+func ViaInterface(d time.Duration) string {
+	var stringer fmt.Stringer = d
+	return stringer.String()
+}
+
+func Boxed(d time.Duration) string {
+	return fmt.Sprint(d, " ", d.Seconds())
+}
+
+func kind(value any) string {
+	switch value.(type) {
+	case time.Duration:
+		return "duration"
+	case int64:
+		return "int64"
+	}
+	return "other"
+}
+
+func Kinds(d time.Duration, n int64) string {
+	return kind(d) + "," + kind(n)
+}
+
+func Month(m int) string {
+	return time.Month(m).String()
+}
+
+func Header(key, value string) string {
+	header := http.Header{}
+	header.Set(key, value)
+	return header.Get(key)
+}
+
+func Sorted(values ...int) string {
+	sorted := sort.IntSlice(values)
+	sorted.Sort()
+	return fmt.Sprint(sorted.Len(), sorted)
+}
+
+func Mode(mode uint32) string {
+	return fs.FileMode(mode).String()
+}

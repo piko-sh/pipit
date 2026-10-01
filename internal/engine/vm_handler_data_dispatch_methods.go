@@ -66,6 +66,10 @@ func handleGetMethod(vm *VM, frame *CallFrame, registers *Registers, instruction
 		return opContinue
 	}
 	bound := resolveGetMethodBinding(vm, frame, receiver, methodName, getMethodPC)
+	if !bound.IsValid() {
+		vm.evalError = newInvariantError("undefined method: %s.%s", receiver.Type(), methodName)
+		return opPanicError
+	}
 	registers.General[instruction.A] = bound
 	return opContinue
 }

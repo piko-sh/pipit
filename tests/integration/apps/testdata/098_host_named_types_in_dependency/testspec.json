@@ -1,0 +1,5 @@
+{
+  "description": "Methods, boxing and type switches on host named non-struct types (time.Duration, time.Month, http.Header, sort.IntSlice, fs.FileMode) inside a dependency package",
+  "modulePath": "testpkg",
+  "expected": "1.5s | 1.5s | 1.5s | 1.5s 1.5 | duration,int64 | March | text/plain | 3 [1 2 3] | -rw-r--r-- | 3s"
+}

@@ -21,7 +21,9 @@ package app_test
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
+	"time"
 
 	"pipit.sh/pipit/internal/app"
 
@@ -29,6 +31,7 @@ import (
 
 	"pipit.sh/pipit/internal/adapters"
 	"pipit.sh/pipit/internal/module"
+	"pipit.sh/pipit/internal/symtab"
 )
 
 func TestLoadModule_BytecodeBridgesSymbols(t *testing.T) {
@@ -283,4 +286,129 @@ func main() {}
 	require.NoError(t, err)
 
 	require.Equal(t, "1020", fmt.Sprint(result))
+}
+
+type hostNamedTypeProvider struct{}
+
+func (hostNamedTypeProvider) Exports() symtab.SymbolExports {
+	return symtab.SymbolExports{
+		"fmt": {
+			"Sprint":   reflect.ValueOf(fmt.Sprint),
+			"Stringer": reflect.ValueOf((*fmt.Stringer)(nil)),
+		},
+		"time": {
+			"Duration": reflect.ValueOf((*time.Duration)(nil)),
+			"Second":   reflect.ValueOf(time.Second),
+		},
+		"hostprobe": {
+			"Sum": reflect.ValueOf(func(durations []time.Duration) time.Duration {
+				var total time.Duration
+				for _, duration := range durations {
+					total += duration
+				}
+				return total
+			}),
+			"TypeOf": reflect.ValueOf(func(value any) string { return fmt.Sprintf("%T", value) }),
+		},
+	}
+}
+
+func TestLoadModule_HostNamedTypeMethodsSurviveBundle(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		lib   string
+		entry string
+		want  string
+	}{
+		{
+			name:  "direct",
+			lib:   "import \"time\"\n\nfunc Format(d time.Duration) string { return d.String() }",
+			entry: "lib.Format(2 * time.Second)",
+			want:  "2s",
+		},
+		{
+			name:  "method_value",
+			lib:   "import \"time\"\n\nfunc Format(d time.Duration) string { f := d.String; return f() }",
+			entry: "lib.Format(2 * time.Second)",
+			want:  "2s",
+		},
+		{
+			name:  "interface",
+			lib:   "import \"fmt\"\nimport \"time\"\n\nfunc Format(d time.Duration) string { var s fmt.Stringer = d; return s.String() }",
+			entry: "lib.Format(2 * time.Second)",
+			want:  "2s",
+		},
+		{
+			name:  "fmt_boxing",
+			lib:   "import \"fmt\"\nimport \"time\"\n\nfunc Format(d time.Duration) string { return fmt.Sprint(d) }",
+			entry: "lib.Format(2 * time.Second)",
+			want:  "2s",
+		},
+		{
+			name: "type_switch",
+			lib: "import \"time\"\n\n" +
+				"func kind(x any) string {\n\tswitch x.(type) {\n\tcase time.Duration:\n\t\treturn \"duration\"\n\tcase int64:\n\t\treturn \"int64\"\n\t}\n\treturn \"other\"\n}\n\n" +
+				"func Kinds(d time.Duration, n int64) string { return kind(d) + \",\" + kind(n) }",
+			entry: "lib.Kinds(2 * time.Second, 7)",
+			want:  "duration,int64",
+		},
+		{
+			name: "package_var",
+			lib: "import \"hostprobe\"\nimport \"time\"\n\n" +
+				"var Timeout = 3 * time.Second\n\nfunc TimeoutType() string { return hostprobe.TypeOf(&Timeout) }",
+			entry: "lib.TimeoutType() + \" \" + lib.Timeout.String()",
+			want:  "*time.Duration 3s",
+		},
+		{
+			name: "make_slice",
+			lib: "import \"hostprobe\"\nimport \"time\"\n\n" +
+				"func Durations(n int) string {\n\tdurations := make([]time.Duration, n)\n\tdurations[0] = time.Second\n\treturn hostprobe.TypeOf(durations) + \" \" + hostprobe.Sum(durations).String()\n}",
+			entry: "lib.Durations(3)",
+			want:  "[]time.Duration 1s",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modulePath := "example.com/named_" + tc.name
+			libSources := map[string]map[string]string{
+				"": {"lib.go": "package lib\n\n" + tc.lib + "\n"},
+			}
+
+			builder := app.NewService()
+			builder.UseSymbolProviders(hostNamedTypeProvider{})
+			descriptor := module.Descriptor{
+				SchemaVersion: module.DescriptorVersion,
+				Ref:           module.Ref{Path: modulePath, Version: "v0.0.0"},
+			}
+			bundle, err := builder.PackageModule(context.Background(),
+				descriptor,
+				modulePath,
+				libSources,
+				adapters.PackCompiledFileSetToBytes,
+			)
+			require.NoError(t, err)
+
+			consumer := app.NewService()
+			consumer.UseSymbolProviders(hostNamedTypeProvider{})
+			reference := module.Ref{Path: modulePath, Version: "v0.0.0", Pin: bundle.Descriptor.Ref.Pin}
+			_, err = consumer.LoadModule(context.Background(), bundle, reference, nil, adapters.LoadCompiledFromBytes)
+			require.NoError(t, err)
+
+			mainSources := map[string]map[string]string{
+				"": {
+					"main.go": "package main\n\nimport (\n\t\"time\"\n\n\t\"" + modulePath + "\"\n)\n\n" +
+						"var _ = time.Second\n\nfunc entrypoint() string { return " + tc.entry + " }\n\nfunc main() {}\n",
+				},
+			}
+			mainCfs, err := consumer.CompileProgram(context.Background(), "main", mainSources)
+			require.NoError(t, err)
+
+			result, err := consumer.ExecuteEntrypoint(context.Background(), mainCfs, "entrypoint")
+			require.NoError(t, err)
+			require.Equal(t, tc.want, fmt.Sprint(result))
+		})
+	}
 }

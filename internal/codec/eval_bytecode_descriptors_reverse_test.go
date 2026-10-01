@@ -265,13 +265,14 @@ func TestReflectTypeToDescriptorNil(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		typ  reflect.Type
-		want descriptor.TypeDescriptorKind
+		name     string
+		typ      reflect.Type
+		want     descriptor.TypeDescriptorKind
+		wantBack reflect.Type
 	}{
 		{name: "nil type", typ: nil, want: descriptor.KindNil},
-		{name: "empty interface", typ: reflect.TypeFor[any](), want: descriptor.KindInterface},
-		{name: "error interface", typ: reflect.TypeFor[error](), want: descriptor.KindInterface},
+		{name: "empty interface", typ: reflect.TypeFor[any](), want: descriptor.KindInterface, wantBack: reflect.TypeFor[any]()},
+		{name: "error interface", typ: reflect.TypeFor[error](), want: descriptor.KindInterface, wantBack: reflect.TypeFor[error]()},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -284,7 +285,7 @@ func TestReflectTypeToDescriptorNil(t *testing.T) {
 				require.Nil(t, back)
 				return
 			}
-			require.Equal(t, reflect.TypeFor[any](), back)
+			require.Equal(t, tc.wantBack, back)
 		})
 	}
 }

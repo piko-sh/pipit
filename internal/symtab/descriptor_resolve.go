@@ -27,6 +27,10 @@ import (
 	"pipit.sh/pipit/internal/symtab/typemodel"
 )
 
+// errorReflectType is the predeclared error interface, which a descriptor identifies by
+// its name alone.
+var errorReflectType = reflect.TypeFor[error]()
+
 // reflectTypeMemo caches the reflect.Type already reconstructed for a nested descriptor,
 // keyed by the descriptor pointer. Without it, shared sub-descriptors would be rebuilt at
 // every parent, turning reconstruction into an exponential walk.
@@ -108,6 +112,10 @@ func ReconstructConstant(constantDescriptor descriptor.GeneralConstantDescriptor
 func descriptorToReflectTypeAtDepth(typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry, depth int, memo reflectTypeMemo) (reflect.Type, error) {
 	if depth > descriptor.MaxTypeDescriptorDepth {
 		return nil, fmt.Errorf("%w: type nesting exceeds %d levels", errCorruptTypeDescriptor, descriptor.MaxTypeDescriptorDepth)
+	}
+
+	if hostType, ok := resolveHostNamedDescriptor(typeDescriptor, registry); ok {
+		return hostType, nil
 	}
 
 	switch typeDescriptor.Kind {
@@ -316,17 +324,6 @@ func reconstructFunctionType(typeDescriptor descriptor.TypeDescriptor, registry 
 // Returns reflect.Type which is the reconstructed struct type.
 // Returns error when any field type cannot be resolved.
 func reconstructStructType(typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry, depth int, memo reflectTypeMemo) (reflect.Type, error) {
-	if typeDescriptor.PackagePath != "" && typeDescriptor.Name != "" && registry != nil {
-		if value, ok := registry.Lookup(typeDescriptor.PackagePath, typeDescriptor.Name); ok {
-			reflectType := value.Type()
-			if reflectType.Kind() == reflect.Pointer {
-				reflectType = reflectType.Elem()
-			}
-			if reflectType.Kind() == reflect.Struct {
-				return reflectType, nil
-			}
-		}
-	}
 	structFields := make([]reflect.StructField, len(typeDescriptor.Fields))
 	for i := range typeDescriptor.Fields {
 		fieldType, err := resolveSubDescriptor(&typeDescriptor.Fields[i].Typ, registry, "field", depth, memo)
@@ -344,6 +341,70 @@ func reconstructStructType(typeDescriptor descriptor.TypeDescriptor, registry *S
 		return nil, err
 	}
 	return safeReflectComposite(func() reflect.Type { return reflect.StructOf(structFields) })
+}
+
+// resolveHostNamedDescriptor resolves a descriptor that carries a host type's identity to
+// the registered host type itself, so the type keeps its methods across serialisation.
+//
+// Takes typeDescriptor (TypeDescriptor) which is the descriptor to resolve.
+// Takes registry (*SymbolRegistry) which provides the host types. May be nil.
+//
+// Returns reflect.Type which is the registered host type on a hit.
+// Returns bool which is true when the descriptor resolved to a host type.
+func resolveHostNamedDescriptor(typeDescriptor descriptor.TypeDescriptor, registry *SymbolRegistry) (reflect.Type, bool) {
+	if typeDescriptor.Kind == descriptor.KindNamed || typeDescriptor.Name == "" {
+		return nil, false
+	}
+	if typeDescriptor.PackagePath == "" {
+		if typeDescriptor.Kind == descriptor.KindInterface && typeDescriptor.Name == errorReflectType.Name() {
+			return errorReflectType, true
+		}
+		return nil, false
+	}
+	if registry == nil {
+		return nil, false
+	}
+	hostType, ok := registry.HostNamedType(typeDescriptor.PackagePath, typeDescriptor.Name)
+	if !ok || !descriptorShapeMatches(typeDescriptor, hostType) {
+		return nil, false
+	}
+	return hostType, true
+}
+
+// descriptorShapeMatches reports whether reflectType has the shape typeDescriptor
+// describes, as far as the descriptor's own fields say without resolving its children.
+//
+// Takes typeDescriptor (TypeDescriptor) which is the structural descriptor.
+// Takes reflectType (reflect.Type) which is the candidate host type.
+//
+// Returns bool which is true when the kinds, and any length, direction or arity the
+// descriptor records, agree.
+func descriptorShapeMatches(typeDescriptor descriptor.TypeDescriptor, reflectType reflect.Type) bool {
+	switch typeDescriptor.Kind {
+	case descriptor.KindBasic:
+		return reflectType.Kind() == reflect.Kind(typeDescriptor.BasicKind)
+	case descriptor.KindPtr:
+		return reflectType.Kind() == reflect.Pointer
+	case descriptor.KindSlice:
+		return reflectType.Kind() == reflect.Slice
+	case descriptor.KindArray:
+		return reflectType.Kind() == reflect.Array && reflectType.Len() == typeDescriptor.Length
+	case descriptor.KindMap:
+		return reflectType.Kind() == reflect.Map
+	case descriptor.KindChan:
+		return reflectType.Kind() == reflect.Chan && int(reflectType.ChanDir()) == typeDescriptor.Dir
+	case descriptor.KindFunc:
+		return reflectType.Kind() == reflect.Func &&
+			reflectType.NumIn() == len(typeDescriptor.Params) &&
+			reflectType.NumOut() == len(typeDescriptor.Results) &&
+			reflectType.IsVariadic() == typeDescriptor.IsVariadic
+	case descriptor.KindStruct:
+		return reflectType.Kind() == reflect.Struct
+	case descriptor.KindInterface:
+		return reflectType.Kind() == reflect.Interface
+	default:
+		return false
+	}
 }
 
 // resolveNamedType looks up a named type in the SymbolRegistry and extracts its element

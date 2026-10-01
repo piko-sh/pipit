@@ -20,6 +20,7 @@ package descriptor
 
 import (
 	"reflect"
+	"strings"
 	"unsafe"
 
 	"pipit.sh/pipit/internal/safeconv"
@@ -159,6 +160,10 @@ type TypeDescriptor struct {
 	IsVariadic bool
 }
 
+// errorReflectType is the predeclared error interface, the one named type with an empty
+// package path that a descriptor identifies.
+var errorReflectType = reflect.TypeFor[error]()
+
 // zeroTypeDescriptor is the all-zero descriptor every constructor below starts from,
 // avoiding fourteen-field exhaustruct literals at each site.
 var zeroTypeDescriptor TypeDescriptor
@@ -259,6 +264,28 @@ func (b *descriptorBuilder) typeToDescriptor(reflectType reflect.Type) TypeDescr
 	if reflectType == nil {
 		return typeDescriptorOf(KindNil)
 	}
+	if info, isPool := typemodel.LookupNamedScalarPoolInfo(reflectType); isPool {
+		descriptor := typeDescriptorOf(KindNamed)
+		descriptor.PackagePath = info.PkgPath
+		descriptor.Name = info.BareName
+		descriptor.BasicKind = safeconv.MustUintToUint8(uint(reflectType.Kind()))
+		return descriptor
+	}
+	descriptor := b.structuralDescriptor(reflectType)
+	if packagePath, name, named := hostNamedIdentity(reflectType); named {
+		descriptor.PackagePath = packagePath
+		descriptor.Name = name
+	}
+	return descriptor
+}
+
+// structuralDescriptor describes reflectType by its kind and the descriptors of its
+// element, key, value, field, parameter and result types.
+//
+// Takes reflectType (reflect.Type) which is the non-nil runtime type to describe.
+//
+// Returns TypeDescriptor which is the structural description of the type.
+func (b *descriptorBuilder) structuralDescriptor(reflectType reflect.Type) TypeDescriptor {
 	switch reflectType.Kind() {
 	case reflect.Pointer:
 		return b.elementDescriptor(KindPtr, reflectType)
@@ -292,17 +319,33 @@ func (b *descriptorBuilder) typeToDescriptor(reflectType reflect.Type) TypeDescr
 		return typeDescriptorOf(KindInterface)
 
 	default:
-		if info, isPool := typemodel.LookupNamedScalarPoolInfo(reflectType); isPool {
-			descriptor := typeDescriptorOf(KindNamed)
-			descriptor.PackagePath = info.PkgPath
-			descriptor.Name = info.BareName
-			descriptor.BasicKind = safeconv.MustUintToUint8(uint(reflectType.Kind()))
-			return descriptor
-		}
 		descriptor := typeDescriptorOf(KindBasic)
 		descriptor.BasicKind = safeconv.MustUintToUint8(uint(reflectType.Kind()))
 		return descriptor
 	}
+}
+
+// hostNamedIdentity reports the identity a non-struct descriptor carries so the decoder
+// can resolve the host named type itself rather than its underlying shape.
+//
+// Takes reflectType (reflect.Type) which is the non-nil runtime type to identify.
+//
+// Returns packagePath (string) which is the declaring package path.
+// Returns name (string) which is the type name.
+// Returns named (bool) which is true when the descriptor should carry the identity.
+func hostNamedIdentity(reflectType reflect.Type) (packagePath, name string, named bool) {
+	if reflectType.Kind() == reflect.Struct || reflectType.Kind() == reflect.UnsafePointer {
+		return "", "", false
+	}
+	if reflectType == errorReflectType {
+		return "", reflectType.Name(), true
+	}
+	name = reflectType.Name()
+	packagePath = reflectType.PkgPath()
+	if name == "" || packagePath == "" || strings.ContainsRune(name, '[') {
+		return "", "", false
+	}
+	return packagePath, name, true
 }
 
 // elementDescriptor returns a descriptor for a type whose shape is its element type.

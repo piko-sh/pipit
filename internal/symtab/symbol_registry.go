@@ -99,6 +99,11 @@ type SymbolRegistry struct {
 	// exported.
 	typeOwners map[reflect.Type]string
 
+	// hostNamedTypes indexes the registered typed-nil type carriers by their own reflect
+	// identity (PkgPath, Name), so a serialised type descriptor resolves a host type even
+	// when it is exported only through an alias in a facade package.
+	hostNamedTypes map[hostNamedTypeKey]reflect.Type
+
 	// synthesising tracks packages currently being synthesised to prevent infinite recursion
 	// when cross-package named types reference each other.
 	synthesising map[string]bool
@@ -125,6 +130,7 @@ func NewSymbolRegistry(exports SymbolExports) *SymbolRegistry {
 		synthesised:    make(map[string]*types.Package),
 		reflectToTypes: make(map[reflect.Type]types.Type),
 		typeOwners:     make(map[reflect.Type]string),
+		hostNamedTypes: nil,
 		synthesising:   make(map[string]bool), protectedPackages: nil, synthesisDepth: 0, mu: sync.RWMutex{}}
 
 	for packagePath, symbols := range exports {
@@ -268,6 +274,7 @@ func (r *SymbolRegistry) RegisterPackage(packagePath string, symbols map[string]
 	}
 
 	r.symbols[packagePath] = symbols
+	r.hostNamedTypes = nil
 
 	for _, value := range symbols {
 		rt := value.Type()
@@ -292,6 +299,7 @@ func (r *SymbolRegistry) OverlayPackage(packagePath string, overlay map[string]r
 	if r.protectedPackages[packagePath] {
 		return
 	}
+	r.hostNamedTypes = nil
 	existing, ok := r.symbols[packagePath]
 	if !ok {
 		merged := make(map[string]reflect.Value, len(overlay))
@@ -524,6 +532,7 @@ func (r *SymbolRegistry) Scoped(allowlist []string) *SymbolRegistry {
 		synthesised:       r.synthesised,
 		reflectToTypes:    r.reflectToTypes,
 		typeOwners:        r.typeOwners,
+		hostNamedTypes:    nil,
 		synthesising:      make(map[string]bool),
 		protectedPackages: r.protectedPackages, synthesisDepth: 0, mu: sync.RWMutex{}}
 	for packagePath, packageSymbols := range r.symbols {

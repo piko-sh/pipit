@@ -47,6 +47,7 @@ type testSpec struct {
 	Expected      string `json:"expected"`
 	ModulePath    string `json:"modulePath,omitempty"`
 	KnownBug      string `json:"knownBug,omitempty"`
+	BundleKnownBug string `json:"bundleKnownBug,omitempty"`
 }
 
 func TestApps(t *testing.T) {
@@ -121,6 +122,17 @@ func TestApps(t *testing.T) {
 			actual := fmt.Sprint(result)
 			require.Equal(t, spec.Expected, actual,
 				"result mismatch for %s", name)
+
+			if spec.ModulePath != "" {
+				t.Run("bundle", func(t *testing.T) {
+					if spec.BundleKnownBug != "" {
+						t.Skipf("known bundle bug: %s", spec.BundleKnownBug)
+					}
+					bundled := runBundled(t, spec.ModulePath, loadProgramSources(t, srcDir))
+					require.Equal(t, spec.Expected, bundled,
+						"bundle-mode result mismatch for %s", name)
+				})
+			}
 
 			if os.Getenv("PIPIT_APPS_SKIP_GO_PARITY") != "" {
 				return
