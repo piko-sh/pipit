@@ -3,8 +3,8 @@ module pipit.sh/pipit/cmd/pipit-worker
 go 1.27.0
 
 require (
-	pipit.sh/pipit v0.0.0
-	pipit.sh/pipit/sdk/stdlib v0.0.0
+	pipit.sh/pipit v0.0.0-alpha.4
+	pipit.sh/pipit/sdk/stdlib v0.0.0-alpha.4
 )
 
 require (
