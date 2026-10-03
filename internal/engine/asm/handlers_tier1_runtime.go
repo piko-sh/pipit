@@ -33,30 +33,6 @@ const (
 	// goSymbolBoxSliceInt is the Plan-9 ASM symbol for the BoxSliceInt trampoline
 	// (reflect.ValueOf on an int slice via vm).
 	goSymbolBoxSliceInt = "·asmCallBoxSliceInt(SB)"
-
-	// goSymbolMakeSliceInt is the Plan-9 ASM symbol for the MakeSliceInt trampoline
-	// (runtime.makeslice for []int64).
-	goSymbolMakeSliceInt = "·asmCallMakeSliceInt(SB)"
-
-	// goSymbolMakeSliceFloat is the Plan-9 ASM symbol for the MakeSliceFloat trampoline
-	// (runtime.makeslice for []float64).
-	goSymbolMakeSliceFloat = "·asmCallMakeSliceFloat(SB)"
-
-	// goSymbolMakeSliceString is the Plan-9 ASM symbol for the MakeSliceString trampoline
-	// (runtime.makeslice for []string).
-	goSymbolMakeSliceString = "·asmCallMakeSliceString(SB)"
-
-	// goSymbolMakeSliceBool is the Plan-9 ASM symbol for the MakeSliceBool trampoline
-	// (runtime.makeslice for []bool).
-	goSymbolMakeSliceBool = "·asmCallMakeSliceBool(SB)"
-
-	// goSymbolMakeSliceUint is the Plan-9 ASM symbol for the MakeSliceUint trampoline
-	// (runtime.makeslice for []uint64).
-	goSymbolMakeSliceUint = "·asmCallMakeSliceUint(SB)"
-
-	// goSymbolMakeSliceByte is the Plan-9 ASM symbol for the MakeSliceByte trampoline
-	// (runtime.makeslice for []byte).
-	goSymbolMakeSliceByte = "·asmCallMakeSliceByte(SB)"
 )
 
 // tier1RuntimeHandlers returns the tier-1 umbrella sub-op handler definitions for Go
@@ -69,12 +45,6 @@ func tier1RuntimeHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort]
 		handlerSubOpCap(),
 		handlerSubOpBytesToString(),
 		handlerSubOpBoxSliceInt(),
-		handlerSubOpMakeSliceInt(),
-		handlerSubOpMakeSliceFloat(),
-		handlerSubOpMakeSliceString(),
-		handlerSubOpMakeSliceBool(),
-		handlerSubOpMakeSliceUint(),
-		handlerSubOpMakeSliceByte(),
 		handlerSubOpAllocStructLiteral(),
 	}
 }
@@ -122,60 +92,4 @@ func handlerSubOpBoxSliceInt() asmgen.HandlerDefinition[BytecodeArchitecturePort
 	return inlineGoTwoOperandShim("handlerSubOpBoxSliceInt",
 		"handlerSubOpBoxSliceInt boxes []int64 at C into general[B] via asmCallBoxSliceInt (reflect.ValueOf).",
 		goSymbolBoxSliceInt)
-}
-
-// 3-operand sub-ops (MakeSlice variants take length from C and capacity from ext.A).
-
-// handlerSubOpMakeSliceInt returns the MakeSliceInt sub-op handler.
-//
-// Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMakeSliceInt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return inlineGoThreeOperandShim("handlerSubOpMakeSliceInt",
-		"handlerSubOpMakeSliceInt builds []int64 of length C and cap ext.A into general[B] via asmCallMakeSliceInt.",
-		goSymbolMakeSliceInt)
-}
-
-// handlerSubOpMakeSliceFloat returns the MakeSliceFloat sub-op handler.
-//
-// Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMakeSliceFloat() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return inlineGoThreeOperandShim("handlerSubOpMakeSliceFloat",
-		"handlerSubOpMakeSliceFloat builds []float64 of length C and cap ext.A into general[B] via asmCallMakeSliceFloat.",
-		goSymbolMakeSliceFloat)
-}
-
-// handlerSubOpMakeSliceString returns the MakeSliceString sub-op handler.
-//
-// Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMakeSliceString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return inlineGoThreeOperandShim("handlerSubOpMakeSliceString",
-		"handlerSubOpMakeSliceString builds []string of length C and cap ext.A into general[B] via asmCallMakeSliceString.",
-		goSymbolMakeSliceString)
-}
-
-// handlerSubOpMakeSliceBool returns the MakeSliceBool sub-op handler.
-//
-// Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMakeSliceBool() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return inlineGoThreeOperandShim("handlerSubOpMakeSliceBool",
-		"handlerSubOpMakeSliceBool builds []bool of length C and cap ext.A into general[B] via asmCallMakeSliceBool.",
-		goSymbolMakeSliceBool)
-}
-
-// handlerSubOpMakeSliceUint returns the MakeSliceUint sub-op handler.
-//
-// Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMakeSliceUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return inlineGoThreeOperandShim("handlerSubOpMakeSliceUint",
-		"handlerSubOpMakeSliceUint builds []uint64 of length C and cap ext.A into general[B] via asmCallMakeSliceUint.",
-		goSymbolMakeSliceUint)
-}
-
-// handlerSubOpMakeSliceByte returns the MakeSliceByte sub-op handler.
-//
-// Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpMakeSliceByte() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return inlineGoThreeOperandShim("handlerSubOpMakeSliceByte",
-		"handlerSubOpMakeSliceByte builds []byte of length C and cap ext.A into general[B] via asmCallMakeSliceByte.",
-		goSymbolMakeSliceByte)
 }

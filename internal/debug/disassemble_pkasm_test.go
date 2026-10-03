@@ -30,7 +30,8 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-const pkasmHeader = "; pkasm - pipit bytecode assembly\n\n"
+const pkasmHeader = "; pkasm - pipit bytecode assembly\n" +
+	"; dispatch: A assembly, S in-loop shim call to Go, X dedicated exit to Go, G generic exit to Go\n\n"
 
 func TestDisassembleAssemblyEmptyFileSetPrintsOnlyTheHeader(t *testing.T) {
 	t.Parallel()
@@ -75,7 +76,7 @@ func TestDisassembleAssemblyListsRootVarInitAndChildren(t *testing.T) {
 	require.Less(t, strings.Index(out, "<root>"), strings.Index(out, "<varinit>"))
 	require.Less(t, strings.Index(out, "<varinit>"), strings.Index(out, "helper"))
 	require.Less(t, strings.Index(out, "function helper"), strings.Index(out, "<anonymous>"))
-	require.Contains(t, out, fmt.Sprintf("%04d  %-26s %3d %3d %3d", 0, isa.InstructionDisplayName(root.Body[0]), 0, 1, 2))
+	require.Contains(t, out, fmt.Sprintf("%04d A %-26s %3d %3d %3d", 0, isa.InstructionDisplayName(root.Body[0]), 0, 1, 2))
 }
 
 func wide(op isa.Opcode, a uint8, index uint16) isa.Instruction {
@@ -171,7 +172,7 @@ func TestDisassembleFunctionAssemblySourceAnnotations(t *testing.T) {
 
 	instruction := func(pc int) string {
 		instr := compiledFunction.Body[pc]
-		return fmt.Sprintf("%04d  %-26s %3d %3d %3d", pc, isa.InstructionDisplayName(instr), instr.A, instr.B, instr.C)
+		return fmt.Sprintf("%04d %c %-26s %3d %3d %3d", pc, expectedDispatchMarker(instr), isa.InstructionDisplayName(instr), instr.A, instr.B, instr.C)
 	}
 	require.Less(t, strings.Index(out, fileChange("main.go", 1)), strings.Index(out, instruction(0)))
 	require.Less(t, strings.Index(out, instruction(1)), strings.Index(out, sameFile(2)))
@@ -236,4 +237,60 @@ func TestDisassembleFunctionAssemblyMinimalFunction(t *testing.T) {
 	require.NotContains(t, out, "variadic:")
 	require.NotContains(t, out, "constants:")
 	require.NotContains(t, out, "0000")
+}
+
+func expectedDispatchMarker(instr isa.Instruction) byte {
+	if instr.Op == isa.OpExt {
+		return ' '
+	}
+	spec, ok := isa.SpecForInstruction(instr)
+	if !ok {
+		return ' '
+	}
+	return map[isa.DispatchPath]byte{
+		isa.DispatchNone: ' ', isa.DispatchAsm: 'A', isa.DispatchShim: 'S', isa.DispatchExit: 'X', isa.DispatchGo: 'G',
+	}[spec.Dispatch()]
+}
+
+func TestDisassembleAssemblyMarksHowEachInstructionDispatches(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		instruction isa.Instruction
+		wantMarker  byte
+	}{
+		{name: "an assembly body", instruction: isa.NewInstruction(isa.OpAddInt, 0, 1, 2), wantMarker: 'A'},
+		{name: "an in-loop shim call to Go", instruction: isa.NewInstruction(isa.OpMakeClosure, 0, 0, 0), wantMarker: 'S'},
+		{name: "a shim reached through a sub-opcode", instruction: isa.NewTier1Instruction(isa.SubOpResetSharedCell, 0, 0), wantMarker: 'S'},
+		{name: "a dedicated exit to Go", instruction: isa.NewInstruction(isa.OpMapIndex, 0, 1, 2), wantMarker: 'X'},
+		{name: "the generic exit to Go", instruction: isa.NewTier1Instruction(isa.SubOpCallNative, 0, 0), wantMarker: 'G'},
+		{name: "an extension word", instruction: isa.NewInstruction(isa.OpExt, 0, 0, 0), wantMarker: ' '},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			out := debug.DisassembleFunctionAssembly(&program.CompiledFunction{Name: "f", Body: []isa.Instruction{tt.instruction}})
+
+			require.Contains(t, out, fmt.Sprintf("0000 %c %-26s", tt.wantMarker, isa.InstructionDisplayName(tt.instruction)))
+		})
+	}
+}
+
+func TestDisassembleAssemblyCountsDispatchPathsPerFunction(t *testing.T) {
+	t.Parallel()
+
+	body := []isa.Instruction{
+		isa.NewInstruction(isa.OpAddInt, 0, 1, 2),
+		isa.NewInstruction(isa.OpAddInt, 0, 1, 2),
+		isa.NewInstruction(isa.OpMakeClosure, 0, 0, 0),
+		isa.NewInstruction(isa.OpExt, 0, 0, 0),
+		isa.NewInstruction(isa.OpMapIndex, 0, 1, 2),
+		isa.NewTier1Instruction(isa.SubOpCallNative, 0, 0),
+	}
+	out := debug.DisassembleFunctionAssembly(&program.CompiledFunction{Name: "f", Body: body})
+
+	require.Contains(t, out, ";   dispatch:  asm=2 shim=1 exit=1 go=1\n")
 }

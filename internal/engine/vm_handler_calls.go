@@ -721,7 +721,7 @@ func unboxToTypedUintSlice(value reflect.Value, arena *RegisterArena) []uint64 {
 //
 // Returns OpResult indicating the next execution step.
 //
-//nolint:revive // hot path
+//nolint:revive // function-length, cyclomatic, cognitive-complexity: hot path, kept whole
 func handleCall(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	siteIndex := instruction.WideIndex()
 	if int(siteIndex) >= len(frame.Function.CallSites) {

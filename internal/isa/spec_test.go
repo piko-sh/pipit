@@ -196,3 +196,30 @@ func TestSpecUnclassifiedRowReportsAsMutating(t *testing.T) {
 	require.False(t, classified)
 	require.True(t, mutates, "an unclassified operation must fail closed")
 }
+
+func TestTypedMakesDispatchThroughTheValidatedGoHandler(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		subOp SubOpcode
+	}{
+		{name: "int", subOp: SubOpMakeSliceInt},
+		{name: "float", subOp: SubOpMakeSliceFloat},
+		{name: "string", subOp: SubOpMakeSliceString},
+		{name: "bool", subOp: SubOpMakeSliceBool},
+		{name: "uint", subOp: SubOpMakeSliceUint},
+		{name: "byte", subOp: SubOpMakeSliceByte},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			row, ok := SpecAt(TierSub1, uint8(tt.subOp))
+			require.True(t, ok)
+			require.Equal(t, DispatchShim, row.Dispatch(), "a hand-written assembly body would skip the handler's length, capacity and limit checks")
+			require.Equal(t, "Handle"+strings.TrimPrefix(row.Handler, "handle"), row.ShimHandler, "the shim must reach the handler the safe build runs")
+		})
+	}
+}

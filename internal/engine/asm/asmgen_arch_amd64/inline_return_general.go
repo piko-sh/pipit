@@ -47,3 +47,18 @@ func emitReturnInlineCopyGeneralReturnAMD64(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationJump, labelRINoRetval)
 	e.Blank()
 }
+
+// emitReturnInlineResultKindGuardAMD64 sends the single-result return to the Go fallback
+// unless the callee's result already lives in the caller's destination bank.
+//
+// Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
+func emitReturnInlineResultKindGuardAMD64(e *asmgen.Emitter) {
+	inst(e, asmamd64.OperationMove64Bits, "CF_FUNCTION(DI), DX")
+	inst(e, asmamd64.OperationCompare64Bits, "FN_RESULT_KINDS_LEN(DX), $0")
+	inst(e, asmamd64.OperationJumpIfEqual, labelRIFallback)
+	inst(e, asmamd64.OperationMove64Bits, "FN_RESULT_KINDS(DX), DX")
+	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "(DX), DX")
+	inst(e, asmamd64.OperationCompare64Bits, "DX, AX")
+	inst(e, asmamd64.OperationJumpIfNotEqual, labelRIFallback)
+	e.Blank()
+}

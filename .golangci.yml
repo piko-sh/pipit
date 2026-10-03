@@ -309,7 +309,12 @@ linters:
       default-signifies-exhaustive: true
 
     exhaustruct_v5:
-      allow-empty-returns: true
+      explicit-mode: true
+      enforce-patterns:
+        - 'pipit\.sh/pipit[/.].*'
+      ignore-patterns:
+        - '.*\.<anonymous>'
+      allow-empty: true
 
     goheader:
       template: |-
@@ -398,9 +403,6 @@ linters:
       - path: internal/engine/vm\.go$
         linters: [ govet ]
         text: "fieldalignment: RuntimeClosure"
-
-      - linters: [ exhaustruct_v5 ]
-        text: "^(asmgen|reflect|packages|types|ast|token|constant|http|tls|x509|exec|os|flag|slog|log|template|json|xml|testing|flatbuffers|goleak|require|assert|dap|unix|syscall|sync|atomic|time|context|io|bufio|bytes|strings|net|url|sort|regexp|elf|debug|cmp|iter|maps|slices|errors|fmt)\\.[A-Za-z0-9_]+ is missing"
 
       - path: internal/engine/
         linters: [ govet ]

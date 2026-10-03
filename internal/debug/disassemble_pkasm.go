@@ -39,6 +39,15 @@ const (
 	pkasmConstantSeparator = "  "
 )
 
+// dispatchMarkers maps each dispatch path to its marker character.
+var dispatchMarkers = [...]byte{
+	isa.DispatchNone: ' ',
+	isa.DispatchAsm:  'A',
+	isa.DispatchShim: 'S',
+	isa.DispatchExit: 'X',
+	isa.DispatchGo:   'G',
+}
+
 // pkasmWriter writes human-readable bytecode assembly to a string builder. It tracks
 // indentation depth for nested function output.
 type pkasmWriter struct {
@@ -96,6 +105,10 @@ func (w *pkasmWriter) writeFunctionHeader(compiledFunction *program.CompiledFunc
 	regParts := formatRegisterCounts(compiledFunction)
 	if len(regParts) > 0 {
 		w.writeLine(fmt.Sprintf(";   registers: %s", strings.Join(regParts, " ")))
+	}
+
+	if len(compiledFunction.Body) > 0 {
+		w.writeLine(fmt.Sprintf(";   dispatch:  %s", formatDispatchCounts(compiledFunction.Body)))
 	}
 
 	paramStr := formatKindList(compiledFunction.ParameterKinds)
@@ -197,13 +210,14 @@ func (w *pkasmWriter) writeSourceAnnotation(compiledFunction *program.CompiledFu
 func (w *pkasmWriter) writeInstruction(compiledFunction *program.CompiledFunction, pc int) {
 	instr := compiledFunction.Body[pc]
 	label := isa.InstructionDisplayName(instr)
+	marker := dispatchMarker(instr)
 	comment := pkasmComment(compiledFunction, pc, instr)
 	if comment != "" {
-		w.writeLine(fmt.Sprintf("%04d  %-26s %3d %3d %3d    ; %s",
-			pc, label, instr.A, instr.B, instr.C, comment))
+		w.writeLine(fmt.Sprintf("%04d %c %-26s %3d %3d %3d    ; %s",
+			pc, marker, label, instr.A, instr.B, instr.C, comment))
 	} else {
-		w.writeLine(fmt.Sprintf("%04d  %-26s %3d %3d %3d",
-			pc, label, instr.A, instr.B, instr.C))
+		w.writeLine(fmt.Sprintf("%04d %c %-26s %3d %3d %3d",
+			pc, marker, label, instr.A, instr.B, instr.C))
 	}
 }
 
@@ -246,6 +260,7 @@ func DisassembleAssembly(cfs *program.CompiledFileSet) string {
 	w := &pkasmWriter{builder: &strings.Builder{}, indentLevel: 0}
 
 	w.writeLine("; pkasm - pipit bytecode assembly")
+	w.writeLine("; dispatch: A assembly, S in-loop shim call to Go, X dedicated exit to Go, G generic exit to Go")
 	w.writeLine("")
 
 	root := cfs.Root()
@@ -355,6 +370,45 @@ func resolveCallTarget(compiledFunction *program.CompiledFunction, instr isa.Ins
 		return fmt.Sprintf("%s %s (site %d)", label, name, siteIndex)
 	}
 	return fmt.Sprintf("%s (site %d)", label, siteIndex)
+}
+
+// dispatchMarker returns the one-character column naming how the assembly dispatch loop
+// runs an instruction.
+//
+// Takes instr (isa.Instruction) which is the instruction word.
+//
+// Returns byte which is the marker character.
+func dispatchMarker(instr isa.Instruction) byte {
+	if instr.Op == isa.OpExt {
+		return ' '
+	}
+	spec, ok := isa.SpecForInstruction(instr)
+	if !ok {
+		return ' '
+	}
+	return dispatchMarkers[spec.Dispatch()]
+}
+
+// formatDispatchCounts tallies a body's instructions by dispatch marker.
+//
+// Takes body ([]isa.Instruction) which is the function body.
+//
+// Returns string which lists the asm, shim, exit and go counts.
+func formatDispatchCounts(body []isa.Instruction) string {
+	var asm, shim, exit, goExit int
+	for _, instr := range body {
+		switch dispatchMarker(instr) {
+		case 'A':
+			asm++
+		case 'S':
+			shim++
+		case 'X':
+			exit++
+		case 'G':
+			goExit++
+		}
+	}
+	return fmt.Sprintf("asm=%d shim=%d exit=%d go=%d", asm, shim, exit, goExit)
 }
 
 // formatRegisterCounts returns a slice of "kind=N" strings for non-zero register banks.

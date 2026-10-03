@@ -725,8 +725,8 @@ func shortPackageName(pkgPath string) string {
 	if pkgPath == "" {
 		return ""
 	}
-	if slash := strings.LastIndexByte(pkgPath, '/'); slash >= 0 {
-		return pkgPath[slash+1:]
+	if _, name, found := strings.CutLast(pkgPath, "/"); found {
+		return name
 	}
 	return pkgPath
 }

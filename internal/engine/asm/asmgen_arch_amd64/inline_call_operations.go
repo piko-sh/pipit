@@ -993,6 +993,8 @@ func (*amd64InlineCallOps) emitReturnInlineDispatchReturnType(e *asmgen.Emitter)
 	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "VL_REGISTER(CX), CX")
 	e.Blank()
 
+	emitReturnInlineResultKindGuardAMD64(e)
+
 	inst(e, asmamd64.OperationCompare64Bits, "AX, $0")
 	inst(e, asmamd64.OperationJumpIfEqual, "ri_check_int")
 	inst(e, asmamd64.OperationCompare64Bits, "AX, $1")

@@ -248,6 +248,7 @@ fixedbugs/bug474.go
 fixedbugs/bug483.go
 fixedbugs/bug484.go
 fixedbugs/bug485.go
+fixedbugs/bug491.go
 fixedbugs/bug494.go
 fixedbugs/bug497.go
 fixedbugs/bug498.go
@@ -428,6 +429,7 @@ fixedbugs/issue35576.go
 fixedbugs/issue36437.go
 fixedbugs/issue37716.go
 fixedbugs/issue37753.go
+fixedbugs/issue37975.go
 fixedbugs/issue38496.go
 fixedbugs/issue39505b.go
 fixedbugs/issue39541.go
@@ -511,6 +513,7 @@ fixedbugs/issue5515.go
 fixedbugs/issue5607.go
 fixedbugs/issue56990.go
 fixedbugs/issue5704.go
+fixedbugs/issue57184.go
 fixedbugs/issue57309.go
 fixedbugs/issue5753.go
 fixedbugs/issue5809.go
@@ -647,6 +650,7 @@ if.go
 indirect.go
 init1.go
 initcomma.go
+initialize.go
 int_lit.go
 intcvt.go
 interface/bigdata.go

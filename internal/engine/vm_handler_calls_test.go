@@ -141,7 +141,9 @@ func TestCallSiteIndexPastTheTableIsRefused(t *testing.T) {
 	builder.body = append(builder.body, makeOpCallSlot(99))
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
-	_, err := executeTestBytecode(t, builder.build())
+	vm := newTestVM(t)
+	vm.Limits.ForceGoDispatch = true
+	_, err := vm.Execute(builder.build())
 
 	require.Error(t, err, "a call site index past the table must surface as an error")
 }

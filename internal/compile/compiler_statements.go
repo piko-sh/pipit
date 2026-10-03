@@ -133,6 +133,7 @@ func (c *Compiler) recordFunctionDeclIndex(declaration *ast.FuncDecl, tableName 
 		c.functionTable = make(map[string]uint16)
 	}
 	c.functionTable[tableName] = index
+	c.sliceFlowDeclarations = append(c.sliceFlowDeclarations, declaration)
 	if declaration.Recv == nil && c.functionDeclarations != nil {
 		c.functionDeclarations[tableName] = declaration
 	}
@@ -202,7 +203,7 @@ func (c *Compiler) compileFunctionBody(ctx context.Context, declaration *ast.Fun
 		substitutionCache: nil,
 		rangeOverFunction: nil,
 	})
-	sub.prepareBody(bodySpec{body: declaration.Body, params: declaration.Type.Params, resultTypes: resolveResultTypes(c.Info, declaration)})
+	sub.prepareBody(bodySpec{body: declaration.Body, signature: declaration.Type, resultTypes: resolveResultTypes(c.Info, declaration)})
 
 	c.compileFunctionParams(ctx, sub, declaration)
 	sub.declareNamedResults(ctx, declaration.Type.Results, compiledFunction)
@@ -364,7 +365,7 @@ func (c *Compiler) buildSpecialisationSubCompiler(
 		substitutionCache: cache,
 		rangeOverFunction: nil,
 	})
-	sub.prepareBody(bodySpec{body: declaration.Body, params: declaration.Type.Params, resultTypes: resolveResultTypes(c.Info, declaration)})
+	sub.prepareBody(bodySpec{body: declaration.Body, signature: declaration.Type, resultTypes: resolveResultTypes(c.Info, declaration)})
 	return sub
 }
 

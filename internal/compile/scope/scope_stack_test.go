@@ -200,3 +200,105 @@ func TestRestoreWatermarkRewindsTheAllocator(t *testing.T) {
 	require.Equal(t, uint8(1), next.Register,
 		"restoring the watermark lets a later declaration reuse the registers the inner scope freed")
 }
+
+func TestCapturedRegistersStayReservedForTheFunction(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		run              func(stack *ScopeStack) (first, second program.VarLocation)
+		wantSameRegister bool
+	}{
+		{
+			name: "a sibling scope reuses an uncaptured variable's register",
+			run: func(stack *ScopeStack) (program.VarLocation, program.VarLocation) {
+				stack.PushScope()
+				first := stack.DeclareVar("x", isa.RegisterInt)
+				stack.PopScope()
+				stack.PushScope()
+				second := stack.DeclareVar("y", isa.RegisterInt)
+				stack.PopScope()
+				return first, second
+			},
+			wantSameRegister: true,
+		},
+		{
+			name: "a sibling scope does not reuse a captured variable's register",
+			run: func(stack *ScopeStack) (program.VarLocation, program.VarLocation) {
+				stack.PushScope()
+				first := stack.DeclareVar("x", isa.RegisterInt)
+				stack.MarkCaptured("x")
+				stack.PopScope()
+				stack.PushScope()
+				second := stack.DeclareVar("y", isa.RegisterInt)
+				stack.PopScope()
+				return first, second
+			},
+			wantSameRegister: false,
+		},
+		{
+			name: "popping the enclosing scope keeps a captured register reserved",
+			run: func(stack *ScopeStack) (program.VarLocation, program.VarLocation) {
+				stack.PushScope()
+				stack.PushScope()
+				first := stack.DeclareVar("x", isa.RegisterInt)
+				stack.MarkCaptured("x")
+				stack.PopScope()
+				stack.PopScope()
+				stack.PushScope()
+				second := stack.DeclareVar("y", isa.RegisterInt)
+				stack.PopScope()
+				return first, second
+			},
+			wantSameRegister: false,
+		},
+		{
+			name: "rewinding a watermark keeps a captured register reserved",
+			run: func(stack *ScopeStack) (program.VarLocation, program.VarLocation) {
+				stack.PushScope()
+				watermark := stack.Alloc.Snapshot()
+				stack.PushScope()
+				first := stack.DeclareVar("x", isa.RegisterInt)
+				stack.MarkCaptured("x")
+				stack.PopScope()
+				stack.RestoreWatermark(watermark)
+				second := stack.DeclareVar("y", isa.RegisterInt)
+				stack.PopScope()
+				return first, second
+			},
+			wantSameRegister: false,
+		},
+		{
+			name: "a capture in one bank leaves the other banks reusable",
+			run: func(stack *ScopeStack) (program.VarLocation, program.VarLocation) {
+				stack.PushScope()
+				first := stack.DeclareVar("s", isa.RegisterString)
+				stack.DeclareVar("x", isa.RegisterInt)
+				stack.MarkCaptured("x")
+				stack.PopScope()
+				stack.PushScope()
+				second := stack.DeclareVar("t", isa.RegisterString)
+				stack.PopScope()
+				return first, second
+			},
+			wantSameRegister: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			stack := NewScopeStack("f")
+			stack.PushScope()
+			first, second := tt.run(stack)
+
+			require.Equal(t, first.Kind, second.Kind)
+			if tt.wantSameRegister {
+				require.Equal(t, first.Register, second.Register)
+			} else {
+				require.NotEqual(t, first.Register, second.Register)
+			}
+		})
+	}
+}

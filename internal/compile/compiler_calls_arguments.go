@@ -64,8 +64,19 @@ func (c *Compiler) compileFixedCallArguments(ctx context.Context, expression *as
 		return locations, err
 	}
 	signature, sigErr := c.signatureForCall(expression)
+	flows := c.lookupSliceFlow(expression).Arguments
 	argumentLocations := make([]program.VarLocation, len(expression.Args))
 	for i, argument := range expression.Args {
+		if i < len(flows) && flows[i] {
+			location, placed, err := c.compileHeapPlacedSliceAllocation(ctx, argument)
+			if err != nil {
+				return nil, err
+			}
+			if placed {
+				argumentLocations[i] = c.boxFixedArgumentForGeneralParam(callee, i, location)
+				continue
+			}
+		}
 		location, err := c.compileFixedCallArgument(ctx, callee, signature, sigErr, i, argument)
 		if err != nil {
 			return nil, err

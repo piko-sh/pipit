@@ -78,6 +78,28 @@ const (
 	specMemoryPure
 )
 
+// DispatchPath is how the assembly dispatch loop runs an operation.
+type DispatchPath uint8
+
+const (
+	// DispatchNone marks a row the loop never dispatches on its own: drill markers and
+	// reserved slots.
+	DispatchNone DispatchPath = iota
+
+	// DispatchAsm runs in an assembly body. A slow path may still call into Go or exit.
+	DispatchAsm
+
+	// DispatchShim calls its Go handler through an in-loop shim on every execution, without
+	// leaving the loop.
+	DispatchShim
+
+	// DispatchExit leaves the loop for Go through a dedicated exit stub.
+	DispatchExit
+
+	// DispatchGo leaves the loop for Go through the generic path-B exit.
+	DispatchGo
+)
+
 // OpSpec is the single record everything else about an operation derives from.
 type OpSpec struct {
 	// Name is the mnemonic the disassembler prints, for example "ADD_INT".
@@ -158,6 +180,32 @@ func (s OpSpec) MutatesMemory() (mutates, classified bool) {
 		return false, true
 	}
 	return true, false
+}
+
+// Dispatch reports how the assembly dispatch loop runs the operation.
+//
+// Returns DispatchPath which classifies the operation's jump-table slot.
+func (s OpSpec) Dispatch() DispatchPath {
+	switch {
+	case s.Handler == "":
+		return DispatchNone
+	case s.ExitStub != "":
+		return DispatchExit
+	case s.AsmBody != "":
+		return DispatchAsm
+	case s.Shim != "":
+		return DispatchShim
+	default:
+		return DispatchGo
+	}
+}
+
+// ExitsLoop reports whether dispatch leaves the assembly loop for Go, the round trip the
+// path-B batch amortises.
+//
+// Returns bool which is true for DispatchExit and DispatchGo.
+func (p DispatchPath) ExitsLoop() bool {
+	return p == DispatchExit || p == DispatchGo
 }
 
 // String renders the row for diagnostics.

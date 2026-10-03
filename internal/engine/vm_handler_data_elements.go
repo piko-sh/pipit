@@ -538,11 +538,10 @@ func handleMapDelete(vm *VM, frame *CallFrame, registers *Registers, instruction
 // index returns an interface that the user expects to be a struct or *struct for the next
 // field access.
 //
-//nolint:revive // hot path
+//nolint:revive // cognitive-complexity: kept whole on the field-access hot path
 func handleGetField(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	s := registers.General[instruction.B]
 	if !s.IsValid() {
-
 		return raiseNilDereference(vm)
 	}
 	if s.Kind() == reflect.Interface && !s.IsNil() {

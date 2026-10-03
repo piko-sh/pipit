@@ -630,3 +630,42 @@ func TestNativeFastPath_BoundMethodNotStale(t *testing.T) {
 	require.Equal(t, "hello", b1.String(), "b1 should not have been modified by second call")
 	require.Equal(t, "world", b2.String(), "b2 should have received the second write")
 }
+
+func TestCachedNativeFastPathCallsTheFunctionInTheRegister(t *testing.T) {
+	t.Parallel()
+
+	cached := func() int { return 1 }
+	tests := []struct {
+		name           string
+		register       reflect.Value
+		wantDispatched bool
+		wantResult     int64
+	}{
+		{name: "the cached function", register: reflect.ValueOf(cached), wantDispatched: true, wantResult: 1},
+		{name: "another function of the same type", register: reflect.ValueOf(func() int { return 2 }), wantDispatched: true, wantResult: 2},
+		{name: "a function of another type falls back", register: reflect.ValueOf(func() string { return "x" }), wantDispatched: false, wantResult: 0},
+		{name: "an empty register falls back", register: reflect.Value{}, wantDispatched: false, wantResult: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			regs := makeRegisters()
+			site := &program.CallSite{
+				NativeRegister: 0,
+				Arguments:      nil,
+				Returns:        []program.VarLocation{{Register: 0, Kind: isa.RegisterInt}},
+			}
+			ok, tag, _ := tryNativeFastPath(nil, site, cached, &regs)
+			require.True(t, ok)
+
+			regs.Ints[0] = 0
+			regs.General[0] = tt.register
+			_, dispatched := dispatchCachedNativeFastPath(nil, site, &regs, &nativeFastPathEntry{fn: cached, tag: tag, receiverAddr: 0})
+
+			require.Equal(t, tt.wantDispatched, dispatched)
+			require.Equal(t, tt.wantResult, regs.Ints[0])
+		})
+	}
+}

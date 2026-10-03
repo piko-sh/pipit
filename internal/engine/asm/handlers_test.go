@@ -109,7 +109,7 @@ func TestHandlerCountPerGroup(t *testing.T) {
 		"asm_vm_dispatch_tier1_complex":             4,
 		"asm_vm_dispatch_tier1_math":                5,
 		"asm_vm_dispatch_tier1_strconv":             3,
-		"asm_vm_dispatch_tier1_runtime":             10,
+		"asm_vm_dispatch_tier1_runtime":             4,
 		"asm_vm_dispatch_tier1_move":                5,
 		"asm_vm_dispatch_tier1_struct_field_incdec": 4,
 		"asm_vm_dispatch_tier2_inplace":             4,

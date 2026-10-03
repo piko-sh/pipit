@@ -166,56 +166,6 @@ func TestCollectionTrampolinesReadTheGeneralBank(t *testing.T) {
 	})
 }
 
-func TestMakeSliceTrampolinesHonourLengthAndCapacity(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name       string
-		trampoline func(*dispatchContext, int64, int64, int64) *dispatchContext
-		measure    func(*Registers) (int, int)
-	}{
-		{
-			name: "an int slice", trampoline: asmCallMakeSliceInt,
-			measure: func(r *Registers) (int, int) { return len(r.SlicesInt[0]), cap(r.SlicesInt[0]) },
-		},
-		{
-			name: "a float slice", trampoline: asmCallMakeSliceFloat,
-			measure: func(r *Registers) (int, int) { return len(r.slicesFloat[0]), cap(r.slicesFloat[0]) },
-		},
-		{
-			name: "a string slice", trampoline: asmCallMakeSliceString,
-			measure: func(r *Registers) (int, int) { return len(r.slicesString[0]), cap(r.slicesString[0]) },
-		},
-		{
-			name: "a bool slice", trampoline: asmCallMakeSliceBool,
-			measure: func(r *Registers) (int, int) { return len(r.slicesBool[0]), cap(r.slicesBool[0]) },
-		},
-		{
-			name: "a uint slice", trampoline: asmCallMakeSliceUint,
-			measure: func(r *Registers) (int, int) { return len(r.slicesUint[0]), cap(r.slicesUint[0]) },
-		},
-		{
-			name: "a byte slice", trampoline: asmCallMakeSliceByte,
-			measure: func(r *Registers) (int, int) { return len(r.slicesByte[0]), cap(r.slicesByte[0]) },
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			_, registers, context := newTrampolineContext(t)
-			registers.Ints[1] = 2
-			registers.Ints[2] = 5
-
-			tt.trampoline(context, 0, 1, 2)
-			length, capacity := tt.measure(registers)
-			require.Equal(t, 2, length)
-			require.Equal(t, 5, capacity)
-		})
-	}
-}
-
 func TestAppendTrampolinesGrowTheTypedBanks(t *testing.T) {
 	t.Parallel()
 

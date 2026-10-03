@@ -342,8 +342,8 @@ func (releaseAliasInfoPass) Run(_ context.Context, _ *PassContext, compiledFunct
 // Takes opts (Options) which selects the optional passes.
 //
 // Returns the passes in execution order.
-func functionPipeline(opts Options) []pass {
-	pipeline := make([]pass, 0, functionPipelineCapacity)
+func functionPipeline(opts Options) []Pass {
+	pipeline := make([]Pass, 0, functionPipelineCapacity)
 	if opts.LICM {
 		pipeline = append(pipeline, licmPass{constantLoads: false})
 	}
@@ -376,8 +376,8 @@ func functionPipeline(opts Options) []pass {
 // omits the step.
 //
 // Returns the passes in execution order.
-func PostPurityPipeline(opts Options, rewriteMethodCalls pass) []pass {
-	pipeline := make([]pass, 0, postPurityPipelineCapacity)
+func PostPurityPipeline(opts Options, rewriteMethodCalls Pass) []Pass {
+	pipeline := make([]Pass, 0, postPurityPipelineCapacity)
 	if opts.LICM {
 		pipeline = append(pipeline, licmPass{constantLoads: true})
 	}

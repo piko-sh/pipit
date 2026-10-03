@@ -20,8 +20,6 @@ package engine
 
 // dispatchContext is the per-goroutine VM dispatch state shared with ASM, laid out for
 // cache locality so reordering fields requires regenerating asm_dispatch_offsets.h.
-//
-//nolint:govet // Reason above.
 type dispatchContext struct {
 	// vm is a back-pointer to the executing VM, used by Go-side trampolines. Not read by
 	// ASM.
@@ -240,6 +238,15 @@ type dispatchContext struct {
 	// writes the cursors back. Cleared after republishing.
 	arenaBanksDirty uint8
 
+	// hasGoroutinesFlag mirrors vm.hasGoroutines for the ASM closure-call guard. The inline
+	// call falls back to Go when set because cached upvalue cells must not be shared.
+	hasGoroutinesFlag uint8
+
+	// callInfoBasesRootMatch is 1 while callInfoBasesByFunction is the array built for the
+	// VM's current root, and 0 after a root swap. When 0 the inline call uses the callee's
+	// own base instead of the array, because the array's indices belong to a different root.
+	callInfoBasesRootMatch uint8
+
 	// structLayoutTableBase is the pointer to the first structFieldLayout entry (16-byte
 	// entries). Zero when the active function has no resolved struct-field layouts.
 	structLayoutTableBase uintptr
@@ -307,15 +314,6 @@ type dispatchContext struct {
 	// tier-2 shim trampolines resolve the frame with a single load.
 	currentFrame uintptr
 
-	// hasGoroutinesFlag mirrors vm.hasGoroutines for the ASM closure-call guard. The inline
-	// call falls back to Go when set because cached upvalue cells must not be shared.
-	hasGoroutinesFlag uint8
-
-	// callInfoBasesRootMatch is 1 while callInfoBasesByFunction is the array built for the
-	// VM's current root, and 0 after a root swap. When 0 the inline call uses the callee's
-	// own base instead of the array, because the array's indices belong to a different root.
-	callInfoBasesRootMatch uint8
-
 	// arenaSlabGenerationSeen is the last-mirrored RegisterArena.SlabGeneration value.
 	// refreshArenaSlabs() skips the slab stores while unchanged.
 	arenaSlabGenerationSeen uint64
@@ -379,9 +377,7 @@ type asmDispatchSave struct {
 	// entry is a single byte.
 	boolConstantsBase uintptr
 
-	// uintConstantsBase is the pointer to the saved function's uint constant table. Keeps
-	// the record at 64 bytes so the ASM save/restore blocks can index records with a fixed
-	// shift.
+	// uintConstantsBase is the pointer to the saved function's uint constant table.
 	uintConstantsBase uintptr
 
 	// _reserved1 is reserved padding, keeping the struct size stable so the ASM offsets

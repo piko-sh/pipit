@@ -20,17 +20,13 @@ panic/recover. The corpus compares interpreted results with native Go. Passing
 these cases does not imply every combination is supported. Restricted execution
 also deliberately disables some features; see [execution security](security.md).
 
-Host package registration makes native symbols available for imports. It does not
-establish full compatibility with every program that uses those packages.
+Host package registration makes native symbols available for imports.
 `stdlib.WithStandardLibrary()` registers the bundled set; smaller bundles and
 custom providers are described in [Embedding](api.md#choose-imports).
 
 The standard-library registry excludes `syscall`, `plugin`, `runtime/cgo`,
 `runtime/race`, `runtime/trace`, and `runtime/coverage`. The compiler handles
 `unsafe` separately. `log/syslog` is available only on platforms that provide it.
-Generic functions that need native instantiation use wrappers, such as
-`iter.Pull` and `iter.Pull2`. `crypto/hkdf` and `crypto/pbkdf2` are registered
-instantiated at `hash.Hash`.
 
 Use `pipit symbols list` to inspect the CLI's actual registrations. Embedders can
 inspect `stdlib.Exports()`; `pipit.StandardLibraryPaths()` provides package names
@@ -72,9 +68,9 @@ operation. The named-type limitations above still apply.
 ## Native and browser execution
 
 Native functions may require facilities unavailable in a browser even if their
-symbols are registered. The WASM build uses the safe Go dispatcher. Browser
-applications must provide their own worker lifecycle and termination controls;
-Pipit's interpreter limits do not supply a browser-wide memory limit.
+symbols are registered. Browser applications must provide their own worker
+lifecycle and termination controls; Pipit's interpreter limits do not supply a
+browser-wide memory limit.
 
 ## Bytecode compatibility
 
@@ -95,8 +91,6 @@ Differences from native Go:
 - Extra native runtime-error frames are absent, so fixed `Caller(n)` offsets can differ.
 - A function value's `reflect.Value.Pointer()` does not map back through `FuncForPC`.
 - Interpreted callbacks invoked by native functions see only their own frames.
-- Stack dumps use Pipit's goroutine numbers.
-- The safe build returns nil for `FuncForPC` and `Frame.Func`.
 - Programs loaded from bytecode have no source positions.
 
 ## Execution limits

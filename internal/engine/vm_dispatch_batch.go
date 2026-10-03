@@ -58,10 +58,7 @@ func initOpNeedsGoFallback() {
 	specs := isa.AllSpecs()
 	for i := range specs {
 		row := &specs[i]
-		if row.Code == 0 || row.Handler == "" {
-			continue
-		}
-		if row.ExitStub == "" && (row.AsmBody != "" || row.Shim != "") {
+		if row.Code == 0 || !row.Dispatch().ExitsLoop() {
 			continue
 		}
 		index := int(row.Tier)*opcodeTableSize + int(row.Code)

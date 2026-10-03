@@ -970,10 +970,10 @@ func convertGeneralOperand(vm *VM, source reflect.Value, reflectType reflect.Typ
 
 // saturatingFloatToIntConvert performs a saturating float to int convert.
 //
-// Uses Go's native cast (which saturates to the destination width's min and max when the
-// float is out-of-range) instead of reflect.Value.Convert (which returns 0 for
-// out-of-range floats). Required for Go-spec parity on snippets like `int32(1e20)` which
-// Go saturates to MinInt32 but reflect.Convert produces 0.
+// Uses Go's native cast instead of reflect.Value.Convert, so interpreted code gets the
+// same answer as compiled code on the same machine. Go leaves out-of-range results
+// implementation-defined: `int32(1e20)` is MinInt32 on amd64 and MaxInt32 on arm64, while
+// reflect.Convert narrows through int64 and gives 0 on amd64.
 //
 // Takes arena (*RegisterArena) which provides arena-backed storage for the resulting
 // reflect.Value when applicable.

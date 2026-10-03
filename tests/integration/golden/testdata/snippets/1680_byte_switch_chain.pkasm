@@ -1,9 +1,11 @@
 ; pkasm - pipit bytecode assembly
+; dispatch: A assembly, S in-loop shim call to Go, X dedicated exit to Go, G generic exit to Go
 
 
 ; ═════════════════════════════════════════════════════════════
 ; function classify
 ;   registers: int=29 string=1 uint=20
+;   dispatch:  asm=90 shim=0 exit=0 go=9
 ;   params:    (string)
 ;   returns:   (int, int, int, int)
 ; ═════════════════════════════════════════════════════════════
@@ -12,114 +14,115 @@
 ;   ints:    [0]=0  [1]=2  [2]=10
 ;   uints:   [0]=97  [1]=101  [2]=105  [3]=111  [4]=117  [5]=32  [6]=48  [7]=49  [8]=50  [9]=51  [10]=52  [11]=53  [12]=54  [13]=55  [14]=56  [15]=57  [16]=10  [17]=122
 
-0000  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0001  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0002  1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
-0003  1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
-0004  1:LOAD_INT_CONST_SMALL      75   4   0    ; ints[4] = 0
-0005  1:LOAD_UINT_CONST_SMALL     99   1  97    ; LICM hoist of PC 14
-0006  1:LOAD_UINT_CONST_SMALL     99   2 101    ; LICM hoist of PC 16
-0007  1:LOAD_UINT_CONST_SMALL     99   3 105    ; LICM hoist of PC 18
-0008  1:LOAD_UINT_CONST_SMALL     99   4 111    ; LICM hoist of PC 20
-0009  1:LOAD_UINT_CONST_SMALL     99   5 117    ; LICM hoist of PC 22
-0010  1:LEN_STRING_LT_JUMP_FALSE  78   4   0
-0011  0:EXT                       83   0   0
-0012  3:TIER3_NOP                  0   0   0
-0013  0:STRING_INDEX               0   0   4
-0014  1:LOAD_BOOL                 76   7   0    ; ints[7] = false
-0015  0:EQ_UINT                    8   0   1
-0016  0:BIT_OR                     7   7   8
-0017  0:EQ_UINT                    9   0   2
-0018  0:BIT_OR                     7   7   9
-0019  0:EQ_UINT                   10   0   3
-0020  0:BIT_OR                     7   7  10
-0021  0:EQ_UINT                   11   0   4
-0022  0:BIT_OR                     7   7  11
-0023  0:EQ_UINT                   12   0   5
-0024  0:BIT_OR                     7   7  12
-0025  0:JUMP_IF_FALSE              7   4   0    ; if ints[7] == 0 goto +4
-0026  1:LOAD_INT_CONST_SMALL      75  13   2    ; ints[13] = 2
-0027  0:ADD_INT                   14   0  13
-0028  1:MOVE_INT                  35   0  14
-0029  1:JUMP                      74  63   0    ; goto 63
-0030  1:EQ_UINT_CONST_JUMP_FALSE 150   0  32
-0031  0:EXT                        2   0   0
-0032  3:TIER3_NOP                  0   0   0
-0033  2:TIER2_INC_INT              0   1   2
-0034  1:JUMP                      74  58   0    ; goto 58
-0035  1:LOAD_BOOL                 76  14   0    ; ints[14] = false
-0036  1:LOAD_UINT_CONST_SMALL     99   7  48    ; uints[7] = 48
-0037  0:EQ_UINT                   15   0   7
-0038  0:BIT_OR                    14  14  15
-0039  1:LOAD_UINT_CONST_SMALL     99   8  49    ; uints[8] = 49
-0040  0:EQ_UINT                   16   0   8
-0041  0:BIT_OR                    14  14  16
-0042  1:LOAD_UINT_CONST_SMALL     99   9  50    ; uints[9] = 50
-0043  0:EQ_UINT                   17   0   9
-0044  0:BIT_OR                    14  14  17
-0045  1:LOAD_UINT_CONST_SMALL     99  10  51    ; uints[10] = 51
-0046  0:EQ_UINT                   18   0  10
-0047  0:BIT_OR                    14  14  18
-0048  1:LOAD_UINT_CONST_SMALL     99  11  52    ; uints[11] = 52
-0049  0:EQ_UINT                   19   0  11
-0050  0:BIT_OR                    14  14  19
-0051  1:LOAD_UINT_CONST_SMALL     99  12  53    ; uints[12] = 53
-0052  0:EQ_UINT                   20   0  12
-0053  0:BIT_OR                    14  14  20
-0054  1:LOAD_UINT_CONST_SMALL     99  13  54    ; uints[13] = 54
-0055  0:EQ_UINT                   21   0  13
-0056  0:BIT_OR                    14  14  21
-0057  1:LOAD_UINT_CONST_SMALL     99  14  55    ; uints[14] = 55
-0058  0:EQ_UINT                   22   0  14
-0059  0:BIT_OR                    14  14  22
-0060  1:LOAD_UINT_CONST_SMALL     99  15  56    ; uints[15] = 56
-0061  0:EQ_UINT                   23   0  15
-0062  0:BIT_OR                    14  14  23
-0063  1:LOAD_UINT_CONST_SMALL     99  16  57    ; uints[16] = 57
-0064  0:EQ_UINT                   24   0  16
-0065  0:BIT_OR                    14  14  24
-0066  0:JUMP_IF_FALSE             14   7   0    ; if ints[14] == 0 goto +7
-0067  1:LOAD_UINT_CONST_SMALL     99  17  48    ; uints[17] = 48
-0068  0:SUB_UINT                  18   0  17
-0069  0:TRUNCATE_NARROW           18   8   5
-0070  1:UINT_TO_INT               56  25  18
-0071  0:ADD_INT                   26   1  25
-0072  1:MOVE_INT                  35   1  26
-0073  1:JUMP                      74  19   0    ; goto 19
-0074  1:EQ_UINT_CONST_JUMP_FALSE 150   0  10
-0075  0:EXT                        4   0   0
-0076  3:TIER3_NOP                  0   0   0
-0077  1:LOAD_INT_CONST_SMALL      75  26  10    ; ints[26] = 10
-0078  0:ADD_INT                   27   2  26
-0079  1:MOVE_INT                  35   2  27
-0080  1:JUMP                      74  12   0    ; goto 12
-0081  2:RANGE_CHECK_UINT_JUMP_FALSE   0  13   0
-0082  0:EXT                       97 122   0
-0083  0:EXT                        2   0   0
-0084  3:TIER3_NOP                  0   0   0
-0085  3:TIER3_NOP                  0   0   0
-0086  3:TIER3_NOP                  0   0   0
-0087  3:TIER3_NOP                  0   0   0
-0088  3:TIER3_NOP                  0   0   0
-0089  2:TIER2_INC_INT              0   1   0
-0090  1:JUMP                      74   1   0    ; goto 1
-0091  2:TIER2_INC_INT              0   1   3
-0092  1:JUMP                      74   0   0    ; goto 0
-0093  2:TIER2_INC_INT              0   1   4
-0094  1:JUMP                      74 171 255    ; goto -85
-0095  1:MOVE_INT                  35   4   0
-0096  1:MOVE_INT                  35   5   1
-0097  1:MOVE_INT                  35   6   2
-0098  1:MOVE_INT                  35   7   3
-0099  1:MOVE_INT                  35   0   4
-0100  1:MOVE_INT                  35   1   5
-0101  1:MOVE_INT                  35   2   6
-0102  1:MOVE_INT                  35   3   7
-0103  2:TIER2_RETURN               0  10   4    ; 4 values
+0000 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0001 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0002 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0003 A 1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
+0004 A 1:LOAD_INT_CONST_SMALL      75   4   0    ; ints[4] = 0
+0005 A 1:LOAD_UINT_CONST_SMALL     99   1  97    ; LICM hoist of PC 14
+0006 A 1:LOAD_UINT_CONST_SMALL     99   2 101    ; LICM hoist of PC 16
+0007 A 1:LOAD_UINT_CONST_SMALL     99   3 105    ; LICM hoist of PC 18
+0008 A 1:LOAD_UINT_CONST_SMALL     99   4 111    ; LICM hoist of PC 20
+0009 A 1:LOAD_UINT_CONST_SMALL     99   5 117    ; LICM hoist of PC 22
+0010 A 1:LEN_STRING_LT_JUMP_FALSE  78   4   0
+0011   0:EXT                       83   0   0
+0012 G 3:TIER3_NOP                  0   0   0
+0013 A 0:STRING_INDEX               0   0   4
+0014 A 1:LOAD_BOOL                 76   7   0    ; ints[7] = false
+0015 A 0:EQ_UINT                    8   0   1
+0016 A 0:BIT_OR                     7   7   8
+0017 A 0:EQ_UINT                    9   0   2
+0018 A 0:BIT_OR                     7   7   9
+0019 A 0:EQ_UINT                   10   0   3
+0020 A 0:BIT_OR                     7   7  10
+0021 A 0:EQ_UINT                   11   0   4
+0022 A 0:BIT_OR                     7   7  11
+0023 A 0:EQ_UINT                   12   0   5
+0024 A 0:BIT_OR                     7   7  12
+0025 A 0:JUMP_IF_FALSE              7   4   0    ; if ints[7] == 0 goto +4
+0026 A 1:LOAD_INT_CONST_SMALL      75  13   2    ; ints[13] = 2
+0027 A 0:ADD_INT                   14   0  13
+0028 A 1:MOVE_INT                  35   0  14
+0029 A 1:JUMP                      74  63   0    ; goto 63
+0030 A 1:EQ_UINT_CONST_JUMP_FALSE 150   0  32
+0031   0:EXT                        2   0   0
+0032 G 3:TIER3_NOP                  0   0   0
+0033 A 2:TIER2_INC_INT              0   1   2
+0034 A 1:JUMP                      74  58   0    ; goto 58
+0035 A 1:LOAD_BOOL                 76  14   0    ; ints[14] = false
+0036 A 1:LOAD_UINT_CONST_SMALL     99   7  48    ; uints[7] = 48
+0037 A 0:EQ_UINT                   15   0   7
+0038 A 0:BIT_OR                    14  14  15
+0039 A 1:LOAD_UINT_CONST_SMALL     99   8  49    ; uints[8] = 49
+0040 A 0:EQ_UINT                   16   0   8
+0041 A 0:BIT_OR                    14  14  16
+0042 A 1:LOAD_UINT_CONST_SMALL     99   9  50    ; uints[9] = 50
+0043 A 0:EQ_UINT                   17   0   9
+0044 A 0:BIT_OR                    14  14  17
+0045 A 1:LOAD_UINT_CONST_SMALL     99  10  51    ; uints[10] = 51
+0046 A 0:EQ_UINT                   18   0  10
+0047 A 0:BIT_OR                    14  14  18
+0048 A 1:LOAD_UINT_CONST_SMALL     99  11  52    ; uints[11] = 52
+0049 A 0:EQ_UINT                   19   0  11
+0050 A 0:BIT_OR                    14  14  19
+0051 A 1:LOAD_UINT_CONST_SMALL     99  12  53    ; uints[12] = 53
+0052 A 0:EQ_UINT                   20   0  12
+0053 A 0:BIT_OR                    14  14  20
+0054 A 1:LOAD_UINT_CONST_SMALL     99  13  54    ; uints[13] = 54
+0055 A 0:EQ_UINT                   21   0  13
+0056 A 0:BIT_OR                    14  14  21
+0057 A 1:LOAD_UINT_CONST_SMALL     99  14  55    ; uints[14] = 55
+0058 A 0:EQ_UINT                   22   0  14
+0059 A 0:BIT_OR                    14  14  22
+0060 A 1:LOAD_UINT_CONST_SMALL     99  15  56    ; uints[15] = 56
+0061 A 0:EQ_UINT                   23   0  15
+0062 A 0:BIT_OR                    14  14  23
+0063 A 1:LOAD_UINT_CONST_SMALL     99  16  57    ; uints[16] = 57
+0064 A 0:EQ_UINT                   24   0  16
+0065 A 0:BIT_OR                    14  14  24
+0066 A 0:JUMP_IF_FALSE             14   7   0    ; if ints[14] == 0 goto +7
+0067 A 1:LOAD_UINT_CONST_SMALL     99  17  48    ; uints[17] = 48
+0068 A 0:SUB_UINT                  18   0  17
+0069 A 0:TRUNCATE_NARROW           18   8   5
+0070 G 1:UINT_TO_INT               56  25  18
+0071 A 0:ADD_INT                   26   1  25
+0072 A 1:MOVE_INT                  35   1  26
+0073 A 1:JUMP                      74  19   0    ; goto 19
+0074 A 1:EQ_UINT_CONST_JUMP_FALSE 150   0  10
+0075   0:EXT                        4   0   0
+0076 G 3:TIER3_NOP                  0   0   0
+0077 A 1:LOAD_INT_CONST_SMALL      75  26  10    ; ints[26] = 10
+0078 A 0:ADD_INT                   27   2  26
+0079 A 1:MOVE_INT                  35   2  27
+0080 A 1:JUMP                      74  12   0    ; goto 12
+0081 A 2:RANGE_CHECK_UINT_JUMP_FALSE   0  13   0
+0082   0:EXT                       97 122   0
+0083   0:EXT                        2   0   0
+0084 G 3:TIER3_NOP                  0   0   0
+0085 G 3:TIER3_NOP                  0   0   0
+0086 G 3:TIER3_NOP                  0   0   0
+0087 G 3:TIER3_NOP                  0   0   0
+0088 G 3:TIER3_NOP                  0   0   0
+0089 A 2:TIER2_INC_INT              0   1   0
+0090 A 1:JUMP                      74   1   0    ; goto 1
+0091 A 2:TIER2_INC_INT              0   1   3
+0092 A 1:JUMP                      74   0   0    ; goto 0
+0093 A 2:TIER2_INC_INT              0   1   4
+0094 A 1:JUMP                      74 171 255    ; goto -85
+0095 A 1:MOVE_INT                  35   4   0
+0096 A 1:MOVE_INT                  35   5   1
+0097 A 1:MOVE_INT                  35   6   2
+0098 A 1:MOVE_INT                  35   7   3
+0099 A 1:MOVE_INT                  35   0   4
+0100 A 1:MOVE_INT                  35   1   5
+0101 A 1:MOVE_INT                  35   2   6
+0102 A 1:MOVE_INT                  35   3   7
+0103 A 2:TIER2_RETURN               0  10   4    ; 4 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function interpret
 ;   registers: int=17 string=1 uint=7
+;   dispatch:  asm=47 shim=0 exit=0 go=10
 ;   params:    (string)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -128,75 +131,76 @@
 ;   ints:    [0]=0  [1]=10000  [2]=50  [3]=2  [4]=4  [5]=1000  [6]=10
 ;   uints:   [0]=62  [1]=60  [2]=43  [3]=45  [4]=91  [5]=93
 
-0000  1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0001  1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0002  1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
-0003  1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
-0004  1:LEN_STRING                65   4   0
-0005  0:LT_INT                     5   3   4
-0006  1:MOVE_INT                  35   6   5
-0007  0:JUMP_IF_FALSE              6   3   0    ; if ints[6] == 0 goto +3
-0008  0:LOAD_INT_CONST             7   1   0    ; ints[7] = 10000
-0009  0:LT_INT                     8   2   7
-0010  1:MOVE_INT                  35   6   8
-0011  0:JUMP_IF_FALSE              6  46   0    ; if ints[6] == 0 goto +46
-0012  2:TIER2_INC_INT              0   1   2
-0013  0:STRING_INDEX               0   0   3
-0014  1:EQ_UINT_CONST_JUMP_FALSE 150   0  62
-0015  0:EXT                        2   0   0
-0016  3:TIER3_NOP                  0   0   0
-0017  2:TIER2_INC_INT              0   1   0
-0018  1:JUMP                      74  37   0    ; goto 37
-0019  1:EQ_UINT_CONST_JUMP_FALSE 150   0  60
-0020  0:EXT                        2   0   0
-0021  3:TIER3_NOP                  0   0   0
-0022  2:TIER2_DEC_INT              0   2   0
-0023  1:JUMP                      74  32   0    ; goto 32
-0024  1:EQ_UINT_CONST_JUMP_FALSE 150   0  43
-0025  0:EXT                        3   0   0
-0026  3:TIER3_NOP                  0   0   0
-0027  0:ADD_INT                   12   1   0
-0028  1:MOVE_INT                  35   1  12
-0029  1:JUMP                      74  26   0    ; goto 26
-0030  1:EQ_UINT_CONST_JUMP_FALSE 150   0  45
-0031  0:EXT                        3   0   0
-0032  3:TIER3_NOP                  0   0   0
-0033  0:SUB_INT                   13   1   0
-0034  1:MOVE_INT                  35   1  13
-0035  1:JUMP                      74  20   0    ; goto 20
-0036  1:EQ_UINT_CONST_JUMP_FALSE 150   0  91
-0037  0:EXT                        7   0   0
-0038  3:TIER3_NOP                  0   0   0
-0039  1:GT_INT_CONST_JUMP_FALSE  127   1   2
-0040  0:EXT                        4   0   0
-0041  3:TIER3_NOP                  0   0   0
-0042  1:LOAD_INT_CONST_SMALL      75  14   2    ; ints[14] = 2
-0043  0:ADD_INT                   15   3  14
-0044  1:MOVE_INT                  35   3  15
-0045  1:JUMP                      74  10   0    ; goto 10
-0046  1:EQ_UINT_CONST_JUMP_FALSE 150   0  93
-0047  0:EXT                        7   0   0
-0048  3:TIER3_NOP                  0   0   0
-0049  1:LT_INT_CONST_JUMP_FALSE  123   1   0
-0050  0:EXT                        4   0   0
-0051  3:TIER3_NOP                  0   0   0
-0052  1:LOAD_INT_CONST_SMALL      75  15   4    ; ints[15] = 4
-0053  0:SUB_INT                   16   3  15
-0054  1:MOVE_INT                  35   3  16
-0055  1:JUMP                      74   0   0    ; goto 0
-0056  2:TIER2_INC_INT              0   1   3
-0057  1:JUMP                      74 202 255    ; goto -54
-0058  0:MUL_INT_CONST              4   1   5    ; const = 1000
-0059  3:TIER3_NOP                  0   0   0
-0060  0:MUL_INT_CONST              6   0   6    ; const = 10
-0061  3:TIER3_NOP                  0   0   0
-0062  0:ADD_INT                    7   4   6
-0063  0:ADD_INT                    0   7   2
-0064  2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0001 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0002 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0003 A 1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
+0004 A 1:LEN_STRING                65   4   0
+0005 A 0:LT_INT                     5   3   4
+0006 A 1:MOVE_INT                  35   6   5
+0007 A 0:JUMP_IF_FALSE              6   3   0    ; if ints[6] == 0 goto +3
+0008 A 0:LOAD_INT_CONST             7   1   0    ; ints[7] = 10000
+0009 A 0:LT_INT                     8   2   7
+0010 A 1:MOVE_INT                  35   6   8
+0011 A 0:JUMP_IF_FALSE              6  46   0    ; if ints[6] == 0 goto +46
+0012 A 2:TIER2_INC_INT              0   1   2
+0013 A 0:STRING_INDEX               0   0   3
+0014 A 1:EQ_UINT_CONST_JUMP_FALSE 150   0  62
+0015   0:EXT                        2   0   0
+0016 G 3:TIER3_NOP                  0   0   0
+0017 A 2:TIER2_INC_INT              0   1   0
+0018 A 1:JUMP                      74  37   0    ; goto 37
+0019 A 1:EQ_UINT_CONST_JUMP_FALSE 150   0  60
+0020   0:EXT                        2   0   0
+0021 G 3:TIER3_NOP                  0   0   0
+0022 A 2:TIER2_DEC_INT              0   2   0
+0023 A 1:JUMP                      74  32   0    ; goto 32
+0024 A 1:EQ_UINT_CONST_JUMP_FALSE 150   0  43
+0025   0:EXT                        3   0   0
+0026 G 3:TIER3_NOP                  0   0   0
+0027 A 0:ADD_INT                   12   1   0
+0028 A 1:MOVE_INT                  35   1  12
+0029 A 1:JUMP                      74  26   0    ; goto 26
+0030 A 1:EQ_UINT_CONST_JUMP_FALSE 150   0  45
+0031   0:EXT                        3   0   0
+0032 G 3:TIER3_NOP                  0   0   0
+0033 A 0:SUB_INT                   13   1   0
+0034 A 1:MOVE_INT                  35   1  13
+0035 A 1:JUMP                      74  20   0    ; goto 20
+0036 A 1:EQ_UINT_CONST_JUMP_FALSE 150   0  91
+0037   0:EXT                        7   0   0
+0038 G 3:TIER3_NOP                  0   0   0
+0039 A 1:GT_INT_CONST_JUMP_FALSE  127   1   2
+0040   0:EXT                        4   0   0
+0041 G 3:TIER3_NOP                  0   0   0
+0042 A 1:LOAD_INT_CONST_SMALL      75  14   2    ; ints[14] = 2
+0043 A 0:ADD_INT                   15   3  14
+0044 A 1:MOVE_INT                  35   3  15
+0045 A 1:JUMP                      74  10   0    ; goto 10
+0046 A 1:EQ_UINT_CONST_JUMP_FALSE 150   0  93
+0047   0:EXT                        7   0   0
+0048 G 3:TIER3_NOP                  0   0   0
+0049 A 1:LT_INT_CONST_JUMP_FALSE  123   1   0
+0050   0:EXT                        4   0   0
+0051 G 3:TIER3_NOP                  0   0   0
+0052 A 1:LOAD_INT_CONST_SMALL      75  15   4    ; ints[15] = 4
+0053 A 0:SUB_INT                   16   3  15
+0054 A 1:MOVE_INT                  35   3  16
+0055 A 1:JUMP                      74   0   0    ; goto 0
+0056 A 2:TIER2_INC_INT              0   1   3
+0057 A 1:JUMP                      74 202 255    ; goto -54
+0058 A 0:MUL_INT_CONST              4   1   5    ; const = 1000
+0059 G 3:TIER3_NOP                  0   0   0
+0060 A 0:MUL_INT_CONST              6   0   6    ; const = 10
+0061 G 3:TIER3_NOP                  0   0   0
+0062 A 0:ADD_INT                    7   4   6
+0063 A 0:ADD_INT                    0   7   2
+0064 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=6 string=23
+;   dispatch:  asm=18 shim=10 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -204,31 +208,31 @@
 ; constants:
 ;   strings: [0]="hello world 42\nabc xyz 7 !!"  [1]=","  [2]="|"  [3]=">>++[-]<+>>++[--]<<<->>]-+"  [4]="+++++++++++[>>>>]"
 
-0000  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "hello world 42\nabc xyz 7 !!"
-0001  1:CALL                     128   0   0    ; call (site 0)
-0002  1:STRCONV_ITOA               8   1   0
-0003  0:LOAD_STRING_CONST          2   1   0    ; strings[2] = ","
-0004  0:CONCAT_STRING              3   1   2
-0005  1:STRCONV_ITOA               8   4   1
-0006  0:CONCAT_STRING              5   3   4
-0007  0:LOAD_STRING_CONST          6   1   0    ; strings[6] = ","
-0008  0:CONCAT_STRING              7   5   6
-0009  1:STRCONV_ITOA               8   8   2
-0010  0:CONCAT_STRING              9   7   8
-0011  0:LOAD_STRING_CONST         10   1   0    ; strings[10] = ","
-0012  0:CONCAT_STRING             11   9  10
-0013  1:STRCONV_ITOA               8  12   3
-0014  0:CONCAT_STRING             13  11  12
-0015  0:LOAD_STRING_CONST         14   2   0    ; strings[14] = "|"
-0016  0:CONCAT_STRING             15  13  14
-0017  0:LOAD_STRING_CONST         16   3   0    ; strings[16] = ">>++[-]<+>>++[--]<<<->>]-+"
-0018  1:CALL_SCALAR              134   1   0
-0019  1:STRCONV_ITOA               8  17   4
-0020  0:CONCAT_STRING             18  15  17
-0021  0:LOAD_STRING_CONST         19   2   0    ; strings[19] = "|"
-0022  0:CONCAT_STRING             20  18  19
-0023  0:LOAD_STRING_CONST         21   4   0    ; strings[21] = "+++++++++++[>>>>]"
-0024  1:CALL_SCALAR              134   2   0
-0025  1:STRCONV_ITOA               8  22   5
-0026  0:CONCAT_STRING              0  20  22
-0027  2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "hello world 42\nabc xyz 7 !!"
+0001 A 1:CALL                     128   0   0    ; call (site 0)
+0002 A 1:STRCONV_ITOA               8   1   0
+0003 A 0:LOAD_STRING_CONST          2   1   0    ; strings[2] = ","
+0004 S 0:CONCAT_STRING              3   1   2
+0005 A 1:STRCONV_ITOA               8   4   1
+0006 S 0:CONCAT_STRING              5   3   4
+0007 A 0:LOAD_STRING_CONST          6   1   0    ; strings[6] = ","
+0008 S 0:CONCAT_STRING              7   5   6
+0009 A 1:STRCONV_ITOA               8   8   2
+0010 S 0:CONCAT_STRING              9   7   8
+0011 A 0:LOAD_STRING_CONST         10   1   0    ; strings[10] = ","
+0012 S 0:CONCAT_STRING             11   9  10
+0013 A 1:STRCONV_ITOA               8  12   3
+0014 S 0:CONCAT_STRING             13  11  12
+0015 A 0:LOAD_STRING_CONST         14   2   0    ; strings[14] = "|"
+0016 S 0:CONCAT_STRING             15  13  14
+0017 A 0:LOAD_STRING_CONST         16   3   0    ; strings[16] = ">>++[-]<+>>++[--]<<<->>]-+"
+0018 A 1:CALL_SCALAR              134   1   0
+0019 A 1:STRCONV_ITOA               8  17   4
+0020 S 0:CONCAT_STRING             18  15  17
+0021 A 0:LOAD_STRING_CONST         19   2   0    ; strings[19] = "|"
+0022 S 0:CONCAT_STRING             20  18  19
+0023 A 0:LOAD_STRING_CONST         21   4   0    ; strings[21] = "+++++++++++[>>>>]"
+0024 A 1:CALL_SCALAR              134   2   0
+0025 A 1:STRCONV_ITOA               8  22   5
+0026 S 0:CONCAT_STRING              0  20  22
+0027 A 2:TIER2_RETURN               0  10   1    ; 1 values

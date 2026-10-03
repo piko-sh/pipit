@@ -734,6 +734,7 @@ func (c *Compiler) resolveMultiReturnDefine(ctx context.Context,
 	typeObject := c.Info.Defs[target]
 	if typeObject != nil {
 		location := c.Scopes.DeclareVar(target.Name, kind)
+		c.resetSharedCellForDeclaration(ctx, target.Name, location)
 		return location, nil, nil
 	}
 
@@ -1234,11 +1235,13 @@ func (c *Compiler) declareCommaOkTargets(
 // target is blank.
 //
 // Returns the resolved value location.
-func (c *Compiler) declareCommaOkValue(_ context.Context, valueIdentifier *ast.Ident, valueKind isa.RegisterKind, blankValueKind isa.RegisterKind) program.VarLocation {
+func (c *Compiler) declareCommaOkValue(ctx context.Context, valueIdentifier *ast.Ident, valueKind isa.RegisterKind, blankValueKind isa.RegisterKind) program.VarLocation {
 	if valueIdentifier.Name != typemap.BlankIdentName {
 		typeObject := c.Info.Defs[valueIdentifier]
 		if typeObject != nil {
-			return c.Scopes.DeclareVar(valueIdentifier.Name, c.typedSliceKindForLocal(valueIdentifier.Name, typeObject.Type(), valueKind))
+			location := c.Scopes.DeclareVar(valueIdentifier.Name, c.typedSliceKindForLocal(valueIdentifier.Name, typeObject.Type(), valueKind))
+			c.resetSharedCellForDeclaration(ctx, valueIdentifier.Name, location)
+			return location
 		}
 		location, _ := c.Scopes.LookupVar(valueIdentifier.Name)
 		return location
@@ -1251,11 +1254,13 @@ func (c *Compiler) declareCommaOkValue(_ context.Context, valueIdentifier *ast.I
 // Takes okIdentifier (*ast.Ident) which is the identifier for the ok boolean target.
 //
 // Returns the resolved ok location.
-func (c *Compiler) declareCommaOkBool(_ context.Context, okIdentifier *ast.Ident) program.VarLocation {
+func (c *Compiler) declareCommaOkBool(ctx context.Context, okIdentifier *ast.Ident) program.VarLocation {
 	if okIdentifier.Name != typemap.BlankIdentName {
 		typeObject := c.Info.Defs[okIdentifier]
 		if typeObject != nil {
-			return c.Scopes.DeclareVar(okIdentifier.Name, isa.RegisterInt)
+			location := c.Scopes.DeclareVar(okIdentifier.Name, isa.RegisterInt)
+			c.resetSharedCellForDeclaration(ctx, okIdentifier.Name, location)
+			return location
 		}
 		location, _ := c.Scopes.LookupVar(okIdentifier.Name)
 		return location

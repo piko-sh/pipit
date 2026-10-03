@@ -111,21 +111,20 @@ func (c *Compiler) compileSelectorExpressionDetailed(ctx context.Context, expres
 		}
 	}
 
+	if selection.Kind() == types.MethodVal {
+		return c.compileSelectorMethodValue(ctx, expression, selection)
+	}
+	if selection.Kind() != types.FieldVal {
+		return selectorResult{}, fmt.Errorf("unsupported selector kind: %v for %s at %s", selection.Kind(), expression.Sel.Name, c.positionString(expression.Pos()))
+	}
+
 	receiverLocation, err := c.compileExpression(ctx, expression.X)
 	if err != nil {
 		return selectorResult{}, err
 	}
 	c.boxToGeneral(ctx, &receiverLocation)
-
-	switch selection.Kind() {
-	case types.FieldVal:
-		location, err := c.compileSelectorFieldValue(ctx, selection, receiverLocation)
-		return selectorValue(location), err
-	case types.MethodVal:
-		return c.compileSelectorMethodValue(ctx, expression, selection, receiverLocation)
-	default:
-		return selectorResult{}, fmt.Errorf("unsupported selector kind: %v for %s at %s", selection.Kind(), expression.Sel.Name, c.positionString(expression.Pos()))
-	}
+	location, err := c.compileSelectorFieldValue(ctx, selection, receiverLocation)
+	return selectorValue(location), err
 }
 
 // compilePackageSymbol resolves a selector referring to a package-qualified symbol (e.g.
@@ -354,20 +353,24 @@ func (c *Compiler) maybeRetargetCycleBrokenInterface(op isa.Opcode, layoutIdx ui
 //
 // Takes expression (*ast.SelectorExpr) which is the selector node.
 // Takes selection (*types.Selection) which is the type selection.
-// Takes receiverLocation (VarLocation) which is the receiver location.
 //
 // Returns the bound method location and any compilation error.
-func (c *Compiler) compileSelectorMethodValue(ctx context.Context, expression *ast.SelectorExpr, selection *types.Selection, receiverLocation program.VarLocation) (selectorResult, error) {
+func (c *Compiler) compileSelectorMethodValue(ctx context.Context, expression *ast.SelectorExpr, selection *types.Selection) (selectorResult, error) {
 	if tableName, ok := c.resolveMethodTableName(ctx, expression); ok {
 		if functionIndex, found := c.functionTable[tableName]; found {
 			specialised, err := c.maybeSpecialiseMethod(ctx, expression, functionIndex)
 			if err != nil {
 				return selectorResult{}, err
 			}
-			return c.emitBoundMethod(ctx, selection, receiverLocation, specialised)
+			return c.emitBoundMethod(ctx, expression, selection, specialised)
 		}
 	}
 
+	receiverLocation, err := c.compileExpression(ctx, expression.X)
+	if err != nil {
+		return selectorResult{}, err
+	}
+	c.boxToGeneral(ctx, &receiverLocation)
 	receiverLocation = c.recastBoxedReceiverToNamedType(ctx, expression, receiverLocation)
 
 	methodName := expression.Sel.Name
@@ -464,24 +467,24 @@ func (c *Compiler) recastBoxedReceiverToNamedType(ctx context.Context, expressio
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}
 }
 
-// emitBoundMethod walks the embedded field path to reach the true receiver, then emits
-// isa.OpBindMethod plus an extension word carrying the function-table index.
+// emitBoundMethod compiles the receiver as a call of the method would pass it, walking
+// the embedded field path and taking the address of an addressable value for a pointer
+// receiver, then emits isa.OpBindMethod plus an extension word carrying the
+// function-table index.
 //
+// Takes expression (*ast.SelectorExpr) which is the method value.
 // Takes selection (*types.Selection) which is the type selection.
-// Takes receiverLocation (VarLocation) which is the receiver location.
 // Takes functionIndex (uint16) which is the function-table index of the method.
 //
 // Returns the bound method location and any compilation error.
-func (c *Compiler) emitBoundMethod(_ context.Context, selection *types.Selection, receiverLocation program.VarLocation, functionIndex uint16) (selectorResult, error) {
+func (c *Compiler) emitBoundMethod(ctx context.Context, expression *ast.SelectorExpr, selection *types.Selection, functionIndex uint16) (selectorResult, error) {
 	var fieldPath []int
 	if index := selection.Index(); len(index) > 1 {
 		fieldPath = index[:len(index)-1]
 	}
-
-	for _, fieldIndex := range fieldPath {
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-		program.Emit(c.Function, isa.OpGetField, dest, receiverLocation.Register, safeconv.MustIntToUint8(fieldIndex))
-		receiverLocation = program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}
+	receiverLocation, err := c.compileMethodReceiverWithPath(ctx, expression.X, fieldPath, c.RootFunction.Functions[functionIndex])
+	if err != nil {
+		return selectorResult{}, err
 	}
 
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)

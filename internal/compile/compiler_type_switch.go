@@ -251,6 +251,7 @@ func (c *Compiler) declareNarrowedTypeSwitchVar(ctx context.Context, assignName 
 		narrowedKind = isa.RegisterGeneral
 	}
 	location := c.Scopes.DeclareVar(assignName, narrowedKind)
+	c.resetSharedCellForDeclaration(ctx, assignName, location)
 	if location.IsSpilled {
 		if narrowedKind == isa.RegisterGeneral {
 			c.emitSpillStore(ctx, destinationRegister, isa.RegisterGeneral, location.SpillSlot)
@@ -284,6 +285,7 @@ func (c *Compiler) compileTypeSwitchDefault(ctx context.Context,
 	c.Scopes.PushScope()
 	if assignName != "" {
 		location := c.Scopes.DeclareVar(assignName, sourceLocation.Kind)
+		c.resetSharedCellForDeclaration(ctx, assignName, location)
 		c.emitMove(ctx, location, sourceLocation)
 	}
 	for _, bodyStmt := range defaultCase.Body {

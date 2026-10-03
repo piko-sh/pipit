@@ -103,6 +103,8 @@ func (*arm64InlineCallOps) emitReturnInlineDispatchReturnType(e *asmgen.Emitter)
 	inst(e, asmarm64.OperationMove8BitsUnsigned, "VL_REGISTER(R7), R7", mnemonicColumnWidth)
 	e.Blank()
 
+	emitReturnInlineResultKindGuardARM64(e)
+
 	inst5(e, asmarm64.OperationCompare, "$0, R1")
 	inst5(e, asmarm64.OperationBranchIfEqual, "ri_check_int")
 	inst5(e, asmarm64.OperationCompare, "$1, R1")

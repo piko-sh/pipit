@@ -81,6 +81,11 @@ type programContext struct {
 	// Methods are not recorded.
 	functionDeclarations map[string]*ast.FuncDecl
 
+	// sliceFlows summarises which operands each function, method and function literal stores
+	// (escape.ComputeSliceFlows), computed from sliceFlowDeclarations on first use and again
+	// whenever more are declared.
+	sliceFlows *escape.SliceFlows
+
 	// FileSet is the file set from parsing.
 	FileSet *token.FileSet
 
@@ -95,6 +100,13 @@ type programContext struct {
 	// initFunctionIndices holds indices (into rootFunction.functions) of init() functions in
 	// source order, for auto-execution before _eval_.
 	initFunctionIndices []uint16
+
+	// sliceFlowDeclarations holds every function and method declaration, in declaration
+	// order, for the slice-flow analysis.
+	sliceFlowDeclarations []*ast.FuncDecl
+
+	// sliceFlowsDeclared is the sliceFlowDeclarations count sliceFlows was computed from.
+	sliceFlowsDeclared int
 
 	// maxExpressionDepth caps the recursion depth when compiling nested expressions. Zero
 	// means use defaultMaxExpressionDepth (1024).
@@ -130,25 +142,28 @@ func newProgramContext(config CompilerConfig) *programContext {
 		globalVariables = make(map[string]program.GlobalVariableInfo)
 	}
 	return new(programContext{
-		FileSet:              config.FileSet,
-		Info:                 config.Info,
-		RootFunction:         config.RootFunction,
-		globals:              config.Globals,
-		symbols:              config.Symbols,
-		globalVariables:      globalVariables,
-		addressTakenGlobals:  nil,
-		functionTable:        functionTable,
-		functionDeclarations: make(map[string]*ast.FuncDecl),
-		initFunctionIndices:  nil,
-		features:             config.Features,
-		passOptions:          config.Passes,
-		patterns:             patternRegistry(config.Patterns),
-		debugEnabled:         config.DebugEnabled,
-		runtimePackageName:   "",
-		maxLiteralElements:   config.MaxLiteralElements,
-		maxExpressionDepth:   config.MaxExpressionDepth,
-		reflectTypeCache:     nil,
-		debugFiles:           nil,
+		FileSet:               config.FileSet,
+		Info:                  config.Info,
+		RootFunction:          config.RootFunction,
+		globals:               config.Globals,
+		symbols:               config.Symbols,
+		globalVariables:       globalVariables,
+		addressTakenGlobals:   nil,
+		functionTable:         functionTable,
+		functionDeclarations:  make(map[string]*ast.FuncDecl),
+		sliceFlowDeclarations: nil,
+		sliceFlows:            nil,
+		sliceFlowsDeclared:    0,
+		initFunctionIndices:   nil,
+		features:              config.Features,
+		passOptions:           config.Passes,
+		patterns:              patternRegistry(config.Patterns),
+		debugEnabled:          config.DebugEnabled,
+		runtimePackageName:    "",
+		maxLiteralElements:    config.MaxLiteralElements,
+		maxExpressionDepth:    config.MaxExpressionDepth,
+		reflectTypeCache:      nil,
+		debugFiles:            nil,
 	})
 }
 
@@ -216,8 +231,10 @@ type bodySpec struct {
 	// body is the function body.
 	body *ast.BlockStmt
 
-	// params is the parameter list, consulted by the in-place append alias analysis.
-	params *ast.FieldList
+	// signature is the function's signature: its parameter list feeds the in-place append
+	// alias analysis, and its extent tells the slice-flow analysis locals from captured
+	// variables.
+	signature *ast.FuncType
 
 	// resultTypes are the declared result types, in order.
 	resultTypes []types.Type
@@ -258,12 +275,13 @@ func (c *Compiler) prepareBody(spec bodySpec) {
 	c.Scopes.PushScope()
 	c.heapPromotedNames = escape.CollectHeapPromotedNames(c.EscapeContext(), spec.body)
 	c.closureCapturedNames = escape.CollectClosureCapturedNamesAll(spec.body)
+	c.flowingSliceNames = escape.CollectFlowingSliceNames(c.Info, spec.signature, spec.body, c.lookupSliceFlow)
 	c.writtenLocalNames = escape.CollectWrittenLocalNames(spec.body)
 	if checkCaptureEnabled {
 		c.captureCheckNames = escape.CollectDirectlyAssignedNames(c.Info, spec.body)
 	}
 	c.classifyTypedSliceLocals(spec.body)
-	c.inPlaceAppendAliases = appendlower.CollectAliases(c.Info, spec.params, spec.body)
+	c.inPlaceAppendAliases = appendlower.CollectAliases(c.Info, spec.signature.Params, spec.body)
 	c.hasRecover = bodyContainsRecoverCall(c.Info, spec.body)
 	c.Function.HasRecover = c.hasRecover
 	c.Function.InspectsCallStack = bodyInspectsCallStack(c.Info, spec.body)

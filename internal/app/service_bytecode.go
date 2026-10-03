@@ -102,7 +102,7 @@ func verifyLoadedFileSet(ctx context.Context, cfs *program.CompiledFileSet) erro
 		if report.HasErrors() {
 			return fmt.Errorf("loaded %w:\n%w", fault.ErrBytecodeVerification, report.Err())
 		}
-		if err := verify.VerifyRegisterOperandBounds(root); err != nil {
+		if err := verify.VerifyOperandBounds(root); err != nil {
 			return fmt.Errorf("loaded bytecode failed verification: %w", err)
 		}
 	}

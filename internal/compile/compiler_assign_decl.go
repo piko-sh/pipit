@@ -512,9 +512,7 @@ func (c *Compiler) declareShortVarFromValue(ctx context.Context, identifier *ast
 
 	kind := c.kindFor(typeObject.Type())
 	location := c.Scopes.DeclareVar(identifier.Name, kind)
-	if c.isInsideLoop(ctx) && !location.IsSpilled && c.closureCapturedNames[identifier.Name] {
-		program.EmitTier1(c.Function, isa.SubOpResetSharedCell, location.Register, uint8(location.Kind))
-	}
+	c.resetSharedCellForDeclaration(ctx, identifier.Name, location)
 	c.emitValueCopyForLocalAssignment(rhsExpr, value, identifier.Name)
 	c.emitMoveTyped(ctx, location, value, c.staticTypeOf(rhsExpr))
 	c.tryHeapPromoteCapturedLocal(ctx, identifier.Name, identifier)
@@ -522,6 +520,18 @@ func (c *Compiler) declareShortVarFromValue(ctx context.Context, identifier *ast
 		location = promoted
 	}
 	return location, nil
+}
+
+// resetSharedCellForDeclaration emits isa.SubOpResetSharedCell for a captured local
+// declared inside a loop.
+//
+// Takes name (string) which is the local being declared.
+// Takes location (program.VarLocation) which is where the local lives.
+func (c *Compiler) resetSharedCellForDeclaration(ctx context.Context, name string, location program.VarLocation) {
+	if location.IsSpilled || !c.closureCapturedNames[name] || !c.isInsideLoop(ctx) {
+		return
+	}
+	program.EmitTier1(c.Function, isa.SubOpResetSharedCell, location.Register, uint8(location.Kind))
 }
 
 // compileShortVarIdent compiles a single identifier in a short variable declaration,
@@ -563,9 +573,7 @@ func (c *Compiler) compileShortVarIdent(ctx context.Context, identifier *ast.Ide
 	}
 
 	location := c.Scopes.DeclareVar(identifier.Name, kind)
-	if c.isInsideLoop(ctx) && !location.IsSpilled && c.closureCapturedNames[identifier.Name] {
-		program.EmitTier1(c.Function, isa.SubOpResetSharedCell, location.Register, uint8(location.Kind))
-	}
+	c.resetSharedCellForDeclaration(ctx, identifier.Name, location)
 
 	if hasValue {
 		c.emitValueCopyForLocalAssignment(rhsExpr, valueLocation, identifier.Name)
@@ -609,9 +617,7 @@ func (c *Compiler) typedSliceKindForLocal(name string, declared types.Type, kind
 // Returns the location of the declared variable and any compilation error.
 func (c *Compiler) compileShortVarIdentTypedSlice(ctx context.Context, identifier *ast.Ident, rightHandSideExprs []ast.Expr, i int, kind isa.RegisterKind) (program.VarLocation, error) {
 	location := c.Scopes.DeclareVar(identifier.Name, kind)
-	if c.isInsideLoop(ctx) && !location.IsSpilled && c.closureCapturedNames[identifier.Name] {
-		program.EmitTier1(c.Function, isa.SubOpResetSharedCell, location.Register, uint8(location.Kind))
-	}
+	c.resetSharedCellForDeclaration(ctx, identifier.Name, location)
 
 	if i < len(rightHandSideExprs) {
 		if err := c.emitTypedSliceInitialiser(ctx, identifier, rightHandSideExprs[i], location, kind); err != nil {

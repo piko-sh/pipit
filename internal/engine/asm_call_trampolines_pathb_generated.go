@@ -725,6 +725,42 @@ func asmCallHandleGetStructFieldSliceIndexScalar(ctx *dispatchContext, instWord 
 }
 
 //go:nosplit
+func asmCallHandleSubOpMakeSliceInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSubOpMakeSliceInt)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleSubOpMakeSliceFloat(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSubOpMakeSliceFloat)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleSubOpMakeSliceString(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSubOpMakeSliceString)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleSubOpMakeSliceBool(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSubOpMakeSliceBool)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleSubOpMakeSliceUint(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSubOpMakeSliceUint)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleSubOpMakeSliceByte(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSubOpMakeSliceByte)
+	return ctx
+}
+
+//go:nosplit
 func asmCallHandleResetSharedCell(ctx *dispatchContext, instWord uint32) *dispatchContext {
 	pathBTrampoline(ctx, instWord, handleResetSharedCell)
 	return ctx

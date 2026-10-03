@@ -109,6 +109,9 @@ type pipitFunc struct {
 	// name is the qualified function name (main.f).
 	name string
 
+	// handle is what the entry's *runtime.Func points at.
+	handle runtimeFuncRecord
+
 	// entry is the synthesised program counter of the function's first instruction.
 	entry uintptr
 }
@@ -230,7 +233,7 @@ func (registry *callStackRegistry) forFunction(function *program.CompiledFunctio
 	if name == "" {
 		name = function.Name
 	}
-	entry := registry.register(&pipitFunc{function: function, name: name, entry: 0})
+	entry := registry.register(function, name)
 	registry.byFunction[function] = entry
 	return entry
 }
@@ -247,22 +250,29 @@ func (registry *callStackRegistry) pseudo(name string) *pipitFunc {
 	if entry, ok := registry.byName[name]; ok {
 		return entry
 	}
-	entry := registry.register(&pipitFunc{function: nil, name: name, entry: 0})
+	entry := registry.register(nil, name)
 	registry.byName[name] = entry
 	return entry
 }
 
-// register appends an entry and assigns its entry program counter. Callers hold mu.
+// register creates and appends an entry, assigning its entry program counter and handle.
+// Callers hold mu.
 //
-// Takes entry (*pipitFunc) which is the new entry.
+// Takes function (*program.CompiledFunction) which is the function, nil for a runtime
+// pseudo frame.
+// Takes name (string) which is the qualified name the entry reports.
 //
-// Returns *pipitFunc which is entry, for chaining.
-func (registry *callStackRegistry) register(entry *pipitFunc) *pipitFunc {
-	registry.functions = append(registry.functions, entry)
-	entry.entry = uintptr(len(registry.functions)) << callStackPCShift
-	if key := handleKey(entry); key != 0 {
-		registry.byHandle[key] = entry
+// Returns *pipitFunc which is the new entry.
+func (registry *callStackRegistry) register(function *program.CompiledFunction, name string) *pipitFunc {
+	entryPC := uintptr(len(registry.functions)+1) << callStackPCShift
+	entry := &pipitFunc{
+		function: function,
+		name:     name,
+		handle:   newRuntimeFuncRecord(function, name, entryPC),
+		entry:    entryPC,
 	}
+	registry.functions = append(registry.functions, entry)
+	registry.byHandle[handleKey(entry)] = entry
 	return entry
 }
 

@@ -31,19 +31,22 @@ var (
 	// beyond the function's declared register count for that bank.
 	ErrRegisterOperandOutOfRange = errors.New("register operand beyond declared register count")
 
+	// ErrCallSiteOutOfRange signals a call instruction whose call-site index lies past its
+	// function's call-site table.
+	ErrCallSiteOutOfRange = errors.New("call-site index beyond the function's call-site table")
+
 	// extensionOperandNames labels the operand positions of an extension word in errors.
 	extensionOperandNames = [isa.NumInstructionOperands]string{"A", "B", "C"}
 )
 
-// VerifyRegisterOperandBounds checks that every described register operand in root and
-// its nested functions addresses a slot within the declared register count. Reserved for
-// untrusted payloads; freshly compiled code satisfies this by construction.
+// VerifyOperandBounds checks that every operand in root and its nested functions that
+// indexes a table stays inside it.
 //
 // Takes root (*CompiledFunction) which is the top-level function to check.
 //
-// Returns ErrRegisterOperandOutOfRange wrapped with the offending location, or nil when
-// every operand is in range.
-func VerifyRegisterOperandBounds(root *program.CompiledFunction) error {
+// Returns ErrRegisterOperandOutOfRange or ErrCallSiteOutOfRange wrapped with the offending
+// location, or nil when every operand is in range.
+func VerifyOperandBounds(root *program.CompiledFunction) error {
 	visited := make(map[*program.CompiledFunction]bool)
 	return verifyFunctionOperandBounds(root, visited)
 }
@@ -74,16 +77,21 @@ func verifyFunctionOperandBounds(compiledFunction *program.CompiledFunction, vis
 	return nil
 }
 
-// checkInstructionBounds checks the register operands of the instruction at pc and of the
-// extension words it owns.
+// checkInstructionBounds checks the call-site index and register operands of the
+// instruction at pc and the register operands of the extension words it owns.
 //
-// Takes compiledFunction (*CompiledFunction) which supplies the body and register counts.
+// Takes compiledFunction (*CompiledFunction) which supplies the body, register counts and
+// call sites.
 // Takes pc (int) which is the instruction's program counter.
 //
 // Returns the program counter of the last word the instruction occupies, and an error
 // naming the first out-of-range operand, or nil.
 func checkInstructionBounds(compiledFunction *program.CompiledFunction, pc int) (int, error) {
 	instr := compiledFunction.Body[pc]
+	if site, isCall := isa.CallSiteIndex(instr); isCall && int(site) >= len(compiledFunction.CallSites) {
+		return pc, fmt.Errorf("verifier: %s pc=%d op=%s site=%d count=%d: %w",
+			compiledFunction.Name, pc, instr.Op, site, len(compiledFunction.CallSites), ErrCallSiteOutOfRange)
+	}
 	shape := isa.ShapeForInstruction(instr)
 	if shape.Flags&isa.ShapeFlagDescribed != 0 {
 		if err := checkOperandBounds(compiledFunction, pc, instr, shape); err != nil {

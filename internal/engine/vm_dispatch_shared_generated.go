@@ -471,24 +471,6 @@ func handlerSubOpBytesToString()
 func handlerSubOpBoxSliceInt()
 
 //go:noescape
-func handlerSubOpMakeSliceInt()
-
-//go:noescape
-func handlerSubOpMakeSliceFloat()
-
-//go:noescape
-func handlerSubOpMakeSliceString()
-
-//go:noescape
-func handlerSubOpMakeSliceBool()
-
-//go:noescape
-func handlerSubOpMakeSliceUint()
-
-//go:noescape
-func handlerSubOpMakeSliceByte()
-
-//go:noescape
 func handlerSubOpLenSliceByteDirect()
 
 //go:noescape

@@ -256,8 +256,8 @@ func handleCallNative(vm *VM, frame *CallFrame, registers *Registers, instructio
 
 	hookInstalled := vm.Limits.CapabilityHook != nil
 	fastPath := loadNativeFastPath(site)
-	if !hookInstalled && fastPath != nil && fastPath.fn != nativeFastPathNone && len(site.LinkedTypeArgs) == 0 {
-		return dispatchCachedNativeFastPath(vm, site, registers, fastPath)
+	if result, dispatched := tryCachedNativeFastPath(vm, site, registers, fastPath, hookInstalled); dispatched {
+		return result
 	}
 
 	reflectedFunction := registers.General[site.NativeRegister]
@@ -337,25 +337,49 @@ func panicHandleCallNativeZeroValue(_ *CallFrame, _ *Registers, _ *program.CallS
 	panic(newRuntimePanicError(nilDereferenceMessage))
 }
 
+// tryCachedNativeFastPath dispatches through the site's published fast path when one
+// applies: no capability hook, a probed non-empty entry and no linked-generic type
+// arguments.
+//
+// Takes vm (*VM) which is the virtual machine executing the instruction.
+// Takes site (*CallSite) which provides the call site metadata.
+// Takes registers (*Registers) which holds the current register banks.
+// Takes fastPath (*nativeFastPathEntry) which is the published entry, nil when unprobed.
+// Takes hookInstalled (bool) which reports whether a capability hook guards the call.
+//
+// Returns OpResult which is the outcome of the fast-path call.
+// Returns bool which is false when the call must take the full dispatch path.
+func tryCachedNativeFastPath(vm *VM, site *program.CallSite, registers *Registers, fastPath *nativeFastPathEntry, hookInstalled bool) (OpResult, bool) {
+	if hookInstalled || fastPath == nil || fastPath.fn == nativeFastPathNone || len(site.LinkedTypeArgs) > 0 {
+		return opContinue, false
+	}
+	return dispatchCachedNativeFastPath(vm, site, registers, fastPath)
+}
+
 // dispatchCachedNativeFastPath handles the case where a native call site already has a
-// cached fast-path function. For method calls it validates the receiver address and
-// refreshes the cache when the receiver has moved.
+// cached fast-path function.
 //
 // Takes vm (*VM) which is the virtual machine executing the instruction.
 // Takes site (*CallSite) which provides the call site metadata.
 // Takes registers (*Registers) which holds the current register banks.
 // Takes entry (*nativeFastPathEntry) which is the published fast-path cache.
 //
-// Returns OpResult after dispatching the fast-path call.
-func dispatchCachedNativeFastPath(vm *VM, site *program.CallSite, registers *Registers, entry *nativeFastPathEntry) OpResult {
+// Returns OpResult which is the outcome of the fast-path call.
+// Returns bool which is false when the register no longer holds a function of the cached
+// type, leaving the call to the full dispatch path.
+func dispatchCachedNativeFastPath(vm *VM, site *program.CallSite, registers *Registers, entry *nativeFastPathEntry) (OpResult, bool) {
 	if !site.IsMethod {
-		dispatchNativeFastPathTagged(vm, entry.tag, entry.fn, site, registers)
-		return opContinue
+		current := registers.General[site.NativeRegister]
+		if !current.IsValid() || current.Type() != reflect.TypeOf(entry.fn) {
+			return opContinue, false
+		}
+		dispatchNativeFastPathTagged(vm, entry.tag, current.Interface(), site, registers)
+		return opContinue, true
 	}
 	receiver := registers.General[site.MethodReceiverRegister]
 	if receiver.CanAddr() && receiver.Addr().Pointer() == entry.receiverAddr {
 		dispatchNativeFastPathTagged(vm, entry.tag, entry.fn, site, registers)
-		return opContinue
+		return opContinue, true
 	}
 	reflectedFunction := registers.General[site.NativeRegister]
 	refreshed := &nativeFastPathEntry{fn: reflectedFunction.Interface(), tag: entry.tag, receiverAddr: 0}
@@ -364,7 +388,7 @@ func dispatchCachedNativeFastPath(vm *VM, site *program.CallSite, registers *Reg
 	}
 	atomic.StorePointer(&site.NativeFastPath, unsafe.Pointer(refreshed))
 	dispatchNativeFastPathTagged(vm, refreshed.tag, refreshed.fn, site, registers)
-	return opContinue
+	return opContinue, true
 }
 
 // handleCallNativeClosure invokes a compiled closure that was resolved from a native call

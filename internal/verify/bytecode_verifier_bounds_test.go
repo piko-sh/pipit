@@ -27,7 +27,7 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-func TestVerifyRegisterOperandBoundsAcceptsIIFESyncWithNoGeneralRegisters(t *testing.T) {
+func TestVerifyOperandBoundsAcceptsIIFESyncWithNoGeneralRegisters(t *testing.T) {
 	t.Parallel()
 
 	compiledFunction := &program.CompiledFunction{
@@ -38,13 +38,61 @@ func TestVerifyRegisterOperandBoundsAcceptsIIFESyncWithNoGeneralRegisters(t *tes
 			isa.NewTier3Instruction(isa.SubOpTier3SyncIIFEUpvalues),
 			isa.NewTier2Instruction(isa.SubOpTier2Return, 1),
 		},
+		CallSites: []program.CallSite{{}},
 	}
 	compiledFunction.NumRegisters[isa.RegisterInt] = 2
 
-	require.NoError(t, VerifyRegisterOperandBounds(compiledFunction))
+	require.NoError(t, VerifyOperandBounds(compiledFunction))
 }
 
-func TestVerifyRegisterOperandBoundsChecksClosureSyncRegister(t *testing.T) {
+func TestVerifyOperandBoundsChecksCallSiteIndices(t *testing.T) {
+	t.Parallel()
+
+	const declaredSites = 2
+	call := func(op isa.SubOpcode, site uint16) isa.Instruction {
+		low, high := isa.SplitWide(site)
+		return isa.NewTier1Instruction(op, low, high)
+	}
+	methodExtension := isa.NewInstruction(isa.OpExt, 0, 0, 0)
+
+	tests := []struct {
+		name  string
+		body  []isa.Instruction
+		valid bool
+	}{
+		{name: "a call naming the last declared site", body: []isa.Instruction{call(isa.SubOpCall, 1)}, valid: true},
+		{name: "a call past the table", body: []isa.Instruction{call(isa.SubOpCall, 2)}, valid: false},
+		{name: "a call whose high byte reaches past the table", body: []isa.Instruction{call(isa.SubOpCall, 256)}, valid: false},
+		{name: "a scalar call past the table", body: []isa.Instruction{call(isa.SubOpCallScalar, 99)}, valid: false},
+		{name: "a native call past the table", body: []isa.Instruction{call(isa.SubOpCallNative, 99)}, valid: false},
+		{name: "an immediately invoked literal past the table", body: []isa.Instruction{call(isa.SubOpCallIIFE, 99)}, valid: false},
+		{name: "a tail call past the table", body: []isa.Instruction{call(isa.SubOpTailCall, 99)}, valid: false},
+		{name: "a method call past the table", body: []isa.Instruction{call(isa.SubOpCallMethod, 99), methodExtension}, valid: false},
+		{name: "an inlineable method call past the table", body: []isa.Instruction{call(isa.SubOpCallMethodInlineable, 99), methodExtension}, valid: false},
+		{name: "a method call naming a declared site", body: []isa.Instruction{call(isa.SubOpCallMethod, 0), methodExtension}, valid: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			compiledFunction := &program.CompiledFunction{
+				Name:      "f",
+				Body:      tt.body,
+				CallSites: make([]program.CallSite, declaredSites),
+			}
+
+			err := VerifyOperandBounds(compiledFunction)
+			if tt.valid {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, ErrCallSiteOutOfRange)
+		})
+	}
+}
+
+func TestVerifyOperandBoundsChecksClosureSyncRegister(t *testing.T) {
 	t.Parallel()
 
 	compiledFunction := &program.CompiledFunction{
@@ -56,10 +104,10 @@ func TestVerifyRegisterOperandBoundsChecksClosureSyncRegister(t *testing.T) {
 	}
 	compiledFunction.NumRegisters[isa.RegisterGeneral] = 2
 
-	require.ErrorIs(t, VerifyRegisterOperandBounds(compiledFunction), ErrRegisterOperandOutOfRange)
+	require.ErrorIs(t, VerifyOperandBounds(compiledFunction), ErrRegisterOperandOutOfRange)
 }
 
-func TestVerifyRegisterOperandBoundsExtensionWords(t *testing.T) {
+func TestVerifyOperandBoundsExtensionWords(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -130,7 +178,7 @@ func TestVerifyRegisterOperandBoundsExtensionWords(t *testing.T) {
 			compiledFunction.NumRegisters[isa.RegisterFloat] = 1
 			compiledFunction.NumRegisters[isa.RegisterSliceFloat] = 1
 
-			err := VerifyRegisterOperandBounds(compiledFunction)
+			err := VerifyOperandBounds(compiledFunction)
 			if testCase.valid {
 				require.NoError(t, err)
 				return

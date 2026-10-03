@@ -135,7 +135,7 @@ func (c *Compiler) compileClosureBody(ctx context.Context, lit *ast.FuncLit) (ui
 		rangeOverFunction: nil,
 	})
 	sub.recordUpvalueDebugEntries(upvalueMap)
-	sub.prepareBody(bodySpec{body: lit.Body, params: lit.Type.Params, resultTypes: resultTypesOf(signature)})
+	sub.prepareBody(bodySpec{body: lit.Body, signature: lit.Type, resultTypes: resultTypesOf(signature)})
 	sub.declareClosureParams(ctx, lit)
 	sub.declareNamedResults(ctx, lit.Type.Results, sub.Function)
 

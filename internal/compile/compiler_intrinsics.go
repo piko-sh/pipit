@@ -60,7 +60,7 @@ var (
 	// intrinsicTable maps "pkg.FuncName" keys to their intrinsicDefinition entries. Entries
 	// are matched against call expressions during compilation.
 	//
-	//nolint:revive // self-documenting keys
+	//nolint:revive // line-length-limit: one intrinsic per row keeps the table scannable
 	intrinsicTable = map[string]intrinsicDefinition{
 		"strings.ContainsRune": {opcode: isa.OpStrContainsRune, returnKind: isa.RegisterBool, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterInt}, argumentCount: 2, subOp: 0, useUmbrella: false},
 		"strings.Contains":     {opcode: isa.OpStrContains, returnKind: isa.RegisterBool, argumentKinds: [2]isa.RegisterKind{isa.RegisterString, isa.RegisterString}, argumentCount: 2, subOp: 0, useUmbrella: false},

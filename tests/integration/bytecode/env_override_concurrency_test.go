@@ -40,13 +40,11 @@ func TestEnvOverridesConcurrentClonesDoNotRace(t *testing.T) {
 
 	const workers = 8
 	var wg sync.WaitGroup
-	wg.Add(workers)
 	for range workers {
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			clone := golden.Clone()
 			_, _ = clone.Eval(context.Background(), "1 + 1")
-		}()
+		})
 	}
 	wg.Wait()
 }

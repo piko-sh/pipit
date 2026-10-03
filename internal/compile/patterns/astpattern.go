@@ -189,9 +189,9 @@ type FingerprintSignature struct {
 	BodyShape BodyShape
 }
 
-// recogniser is the interface every for-statement AST-pattern consumer implements.
+// Recogniser is the interface every for-statement AST-pattern consumer implements.
 // Recognisers register at init time and dispatch via fingerprint-keyed lookup.
-type recogniser interface {
+type Recogniser interface {
 	// Name returns a short stable identifier for diagnostics and disassembler annotations.
 	//
 	// Use a dotted namespace prefix (`simd.dot_product_f64`, `loop.unroll`) so multiple
@@ -314,14 +314,14 @@ type RecogniseContext struct {
 // treated as immutable so dispatch is lock-free and a nil *Registry recognises nothing.
 type Registry struct {
 	// forStmt maps fingerprint signatures to recogniser buckets, highest priority first.
-	forStmt map[FingerprintSignature][]recogniser
+	forStmt map[FingerprintSignature][]Recogniser
 }
 
 // NewRegistry returns an empty registry.
 //
 // Returns *Registry which is ready for Register.
 func NewRegistry() *Registry {
-	return new(Registry{forStmt: make(map[FingerprintSignature][]recogniser)})
+	return new(Registry{forStmt: make(map[FingerprintSignature][]Recogniser)})
 }
 
 // Register inserts a recogniser into the index.
@@ -331,7 +331,7 @@ func NewRegistry() *Registry {
 // whose Match returns true wins.
 //
 // Takes r (Recogniser) which is the recogniser to register.
-func (registry *Registry) Register(r recogniser) {
+func (registry *Registry) Register(r Recogniser) {
 	for _, signature := range r.AcceptedSignatures() {
 		bucket := registry.forStmt[signature]
 		insertAt := len(bucket)
@@ -354,10 +354,10 @@ func (registry *Registry) Register(r recogniser) {
 // Takes ctx (RecogniseContext) which provides read-only state.
 // Takes statement (*ast.ForStmt) which is the loop to recognise.
 //
-// Returns recogniser which matched the loop.
+// Returns Recogniser which matched the loop.
 // Returns any which is the opaque match token.
 // Returns bool which is false when no recogniser matched.
-func (registry *Registry) TryRecogniseForStmt(ctx RecogniseContext, statement *ast.ForStmt) (recogniser, any, bool) {
+func (registry *Registry) TryRecogniseForStmt(ctx RecogniseContext, statement *ast.ForStmt) (Recogniser, any, bool) {
 	if registry == nil || len(registry.forStmt) == 0 {
 		return nil, nil, false
 	}

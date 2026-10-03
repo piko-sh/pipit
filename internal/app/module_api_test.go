@@ -162,23 +162,47 @@ func TestLoadModuleAllowsUnpinnedRefWhenOptedIn(t *testing.T) {
 
 func TestLoadModuleRunsBytecodeVerifier(t *testing.T) {
 	t.Parallel()
-	service := NewService(WithBytecodeVerification(false))
-	bundle := stubBundle()
-	tamperedUnpacker := func(_ []byte, _ *symtab.SymbolRegistry) (*program.CompiledFileSet, error) {
-		root := &program.CompiledFunction{
-			Name: "tampered",
-			Body: []isa.Instruction{{Op: isa.OpAddInt, A: 0, B: 1, C: 7}},
-		}
-		root.NumRegisters[isa.RegisterInt] = 2
-		return program.NewCompiledFileSet(root, nil, nil, nil), nil
+
+	tests := []struct {
+		name       string
+		body       []isa.Instruction
+		wantErr    error
+		wantDetail string
+	}{
+		{
+			name:       "a register operand past the frame",
+			body:       []isa.Instruction{{Op: isa.OpAddInt, A: 0, B: 1, C: 7}},
+			wantErr:    verify.ErrRegisterOperandOutOfRange,
+			wantDetail: "slot=7",
+		},
+		{
+			name:       "a call-site index past the table",
+			body:       []isa.Instruction{isa.NewTier1Instruction(isa.SubOpCall, 99, 0)},
+			wantErr:    verify.ErrCallSiteOutOfRange,
+			wantDetail: "site=99",
+		},
 	}
-	_, err := service.LoadModule(context.Background(), bundle, pinnedRefFor(t, bundle), nil, tamperedUnpacker)
-	require.ErrorIs(t, err, verify.ErrRegisterOperandOutOfRange)
-	require.ErrorContains(t, err, "example.com/mod")
-	require.ErrorContains(t, err, "slot=7")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			service := NewService(WithBytecodeVerification(false))
+			bundle := stubBundle()
+			tamperedUnpacker := func(_ []byte, _ *symtab.SymbolRegistry) (*program.CompiledFileSet, error) {
+				root := &program.CompiledFunction{Name: "tampered", Body: tt.body}
+				root.NumRegisters[isa.RegisterInt] = 2
+				return program.NewCompiledFileSet(root, nil, nil, nil), nil
+			}
+			_, err := service.LoadModule(context.Background(), bundle, pinnedRefFor(t, bundle), nil, tamperedUnpacker)
+			require.ErrorIs(t, err, tt.wantErr)
+			require.ErrorContains(t, err, "example.com/mod")
+			require.ErrorContains(t, err, tt.wantDetail)
+		})
+	}
 }
 
-func TestVerifyRegisterOperandBoundsAcceptsCompiledProgram(t *testing.T) {
+func TestVerifyOperandBoundsAcceptsCompiledProgram(t *testing.T) {
 	t.Parallel()
 	service := NewService()
 	cfs, err := service.CompileProgram(context.Background(), "example.com/bounds", map[string]map[string]string{
@@ -202,8 +226,8 @@ func main() {
 `},
 	})
 	require.NoError(t, err)
-	require.NoError(t, verify.VerifyRegisterOperandBounds(cfs.Root()))
-	require.NoError(t, verify.VerifyRegisterOperandBounds(cfs.VariableInitFunction()))
+	require.NoError(t, verify.VerifyOperandBounds(cfs.Root()))
+	require.NoError(t, verify.VerifyOperandBounds(cfs.VariableInitFunction()))
 }
 
 func TestLoadModuleConsultsCapabilityHook(t *testing.T) {

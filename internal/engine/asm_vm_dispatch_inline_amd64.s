@@ -1800,6 +1800,14 @@ ri_no_simple_defer:
 	MOVBLZX VL_KIND(CX), AX
 	MOVBLZX VL_REGISTER(CX), CX
 
+	MOVQ    CF_FUNCTION(DI), DX
+	CMPQ    FN_RESULT_KINDS_LEN(DX), $0
+	JE      ri_fallback
+	MOVQ    FN_RESULT_KINDS(DX), DX
+	MOVBLZX (DX), DX
+	CMPQ    DX, AX
+	JNE     ri_fallback
+
 	CMPQ    AX, $0
 	JE      ri_check_int
 	CMPQ    AX, $1

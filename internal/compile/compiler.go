@@ -183,6 +183,11 @@ type Compiler struct {
 	// opResetSharedCell so each loop iteration gets a fresh cell.
 	closureCapturedNames map[string]bool
 
+	// flowingSliceNames is the set of names whose slice header the body stores beyond the
+	// variable's register (escape.CollectFlowingSliceNames), so their literal or make
+	// backing is placed on the heap.
+	flowingSliceNames map[string]bool
+
 	// debugFileIDs deduplicates file names to fileID indices in the source map's files
 	// slice.
 	debugFileIDs map[string]uint16
@@ -736,6 +741,7 @@ func (c *Compiler) compileValueSpecName(ctx context.Context, spec *ast.ValueSpec
 
 	kind := c.kindFor(typeObject.Type())
 	location := c.Scopes.DeclareVar(name.Name, kind)
+	c.resetSharedCellForDeclaration(ctx, name.Name, location)
 
 	if index < len(spec.Values) {
 		if err := c.emitValueSpecInitialiser(ctx, name.Name, spec.Values[index], typeObject.Type(), location); err != nil {

@@ -646,17 +646,9 @@ TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 120(R2)
 
-	MOVD $·handlerSubOpMakeSliceInt(SB), R1
-	MOVD $·tier1JumpTable(SB), R2
-	MOVD R1, 128(R2)
-
 	MOVD $·handlerSubOpLenSliceIntDirect(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 136(R2)
-
-	MOVD $·handlerSubOpMakeSliceFloat(SB), R1
-	MOVD $·tier1JumpTable(SB), R2
-	MOVD R1, 144(R2)
 
 	MOVD $·handlerSubOpSliceGetFloatDirect(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
@@ -670,10 +662,6 @@ TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 168(R2)
 
-	MOVD $·handlerSubOpMakeSliceString(SB), R1
-	MOVD $·tier1JumpTable(SB), R2
-	MOVD R1, 176(R2)
-
 	MOVD $·handlerSubOpSliceGetStringDirect(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 184(R2)
@@ -686,10 +674,6 @@ TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 200(R2)
 
-	MOVD $·handlerSubOpMakeSliceBool(SB), R1
-	MOVD $·tier1JumpTable(SB), R2
-	MOVD R1, 208(R2)
-
 	MOVD $·handlerSubOpSliceGetBoolDirect(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 216(R2)
@@ -701,10 +685,6 @@ TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
 	MOVD $·handlerSubOpLenSliceBoolDirect(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 232(R2)
-
-	MOVD $·handlerSubOpMakeSliceUint(SB), R1
-	MOVD $·tier1JumpTable(SB), R2
-	MOVD R1, 240(R2)
 
 	MOVD $·handlerSubOpSliceGetUintDirect(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
@@ -849,10 +829,6 @@ TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
 	MOVD $·handlerSubOpDecStructFieldUint(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
 	MOVD R1, 880(R2)
-
-	MOVD $·handlerSubOpMakeSliceByte(SB), R1
-	MOVD $·tier1JumpTable(SB), R2
-	MOVD R1, 888(R2)
 
 	MOVD $·handlerSubOpSliceGetByteDirect(SB), R1
 	MOVD $·tier1JumpTable(SB), R2
@@ -1041,6 +1017,30 @@ TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
 	MOVD $·handlerReturnVoidInline(SB), R1
 	MOVD $·tier3JumpTable(SB), R2
 	MOVD R1, 8(R2)
+
+	MOVD $·handlerPathBShimSubOpMakeSliceInt(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 128(R2)
+
+	MOVD $·handlerPathBShimSubOpMakeSliceFloat(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 144(R2)
+
+	MOVD $·handlerPathBShimSubOpMakeSliceString(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 176(R2)
+
+	MOVD $·handlerPathBShimSubOpMakeSliceBool(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 208(R2)
+
+	MOVD $·handlerPathBShimSubOpMakeSliceUint(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 240(R2)
+
+	MOVD $·handlerPathBShimSubOpMakeSliceByte(SB), R1
+	MOVD $·tier1JumpTable(SB), R2
+	MOVD R1, 888(R2)
 
 	MOVD $·handlerPathBShimResetSharedCell(SB), R1
 	MOVD $·tier1JumpTable(SB), R2

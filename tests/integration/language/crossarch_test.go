@@ -66,7 +66,7 @@ func runCrossArch(t *testing.T, dockerBin, pkgDir string, target crossArchTarget
 	binName := "engine_" + target.goarch + ".test"
 	binPath := filepath.Join(t.TempDir(), binName)
 
-	build := exec.Command("go", "test", "-c", "-o", binPath, ".")
+	build := exec.Command("go", "test", "-tags", "integration", "-c", "-o", binPath, ".")
 	build.Dir = pkgDir
 	build.Env = append(os.Environ(), "GOARCH="+target.goarch, "CGO_ENABLED=0")
 

@@ -1,9 +1,11 @@
 ; pkasm - pipit bytecode assembly
+; dispatch: A assembly, S in-loop shim call to Go, X dedicated exit to Go, G generic exit to Go
 
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=1 string=1 bool=1
+;   dispatch:  asm=3 shim=1 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (bool)
 ; ═════════════════════════════════════════════════════════════
@@ -12,7 +14,7 @@
 ;   ints:    [0]=101
 ;   strings: [0]="hello"
 
-0000  0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "hello"
-0001  1:LOAD_INT_CONST_SMALL      75   0 101    ; ints[0] = 101
-0002  0:STR_CONTAINS_RUNE          0   0   0
-0003  2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "hello"
+0001 A 1:LOAD_INT_CONST_SMALL      75   0 101    ; ints[0] = 101
+0002 S 0:STR_CONTAINS_RUNE          0   0   0
+0003 A 2:TIER2_RETURN               0  10   1    ; 1 values

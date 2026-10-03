@@ -63,14 +63,14 @@ func OptimiseFunction(ctx context.Context, opts Options, compiledFunction *progr
 	return optimiseWithPipeline(ctx, functionPipelineFor(opts), opts, compiledFunction)
 }
 
-// functionPipelineFor() returns the memoised FunctionPipeline for opts.
+// functionPipelineFor returns the memoised FunctionPipeline for opts.
 //
 // Takes opts (Options) which selects the optional passes.
 //
-// Returns []pass which is the cached pipeline slice.
-func functionPipelineFor(opts Options) []pass {
+// Returns []Pass which is the cached pipeline slice.
+func functionPipelineFor(opts Options) []Pass {
 	if cached, ok := functionPipelines.Load(opts); ok {
-		if pipeline, ok := cached.([]pass); ok {
+		if pipeline, ok := cached.([]Pass); ok {
 			return pipeline
 		}
 	}
@@ -89,7 +89,7 @@ func functionPipelineFor(opts Options) []pass {
 //
 // Returns error when cancellation fires, the function's jump range was exceeded during
 // emission, or a pass reports failure.
-func optimiseWithPipeline(ctx context.Context, pipeline []pass, opts Options, compiledFunction *program.CompiledFunction) error {
+func optimiseWithPipeline(ctx context.Context, pipeline []Pass, opts Options, compiledFunction *program.CompiledFunction) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("Optimise cancelled: %w", err)
 	}

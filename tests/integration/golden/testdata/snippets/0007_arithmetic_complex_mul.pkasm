@@ -1,9 +1,11 @@
 ; pkasm - pipit bytecode assembly
+; dispatch: A assembly, S in-loop shim call to Go, X dedicated exit to Go, G generic exit to Go
 
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: complex=2
+;   dispatch:  asm=1 shim=3 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (complex)
 ; ═════════════════════════════════════════════════════════════
@@ -11,7 +13,7 @@
 ; constants:
 ;   complex: [0]=(2+3i)  [1]=(4+5i)
 
-0000  0:LOAD_COMPLEX_CONST         0   0   0
-0001  0:LOAD_COMPLEX_CONST         1   1   0
-0002  0:MUL_COMPLEX                0   0   1
-0003  2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 0:LOAD_COMPLEX_CONST         0   0   0
+0001 S 0:LOAD_COMPLEX_CONST         1   1   0
+0002 S 0:MUL_COMPLEX                0   0   1
+0003 A 2:TIER2_RETURN               0  10   1    ; 1 values

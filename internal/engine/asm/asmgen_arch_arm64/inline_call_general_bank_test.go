@@ -76,3 +76,31 @@ func TestEmitReturnInlineCopiesGeneralResult(t *testing.T) {
 	}
 	require.Less(t, strings.Index(output, "ri_check_general:"), strings.Index(output, "ri_no_retval:"), "copy precedes the arena clears")
 }
+
+func TestEmitReturnInlineGuardsTheCalleeResultKind(t *testing.T) {
+	t.Parallel()
+	e := asmgen.NewEmitter()
+	(&arm64InlineCallOps{}).EmitReturnInline(e)
+	output := e.String()
+
+	tests := []struct {
+		name  string
+		first string
+		then  string
+	}{
+		{name: "the callee is loaded after the destination kind", first: "VL_KIND(R7), R1", then: "CF_FUNCTION(R8), R9"},
+		{name: "an empty result list takes the Go fallback", first: "FN_RESULT_KINDS_LEN(R9), R10", then: "R10, " + labelRIFallback},
+		{name: "the first result kind is read", first: "FN_RESULT_KINDS(R9), R9", then: "(R9), R9"},
+		{name: "a different result kind takes the Go fallback", first: "R1, R9", then: labelRIFallback},
+		{name: "the guard runs before a copy arm is chosen", first: "R1, R9", then: "$0, R1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			at := strings.Index(output, tt.first)
+			require.GreaterOrEqualf(t, at, 0, "missing %q", tt.first)
+			require.Containsf(t, output[at+len(tt.first):], tt.then, "%q does not follow %q", tt.then, tt.first)
+		})
+	}
+}

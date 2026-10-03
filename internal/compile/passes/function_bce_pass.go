@@ -245,13 +245,13 @@ func recordNonNegativeFact(compiledFunction *program.CompiledFunction, body []is
 // Takes nonNegative (*[isa.GeneralRegisterBankSize]bool) which is the per-register
 // non-negativity table updated in place.
 func invalidateNonNegativeFacts(inst isa.Instruction, nonNegative *[isa.GeneralRegisterBankSize]bool) {
-	for reg := range isa.GeneralRegisterBankSize {
-		if !nonNegative[reg] {
-			continue
-		}
-		if instructionWritesRegisterInBank(inst, isa.RoleRegInt, uint8(reg)) {
-			nonNegative[reg] = false
-		}
+	writes := registersWrittenInBank(inst, isa.RoleRegInt)
+	if writes.any {
+		*nonNegative = [isa.GeneralRegisterBankSize]bool{}
+		return
+	}
+	for _, reg := range writes.registers() {
+		nonNegative[reg] = false
 	}
 }
 
@@ -411,14 +411,15 @@ func instructionClearsAllBoundsFacts(inst isa.Instruction) bool {
 // Takes safeIndex (*[isa.GeneralRegisterBankSize]uint16) which is the safe-index fact
 // table to update.
 func invalidateIntRegisterFacts(inst isa.Instruction, lengthOf *[isa.GeneralRegisterBankSize]uint16, safeIndex *[isa.GeneralRegisterBankSize]uint16) {
-	for reg := range isa.GeneralRegisterBankSize {
-		if lengthOf[reg] == 0 && safeIndex[reg] == 0 {
-			continue
-		}
-		if instructionWritesRegisterInBank(inst, isa.RoleRegInt, uint8(reg)) {
-			lengthOf[reg] = 0
-			safeIndex[reg] = 0
-		}
+	writes := registersWrittenInBank(inst, isa.RoleRegInt)
+	if writes.any {
+		*lengthOf = [isa.GeneralRegisterBankSize]uint16{}
+		*safeIndex = [isa.GeneralRegisterBankSize]uint16{}
+		return
+	}
+	for _, reg := range writes.registers() {
+		lengthOf[reg] = 0
+		safeIndex[reg] = 0
 	}
 }
 
@@ -434,21 +435,14 @@ func invalidateIntRegisterFacts(inst isa.Instruction, lengthOf *[isa.GeneralRegi
 // Takes safeIndex (*[isa.GeneralRegisterBankSize]uint16) which is the safe-index fact
 // table to update.
 func invalidateSliceIntRegisterFacts(inst isa.Instruction, lengthOf *[isa.GeneralRegisterBankSize]uint16, safeIndex *[isa.GeneralRegisterBankSize]uint16) {
-	for reg := range isa.GeneralRegisterBankSize {
-		if !instructionWritesRegisterInBank(inst, isa.RoleRegSliceInt, uint8(reg)) {
-			continue
-		}
+	writes := registersWrittenInBank(inst, isa.RoleRegSliceInt)
+	if writes.any {
+		clearBoundsFactsWhere(lengthOf, safeIndex, func(target uint16) bool { return target&bceGenBankFlag == 0 })
+		return
+	}
+	for _, reg := range writes.registers() {
 		target := uint16(reg) + 1
-		for k := range lengthOf {
-			if lengthOf[k] == target {
-				lengthOf[k] = 0
-			}
-		}
-		for k := range safeIndex {
-			if safeIndex[k] == target {
-				safeIndex[k] = 0
-			}
-		}
+		clearBoundsFactsWhere(lengthOf, safeIndex, func(fact uint16) bool { return fact == target })
 	}
 }
 
@@ -492,24 +486,50 @@ func invalidateGeneralRegisterFacts(
 	safeIndex *[isa.GeneralRegisterBankSize]uint16,
 	tracker *derefStabilityTracker,
 ) {
-	for reg := range isa.GeneralRegisterBankSize {
-		if !instructionWritesRegisterInBank(inst, isa.RoleRegGeneral, uint8(reg)) {
-			continue
+	writes := registersWrittenInBank(inst, isa.RoleRegGeneral)
+	var stale [isa.GeneralRegisterBankSize]bool
+	anyStale := false
+	write := func(reg uint8) {
+		if tracker.isIdempotentGeneralWrite(inst, reg) {
+			return
 		}
-		if tracker.isIdempotentGeneralWrite(inst, uint8(reg)) {
-			continue
+		stale[reg] = true
+		anyStale = true
+		tracker.recordGeneralWrite(inst, reg)
+	}
+	if writes.any {
+		for reg := range isa.GeneralRegisterBankSize {
+			write(uint8(reg))
 		}
-		target := uint16(reg) + 1 | bceGenBankFlag
-		for k := range lengthOf {
-			if lengthOf[k] == target {
-				lengthOf[k] = 0
-			}
+	} else {
+		for _, reg := range writes.registers() {
+			write(reg)
 		}
-		for k := range safeIndex {
-			if safeIndex[k] == target {
-				safeIndex[k] = 0
-			}
+	}
+	if !anyStale {
+		return
+	}
+	clearBoundsFactsWhere(lengthOf, safeIndex, func(fact uint16) bool {
+		return fact&bceGenBankFlag != 0 && stale[(fact&^bceGenBankFlag)-1]
+	})
+}
+
+// clearBoundsFactsWhere clears every non-empty length and safe-index fact whose encoded
+// slice register the predicate selects.
+//
+// Takes lengthOf (*[isa.GeneralRegisterBankSize]uint16) which is the length-fact table.
+// Takes safeIndex (*[isa.GeneralRegisterBankSize]uint16) which is the safe-index fact
+// table.
+// Takes stale (func(uint16) bool) which selects a fact by its encoded slice register.
+func clearBoundsFactsWhere(lengthOf *[isa.GeneralRegisterBankSize]uint16, safeIndex *[isa.GeneralRegisterBankSize]uint16, stale func(uint16) bool) {
+	for k, fact := range lengthOf {
+		if fact != 0 && stale(fact) {
+			lengthOf[k] = 0
 		}
-		tracker.recordGeneralWrite(inst, uint8(reg))
+	}
+	for k, fact := range safeIndex {
+		if fact != 0 && stale(fact) {
+			safeIndex[k] = 0
+		}
 	}
 }

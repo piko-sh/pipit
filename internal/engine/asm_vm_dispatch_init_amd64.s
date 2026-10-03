@@ -641,14 +641,8 @@ TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
 	LEAQ    ·handlerSubOpMoveComplex(SB), AX
 	MOVQ    AX, ·tier1JumpTable+120(SB)
 
-	LEAQ    ·handlerSubOpMakeSliceInt(SB), AX
-	MOVQ    AX, ·tier1JumpTable+128(SB)
-
 	LEAQ    ·handlerSubOpLenSliceIntDirect(SB), AX
 	MOVQ    AX, ·tier1JumpTable+136(SB)
-
-	LEAQ    ·handlerSubOpMakeSliceFloat(SB), AX
-	MOVQ    AX, ·tier1JumpTable+144(SB)
 
 	LEAQ    ·handlerSubOpSliceGetFloatDirect(SB), AX
 	MOVQ    AX, ·tier1JumpTable+152(SB)
@@ -659,9 +653,6 @@ TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
 	LEAQ    ·handlerSubOpLenSliceFloatDirect(SB), AX
 	MOVQ    AX, ·tier1JumpTable+168(SB)
 
-	LEAQ    ·handlerSubOpMakeSliceString(SB), AX
-	MOVQ    AX, ·tier1JumpTable+176(SB)
-
 	LEAQ    ·handlerSubOpSliceGetStringDirect(SB), AX
 	MOVQ    AX, ·tier1JumpTable+184(SB)
 
@@ -671,9 +662,6 @@ TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
 	LEAQ    ·handlerSubOpLenSliceStringDirect(SB), AX
 	MOVQ    AX, ·tier1JumpTable+200(SB)
 
-	LEAQ    ·handlerSubOpMakeSliceBool(SB), AX
-	MOVQ    AX, ·tier1JumpTable+208(SB)
-
 	LEAQ    ·handlerSubOpSliceGetBoolDirect(SB), AX
 	MOVQ    AX, ·tier1JumpTable+216(SB)
 
@@ -682,9 +670,6 @@ TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
 
 	LEAQ    ·handlerSubOpLenSliceBoolDirect(SB), AX
 	MOVQ    AX, ·tier1JumpTable+232(SB)
-
-	LEAQ    ·handlerSubOpMakeSliceUint(SB), AX
-	MOVQ    AX, ·tier1JumpTable+240(SB)
 
 	LEAQ    ·handlerSubOpSliceGetUintDirect(SB), AX
 	MOVQ    AX, ·tier1JumpTable+248(SB)
@@ -793,9 +778,6 @@ TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
 
 	LEAQ    ·handlerSubOpDecStructFieldUint(SB), AX
 	MOVQ    AX, ·tier1JumpTable+880(SB)
-
-	LEAQ    ·handlerSubOpMakeSliceByte(SB), AX
-	MOVQ    AX, ·tier1JumpTable+888(SB)
 
 	LEAQ    ·handlerSubOpSliceGetByteDirect(SB), AX
 	MOVQ    AX, ·tier1JumpTable+896(SB)
@@ -937,6 +919,24 @@ TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
 
 	LEAQ    ·handlerReturnVoidInline(SB), AX
 	MOVQ    AX, ·tier3JumpTable+8(SB)
+
+	LEAQ    ·handlerPathBShimSubOpMakeSliceInt(SB), AX
+	MOVQ    AX, ·tier1JumpTable+128(SB)
+
+	LEAQ    ·handlerPathBShimSubOpMakeSliceFloat(SB), AX
+	MOVQ    AX, ·tier1JumpTable+144(SB)
+
+	LEAQ    ·handlerPathBShimSubOpMakeSliceString(SB), AX
+	MOVQ    AX, ·tier1JumpTable+176(SB)
+
+	LEAQ    ·handlerPathBShimSubOpMakeSliceBool(SB), AX
+	MOVQ    AX, ·tier1JumpTable+208(SB)
+
+	LEAQ    ·handlerPathBShimSubOpMakeSliceUint(SB), AX
+	MOVQ    AX, ·tier1JumpTable+240(SB)
+
+	LEAQ    ·handlerPathBShimSubOpMakeSliceByte(SB), AX
+	MOVQ    AX, ·tier1JumpTable+888(SB)
 
 	LEAQ    ·handlerPathBShimResetSharedCell(SB), AX
 	MOVQ    AX, ·tier1JumpTable+1112(SB)

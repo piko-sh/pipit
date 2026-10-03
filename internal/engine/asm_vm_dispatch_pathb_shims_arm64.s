@@ -3170,6 +3170,168 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
+// handlerPathBShimSubOpMakeSliceInt calls ·asmCallHandleSubOpMakeSliceInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSubOpMakeSliceInt(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleSubOpMakeSliceInt(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimSubOpMakeSliceFloat calls ·asmCallHandleSubOpMakeSliceFloat(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSubOpMakeSliceFloat(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleSubOpMakeSliceFloat(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimSubOpMakeSliceString calls ·asmCallHandleSubOpMakeSliceString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSubOpMakeSliceString(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleSubOpMakeSliceString(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimSubOpMakeSliceBool calls ·asmCallHandleSubOpMakeSliceBool(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSubOpMakeSliceBool(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleSubOpMakeSliceBool(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimSubOpMakeSliceUint calls ·asmCallHandleSubOpMakeSliceUint(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSubOpMakeSliceUint(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleSubOpMakeSliceUint(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimSubOpMakeSliceByte calls ·asmCallHandleSubOpMakeSliceByte(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSubOpMakeSliceByte(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleSubOpMakeSliceByte(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
 // handlerPathBShimResetSharedCell calls ·asmCallHandleResetSharedCell(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
 TEXT ·handlerPathBShimResetSharedCell(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS

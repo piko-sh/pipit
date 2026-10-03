@@ -86,6 +86,80 @@ c.Inc()
 c.Get()`,
 			expect: 12,
 		},
+		{
+			name: "pointer receiver method value binds the variable's address",
+			code: `type Counter struct { V int }
+func (c *Counter) Inc() { c.V++ }
+var c Counter
+f := c.Inc
+f()
+f()
+c.V`,
+			expect: 2,
+		},
+		{
+			name: "value receiver method value copies the receiver when bound",
+			code: `type Counter struct { V int }
+func (c Counter) Get() int { return c.V }
+c := Counter{V: 1}
+g := c.Get
+c.V = 5
+g()`,
+			expect: 1,
+		},
+		{
+			name: "value receiver method value through a pointer copies the pointee when bound",
+			code: `type Counter struct { V int }
+func (c Counter) Get() int { return c.V }
+p := &Counter{V: 1}
+g := p.Get
+p.V = 9
+g()`,
+			expect: 1,
+		},
+		{
+			name: "pointer receiver method value promoted through an embedded value",
+			code: `type Counter struct { V int }
+func (c *Counter) Inc() { c.V++ }
+type Wrapped struct { Counter }
+var w Wrapped
+f := w.Inc
+f()
+w.V`,
+			expect: 1,
+		},
+		{
+			name: "pointer receiver method value of a struct field",
+			code: `type Counter struct { V int }
+func (c *Counter) Inc() { c.V++ }
+type Holder struct { Inner Counter }
+var h Holder
+f := h.Inner.Inc
+f()
+h.Inner.V`,
+			expect: 1,
+		},
+		{
+			name: "pointer receiver method value of a slice element",
+			code: `type Counter struct { V int }
+func (c *Counter) Inc() { c.V++ }
+cs := make([]Counter, 2)
+f := cs[1].Inc
+f()
+cs[1].V`,
+			expect: 1,
+		},
+		{
+			name: "pointer receiver method value of a generic type",
+			code: `type Box[T any] struct { Items []T }
+func (b *Box[T]) Add(v T) { b.Items = append(b.Items, v) }
+var b Box[string]
+add := b.Add
+add("a")
+add("b")
+len(b.Items)`,
+			expect: 2,
+		},
 	}
 
 	for _, tt := range tests {

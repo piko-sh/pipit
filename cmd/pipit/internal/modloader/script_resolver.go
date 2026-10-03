@@ -999,9 +999,9 @@ func intraModuleDeps(modulePath string, packages map[string]map[string]string) m
 // Returns string which is the directory, empty for a bare filename.
 // Returns string which is the filename.
 func splitDirFile(path string) (dir, file string) {
-	index := strings.LastIndexByte(path, '/')
-	if index < 0 {
+	dir, file, found := strings.CutLast(path, "/")
+	if !found {
 		return "", path
 	}
-	return path[:index], path[index+1:]
+	return dir, file
 }

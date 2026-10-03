@@ -1,4 +1,4 @@
-struct dispatchContext size=736 align=8
+struct dispatchContext size=728 align=8
   vm                                       offset=0     size=8
   codeBase                                 offset=8     size=8
   codeLength                               offset=16    size=8
@@ -59,6 +59,8 @@ struct dispatchContext size=736 align=8
   savedPC                                  offset=456   size=8
   handlerResult                            offset=464   size=1
   arenaBanksDirty                          offset=465   size=1
+  hasGoroutinesFlag                        offset=466   size=1
+  callInfoBasesRootMatch                   offset=467   size=1
   structLayoutTableBase                    offset=472   size=8
   structLayoutTableLength                  offset=480   size=8
   typeTableBase                            offset=488   size=8
@@ -76,16 +78,14 @@ struct dispatchContext size=736 align=8
   arenaSliceUintIndex                      offset=584   size=8
   pollBudget                               offset=592   size=8
   currentFrame                             offset=600   size=8
-  hasGoroutinesFlag                        offset=608   size=1
-  callInfoBasesRootMatch                   offset=609   size=1
-  arenaSlabGenerationSeen                  offset=616   size=8
-  callInfoBasesByFunction                  offset=624   size=8
-  returnBankCursors                        offset=632   size=64
-  returnIndex                              offset=696   size=8
-  returnCount                              offset=704   size=8
-  arenaGenericBytesSlabHeader              offset=712   size=8
-  arenaGenericBytesIndexPointer            offset=720   size=8
-  arenaGenericBytesCharged                 offset=728   size=8
+  arenaSlabGenerationSeen                  offset=608   size=8
+  callInfoBasesByFunction                  offset=616   size=8
+  returnBankCursors                        offset=624   size=64
+  returnIndex                              offset=688   size=8
+  returnCount                              offset=696   size=8
+  arenaGenericBytesSlabHeader              offset=704   size=8
+  arenaGenericBytesIndexPointer            offset=712   size=8
+  arenaGenericBytesCharged                 offset=720   size=8
 
 struct CallFrame size=536 align=8
   Function                                 offset=0     size=8
@@ -194,15 +194,15 @@ ProvideDispatchContextOffsets
   ArenaUintIndex                           = 240
   ArenaComplexIndex                        = 248
   DeferStackLength                         = 256
-  HasGoroutinesFlag                        = 608
-  CallInfoBasesRootMatch                   = 609
-  CallInfoBasesByFunction                  = 624
-  ReturnBankCursors                        = 632
-  ReturnIndex                              = 696
-  ReturnCount                              = 704
-  ArenaGenericBytesSlabHeader              = 712
-  ArenaGenericBytesIndexPointer            = 720
-  ArenaGenericBytesCharged                 = 728
+  HasGoroutinesFlag                        = 466
+  CallInfoBasesRootMatch                   = 467
+  CallInfoBasesByFunction                  = 616
+  ReturnBankCursors                        = 624
+  ReturnIndex                              = 688
+  ReturnCount                              = 696
+  ArenaGenericBytesSlabHeader              = 704
+  ArenaGenericBytesIndexPointer            = 712
+  ArenaGenericBytesCharged                 = 720
   CurrentFrame                             = 600
   PollBudget                               = 592
   AsmCallInfoBasesPtr                      = 264

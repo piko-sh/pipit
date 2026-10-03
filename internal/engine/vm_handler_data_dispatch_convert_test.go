@@ -19,7 +19,6 @@
 package engine
 
 import (
-	"math"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -201,7 +200,7 @@ func TestSaturatingFloatToIntConvertMatchesGoCasts(t *testing.T) {
 		{name: "an in-range uint32", source: 7, target: reflect.TypeFor[uint32](), want: uint32(7)},
 		{name: "an in-range uint64", source: 7, target: reflect.TypeFor[uint64](), want: uint64(7)},
 		{name: "an in-range uintptr", source: 7, target: reflect.TypeFor[uintptr](), want: uintptr(7)},
-		{name: "an overflowing int32 saturates", source: 1e20, target: reflect.TypeFor[int32](), want: int32(math.MinInt32)},
+		{name: "an overflowing int32 matches the native cast", source: 1e20, target: reflect.TypeFor[int32](), want: nativeInt32(1e20)},
 	}
 
 	for _, tt := range tests {
@@ -219,6 +218,11 @@ func TestSaturatingFloatToIntConvertMatchesGoCasts(t *testing.T) {
 			require.Equal(t, tt.want, fallback.Interface())
 		})
 	}
+}
+
+//go:noinline
+func nativeInt32(f float64) int32 {
+	return int32(f)
 }
 
 func TestSaturatingFloatToIntConvertDeclinesOtherShapes(t *testing.T) {

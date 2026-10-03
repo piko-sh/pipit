@@ -2936,6 +2936,156 @@ TEXT ·handlerPathBShimGetStructFieldSliceIndexScalar(SB), NOSPLIT|NOFRAME, $0
 tier2_shim_exit:
 	RET
 
+// handlerPathBShimSubOpMakeSliceInt calls ·asmCallHandleSubOpMakeSliceInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSubOpMakeSliceInt(SB), NOSPLIT|NOFRAME, $0
+	NO_LOCAL_POINTERS
+	MOVQ    R14, CTX_PC(R15)
+	MOVQ    R14, CTX_SAVED_PC(R15)
+	ADJSP   $32
+	MOVQ    R15, 0(SP)
+	MOVL    DX, 8(SP)
+	CALL    ·asmCallHandleSubOpMakeSliceInt(SB)
+	MOVQ    16(SP), R15
+	ADJSP   $-32
+	MOVBLZX CTX_HANDLER_RESULT(R15), AX
+	TESTB   AL, AL
+	JNZ     tier2_shim_exit
+	MOVQ    CTX_PC(R15), R14
+	MOVQ    CTX_CODE_BASE(R15), R12
+	MOVQ    CTX_CODE_LEN(R15), R13
+	MOVQ    CTX_INTS_BASE(R15), R8
+	MOVQ    CTX_FLOATS_BASE(R15), R9
+	MOVQ    CTX_INT_CONSTS_BASE(R15), R11
+	MOVQ    CTX_JUMP_TABLE(R15), R10
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	RET
+
+// handlerPathBShimSubOpMakeSliceFloat calls ·asmCallHandleSubOpMakeSliceFloat(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSubOpMakeSliceFloat(SB), NOSPLIT|NOFRAME, $0
+	NO_LOCAL_POINTERS
+	MOVQ    R14, CTX_PC(R15)
+	MOVQ    R14, CTX_SAVED_PC(R15)
+	ADJSP   $32
+	MOVQ    R15, 0(SP)
+	MOVL    DX, 8(SP)
+	CALL    ·asmCallHandleSubOpMakeSliceFloat(SB)
+	MOVQ    16(SP), R15
+	ADJSP   $-32
+	MOVBLZX CTX_HANDLER_RESULT(R15), AX
+	TESTB   AL, AL
+	JNZ     tier2_shim_exit
+	MOVQ    CTX_PC(R15), R14
+	MOVQ    CTX_CODE_BASE(R15), R12
+	MOVQ    CTX_CODE_LEN(R15), R13
+	MOVQ    CTX_INTS_BASE(R15), R8
+	MOVQ    CTX_FLOATS_BASE(R15), R9
+	MOVQ    CTX_INT_CONSTS_BASE(R15), R11
+	MOVQ    CTX_JUMP_TABLE(R15), R10
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	RET
+
+// handlerPathBShimSubOpMakeSliceString calls ·asmCallHandleSubOpMakeSliceString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSubOpMakeSliceString(SB), NOSPLIT|NOFRAME, $0
+	NO_LOCAL_POINTERS
+	MOVQ    R14, CTX_PC(R15)
+	MOVQ    R14, CTX_SAVED_PC(R15)
+	ADJSP   $32
+	MOVQ    R15, 0(SP)
+	MOVL    DX, 8(SP)
+	CALL    ·asmCallHandleSubOpMakeSliceString(SB)
+	MOVQ    16(SP), R15
+	ADJSP   $-32
+	MOVBLZX CTX_HANDLER_RESULT(R15), AX
+	TESTB   AL, AL
+	JNZ     tier2_shim_exit
+	MOVQ    CTX_PC(R15), R14
+	MOVQ    CTX_CODE_BASE(R15), R12
+	MOVQ    CTX_CODE_LEN(R15), R13
+	MOVQ    CTX_INTS_BASE(R15), R8
+	MOVQ    CTX_FLOATS_BASE(R15), R9
+	MOVQ    CTX_INT_CONSTS_BASE(R15), R11
+	MOVQ    CTX_JUMP_TABLE(R15), R10
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	RET
+
+// handlerPathBShimSubOpMakeSliceBool calls ·asmCallHandleSubOpMakeSliceBool(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSubOpMakeSliceBool(SB), NOSPLIT|NOFRAME, $0
+	NO_LOCAL_POINTERS
+	MOVQ    R14, CTX_PC(R15)
+	MOVQ    R14, CTX_SAVED_PC(R15)
+	ADJSP   $32
+	MOVQ    R15, 0(SP)
+	MOVL    DX, 8(SP)
+	CALL    ·asmCallHandleSubOpMakeSliceBool(SB)
+	MOVQ    16(SP), R15
+	ADJSP   $-32
+	MOVBLZX CTX_HANDLER_RESULT(R15), AX
+	TESTB   AL, AL
+	JNZ     tier2_shim_exit
+	MOVQ    CTX_PC(R15), R14
+	MOVQ    CTX_CODE_BASE(R15), R12
+	MOVQ    CTX_CODE_LEN(R15), R13
+	MOVQ    CTX_INTS_BASE(R15), R8
+	MOVQ    CTX_FLOATS_BASE(R15), R9
+	MOVQ    CTX_INT_CONSTS_BASE(R15), R11
+	MOVQ    CTX_JUMP_TABLE(R15), R10
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	RET
+
+// handlerPathBShimSubOpMakeSliceUint calls ·asmCallHandleSubOpMakeSliceUint(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSubOpMakeSliceUint(SB), NOSPLIT|NOFRAME, $0
+	NO_LOCAL_POINTERS
+	MOVQ    R14, CTX_PC(R15)
+	MOVQ    R14, CTX_SAVED_PC(R15)
+	ADJSP   $32
+	MOVQ    R15, 0(SP)
+	MOVL    DX, 8(SP)
+	CALL    ·asmCallHandleSubOpMakeSliceUint(SB)
+	MOVQ    16(SP), R15
+	ADJSP   $-32
+	MOVBLZX CTX_HANDLER_RESULT(R15), AX
+	TESTB   AL, AL
+	JNZ     tier2_shim_exit
+	MOVQ    CTX_PC(R15), R14
+	MOVQ    CTX_CODE_BASE(R15), R12
+	MOVQ    CTX_CODE_LEN(R15), R13
+	MOVQ    CTX_INTS_BASE(R15), R8
+	MOVQ    CTX_FLOATS_BASE(R15), R9
+	MOVQ    CTX_INT_CONSTS_BASE(R15), R11
+	MOVQ    CTX_JUMP_TABLE(R15), R10
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	RET
+
+// handlerPathBShimSubOpMakeSliceByte calls ·asmCallHandleSubOpMakeSliceByte(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSubOpMakeSliceByte(SB), NOSPLIT|NOFRAME, $0
+	NO_LOCAL_POINTERS
+	MOVQ    R14, CTX_PC(R15)
+	MOVQ    R14, CTX_SAVED_PC(R15)
+	ADJSP   $32
+	MOVQ    R15, 0(SP)
+	MOVL    DX, 8(SP)
+	CALL    ·asmCallHandleSubOpMakeSliceByte(SB)
+	MOVQ    16(SP), R15
+	ADJSP   $-32
+	MOVBLZX CTX_HANDLER_RESULT(R15), AX
+	TESTB   AL, AL
+	JNZ     tier2_shim_exit
+	MOVQ    CTX_PC(R15), R14
+	MOVQ    CTX_CODE_BASE(R15), R12
+	MOVQ    CTX_CODE_LEN(R15), R13
+	MOVQ    CTX_INTS_BASE(R15), R8
+	MOVQ    CTX_FLOATS_BASE(R15), R9
+	MOVQ    CTX_INT_CONSTS_BASE(R15), R11
+	MOVQ    CTX_JUMP_TABLE(R15), R10
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	RET
+
 // handlerPathBShimResetSharedCell calls ·asmCallHandleResetSharedCell(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
 TEXT ·handlerPathBShimResetSharedCell(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS

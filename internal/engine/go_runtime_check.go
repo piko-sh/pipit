@@ -16,8 +16,6 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
-//go:build go1.27
-
 package engine
 
 import (

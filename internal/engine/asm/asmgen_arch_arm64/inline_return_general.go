@@ -48,3 +48,18 @@ func emitReturnInlineCopyGeneralReturnARM64(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationBranch, labelRINoRetval)
 	e.Blank()
 }
+
+// emitReturnInlineResultKindGuardARM64 sends the single-result return to the Go fallback
+// unless the callee's result already lives in the caller's destination bank.
+//
+// Takes e (*asmgen.Emitter) which receives the emitted instructions.
+func emitReturnInlineResultKindGuardARM64(e *asmgen.Emitter) {
+	inst5(e, asmarm64.OperationMove64Bits, "CF_FUNCTION(R8), R9")
+	inst5(e, asmarm64.OperationMove64Bits, "FN_RESULT_KINDS_LEN(R9), R10")
+	inst5(e, asmarm64.OperationCompareAndBranchIfZero, "R10, "+labelRIFallback)
+	inst5(e, asmarm64.OperationMove64Bits, "FN_RESULT_KINDS(R9), R9")
+	inst(e, asmarm64.OperationMove8BitsUnsigned, "(R9), R9", mnemonicColumnWidth)
+	inst5(e, asmarm64.OperationCompare, "R1, R9")
+	inst5(e, asmarm64.OperationBranchIfNotEqual, labelRIFallback)
+	e.Blank()
+}

@@ -30,25 +30,30 @@ import (
 
 // compileLocalInitialiser compiles the initial value of a local variable.
 //
-// When name is heap-promoted and value is make([]T, ...), the slice backing is placed on
-// the Go heap. The closure cell that will hold it materialises arena-backed slices on
-// every store, which splits earlier aliases off onto their own backing and shrinks the
-// capacity, whereas Go shares one backing between every alias.
+// When name is heap-promoted, captured by a closure or stored beyond its register (see
+// escape.CollectFlowingSliceNames) and value is make([]T, ...) or a slice literal, the
+// slice backing is placed on the Go heap. A closure cell or container that receives an
+// arena-backed slice materialises its own copy, which splits it off from the variable's
+// backing, whereas Go shares one backing between every alias.
 //
 // Takes name (string) which is the local receiving the value.
 // Takes value (ast.Expr) which is the right-hand side expression.
 //
 // Returns the location holding the value and any compilation error.
 func (c *Compiler) compileLocalInitialiser(ctx context.Context, name string, value ast.Expr) (program.VarLocation, error) {
-	if !c.localIsHeapPromoted(name) {
+	heapPromoted := c.localIsHeapPromoted(name)
+	if !heapPromoted && !c.closureCapturedNames[name] && !c.flowingSliceNames[name] {
 		return c.compileExpression(ctx, value)
+	}
+	if c.isSliceLiteral(value) {
+		return c.compileHeapPlacedSliceLiteral(ctx, value)
 	}
 	call, ok := c.makeSliceCall(value)
 	if !ok {
 		return c.compileExpression(ctx, value)
 	}
 	location, err := c.compileBuiltinMakeWithPlacement(ctx, call, true)
-	if err != nil {
+	if err != nil || !heapPromoted {
 		return location, err
 	}
 
@@ -60,6 +65,65 @@ func (c *Compiler) compileLocalInitialiser(ctx context.Context, name string, val
 		c.escapeMakeSitePCs[name] = extensionPC
 	}
 	return location, nil
+}
+
+// compileHeapPlacedSliceLiteral compiles a slice literal whose backing must live on the
+// Go heap, setting isa.MakeSliceExtHeapFlag on the allocation the literal fills.
+//
+// Takes literal (ast.Expr) which is the slice literal.
+//
+// Returns the location holding the slice and any compilation error.
+func (c *Compiler) compileHeapPlacedSliceLiteral(ctx context.Context, literal ast.Expr) (program.VarLocation, error) {
+	start := program.CurrentPC(c.Function)
+	location, err := c.compileExpression(ctx, literal)
+	if err != nil || location.Kind != isa.RegisterGeneral {
+		return location, err
+	}
+	body := c.Function.Body
+	for pc := start; pc+1 < len(body); pc++ {
+		if body[pc].Op == isa.OpMakeSlice && body[pc].A == location.Register && body[pc+1].Op == isa.OpExt {
+			body[pc+1].C |= isa.MakeSliceExtHeapFlag
+			break
+		}
+	}
+	return location, nil
+}
+
+// compileHeapPlacedSliceAllocation compiles a slice literal or make([]T, ...) with its
+// backing on the Go heap.
+//
+// Takes expression (ast.Expr) which is the allocation.
+//
+// Returns the location holding the slice, false when expression is neither form, and any
+// compilation error.
+func (c *Compiler) compileHeapPlacedSliceAllocation(ctx context.Context, expression ast.Expr) (program.VarLocation, bool, error) {
+	if c.isSliceLiteral(expression) {
+		location, err := c.compileHeapPlacedSliceLiteral(ctx, expression)
+		return location, true, err
+	}
+	if call, ok := c.makeSliceCall(expression); ok {
+		location, err := c.compileBuiltinMakeWithPlacement(ctx, call, true)
+		return location, true, err
+	}
+	return program.VarLocation{}, false, nil
+}
+
+// isSliceLiteral reports whether expression is a composite literal of slice type.
+//
+// Takes expression (ast.Expr) which is the candidate right-hand side.
+//
+// Returns true when expression is a []T{...} literal.
+func (c *Compiler) isSliceLiteral(expression ast.Expr) bool {
+	literal, ok := ast.Unparen(expression).(*ast.CompositeLit)
+	if !ok || c.Info == nil {
+		return false
+	}
+	tv, ok := c.Info.Types[literal]
+	if !ok || tv.Type == nil {
+		return false
+	}
+	_, isSlice := tv.Type.Underlying().(*types.Slice)
+	return isSlice
 }
 
 // localIsHeapPromoted reports whether the general-bank local name either is flagged for
@@ -168,4 +232,30 @@ func (c *Compiler) refreshNamedResultLocation(name string, promoted program.VarL
 func (c *Compiler) classifyTypedSliceLocals(body *ast.BlockStmt) {
 	c.typedSliceLocals = escape.ClassifyTypedSliceLocals(c.EscapeContext(), body)
 	c.heapTypedSliceLocals = escape.ClassifyHeapTypedSliceLocals(body, c.typedSliceLocals)
+	for name := range c.typedSliceLocals {
+		if c.flowingSliceNames[name] {
+			if c.heapTypedSliceLocals == nil {
+				c.heapTypedSliceLocals = make(map[string]bool)
+			}
+			c.heapTypedSliceLocals[name] = true
+		}
+	}
+}
+
+// lookupSliceFlow resolves what the callees a call may reach do with its operands,
+// recomputing the program's slice flows when more functions have been declared since they
+// were last computed. It is the compiler's escape.CallLookup.
+//
+// Takes call (*ast.CallExpr) which is the call.
+//
+// Returns escape.CallFlow which is the zero value when no callee stores anything.
+func (c *Compiler) lookupSliceFlow(call *ast.CallExpr) escape.CallFlow {
+	if c.programContext == nil || c.Info == nil {
+		return escape.CallFlow{Arguments: nil, Receiver: false, PacksVariadic: false}
+	}
+	if c.sliceFlows == nil || c.sliceFlowsDeclared != len(c.sliceFlowDeclarations) {
+		c.sliceFlows = escape.ComputeSliceFlows(c.Info, c.sliceFlowDeclarations)
+		c.sliceFlowsDeclared = len(c.sliceFlowDeclarations)
+	}
+	return c.sliceFlows.Lookup(call)
 }

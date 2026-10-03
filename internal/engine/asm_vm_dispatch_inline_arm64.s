@@ -1904,6 +1904,14 @@ ri_no_simple_defer:
 	MOVBU VL_KIND(R7), R1
 	MOVBU VL_REGISTER(R7), R7
 
+	MOVD CF_FUNCTION(R8), R9
+	MOVD FN_RESULT_KINDS_LEN(R9), R10
+	CBZ  R10, ri_fallback
+	MOVD FN_RESULT_KINDS(R9), R9
+	MOVBU (R9), R9
+	CMP  R1, R9
+	BNE  ri_fallback
+
 	CMP  $0, R1
 	BEQ  ri_check_int
 	CMP  $1, R1

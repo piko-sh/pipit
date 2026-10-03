@@ -138,7 +138,7 @@ func zeroTypedRegister(registers *Registers, destination program.VarLocation) {
 // Takes destination (VarLocation) which specifies the destination typed register
 // location.
 //
-//nolint:revive // Reasons above.
+//nolint:revive // cyclomatic: one dense isa.RegisterKind switch, compiled to a jump table
 func unpackGeneralToTyped(registers *Registers, v reflect.Value, destination program.VarLocation) {
 	switch destination.Kind {
 	case isa.RegisterInt:
@@ -271,7 +271,7 @@ func assignReflectParams(registers *Registers, parameterKinds []isa.RegisterKind
 // Takes register (uint8) which specifies the register index within the bank.
 // Takes argument (reflect.Value) which provides the reflect.Value to assign.
 //
-//nolint:revive // Reasons above.
+//nolint:revive // cyclomatic, cognitive-complexity: one dense isa.RegisterKind switch
 func assignReflectArg(registers *Registers, kind isa.RegisterKind, register uint8, argument reflect.Value) {
 	switch kind {
 	case isa.RegisterInt:

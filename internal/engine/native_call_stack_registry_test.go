@@ -379,3 +379,55 @@ func TestAnswerRuntimeFuncMethodNeedsAReceiver(t *testing.T) {
 		require.Zero(t, results[1].Interface())
 	})
 }
+
+func TestFuncHandleAnswersNativeCalls(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a pseudo frame", func(t *testing.T) {
+		t.Parallel()
+
+		registry := newCallStackRegistry()
+		entry := registry.pseudo(pseudoFrameGoexit)
+		handle := funcHandle(entry)
+
+		require.Equal(t, pseudoFrameGoexit, handle.Name(), "the runtime's own Name reads the funcinl record")
+		require.Equal(t, entry.Entry(), handle.Entry())
+		file, line := handle.FileLine(entry.Entry())
+		require.Empty(t, file)
+		require.Zero(t, line)
+	})
+
+	t.Run("a compiled function reports its first source position", func(t *testing.T) {
+		t.Parallel()
+
+		files := []string{"/src/main.go"}
+		function := stackNamedFunction("run", 2)
+		function.DebugSourceMap = &program.SourceMap{
+			Files: &files,
+			Positions: []program.SourcePosition{
+				{Line: 12, Column: 2, FileID: 0, Inlined: false},
+				{Line: 13, Column: 2, FileID: 0, Inlined: false},
+			},
+			Epilogue: program.SourcePosition{Line: 14, Column: 1, FileID: 0, Inlined: false},
+		}
+		registry := newCallStackRegistry()
+		entry := registry.forFunction(function)
+		handle := funcHandle(entry)
+
+		require.Equal(t, "main.run", handle.Name())
+		require.Equal(t, entry.Entry(), handle.Entry())
+		file, line := handle.FileLine(entry.pc(1))
+		require.Equal(t, "/src/main.go", file)
+		require.Equal(t, 12, line, "a native caller gets the function's first line, as Go gives an inlined frame")
+	})
+
+	t.Run("a handle decodes back to its entry", func(t *testing.T) {
+		t.Parallel()
+
+		registry := newCallStackRegistry()
+		entry := registry.forFunction(stackNamedFunction("run", 1))
+
+		require.Same(t, entry, registry.fromHandle(reflect.ValueOf(funcHandle(entry))))
+		require.Nil(t, funcHandle(nil))
+	})
+}

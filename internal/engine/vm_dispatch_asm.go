@@ -131,7 +131,7 @@ func (vm *VM) runDispatchedLoop(baseFramePointer int) (any, error) {
 //
 // Returns the result, the dispatch action, and any error.
 //
-//nolint:revive // hot path
+//nolint:revive // cyclomatic, function-length: one switch over every ASM exit reason
 func (vm *VM) handleDispatchExit(
 	ctx *dispatchContext,
 	frame *CallFrame,

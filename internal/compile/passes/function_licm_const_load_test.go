@@ -210,7 +210,7 @@ func TestPostPurityPipelineEnablesConstantLoadHoisting(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name     string
-		pipeline []pass
+		pipeline []Pass
 		want     bool
 	}{
 		{name: "first pass leaves constant loads to the fusers", pipeline: functionPipeline(DefaultOptions()), want: false},

@@ -328,7 +328,7 @@ func (*BytecodeARM64Arch) EmitTypedSliceIntSetDirectUnchecked(e *asmgen.Emitter,
 // Takes destIsFloat (bool) which selects the float bank destination over ints.
 // Takes shimSymbol (string) which is the fallback shim handler name.
 //
-//nolint:revive // Reason above.
+//nolint:revive // function-length: one handler listing; registers stay live end to end
 func (*BytecodeARM64Arch) EmitSliceIndexStructFieldScalar(e *asmgen.Emitter, kindA, kindB string, destIsFloat bool, shimSymbol string) {
 	inst5(e, asmarm64.OperationMove32BitsUnsigned, "(R22)(R20<<2), R3")
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$8, R3, R3")
@@ -461,7 +461,7 @@ func (*BytecodeARM64Arch) EmitDerefSliceIntAccess(e *asmgen.Emitter, isSet bool,
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 //
-//nolint:revive // straight-line listing must not be split.
+//nolint:revive // function-length: one handler listing; registers stay live end to end
 func (*BytecodeARM64Arch) EmitGetStructFieldGeneralPointerT0(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationMove64Bits, "$runtime·writeBarrier(SB), R3")
 	inst5(e, asmarm64.OperationMove8BitsUnsigned, "(R3), R3")
@@ -537,7 +537,7 @@ func (*BytecodeARM64Arch) EmitGetStructFieldGeneralPointerT0(e *asmgen.Emitter) 
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 //
-//nolint:revive // Reason above.
+//nolint:revive // function-length: one handler listing; registers stay live end to end
 func (*BytecodeARM64Arch) EmitGetStructFieldRawPointerT0(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationMove64Bits, "$runtime·writeBarrier(SB), R3")
 	inst5(e, asmarm64.OperationMove8BitsUnsigned, "(R3), R3")

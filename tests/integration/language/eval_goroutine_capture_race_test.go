@@ -175,11 +175,9 @@ run()`
 	const expected = 2 + 4 + 6 + 8
 
 	var wg sync.WaitGroup
-	wg.Add(workers)
 	errors := make(chan error, workers*iterationsPerWorker)
-	for workerIndex := range workers {
-		go func(worker int) {
-			defer wg.Done()
+	for worker := range workers {
+		wg.Go(func() {
 			for iteration := range iterationsPerWorker {
 				result, err := service.Eval(context.Background(), code)
 				if err != nil {
@@ -190,7 +188,7 @@ run()`
 					errors <- &concurrentEvalMismatch{worker: worker, iteration: iteration, expected: expected, got: result}
 				}
 			}
-		}(workerIndex)
+		})
 	}
 	wg.Wait()
 	close(errors)

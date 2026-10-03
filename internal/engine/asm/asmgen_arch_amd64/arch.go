@@ -333,7 +333,7 @@ func (*BytecodeAMD64Arch) EmitTypedSliceFloatGet(e *asmgen.Emitter, contextOffse
 // Takes destIsFloat (bool) which selects the float bank destination over ints.
 // Takes shimSymbol (string) which is the fallback shim handler name.
 //
-//nolint:revive // Reason above.
+//nolint:revive // function-length: one handler listing; registers stay live end to end
 func (*BytecodeAMD64Arch) EmitSliceIndexStructFieldScalar(e *asmgen.Emitter, kindA, kindB string, destIsFloat bool, shimSymbol string) {
 	inst(e, asmamd64.OperationMove32Bits, "(R12)(R14*4), BX")
 	inst(e, asmamd64.OperationShiftRight64Bits, "$8, BX")
@@ -478,7 +478,7 @@ func (*BytecodeAMD64Arch) EmitDerefSliceIntAccess(e *asmgen.Emitter, isSet bool,
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 //
-//nolint:revive // Reason above.
+//nolint:revive // function-length: one handler listing; registers stay live end to end
 func (*BytecodeAMD64Arch) EmitGetStructFieldGeneralPointerT0(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationCompare8Bits, "runtime·writeBarrier(SB), $0")
 	inst(e, asmamd64.OperationJumpIfNotEqual, "sf_shim")
@@ -553,7 +553,7 @@ func (*BytecodeAMD64Arch) EmitGetStructFieldGeneralPointerT0(e *asmgen.Emitter) 
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 //
-//nolint:revive // Reason above.
+//nolint:revive // function-length: one handler listing; registers stay live end to end
 func (*BytecodeAMD64Arch) EmitGetStructFieldRawPointerT0(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationCompare8Bits, "runtime·writeBarrier(SB), $0")
 	inst(e, asmamd64.OperationJumpIfNotEqual, "rp_shim")
@@ -636,7 +636,7 @@ func (*BytecodeAMD64Arch) EmitGetStructFieldRawPointerT0(e *asmgen.Emitter) {
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 //
-//nolint:revive // Reason above.
+//nolint:revive // function-length: one handler listing; registers stay live end to end
 func (*BytecodeAMD64Arch) EmitEqGeneral(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationMove64Bits, "DX, BX")
 	inst(e, asmamd64.OperationShiftRight64Bits, "$16, BX")

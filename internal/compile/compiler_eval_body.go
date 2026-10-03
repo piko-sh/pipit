@@ -81,6 +81,7 @@ func (c *Compiler) CompileEvalBody(
 
 	c.Scopes.PushScope()
 	c.closureCapturedNames = escape.CollectClosureCapturedNamesAll(functionDeclaration.Body)
+	c.flowingSliceNames = escape.CollectFlowingSliceNames(c.Info, functionDeclaration.Type, functionDeclaration.Body, c.lookupSliceFlow)
 	c.classifyTypedSliceLocals(functionDeclaration.Body)
 
 	lastLocation, err := c.compileStmtList(ctx, functionDeclaration.Body.List)

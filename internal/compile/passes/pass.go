@@ -24,13 +24,13 @@ import (
 	"pipit.sh/pipit/internal/engine/program"
 )
 
-// pass is one step of a per-function pipeline.
+// Pass is one step of a per-function pipeline.
 //
-// A pass rewrites compiledFunction.Body in place under the contract described in the
+// A Pass rewrites compiledFunction.Body in place under the contract described in the
 // package documentation: the body only changes length through the splice helpers, dead
 // slots become isa.OpNop, every jump target is valid on exit, and a second run over its
 // own output is a no-op.
-type pass interface {
+type Pass interface {
 	// Name returns the short stable identifier the pipeline reports in diagnostics.
 	//
 	// Returns string which is the pass identifier.
@@ -91,7 +91,7 @@ func (pass FunctionPass) Run(ctx context.Context, state *PassContext, compiledFu
 //
 // Returns error from the earliest pass that fails, unwrapped so callers see the pass's
 // own message.
-func RunPipeline(ctx context.Context, pipeline []pass, opts Options, compiledFunction *program.CompiledFunction) error {
+func RunPipeline(ctx context.Context, pipeline []Pass, opts Options, compiledFunction *program.CompiledFunction) error {
 	passCtx := new(PassContext{
 		Analysis: nil,
 		options:  opts,

@@ -76,14 +76,12 @@ func TestArenaIsolationParallel(t *testing.T) {
 
 	var wg sync.WaitGroup
 	const concurrency = 10
-	wg.Add(concurrency)
 	for range concurrency {
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			result, err := service.Eval(ctx, "2 + 3")
 			require.NoError(t, err)
 			require.Equal(t, 5, result)
-		}()
+		})
 	}
 	wg.Wait()
 

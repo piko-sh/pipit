@@ -36,8 +36,8 @@ const (
 	develVersion = "devel"
 )
 
-// Version holds the released semver of the pipit library module, without the leading
-// v. Release builds set it using: go build -ldflags "-X pipit.sh/pipit.Version=1.0.0".
+// Version holds the released semver of the pipit library module, without the leading v.
+// Release builds set it using: go build -ldflags "-X pipit.sh/pipit.Version=1.0.0".
 var Version string
 
 func init() {
@@ -52,8 +52,8 @@ func init() {
 // Takes info (*debug.BuildInfo) which is the binary's build info.
 // Takes ok (bool) which reports whether the build info was available.
 //
-// Returns string which is the version without its leading v, or "devel" when the
-// module is absent, replaced by a directory, or built from a working copy.
+// Returns string which is the version without its leading v, or "devel" when the module
+// is absent, replaced by a directory, or built from a working copy.
 func moduleVersion(info *debug.BuildInfo, ok bool) string {
 	if !ok || info == nil {
 		return develVersion

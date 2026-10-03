@@ -229,6 +229,20 @@ func ShapeForInstruction(instr Instruction) OperandShape {
 	return OperandShapeAt(TierSub3, instr.C)
 }
 
+// CallSiteIndex returns the call-site index a call instruction carries in B|(C<<8), as the
+// shape table marks it.
+//
+// Takes instr (Instruction) which is the instruction word.
+//
+// Returns the index, and false when the instruction carries no call-site index.
+func CallSiteIndex(instr Instruction) (uint16, bool) {
+	shape := ShapeForInstruction(instr)
+	if shape.B != roleCallSiteLow || shape.C != roleCallSiteHigh {
+		return 0, false
+	}
+	return instr.WideIndex(), true
+}
+
 // KindForRole returns the RegisterKind expected by a register-shaped operand role. The
 // boolean is false for non-register roles.
 //

@@ -82,6 +82,10 @@ type RegisterAllocator struct {
 	// peakSpillSlot tracks the highest spill slot ever allocated per bank. Used together
 	// with peakRegister to size the register file: max(peakRegister, 256 + peakSpillSlot).
 	peakSpillSlot [isa.NumRegisterKinds]uint32
+
+	// capturedFloor is, per bank, one past the highest register a closure has captured in
+	// the function being compiled.
+	capturedFloor [isa.NumRegisterKinds]uint32
 }
 
 // Alloc allocates a register in the given bank and returns its index.
@@ -182,7 +186,8 @@ func (r *RegisterAllocator) Snapshot() [isa.NumRegisterKinds]uint32 {
 
 // Restore resets the allocation state to a previously saved Snapshot.
 //
-// Used when exiting a scope to free all registers allocated within it.
+// Used when exiting a scope to free all registers allocated within it, except that
+// registers below capturedFloor stay allocated.
 //
 // Takes saved ([NumRegisterKinds]uint32) which is the Snapshot to restore from.
 //
@@ -195,8 +200,17 @@ func (r *RegisterAllocator) Restore(saved [isa.NumRegisterKinds]uint32) {
 				isa.RegisterKind(i), saved[i], r.nextRegister[i], r.FunctionName,
 			))
 		}
+		r.nextRegister[i] = max(saved[i], r.capturedFloor[i])
 	}
-	r.nextRegister = saved
+}
+
+// ReserveCaptured keeps a captured variable's register out of reuse for the rest of the
+// function.
+//
+// Takes kind (isa.RegisterKind) which is the variable's bank.
+// Takes register (uint8) which is the variable's register.
+func (r *RegisterAllocator) ReserveCaptured(kind isa.RegisterKind, register uint8) {
+	r.capturedFloor[kind] = max(r.capturedFloor[kind], uint32(register)+1)
 }
 
 // allocOrRecycle returns a recycled register if one is available above baseFreeIndex,
@@ -317,6 +331,7 @@ func NewScopeStack(functionName string) *ScopeStack {
 			peakRegister:      [isa.NumRegisterKinds]uint32{},
 			nextSpillSlot:     [isa.NumRegisterKinds]uint32{},
 			peakSpillSlot:     [isa.NumRegisterKinds]uint32{},
+			capturedFloor:     [isa.NumRegisterKinds]uint32{},
 		}),
 		DebugVarTable:    nil,
 		DebugBodyLenFunc: nil,
@@ -427,6 +442,9 @@ func (s *ScopeStack) MarkCaptured(name string) {
 		if loc, ok := s.Scopes[scopeIndex].Vars[name]; ok {
 			loc.IsCaptured = true
 			s.Scopes[scopeIndex].Vars[name] = loc
+			if !loc.IsSpilled {
+				s.Alloc.ReserveCaptured(loc.Kind, loc.Register)
+			}
 			return
 		}
 	}

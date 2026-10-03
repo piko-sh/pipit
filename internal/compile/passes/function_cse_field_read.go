@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/engine/program"
@@ -853,24 +854,62 @@ func instructionShapeAllowsCseScan(inst isa.Instruction) bool {
 //
 // Returns true when inst writes register reg in bank.
 func instructionWritesRegisterInBank(inst isa.Instruction, bank isa.OperandRole, reg uint8) bool {
-	if bank == isa.RoleNone {
-		return false
-	}
+	writes := registersWrittenInBank(inst, bank)
+	return writes.any || slices.Contains(writes.registers(), reg)
+}
 
+// bankWrites lists the registers one instruction writes in one bank.
+type bankWrites struct {
+	// count is how many entries of written are set.
+	count int
+
+	// written holds the written register indices, ascending and distinct; only the first
+	// count entries are set.
+	written [isa.NumInstructionOperands]uint8
+
+	// any reports that the instruction may write every register of the bank, because its
+	// shape is undescribed or its writes reach registers its operand bytes do not name.
+	any bool
+}
+
+// registers returns the written register indices, ascending and distinct.
+//
+// Returns []uint8 which aliases the receiver's storage.
+func (w *bankWrites) registers() []uint8 {
+	return w.written[:w.count]
+}
+
+// registersWrittenInBank resolves, from one shape lookup, which registers of a bank an
+// instruction writes, so a caller tracking facts per register need not ask about each.
+//
+// Takes inst (instruction) which is the candidate instruction.
+// Takes bank (isa.OperandRole) which is the destination bank.
+//
+// Returns bankWrites which lists the written registers, or reports any for an undescribed
+// or opaque-write shape. No bank, isa.RoleNone, is never written.
+func registersWrittenInBank(inst isa.Instruction, bank isa.OperandRole) bankWrites {
+	var writes bankWrites
+	if bank == isa.RoleNone {
+		return writes
+	}
 	shape := isa.ShapeForInstruction(inst)
 	if shape.Flags&isa.ShapeFlagDescribed == 0 || shape.Flags&isa.ShapeFlagOpaqueWrites != 0 {
-		return true
+		writes.any = true
+		return writes
 	}
-	if shape.Writes[0] && operandWriteMatchesBank(inst, 0, shape.A, bank) && inst.A == reg {
-		return true
+	operands := [isa.NumInstructionOperands]uint8{inst.A, inst.B, inst.C}
+	roles := [isa.NumInstructionOperands]isa.OperandRole{shape.A, shape.B, shape.C}
+	for position, register := range operands {
+		if !shape.Writes[position] || !operandWriteMatchesBank(inst, position, roles[position], bank) {
+			continue
+		}
+		if !slices.Contains(writes.registers(), register) {
+			writes.written[writes.count] = register
+			writes.count++
+		}
 	}
-	if shape.Writes[1] && operandWriteMatchesBank(inst, 1, shape.B, bank) && inst.B == reg {
-		return true
-	}
-	if shape.Writes[2] && operandWriteMatchesBank(inst, 2, shape.C, bank) && inst.C == reg {
-		return true
-	}
-	return false
+	slices.Sort(writes.registers())
+	return writes
 }
 
 // operandWriteMatchesBank reports whether the write at operand position targets the
@@ -938,7 +977,7 @@ func resolveDynamicWriteBank(inst isa.Instruction, pos int) (isa.OperandRole, bo
 // LICM passes treat the false return as "bank unknown" and conservatively
 // over-invalidate.
 //
-//nolint:revive // dispatch table
+//nolint:revive // identical-switch-branches: sub-op families kept as separate rows
 func resolveTier1WriteBank(sub isa.SubOpcode) (isa.OperandRole, bool) {
 	switch sub {
 	case isa.SubOpMoveInt, isa.SubOpMoveGeneralToInt:
