@@ -463,13 +463,13 @@ func valueCopyForBoundaryArenaWithVM(arena *RegisterArena, vm *VM, v reflect.Val
 }
 
 // arenaResidentCompositeKind reports whether values of kind use arena-resident storage in
-// every build. Struct and array literals come from AllocBytes regardless of build mode.
+// every build. Composites and slice backings use arena slabs regardless of build mode.
 //
 // Takes kind (reflect.Kind) which is the kind of the value about to escape.
 //
-// Returns true for struct and array kinds.
+// Returns true for struct, array and slice kinds.
 func arenaResidentCompositeKind(kind reflect.Kind) bool {
-	return kind == reflect.Struct || kind == reflect.Array
+	return kind == reflect.Struct || kind == reflect.Array || kind == reflect.Slice
 }
 
 // materialiseArenaValueUnconditional applies the heap-escape copy in every build. Used by

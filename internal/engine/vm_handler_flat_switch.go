@@ -580,6 +580,8 @@ func flatDispatchSwitch(vm *VM, frame *CallFrame, registers *Registers, instr is
 		return handleEqStringConstJumpFalse(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpEqUintConstJumpFalse):
 		return handleSubOpEqUintConstJumpFalse(vm, frame, registers, instr)
+	case flatHandlerTier1Base + uint(isa.SubOpFieldAddr):
+		return handleSubOpFieldAddr(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpFloatToInt):
 		return handleFlatSubOpFloatToInt(vm, frame, registers, instr)
 	case flatHandlerTier1Base + uint(isa.SubOpFloatToUint):

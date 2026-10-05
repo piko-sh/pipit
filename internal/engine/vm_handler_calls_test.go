@@ -19,6 +19,7 @@
 package engine
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -204,4 +205,23 @@ func TestNestedCallsUnwindInOrder(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 20, result,
 		"inner doubles to ten and outer doubles again, so both frames must unwind in order")
+}
+
+func TestClosureCallRefreshesArgumentLayout(t *testing.T) {
+	t.Parallel()
+	builder := newBytecodeBuilder()
+	builder.numRegisters = wideRegCounts(4)
+	siteIndex := builder.AddCallSite(&program.CallSite{IsClosure: true, ClosureRegister: 0, Arguments: []program.VarLocation{intSlot(1)}})
+	builder.body = append(builder.body, makeOpCallSlot(siteIndex))
+	root := builder.build()
+	vm, frame, registers := newFramedVM(t, root)
+	for _, destination := range []uint8{1, 2, 1} {
+		callee := doublingCallee()
+		callee.ParameterRegisters = []uint8{destination}
+		registers.General[0] = reflect.ValueOf(&RuntimeClosure{Function: callee})
+		registers.Ints[1] = 42
+		require.Equal(t, opFrameChanged, handleCall(vm, frame, registers, callSlotOperands(siteIndex)))
+		require.Equal(t, int64(42), vm.CallStack[vm.FramePointer].Registers.Ints[destination])
+		vm.popFrame()
+	}
 }

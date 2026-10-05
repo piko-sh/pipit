@@ -239,4 +239,5 @@ var tierSub1Specs = []OpSpec{
 	sub1(SubOpRoundComplex64, "ROUND_COMPLEX64").cost(costCheap).handler("handleFlatSubOpRoundComplex64").pure(),
 	sub1(SubOpEqInterfaceStrict, "EQ_INTERFACE_STRICT").cost(costCheap).handler("handleSubOpEqInterfaceStrict").pure(),
 	sub1(SubOpNeInterfaceStrict, "NE_INTERFACE_STRICT").cost(costCheap).handler("handleSubOpNeInterfaceStrict").pure(),
+	sub1(SubOpFieldAddr, "FIELD_ADDR").cost(costMedium).handler("handleSubOpFieldAddr").mutates(),
 }

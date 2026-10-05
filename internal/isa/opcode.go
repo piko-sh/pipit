@@ -1558,6 +1558,10 @@ const (
 
 	// SubOpNeInterfaceStrict is the != mirror of SubOpEqInterfaceStrict.
 	SubOpNeInterfaceStrict
+
+	// SubOpFieldAddr stores the address of a field of general[C] in general[B].
+	// The trailing OpExt word's A operand supplies the field index.
+	SubOpFieldAddr
 )
 
 const (

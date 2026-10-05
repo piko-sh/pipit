@@ -177,7 +177,7 @@ func escapeArenaValueForGlobal(arena *RegisterArena, v reflect.Value) reflect.Va
 		return copyReflectValue(v)
 	case reflect.Slice:
 		if !arenaUsesUnsafeSlabs {
-			return safeBuildEscapeSliceHeader(v)
+			return safeBuildEscapeSliceHeader(materialiseArenaValueUnconditional(arena, v))
 		}
 		return materialiseArenaValueUnconditional(arena, v)
 	default:

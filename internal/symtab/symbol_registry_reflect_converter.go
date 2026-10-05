@@ -188,6 +188,9 @@ func (c *reflectTypeConverter) synthesiseNativeBackedSignature(
 // Takes reflectType (reflect.Type) which is the reflect type to convert.
 //
 // Returns the equivalent go/types representation.
+//
+// Concurrency: calls on the same converter must be serialised. Registry cache accesses
+// acquire registry.mu internally.
 func (c *reflectTypeConverter) toGoType(reflectType reflect.Type) types.Type {
 	if cached, ok := c.seen[reflectType]; ok {
 		return cached
@@ -201,6 +204,23 @@ func (c *reflectTypeConverter) toGoType(reflectType reflect.Type) types.Type {
 
 	if resolved := c.resolveFromRegistry(reflectType); resolved != nil {
 		return resolved
+	}
+
+	if reflectType.Name() != "" && reflectType.PkgPath() == c.pkg.Path() {
+		name := types.NewTypeName(0, c.pkg, reflectType.Name(), nil)
+		named := types.NewNamed(name, nil, nil)
+		c.seen[reflectType] = named
+		c.pkg.Scope().Insert(name)
+		named.SetUnderlying(c.synthesiseNamedUnderlying(reflectType))
+		if reflectType.Kind() != reflect.Interface {
+			c.synthesiseMethods(reflect.PointerTo(reflectType), named, c.pkg)
+		}
+		if c.registry != nil {
+			c.registry.mu.Lock()
+			c.registry.reflectToTypes[reflectType] = named
+			c.registry.mu.Unlock()
+		}
+		return named
 	}
 
 	if basicKind, ok := reflectKindToBasicType[reflectType.Kind()]; ok {

@@ -244,6 +244,9 @@ func classifyMoveScanStep(scan *moveScan, j int) (moveScanDecision, int) {
 //
 // Returns the decision for the outer scanner.
 func classifyDescribedScanStep(scan *moveScan, j int, shape isa.OperandShape) moveScanDecision {
+	if shape.A == isa.RoleRegDynamic || shape.B == isa.RoleRegDynamic || shape.C == isa.RoleRegDynamic {
+		return moveScanBail
+	}
 	candidate := scan.candidate
 	readCount, writesSource, writesDestination, pos := classifyOperands(scan.body[j], shape, candidate.Kind, candidate.Destination, candidate.Source)
 	if readCount > 1 {

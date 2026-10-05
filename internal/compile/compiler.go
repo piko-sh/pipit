@@ -823,7 +823,7 @@ func (c *Compiler) tryEmitNamedTypeZero(ctx context.Context, typeObject types.Ob
 	if !ok {
 		return false
 	}
-	named, isNamed := types.Unalias(typeObject.Type()).(*types.Named)
+	named, isNamed := types.Unalias(c.substitutedType(typeObject.Type())).(*types.Named)
 	if !isNamed {
 		return false
 	}
@@ -870,7 +870,7 @@ func (c *Compiler) tryEmitCompositeTypeZero(ctx context.Context, typeObject type
 //
 // Returns bool which is true when the load was emitted.
 func (c *Compiler) tryEmitReflectZero(ctx context.Context, typeObject types.Object, location program.VarLocation) bool {
-	if _, isInterface := typeObject.Type().Underlying().(*types.Interface); isInterface {
+	if _, isInterface := c.substitutedType(typeObject.Type()).Underlying().(*types.Interface); isInterface {
 		return false
 	}
 	reflectType := c.TypeToReflect(ctx, typeObject.Type())
@@ -895,6 +895,7 @@ func (c *Compiler) tryEmitReflectZero(ctx context.Context, typeObject types.Obje
 // Returns the addressable zero reflect.Value and true when t's underlying type is an
 // array or struct, and (reflect.Value{}, false) otherwise.
 func (c *Compiler) zeroValueForCompositeType(ctx context.Context, t types.Type) (reflect.Value, bool) {
+	t = c.substitutedType(t)
 	reflectType := c.TypeToReflect(ctx, t)
 	if reflectType == nil {
 		return reflect.Value{}, false
@@ -914,6 +915,7 @@ func (c *Compiler) zeroValueForCompositeType(ctx context.Context, t types.Type) 
 // Returns the addressable zero reflect.Value and true when t is a named type registered
 // in the symbol registry, and (reflect.Value{}, false) otherwise.
 func (c *Compiler) zeroValueForNamedType(_ context.Context, t types.Type) (reflect.Value, bool) {
+	t = c.substitutedType(t)
 	named, ok := types.Unalias(t).(*types.Named)
 	if !ok {
 		return reflect.Value{}, false

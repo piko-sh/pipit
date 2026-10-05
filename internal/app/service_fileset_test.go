@@ -20,6 +20,7 @@ package app
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"reflect"
 	"runtime"
@@ -981,4 +982,18 @@ func Run() int { return helper() }
 	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "Run")
 	require.NoError(t, err)
 	require.Equal(t, "2", fmt.Sprint(result))
+}
+
+func TestReflectedVariableRetainsUnexportedTypeMethods(t *testing.T) {
+	t.Parallel()
+	service := NewService()
+	service.UseSymbols(symtab.NewSymbolRegistry(symtab.SymbolExports{"encoding/binary": {
+		"LittleEndian": reflect.ValueOf(&binary.LittleEndian).Elem(),
+	}}))
+	result, err := service.EvalFile(context.Background(), `package main
+ import "encoding/binary"
+ func run() uint16 { return binary.LittleEndian.Uint16([]byte{42, 1}) }
+ `, "run")
+	require.NoError(t, err)
+	require.Equal(t, "298", fmt.Sprint(result))
 }

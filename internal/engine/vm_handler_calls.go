@@ -321,7 +321,7 @@ func unpackReflectArgs(frame *CallFrame, registers *Registers, argumentCount int
 // Takes site (*CallSite) which describes argument locations in the caller.
 // Takes callee (*CompiledFunction) which provides expected parameter kinds.
 func copyCallArgs(vm *VM, arena *RegisterArena, callerRegisters *Registers, newFrame *CallFrame, site *program.CallSite, callee *program.CompiledFunction) {
-	if site.ArgCopyProgram != nil {
+	if site.ArgCopyProgram != nil && (!site.IsClosure || !vm.hasGoroutines && site.CachedClosureCallee == callee) {
 		runArgCopyProgram(vm, arena, callerRegisters, &newFrame.Registers, site.ArgCopyProgram)
 		return
 	}
@@ -782,7 +782,7 @@ func handleCall(vm *VM, frame *CallFrame, registers *Registers, instruction isa.
 				site.CachedClosureRoot = closureRoot
 				vm.tryPopulateClosureASMInfo(frame.Function, siteIndex, site, callee, closurePointer, closureCells, closureRoot)
 			}
-			if site.ArgCopyProgram == nil && !vm.hasGoroutines {
+			if !vm.hasGoroutines {
 				site.ArgCopyProgram = program.BuildCallArgCopyProgram(site.Arguments, callee.ParameterKinds, callee.ParameterRegisters)
 			}
 		}

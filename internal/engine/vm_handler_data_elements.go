@@ -950,3 +950,41 @@ func handleDerefSliceSetInt(vm *VM, _ *CallFrame, registers *Registers, instruct
 func raiseNilDereference(vm *VM) OpResult {
 	return raiseNativePanicAsInterpreted(vm, newRuntimePanicError(nilDereferenceMessage))
 }
+
+// handleSubOpFieldAddr stores the address of a struct field in the destination register.
+//
+// Takes vm (*VM) which handles interpreted nil-pointer panics.
+// Takes frame (*CallFrame) which supplies the extension word containing the field index.
+// Takes registers (*Registers) which holds the receiver and destination registers.
+// Takes instruction (isa.Instruction) which names the destination in B and receiver in C.
+//
+// Returns OpResult indicating whether execution continues or a panic is raised.
+func handleSubOpFieldAddr(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	extension := readExtensionWord(frame)
+	frame.ProgramCounter++
+	receiver := registers.General[instruction.C]
+	if !receiver.IsValid() {
+		return raiseNilDereference(vm)
+	}
+	if receiver.Kind() == reflect.Interface && !receiver.IsNil() {
+		receiver = receiver.Elem()
+	}
+	if receiver.Kind() == reflect.Pointer {
+		if receiver.IsNil() {
+			return raiseNilDereference(vm)
+		}
+		receiver = receiver.Elem()
+	}
+	if receiver.Kind() != reflect.Struct {
+		vMPanicNotStruct("handleSubOpFieldAddr", instruction.C, receiver.Kind(), instruction, frame, registers)
+	}
+	if int(extension.A) >= receiver.NumField() {
+		vMPanicFieldIndex("handleSubOpFieldAddr", receiver.Type(), extension.A, instruction, frame, registers)
+	}
+	field := receiver.Field(int(extension.A))
+	if !field.CanInterface() && field.CanAddr() {
+		field = unsafeNewAt(reflectValueABIType(field.Type()), ReflectValuePtr(field), field.Kind())
+	}
+	registers.General[instruction.B] = field.Addr()
+	return opContinue
+}

@@ -21,7 +21,6 @@
 package engine
 
 import (
-	"reflect"
 	"strconv"
 	"unsafe"
 )
@@ -40,16 +39,6 @@ const arenaUsesUnsafeSlabs = false
 //
 // Returns false always in the safe build.
 func (*RegisterArena) OwnsSliceHeaderPointer(_ unsafe.Pointer) bool {
-	return false
-}
-
-// OwnsSliceBacking reports whether p falls inside any arena backing slab. The safe build
-// has no arena-owned backings, so every slice is treated as heap-backed.
-//
-// Takes p (unsafe.Pointer) which is the slice's data pointer to test.
-//
-// Returns false always in the safe build.
-func (*RegisterArena) OwnsSliceBacking(_ unsafe.Pointer) bool {
 	return false
 }
 
@@ -106,27 +95,6 @@ func (a *RegisterArena) ownsBytePointer(p unsafe.Pointer) bool {
 			return true
 		}
 	}
-	return false
-}
-
-// ownsStringBacking reports whether p falls inside an arena string-backing slab. The safe
-// build has no arena-owned string backings, so the store barrier never skips a clone on
-// its account.
-//
-// Takes p (unsafe.Pointer) which is the slice's data pointer to test.
-//
-// Returns false always in the safe build.
-func (*RegisterArena) ownsStringBacking(_ unsafe.Pointer) bool {
-	return false
-}
-
-// ownsSliceBackingOf is the element-kind-aware form of OwnsSliceBacking. The safe build
-// has no arena-owned backings.
-//
-// Takes v (reflect.Value) which is the slice whose backing is tested.
-//
-// Returns false always in the safe build.
-func (*RegisterArena) ownsSliceBackingOf(_ reflect.Value) bool {
 	return false
 }
 

@@ -114,7 +114,7 @@ func TestMaterialiseHostArgumentsWalksTheHostContainers(t *testing.T) {
 	})
 }
 
-func TestArenaResidentCompositeKindNamesTheTwoThatStay(t *testing.T) {
+func TestArenaResidentCompositeKind(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -125,7 +125,7 @@ func TestArenaResidentCompositeKindNamesTheTwoThatStay(t *testing.T) {
 		{name: "a struct keeps the escape copy", kind: reflect.Struct, want: true},
 		{name: "an array keeps the escape copy", kind: reflect.Array, want: true},
 		{name: "a string does not", kind: reflect.String, want: false},
-		{name: "a slice does not", kind: reflect.Slice, want: false},
+		{name: "a slice keeps the escape copy", kind: reflect.Slice, want: true},
 		{name: "an int does not", kind: reflect.Int, want: false},
 	}
 
@@ -267,4 +267,43 @@ func TestConvertUnsafePointerBridgesBothDirections(t *testing.T) {
 		require.Equal(t, reflect.Pointer, converted.Kind())
 		require.Equal(t, 7, converted.Elem().Interface())
 	})
+}
+
+func TestArenaSliceBackingSurvivesReset(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		allocate func(*RegisterArena, int) reflect.Value
+		value    any
+	}{
+		{"string", func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocStringBacking(n)) }, "TROO"},
+		{"int", func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocIntBacking(n)) }, int64(42)},
+		{"float", func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocFloatBacking(n)) }, 1.25},
+		{"bool", func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocBoolBacking(n)) }, true},
+		{"uint", func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocUintBacking(n)) }, uint64(42)},
+		{"byte", func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocByteBacking(n)) }, byte(42)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			for _, retired := range []bool{false, true} {
+				arena := newTestArena(t)
+				resident := tt.allocate(arena, 3).Slice(1, 3)
+				resident.Index(0).Set(reflect.ValueOf(tt.value))
+				if retired {
+					tt.allocate(arena, 65536)
+				}
+				require.True(t, arena.OwnsSliceBacking(resident.UnsafePointer()))
+				escaped := MaterialiseArenaValue(arena, resident)
+				global := escapeArenaValueForGlobal(arena, resident)
+				require.False(t, arena.OwnsSliceBacking(escaped.UnsafePointer()))
+				require.False(t, arena.OwnsSliceBacking(global.UnsafePointer()))
+				resident.Index(0).SetZero()
+				arena.Reset()
+				tt.allocate(arena, 3).Clear()
+				require.Equal(t, tt.value, escaped.Index(0).Interface())
+				require.Equal(t, tt.value, global.Index(0).Interface())
+			}
+		})
+	}
 }

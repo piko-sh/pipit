@@ -330,7 +330,17 @@ func (c *Compiler) compileAddressOfSelector(ctx context.Context, selectorExpress
 	}
 
 	if selection := c.Info.Selections[selectorExpression]; selection != nil && selection.Kind() == types.FieldVal {
-		return c.compileMethodReceiverAsPointer(ctx, selectorExpression.X, selection.Index())
+		base, err := c.compileAddressOfReceiverExpr(ctx, selectorExpression.X)
+		if err != nil {
+			return program.VarLocation{}, err
+		}
+		indices := selection.Index()
+		parent := c.walkFieldPointerPath(base, selectorExpression.X, indices[:len(indices)-1])
+		dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
+		program.Emit(c.Function, isa.OpDeref, dest, parent.Register, 0)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpFieldAddr), dest, dest)
+		program.EmitExtension(c.Function, uint16(safeconv.MustIntToUint8(indices[len(indices)-1])), 0)
+		return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, nil
 	}
 
 	receiverLocation, err := c.compileExpression(ctx, selectorExpression.X)
@@ -372,10 +382,8 @@ func (c *Compiler) tryAddressOfKnownSelector(ctx context.Context, selectorExpres
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
 	dereferenceRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
 	program.Emit(c.Function, isa.OpDeref, dereferenceRegister, receiverLocation.Register, 0)
-	fieldRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpGetField, fieldRegister, dereferenceRegister, safeconv.MustIntToUint8(indices[0]))
-	program.Emit(c.Function, isa.OpAddr, dest, fieldRegister, engine.AddrSourceStable)
-	c.Scopes.Alloc.FreeTemp(isa.RegisterGeneral, fieldRegister)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpFieldAddr), dest, dereferenceRegister)
+	program.EmitExtension(c.Function, uint16(safeconv.MustIntToUint8(indices[0])), 0)
 	c.Scopes.Alloc.FreeTemp(isa.RegisterGeneral, dereferenceRegister)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, true
 }

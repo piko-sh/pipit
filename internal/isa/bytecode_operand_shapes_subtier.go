@@ -175,6 +175,7 @@ var (
 		SubOpMakeSliceHeap:             {RoleRegDynamic, RoleRegInt, accessC, accessB, ShapeFlagFollowsExtension},
 		SubOpTypeSwitchJump:            {RoleRegGeneral, RoleRegGeneral, accessC, accessB, ShapeFlagControlFlow | ShapeFlagTerminator},
 		SubOpEqInterfaceStrict:         {RoleRegGeneral, RoleRegGeneral, accessBC, accessNone, ShapeFlagFollowsExtension | ShapeFlagOpaqueWrites},
+		SubOpFieldAddr:                 {RoleRegGeneral, RoleRegGeneral, accessC, accessB, ShapeFlagFollowsExtension},
 		SubOpNeInterfaceStrict:         {RoleRegGeneral, RoleRegGeneral, accessBC, accessNone, ShapeFlagFollowsExtension | ShapeFlagOpaqueWrites},
 	}
 

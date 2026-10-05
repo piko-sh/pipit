@@ -458,6 +458,7 @@ var flatTier1Registrations = map[isa.SubOpcode]opcodeHandler{
 	isa.SubOpRoundComplex64:             handleFlatSubOpRoundComplex64,
 	isa.SubOpEqInterfaceStrict:          handleSubOpEqInterfaceStrict,
 	isa.SubOpNeInterfaceStrict:          handleSubOpNeInterfaceStrict,
+	isa.SubOpFieldAddr:                  handleSubOpFieldAddr,
 }
 
 var flatTier2Registrations = map[isa.SubOpcodeTier2]opcodeHandler{
