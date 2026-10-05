@@ -72,6 +72,10 @@ const (
 	// MoveGeneralModeSnapshot unconditionally invokes the snapshot helper. Emitted when the
 	// source's static type is struct or array.
 	MoveGeneralModeSnapshot uint8 = 2
+
+	// MoveGeneralModeDebugSnapshot retains an aggregate for debugger inspection after
+	// program reads have been replaced with field captures.
+	MoveGeneralModeDebugSnapshot uint8 = 4
 )
 
 var (
@@ -344,8 +348,8 @@ func handleMoveString(_ *VM, _ *CallFrame, registers *Registers, instruction isa
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes registers (*Registers) which holds the register banks.
-// Takes instruction (instruction) which encodes source and destination register indices
-// and the snapshot mode in operand C.
+// Takes instruction (isa.Instruction) which encodes source and destination register
+// indices and the snapshot mode in operand C.
 //
 // Returns OpResult indicating the next execution step.
 func handleMoveGeneral(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
@@ -353,6 +357,12 @@ func handleMoveGeneral(vm *VM, _ *CallFrame, registers *Registers, instruction i
 	switch instruction.C {
 	case MoveGeneralModeAlias:
 		registers.General[instruction.A] = source
+	case MoveGeneralModeDebugSnapshot:
+		if vm.Limits.Debug == nil {
+			registers.General[instruction.A] = source
+			return opContinue
+		}
+		fallthrough
 	case MoveGeneralModeSnapshot, isa.MoveGeneralModeSnapshotRangeCandidate:
 		if !source.IsValid() {
 			registers.General[instruction.A] = source

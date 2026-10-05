@@ -19,6 +19,7 @@
 package engine
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -287,6 +288,33 @@ func TestStructFieldFallbackMissOnlyFaultsForNilPointers(t *testing.T) {
 				return
 			}
 			require.Equal(t, opContinue, got)
+		})
+	}
+}
+
+func TestWideByteFieldReadPreservesHeadersAndBacking(t *testing.T) {
+	t.Parallel()
+
+	type octet uint8
+	type bytes []byte
+	for _, source := range []any{[]byte(nil), []byte{}, make([]byte, 0, 7), bytes{3, 5}, []octet{7, 11}} {
+		value := reflect.ValueOf(source)
+		t.Run(value.Type().String()+"/"+fmt.Sprint(value.Len(), "/", value.Cap()), func(t *testing.T) {
+			fieldType := reflect.StructOf([]reflect.StructField{{Name: "Bytes", Type: value.Type()}})
+			receiver := reflect.New(fieldType).Elem()
+			receiver.Field(0).Set(value)
+			vm, frame, registers := newWideFieldFrame(t, 10, receiver.Addr().Interface())
+			frame.Function.StructLayoutTable[10].Path[0] = 0
+			frame.Function.StructLayoutTable[10].Offset = 0
+			require.Equal(t, opContinue, handleGetStructFieldUnsafeSliceByte(vm, frame, registers, op(0, 0, 1)))
+			got := registers.slicesByte[0]
+			require.Equal(t, value.Len(), len(got))
+			require.Equal(t, value.Cap(), cap(got))
+			require.Equal(t, value.IsNil(), got == nil)
+			if len(got) > 0 {
+				got[0] = 29
+				require.Equal(t, uint64(29), value.Index(0).Uint())
+			}
 		})
 	}
 }

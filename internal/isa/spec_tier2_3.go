@@ -41,7 +41,7 @@ var tierSub2Specs = []OpSpec{
 
 // tierSub3Specs holds the tier-3 rows (zero-operand operations).
 var tierSub3Specs = []OpSpec{
-	sub3(SubOpTier3Nop, "TIER3_NOP").cost(costFree).handler("handleFlatSubOpTier3Nop").flags(specMeta),
+	sub3(SubOpTier3Nop, "TIER3_NOP").cost(costFree).handler("handleFlatSubOpTier3Nop").flags(specMeta).pure(),
 	sub3(SubOpTier3ReturnVoid, "TIER3_RETURN_VOID").cost(costCheap).handler("handleReturnVoid").asmIn("tier3JumpTable", "handlerReturnVoidInline").pure(),
 	sub3(SubOpTier3SyncIIFEUpvalues, "SYNC_IIFE_UPVALUES").cost(costModerate).handler("handleSyncIIFEUpvalues").mutates(),
 }

@@ -61,7 +61,7 @@ func structLayoutAtWide(frame *CallFrame, index uint16) program.StructFieldLayou
 // Takes registers (*Registers) which provides the general bank.
 // Takes frame (*CallFrame) which is the active call frame.
 // Takes generalRegister (uint8) which is the general register holding the source struct.
-// Takes layout (StructFieldLayout) which carries the field path.
+// Takes layout (program.StructFieldLayout) which carries the field path.
 //
 // Returns the leaf reflect.Value and true on success; (zero Value, false) when the source
 // is invalid or not a struct.
@@ -81,6 +81,9 @@ func structFieldReflectRead(registers *Registers, frame *CallFrame, generalRegis
 			return reflect.Value{}, false
 		}
 		value = rebuilt
+	}
+	if layout.PathLength == 1 && int(layout.Path[0]) < value.NumField() {
+		return value.Field(int(layout.Path[0])), true
 	}
 	for level := uint8(0); level < layout.PathLength; level++ {
 		index := int(layout.Path[level])

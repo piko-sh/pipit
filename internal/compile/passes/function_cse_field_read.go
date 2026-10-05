@@ -171,9 +171,9 @@ func ElideRedundantStructFieldRead(ctx context.Context, compiledFunction *progra
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
-// Takes body ([]instruction) which is the function's instruction stream rewritten in
+// Takes body ([]isa.Instruction) which is the function's instruction stream rewritten in
 // place.
-// Takes analysis (*FunctionAnalysis) which supplies the jump-target set on demand.
+// Takes analysis (*functionAnalysis) which supplies the jump-target set on demand.
 //
 // Returns error when context cancellation fires mid-rewrite.
 func elideRedundantStructFieldRead(ctx context.Context, compiledFunction *program.CompiledFunction, body []isa.Instruction, analysis *functionAnalysis) error {
@@ -189,6 +189,9 @@ func elideRedundantStructFieldRead(ctx context.Context, compiledFunction *progra
 			if err := ctx.Err(); err != nil {
 				return fmt.Errorf("elideRedundantStructFieldRead cancelled: %w", err)
 			}
+		}
+		if body[i].Op == isa.OpGetGlobal {
+			elideRepeatedGlobalSliceFieldRead(compiledFunction, body, i, jumpTargets)
 		}
 		if isTier0StructFieldRead(body[i].Op) {
 			elideTier0Read(compiledFunction, body, i, jumpTargets)

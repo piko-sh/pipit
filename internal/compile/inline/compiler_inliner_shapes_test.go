@@ -167,3 +167,28 @@ func allMappingContext() *inlineContext {
 	}
 	return ctx
 }
+
+func TestInlineByteSliceOperandsUseCallerRegisters(t *testing.T) {
+	t.Parallel()
+
+	ctx := allMappingContext()
+	ctx.remap[isa.RegisterInt][3] = 19
+	ctx.remap[isa.RegisterUint][1] = 23
+	ctx.remap[isa.RegisterSliceByte][2] = 29
+	ctx.remap[isa.RegisterGeneral][4] = 31
+	read := isa.NewTier1Instruction(isa.SubOpSliceGetByteDirect, 1, 2)
+	mapped, ok := remapOperands(read, ctx)
+	require.True(t, ok)
+	require.Equal(t, isa.NewTier1Instruction(isa.SubOpSliceGetByteDirect, 23, 29), mapped)
+	ext, ok := remapExtensionOperands(isa.NewInstruction(isa.OpExt, 3, 0, 0), inlinePoolShapeFor(read), ctx)
+	require.True(t, ok)
+	require.Equal(t, uint8(19), ext.A)
+
+	field := isa.NewTier1Instruction(isa.SubOpGetStructFieldSliceByte, 2, 4)
+	mapped, ok = remapOperands(field, ctx)
+	require.True(t, ok)
+	require.Equal(t, isa.NewTier1Instruction(isa.SubOpGetStructFieldSliceByte, 29, 31), mapped)
+	constant, ok := remapOperands(isa.NewTier1Instruction(isa.SubOpLoadUintConstSmall, 1, 255), ctx)
+	require.True(t, ok)
+	require.Equal(t, isa.NewTier1Instruction(isa.SubOpLoadUintConstSmall, 23, 255), constant)
+}

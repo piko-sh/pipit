@@ -459,8 +459,14 @@ func TestNonIntWalkSkipsExtensionsThatNameOnlyIntRegisters(t *testing.T) {
 			dead: false,
 		},
 		{
-			name: "an owner whose extension names another bank stays conservative",
+			name: "a typed float store cannot read a general register",
 			kind: isa.RegisterGeneral,
+			tail: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSliceSetFloatDirect, 5, 1), mk(isa.OpExt, reg, 0, 0), returnVoid()},
+			dead: true,
+		},
+		{
+			name: "a typed float store reads its float source",
+			kind: isa.RegisterFloat,
 			tail: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSliceSetFloatDirect, 5, 1), mk(isa.OpExt, reg, 0, 0), returnVoid()},
 			dead: false,
 		},

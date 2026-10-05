@@ -167,7 +167,8 @@ const (
 
 	// OpMoveGeneral copies general[B] to general[A]. C selects the snapshot mode: 0 =
 	// dynamic (runtime kind switch), 1 = alias (reference-safe type), 2 = snapshot
-	// (struct/array), 3 = read-only range candidate resolved at compile time.
+	// (struct/array), 3 = read-only range candidate resolved at compile time, 4 = debugger
+	// snapshot accompanying captured program fields.
 	OpMoveGeneral
 
 	// OpLoadStringConst loads stringConstants[B|(C<<8)] into strings[A].
@@ -1559,8 +1560,8 @@ const (
 	// SubOpNeInterfaceStrict is the != mirror of SubOpEqInterfaceStrict.
 	SubOpNeInterfaceStrict
 
-	// SubOpFieldAddr stores the address of a field of general[C] in general[B].
-	// The trailing OpExt word's A operand supplies the field index.
+	// SubOpFieldAddr stores the address of a field of general[C] in general[B]. The trailing
+	// OpExt word's A operand supplies the field index.
 	SubOpFieldAddr
 )
 

@@ -202,7 +202,7 @@ func handleGetStructFieldUnsafeSliceBool(vm *VM, frame *CallFrame, registers *Re
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which supplies the extension wide index and structLayoutTable.
 // Takes registers (*Registers) which holds the source value and receives the read result.
-// Takes instruction (instruction) which encodes the operand indices.
+// Takes instruction (isa.Instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
 func handleGetStructFieldUnsafeSliceByte(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
@@ -211,6 +211,10 @@ func handleGetStructFieldUnsafeSliceByte(vm *VM, frame *CallFrame, registers *Re
 	field, ok := structFieldReflectRead(registers, frame, instruction.C, layout)
 	if !ok {
 		return structFieldFallbackMiss(vm, frame, registers, instruction.C)
+	}
+	if field.Kind() == reflect.Slice && field.Type().Elem().Kind() == reflect.Uint8 {
+		registers.slicesByte[instruction.B] = field.Bytes()
+		return opContinue
 	}
 	return readTypedSliceFieldFallback(vm, frame, registers, instruction.C, field, &registers.slicesByte[instruction.B])
 }

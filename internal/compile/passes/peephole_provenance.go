@@ -65,6 +65,16 @@ const (
 	// records the PC of the isa.SubOpCall site the inliner replaced and originFunction the
 	// callee's index in the enclosing function table.
 	PeepholeRewriteInline
+
+	// peepholeRewriteCseGlobalSlice marks reuse of a global receiver and slice field.
+	peepholeRewriteCseGlobalSlice
+
+	// peepholeRewriteLicmPeel marks a loop copy reusing its initial traversal's slice
+	// header.
+	peepholeRewriteLicmPeel
+
+	// peepholeRewriteSnapshotFields marks field captures replacing an aggregate copy.
+	peepholeRewriteSnapshotFields
 )
 
 // RecordPeepholeRewrite stores an annotation describing the rewrite applied at pc. Lazily
@@ -118,12 +128,19 @@ func PeepholeAnnotationAt(compiledFunction *program.CompiledFunction, pc int) pr
 // FormatPeepholeAnnotation renders an annotation as the trailing comment text appended to
 // a disassembled instruction line.
 //
-// Takes ann (PeepholeAnnotation) which is the annotation recorded by the peephole pass.
+// Takes ann (program.PeepholeAnnotation) which is the annotation recorded by the peephole
+// pass.
 //
 // Returns the trailing comment text, or an empty string for the zero annotation so
 // callers can fall through to other comment producers.
 func FormatPeepholeAnnotation(ann program.PeepholeAnnotation) string {
 	switch ann.Kind {
+	case peepholeRewriteSnapshotFields:
+		return "aggregate snapshot replaced by field captures"
+	case peepholeRewriteLicmPeel:
+		return fmt.Sprintf("loop reuses slice chain at PC %d", ann.Origin)
+	case peepholeRewriteCseGlobalSlice:
+		return fmt.Sprintf("slice header reused from PC %d", ann.Origin)
 	case peepholeRewriteCseTier0:
 		return fmt.Sprintf("CSE'd from PC %d", ann.Origin)
 	case peepholeRewriteCseTier1Umbrella:

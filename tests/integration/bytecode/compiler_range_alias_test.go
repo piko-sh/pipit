@@ -91,15 +91,22 @@ total`)
 
 func TestRangeStructValueCopiesWhenBodyMutatesSlice(t *testing.T) {
 	t.Parallel()
-	dump := compileSourceForOpcodeCheck(t, rangeStructMutatingProgram)
-	require.Positivef(t, rangeValueMoveCount(dump), "a body that writes the slice must keep the snapshot; disasm:\n%s", dump)
-
-	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": rangeStructMutatingProgram})
-	require.NoError(t, err)
-	result, err := service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
-	require.NoError(t, err)
-	require.InDelta(t, 101.0, result, 1e-9, "first iteration sees the original element, second sees the write")
+	for _, test := range []struct {
+		index string
+		want  float64
+	}{{"0", 4}, {"1", 101}} {
+		t.Run(test.index, func(t *testing.T) {
+			source := strings.ReplaceAll(rangeStructMutatingProgram, "bodies[1].x", "bodies["+test.index+"].x")
+			dump := compileSourceForOpcodeCheck(t, source)
+			require.Contains(t, dump, "aggregate snapshot replaced by field captures")
+			service := app.NewService()
+			compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+			require.NoError(t, err)
+			result, err := service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
+			require.NoError(t, err)
+			require.InDelta(t, test.want, result, 1e-9, "the range value retains fields from before the body mutation")
+		})
+	}
 }
 
 func TestRangeStructValueSnapshotWhenValueAssignedOrAddressed(t *testing.T) {

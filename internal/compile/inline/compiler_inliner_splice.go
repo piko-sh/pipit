@@ -65,7 +65,8 @@ var (
 		isa.SubOpJump,
 		isa.SubOpMoveInt, isa.SubOpMoveFloat, isa.SubOpMoveString,
 		isa.SubOpMoveBool, isa.SubOpMoveUint,
-		isa.SubOpLoadIntConstSmall, isa.SubOpLoadBool, isa.SubOpLoadBoolConst,
+		isa.SubOpLoadIntConstSmall, isa.SubOpLoadUintConstSmall, isa.SubOpLoadBool, isa.SubOpLoadBoolConst,
+		isa.SubOpGetStructFieldSliceByte, isa.SubOpSliceGetByteDirect,
 		isa.SubOpCall, isa.SubOpTailCall,
 		isa.SubOpLtIntJumpFalse, isa.SubOpLeIntJumpFalse, isa.SubOpGtIntJumpFalse,
 		isa.SubOpGeIntJumpFalse, isa.SubOpEqIntJumpFalse, isa.SubOpNeIntJumpFalse,
@@ -126,6 +127,7 @@ var (
 		isa.OpGetStructFieldFloat, isa.OpSetStructFieldFloat,
 		isa.OpGetStructFieldBool, isa.OpSetStructFieldBool,
 		isa.OpGetStructFieldGeneral, isa.OpSetStructFieldGeneral,
+		isa.OpGetStructFieldSliceLen,
 	}
 
 	// phase2AllowedPureArithmetic carries the register-only arithmetic opcodes the splice
@@ -1384,7 +1386,7 @@ func remapExtensionOperands(ext isa.Instruction, shape inlinePoolShape, ctx *inl
 // site, so their operand bytes are left as remapped; the unconditional jump carries an
 // offset. Anything else refuses, which phase2Tier1SubOpAllowList keeps unreachable.
 //
-// Takes instr (instruction) which is the tier-1 instruction with its pool operands
+// Takes instr (isa.Instruction) which is the tier-1 instruction with its pool operands
 // merged.
 // Takes ctx (*inlineContext) which supplies the register remap.
 //
@@ -1407,6 +1409,12 @@ func remapTier1SubOp(instr isa.Instruction, ctx *inlineContext) (isa.Instruction
 		isa.SubOpEqIntConstJumpFalse, isa.SubOpEqIntConstJumpTrue,
 		isa.SubOpGeIntConstJumpFalse, isa.SubOpGtIntConstJumpFalse:
 		return remapTier1B(&out, ctx, isa.RegisterInt)
+	case isa.SubOpGetStructFieldSliceByte:
+		return remapRegBC(&out, ctx, isa.RegisterSliceByte, isa.RegisterGeneral)
+	case isa.SubOpSliceGetByteDirect:
+		return remapRegBC(&out, ctx, isa.RegisterUint, isa.RegisterSliceByte)
+	case isa.SubOpLoadUintConstSmall:
+		return remapTier1B(&out, ctx, isa.RegisterUint)
 	case isa.SubOpLoadBoolConst:
 		return remapTier1B(&out, ctx, isa.RegisterBool)
 	case isa.SubOpEqStringConstJumpFalse:

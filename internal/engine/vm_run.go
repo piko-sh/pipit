@@ -242,7 +242,7 @@ func (vm *VM) run(baseFramePointer int) (any, error) {
 			}
 			vm.yieldInterpreterLock()
 		}
-		if vm.debugStopRequested(frame) {
+		if vm.Limits.Debug != nil && vm.debugStopRequested(frame) {
 			return nil, vm.debugStopError()
 		}
 		if frame.ProgramCounter >= len(frame.Function.Body) {
@@ -261,7 +261,9 @@ func (vm *VM) run(baseFramePointer int) (any, error) {
 		if exhausted, err := vm.AccountForInstructionCost(instruction); exhausted {
 			return nil, err
 		}
-		vm.maybeYield()
+		if vm.Limits.YieldInterval != 0 {
+			vm.maybeYield()
+		}
 
 		rc := flatDispatchSwitch(vm, frame, registers, instruction)
 		if rc == opContinue {

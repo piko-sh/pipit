@@ -35,11 +35,14 @@ const maxLicmConstHoistsPerFunction = 8
 // excluding fresh-storage loads that must produce a new value each execution.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose body is rewritten in place.
-// Takes analysis (*FunctionAnalysis) which supplies loops and dominators and is
+// Takes analysis (*functionAnalysis) which supplies loops and dominators and is
 // invalidated by every hoist; nil is tolerated.
 //
 // Returns error when cancellation interrupts the pass.
 func hoistLoopInvariantConstantLoads(ctx context.Context, compiledFunction *program.CompiledFunction, analysis *functionAnalysis) error {
+	if analysis == nil {
+		analysis = newFunctionAnalysis(compiledFunction)
+	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("hoistLoopInvariantConstantLoads cancelled: %w", err)
 	}
@@ -78,25 +81,38 @@ func tryOneConstantLoadHoist(compiledFunction *program.CompiledFunction, analysi
 // entry path.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose body holds the loop.
-// Takes loop (LoopRange) which is the loop to search.
-// Takes analysis (*FunctionAnalysis) which supplies dominators when non-nil.
+// Takes loop (loopRange) which is the loop to search.
+// Takes analysis (*functionAnalysis) which supplies dominators when non-nil.
 //
 // Returns the load's PC and true on success; (0, false) otherwise.
 func findHoistableConstantLoadInLoop(compiledFunction *program.CompiledFunction, loop loopRange, analysis *functionAnalysis) (int, bool) {
 	body := compiledFunction.Body
-	dominators := dominatorsFor(analysis, body)
-	if dominators == nil {
-		return 0, false
-	}
+	var dominators *functionDominators
+	var members []int
 	for pc := loop.header; pc <= loop.latch; pc++ {
 		kind, reg, ok := constantLoadDestination(body[pc])
-		if !ok || !dominators.Dominates(pc, loop.latch) {
+		if !ok {
 			continue
 		}
-		if !constantLoadIsLoopInvariant(compiledFunction, loop, pc, kind, reg) {
+		if members == nil {
+			members = naturalLoopMembers(analysis, loop)
+			if len(members) == 0 {
+				return 0, false
+			}
+		}
+		if !constantLoadIsLoopInvariant(compiledFunction, members, pc, kind, reg) {
 			continue
 		}
 		if !constantHoistSafeAcrossLoopEntry(compiledFunction, loop, pc, kind, reg) {
+			continue
+		}
+		if dominators == nil {
+			dominators = dominatorsFor(analysis, body)
+			if dominators == nil {
+				return 0, false
+			}
+		}
+		if !dominators.Dominates(pc, loop.latch) {
 			continue
 		}
 		return pc, true
@@ -140,14 +156,14 @@ func constantLoadDestination(inst isa.Instruction) (kind isa.RegisterKind, reg u
 // in the loop that may write its destination.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose body holds the loop.
-// Takes loop (LoopRange) which is the loop being analysed.
+// Takes members ([]int) which lists every PC in the natural loop.
 // Takes loadPC (int) which is the PC of the candidate load.
 // Takes kind (isa.RegisterKind) which is the destination bank.
 // Takes reg (uint8) which is the destination register.
 //
 // Returns true when no other instruction in the loop may write the destination.
-func constantLoadIsLoopInvariant(compiledFunction *program.CompiledFunction, loop loopRange, loadPC int, kind isa.RegisterKind, reg uint8) bool {
-	for pc := loop.header; pc <= loop.latch; pc++ {
+func constantLoadIsLoopInvariant(compiledFunction *program.CompiledFunction, members []int, loadPC int, kind isa.RegisterKind, reg uint8) bool {
+	for _, pc := range members {
 		if pc == loadPC {
 			continue
 		}

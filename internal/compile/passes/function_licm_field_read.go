@@ -93,10 +93,13 @@ func BuildAllJumpTargets(body []isa.Instruction) map[int]bool {
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
-// Takes analysis (*FunctionAnalysis) which is the pipeline's shared analysis, or nil.
+// Takes analysis (*functionAnalysis) which is the pipeline's shared analysis, or nil.
 //
 // Returns error when cancellation interrupts the pass.
 func hoistLoopInvariantStructFieldReads(ctx context.Context, compiledFunction *program.CompiledFunction, analysis *functionAnalysis) error {
+	if analysis == nil {
+		analysis = newFunctionAnalysis(compiledFunction)
+	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("hoistLoopInvariantStructFieldReads cancelled: %w", err)
 	}
@@ -141,21 +144,32 @@ func tryOneStructFieldHoist(compiledFunction *program.CompiledFunction, analysis
 // read.
 // Takes analysis (*functionAnalysis) which supplies the dominator and loop information.
 //
-// Returns the first dominating read's PC and true on success; (0, false) otherwise.
+// Returns int which is the first dominating read's PC, or zero when none is found.
+// Returns bool which is true when a hoistable read is found.
 func findHoistableReadInLoop(compiledFunction *program.CompiledFunction, loop loopRange, analysis *functionAnalysis) (int, bool) {
 	body := compiledFunction.Body
-	dominators := dominatorsFor(analysis, body)
-	if dominators == nil {
-		return 0, false
-	}
+	var dominators *functionDominators
+	var members []int
 	for pc := loop.header; pc <= loop.latch; pc++ {
-		if !dominators.Dominates(pc, loop.latch) {
-			continue
-		}
 		if !isHoistableReadAt(body, pc) {
 			continue
 		}
-		if !readIsLoopInvariant(compiledFunction, loop, pc) {
+		if members == nil {
+			members = naturalLoopMembers(analysis, loop)
+			if len(members) == 0 {
+				return 0, false
+			}
+		}
+		if !readIsLoopInvariant(compiledFunction, members, pc) {
+			continue
+		}
+		if dominators == nil {
+			dominators = dominatorsFor(analysis, body)
+			if dominators == nil {
+				return 0, false
+			}
+		}
+		if !dominators.Dominates(pc, loop.latch) {
 			continue
 		}
 		if !hoistSafeAcrossLoopEntry(compiledFunction, loop, pc, dominators) {
@@ -172,17 +186,17 @@ func findHoistableReadInLoop(compiledFunction *program.CompiledFunction, loop lo
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
-// Takes loop which is the natural loop being analysed.
-// Takes readPC which is the PC of the candidate read.
+// Takes members ([]int) which lists every PC in the natural loop.
+// Takes readPC (int) which is the PC of the candidate read.
 //
 // Returns true when the read is loop-invariant and safe to hoist.
-func readIsLoopInvariant(compiledFunction *program.CompiledFunction, loop loopRange, readPC int) bool {
+func readIsLoopInvariant(compiledFunction *program.CompiledFunction, members []int, readPC int) bool {
 	body := compiledFunction.Body
 	receiverReg := hoistedReadReceiverRegister(body, readPC)
 	destReg := hoistedReadDestRegister(body, readPC)
 	destBank := hoistedReadDestBank(body, readPC)
 	width := hoistedReadWordCount(body, readPC)
-	for pc := loop.header; pc <= loop.latch; pc++ {
+	for _, pc := range members {
 		if pc >= readPC && pc < readPC+width {
 			continue
 		}

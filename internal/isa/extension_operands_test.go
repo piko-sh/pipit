@@ -193,3 +193,23 @@ func TestExtensionNamesOnlyIntRegistersImpliesARecordedIntLayout(t *testing.T) {
 			InstructionDisplayName(owner))
 	}
 }
+
+func TestExtensionRegisterUseSeparatesScalarStoreBanks(t *testing.T) {
+	t.Parallel()
+	for sub, source := range map[SubOpcode]RegisterKind{
+		SubOpSliceSetFloatDirect:  RegisterFloat,
+		SubOpSliceSetStringDirect: RegisterString,
+		SubOpSliceSetBoolDirect:   RegisterBool,
+		SubOpSliceSetUintDirect:   RegisterUint,
+		SubOpSliceSetByteDirect:   RegisterUint,
+	} {
+		for _, bank := range []RegisterKind{RegisterInt, RegisterGeneral, RegisterFloat, RegisterString, RegisterBool, RegisterUint, RegisterSliceByte} {
+			reads, writes, ok := ExtensionRegisterUse(NewTier1Instruction(sub, 0, 1), []Instruction{NewInstruction(OpExt, 3, 0, 0)}, bank)
+			require.True(t, ok)
+			require.Equal(t, ExtensionIntMask{bank == source, false, false}, reads)
+			require.Equal(t, ExtensionIntMask{}, writes)
+		}
+	}
+	_, _, ok := ExtensionRegisterUse(NewInstruction(OpDefer, 0, 0, 0), []Instruction{NewInstruction(OpExt, 3, 0, 0)}, RegisterGeneral)
+	require.False(t, ok)
+}

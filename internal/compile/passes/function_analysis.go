@@ -203,3 +203,47 @@ func loopsFor(analysis *functionAnalysis, body []isa.Instruction) []loopRange {
 	}
 	return identifyLoops(body)
 }
+
+// naturalLoopMembers follows loop back-edges through their predecessors, including
+// inlined blocks outside the header-to-latch range.
+//
+// Takes analysis (*functionAnalysis) which caches control-flow facts and is invalidated
+// by a rewrite.
+// Takes loop (loopRange) which identifies the loop header and latch.
+//
+// Returns []int containing sorted member PCs, or nil for side entries and unsupported
+// multi-way dispatch.
+func naturalLoopMembers(analysis *functionAnalysis, loop loopRange) []int {
+	analysis.buildCFG()
+	body := analysis.compiledFunction.Body
+	seen := make([]bool, len(body))
+	seen[loop.header] = true
+	var pending []int
+	for pc, inst := range body {
+		if isa.InstrIsTier1SubOp(inst, isa.SubOpTypeSwitchJump) {
+			return nil
+		}
+		if target, jump := program.JumpTargetAt(body, pc); jump && target == loop.header && pc >= loop.header {
+			pending = append(pending, pc)
+		}
+	}
+	for len(pending) > 0 {
+		pc := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		if seen[pc] {
+			continue
+		}
+		if pc == 0 {
+			return nil
+		}
+		seen[pc] = true
+		pending = append(pending, analysis.predecessors[pc]...)
+	}
+	var members []int
+	for pc, member := range seen {
+		if member {
+			members = append(members, pc)
+		}
+	}
+	return members
+}

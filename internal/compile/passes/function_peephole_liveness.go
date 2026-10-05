@@ -288,10 +288,8 @@ func (w *registerLivenessWalk) branch(pc int) bool {
 // extensionWordUse reports whether the extension word at pc may read the register, or
 // provably writes it, as part of the instruction at ownerPC.
 //
-// An unknown owner or unrecorded layout is read conservatively. Only the int bank has
-// recorded layouts via isa.ExtensionIntUse(); other banks are conservative except for
-// owners whose extension words name only int registers and immediates
-// (isa.ExtensionNamesOnlyIntRegisters()).
+// An unknown owner or unrecorded layout is read conservatively. Known layouts use
+// isa.ExtensionRegisterUse to distinguish register banks from immediates.
 //
 // Takes ownerPC (int) which is the program counter of the owning instruction, or -1.
 // Takes pc (int) which is the extension word's program counter.
@@ -304,13 +302,7 @@ func (w *registerLivenessWalk) extensionWordUse(ownerPC, pc int) (reads, writes 
 	if ownerPC < 0 {
 		return anyByte, false
 	}
-	if w.kind != isa.RegisterInt {
-		if isa.ExtensionNamesOnlyIntRegisters(w.body[ownerPC]) {
-			return false, false
-		}
-		return anyByte, false
-	}
-	readMask, writeMask, ok := isa.ExtensionIntUse(w.body[ownerPC], w.body[ownerPC+1:pc+1])
+	readMask, writeMask, ok := isa.ExtensionRegisterUse(w.body[ownerPC], w.body[ownerPC+1:pc+1], w.kind)
 	if !ok {
 		return anyByte, false
 	}

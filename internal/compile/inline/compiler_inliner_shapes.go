@@ -144,6 +144,9 @@ func registerInlineConstFusedArithShapes() {
 // registerInlineStructFieldShapes populates tier-0 struct field access ops; operand C is
 // a uint8 structLayoutTable index for each.
 func registerInlineStructFieldShapes() {
+	inlinePoolShapes[isa.FlatIndexOf(isa.OpGetStructFieldSliceLen)] = inlinePoolShape{cKindByte: poolStructLayoutTable}
+	inlinePoolShapes[isa.FlatIndexOfSub1(isa.SubOpGetStructFieldSliceByte)] = inlinePoolShape{extAWide16: poolStructLayoutTable, hasExtensionWord: true}
+	inlinePoolShapes[isa.FlatIndexOfSub1(isa.SubOpSliceGetByteDirect)] = inlinePoolShape{hasExtensionWord: true, extARegBank: isa.RegisterInt, extARegSet: true}
 	inlinePoolShapes[isa.FlatIndexOf(isa.OpGetStructFieldIntT0)] = inlinePoolShape{cKindByte: poolStructLayoutTable}
 	inlinePoolShapes[isa.FlatIndexOf(isa.OpSetStructFieldIntT0)] = inlinePoolShape{cKindByte: poolStructLayoutTable}
 	inlinePoolShapes[isa.FlatIndexOf(isa.OpGetStructFieldUint)] = inlinePoolShape{cKindByte: poolStructLayoutTable}

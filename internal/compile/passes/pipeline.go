@@ -32,7 +32,7 @@ const (
 
 	// postPurityPipelineCapacity is the length of the full PostPurityPipeline, used to size
 	// the slice up front.
-	postPurityPipelineCapacity = 8
+	postPurityPipelineCapacity = 10
 )
 
 // licmPass hoists loop-invariant struct-field reads, and when constantLoads is set also
@@ -58,13 +58,22 @@ func (licmPass) Name() string { return "licm" }
 //
 // Returns error when cancellation fires.
 func (pass licmPass) Run(ctx context.Context, state *PassContext, compiledFunction *program.CompiledFunction) error {
+	if pass.constantLoads {
+		if err := hoistLoopInvariantGlobalLoads(ctx, compiledFunction, state.Analysis); err != nil {
+			return err
+		}
+	}
 	if err := hoistLoopInvariantStructFieldReads(ctx, compiledFunction, state.Analysis); err != nil {
 		return err
 	}
 	if !pass.constantLoads {
 		return nil
 	}
-	return hoistLoopInvariantConstantLoads(ctx, compiledFunction, state.Analysis)
+	if err := hoistLoopInvariantConstantLoads(ctx, compiledFunction, state.Analysis); err != nil {
+		return err
+	}
+	hoistLoopInvariantSliceChains(compiledFunction, state.Analysis)
+	return nil
 }
 
 // peepholeFusionPass fuses common instruction sequences into superinstructions.
@@ -378,6 +387,9 @@ func functionPipeline(opts Options) []Pass {
 // Returns the passes in execution order.
 func PostPurityPipeline(opts Options, rewriteMethodCalls Pass) []Pass {
 	pipeline := make([]Pass, 0, postPurityPipelineCapacity)
+	if opts.CSE {
+		pipeline = append(pipeline, scalarizeSnapshotsPass{})
+	}
 	if opts.LICM {
 		pipeline = append(pipeline, licmPass{constantLoads: true})
 	}

@@ -51,6 +51,45 @@ func ExtensionNamesOnlyIntRegisters(owner Instruction) bool {
 	}
 }
 
+// ExtensionRegisterUse reports extension-word register effects in one bank.
+//
+// Takes owner (Instruction) which owns the extension words.
+// Takes words ([]Instruction) which ends with the extension word being classified.
+// Takes kind (RegisterKind) which selects the register bank.
+//
+// Returns reads (ExtensionIntMask) which marks bytes that name registers read in kind.
+// Returns writes (ExtensionIntMask) which marks bytes that name registers written in
+// kind.
+// Returns ok (bool) which is false when the layout is unknown or words is empty.
+func ExtensionRegisterUse(owner Instruction, words []Instruction, kind RegisterKind) (reads, writes ExtensionIntMask, ok bool) {
+	if len(words) == 0 {
+		return extensionNone, extensionNone, false
+	}
+	if kind == RegisterInt {
+		return ExtensionIntUse(owner, words)
+	}
+	if ExtensionNamesOnlyIntRegisters(owner) {
+		return extensionNone, extensionNone, true
+	}
+	if owner.Op != OpDrillTier1 || len(words) != 1 {
+		return extensionNone, extensionNone, false
+	}
+	var source RegisterKind
+	switch SubOpcode(owner.A) {
+	case SubOpSliceSetFloatDirect:
+		source = RegisterFloat
+	case SubOpSliceSetStringDirect:
+		source = RegisterString
+	case SubOpSliceSetBoolDirect:
+		source = RegisterBool
+	case SubOpSliceSetUintDirect, SubOpSliceSetByteDirect:
+		source = RegisterUint
+	default:
+		return extensionNone, extensionNone, false
+	}
+	return ExtensionIntMask{kind == source, false, false}, extensionNone, true
+}
+
 // tier1ExtensionNamesOnlyIntRegisters answers ExtensionNamesOnlyIntRegisters() for the
 // tier-1 and tier-2 operations.
 //

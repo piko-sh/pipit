@@ -94,16 +94,29 @@ type jumpRetarget struct {
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
-// Takes analysis (*FunctionAnalysis) which is invalidated by the rotation; nil is
+// Takes analysis (*functionAnalysis) which is invalidated by the rotation; nil is
 // tolerated.
 // Takes headerPC (int) which is the loop header PC (insertion site for the hoist).
 // Takes readPC (int) which is the original PC of the loop-invariant instruction; readPC
 // must satisfy readPC >= headerPC.
-//
-// Panics when a jump cannot be repointed after the rotation.
 func applyLoopHoist(compiledFunction *program.CompiledFunction, analysis *functionAnalysis, headerPC, readPC int) {
+	applyLoopHoistWords(compiledFunction, analysis, headerPC, readPC, hoistedReadWordCount(compiledFunction.Body, readPC))
+}
+
+// applyLoopHoistWords rotates an invariant instruction sequence to a loop preheader.
+//
+// Takes compiledFunction (*program.CompiledFunction) which holds the input bytecode and
+// metadata.
+// Takes analysis (*functionAnalysis) which caches control-flow facts and is invalidated
+// by a rewrite.
+// Takes headerPC (int) which identifies the insertion point.
+// Takes readPC (int) which starts the invariant sequence.
+// Takes width (int) which counts the sequence instruction words.
+//
+// Panics when a jump cannot be repointed after rotation.
+func applyLoopHoistWords(compiledFunction *program.CompiledFunction, analysis *functionAnalysis, headerPC, readPC, width int) {
 	body := compiledFunction.Body
-	pcMap := loopHoistPCMap{HeaderPC: headerPC, ReadPC: readPC, Width: hoistedReadWordCount(body, readPC)}
+	pcMap := loopHoistPCMap{HeaderPC: headerPC, ReadPC: readPC, Width: width}
 	retargets := collectJumpRetargets(body, pcMap)
 	rotateWordsToFront(body, headerPC, readPC, pcMap.Width)
 	if sourceMap := compiledFunction.DebugSourceMap; sourceMap != nil && readPC+pcMap.Width <= len(sourceMap.Positions) {
