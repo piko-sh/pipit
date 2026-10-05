@@ -67,7 +67,7 @@ func NewFilesystemAggregate(ctx context.Context, parent string, limits Limits, t
 // Close removes the aggregate before releasing its lifecycle admission lease. Failed
 // cleanup retains the lease, including when execution has already expired.
 //
-// Takes a fresh bounded cleanup context after all child owners have been closed.
+// All child owners must be closed before cleanup begins.
 //
 // Returns an error while the aggregate still needs cleanup; retry the same owner.
 func (owner *FilesystemAggregate) Close(ctx context.Context) error {

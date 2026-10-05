@@ -27,7 +27,7 @@ import (
 // Pass is one step of a per-function pipeline.
 //
 // A Pass rewrites compiledFunction.Body in place under the contract described in the
-// package documentation: the body only changes length through the splice helpers, dead
+// package documentation: the body only changes length through the rewrite helpers, dead
 // slots become isa.OpNop, every jump target is valid on exit, and a second run over its
 // own output is a no-op.
 type Pass interface {

@@ -63,8 +63,6 @@ func NewIsolatedFilesystemRecovery(ctx context.Context, config IsolatedFilesyste
 
 // Recover terminates original descendants and cleans approved writes.
 //
-// Takes a context for this attempt, separate from the acquisition context.
-//
 // Returns cleanup errors without dropping ownership.
 //
 // Safe for concurrent use; callers are serialised by an internal mutex.

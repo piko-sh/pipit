@@ -90,8 +90,10 @@ type comparisonOpcodeSet struct {
 //
 // For float32 or complex64 it emits the matching rounding sub-op instead.
 //
-// Takes location which is the register holding the value to potentially truncate.
-// Takes staticType which is the static Go type that determines the bit width.
+// Takes location (program.VarLocation) which is the register holding the value to
+// potentially truncate.
+// Takes staticType (types.Type) which is the static Go type that determines the bit
+// width.
 func (c *Compiler) EmitNarrowIntegerTruncation(location program.VarLocation, staticType types.Type) {
 	if subOp, bank, ok := floatNarrowingSubOp(staticType); ok {
 		if location.Kind == bank {
@@ -365,7 +367,7 @@ func (c *Compiler) typeAssertReflectType(ctx context.Context, targetType types.T
 // go/types. For interface-typed constants the scalar value is boxed through
 // isa.OpPackInterface into the general bank.
 //
-// Takes tv which is the folded type-and-value record from go/types.
+// Takes tv (types.TypeAndValue) which is the folded type-and-value record from go/types.
 //
 // Returns the register location holding the loaded constant, or an error when the
 // constant cannot be loaded into the target bank.
@@ -568,7 +570,7 @@ func (c *Compiler) compileBasicLit(ctx context.Context, lit *ast.BasicLit) (prog
 // (true, false, nil), local scope variables (including spilled and indirect locations),
 // upvalues, globals, and top-level functions in that order.
 //
-// Takes identifier which is the identifier AST node to resolve and load.
+// Takes identifier (*ast.Ident) which is the identifier AST node to resolve and load.
 //
 // Returns the register location holding the identifier's value, or an error when the
 // identifier is not defined in any scope.
@@ -703,7 +705,8 @@ func (c *Compiler) compileBinaryExpression(ctx context.Context, expression *ast.
 // preserving Go's distinction between a nil interface and an interface holding a typed
 // nil. Returns applied=false when the pattern does not match.
 //
-// Takes expression which is the binary expression to inspect for the pattern.
+// Takes expression (*ast.BinaryExpr) which is the binary expression to inspect for the
+// pattern.
 //
 // Returns the register location holding the comparison result, a flag set when the
 // pattern matched, and an error when compiling the interface side failed.
@@ -734,8 +737,8 @@ func (c *Compiler) tryCompileInterfaceNilComparison(ctx context.Context, express
 // from a binary equality expression, with matched set when either side ordering produces
 // the pattern.
 //
-// Takes left which is the left-hand operand of the equality expression.
-// Takes right which is the right-hand operand of the equality expression.
+// Takes left (ast.Expr) which is the left-hand operand of the equality expression.
+// Takes right (ast.Expr) which is the right-hand operand of the equality expression.
 //
 // Returns the interface-typed operand, the nil-literal operand, and a flag set when one
 // side is interface-typed and the other is nil.
@@ -752,7 +755,7 @@ func (c *Compiler) classifyInterfaceNilOperands(left, right ast.Expr) (interface
 // expressionIsInterfaceTyped reports whether expression's static type underlies as an
 // interface (empty or non-empty).
 //
-// Takes expression which is the AST expression to inspect.
+// Takes expression (ast.Expr) which is the AST expression to inspect.
 //
 // Returns true when the underlying static type is an interface.
 func (c *Compiler) expressionIsInterfaceTyped(expression ast.Expr) bool {
@@ -767,7 +770,7 @@ func (c *Compiler) expressionIsInterfaceTyped(expression ast.Expr) bool {
 // isNilLiteral reports whether expression resolves to the universe-scope nil identifier
 // (as confirmed by go/types when type info is available).
 //
-// Takes expression which is the AST expression to test.
+// Takes expression (ast.Expr) which is the AST expression to test.
 //
 // Returns true when expression is the predeclared nil identifier.
 func (c *Compiler) isNilLiteral(expression ast.Expr) bool {
@@ -915,9 +918,9 @@ func (c *Compiler) compileShortCircuit(ctx context.Context, expression *ast.Bina
 // emitBinaryOp emits the typed instruction for binary operator op, routing arithmetic,
 // comparison, and bitwise/shift tokens to the matching specialised emitter.
 //
-// Takes op which is the binary operator token.
-// Takes left which is the left operand register location.
-// Takes right which is the right operand register location.
+// Takes op (token.Token) which is the binary operator token.
+// Takes left (program.VarLocation) which is the left operand register location.
+// Takes right (program.VarLocation) which is the right operand register location.
 //
 // Returns the register location holding the result, or an error when the operator is
 // unsupported for the operand banks.
@@ -1043,10 +1046,10 @@ func (c *Compiler) emitStrictInterfaceComparison(op token.Token, left, right pro
 // emitBoolCompare converts both bool operands to int via isa.SubOpBoolToInt in temporary
 // registers and emits the integer comparison into dest.
 //
-// Takes intOp which is the integer comparison opcode to Emit.
-// Takes dest which is the destination int register receiving the 0/1 result.
-// Takes left which is the left bool operand register location.
-// Takes right which is the right bool operand register location.
+// Takes intOp (isa.Opcode) which is the integer comparison opcode to Emit.
+// Takes dest (uint8) which is the destination int register receiving the 0/1 result.
+// Takes left (program.VarLocation) which is the left bool operand register location.
+// Takes right (program.VarLocation) which is the right bool operand register location.
 func (c *Compiler) emitBoolCompare(_ context.Context, intOp isa.Opcode, dest uint8, left, right program.VarLocation) {
 	leftInt := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
 	rightInt := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
@@ -1060,11 +1063,13 @@ func (c *Compiler) emitBoolCompare(_ context.Context, intOp isa.Opcode, dest uin
 // emitUintCompare maps intOp to its uint comparison counterpart and emits it into dest,
 // falling back to genOp when no uint mapping exists and genOp is non-zero.
 //
-// Takes intOp which is the int comparison opcode whose uint counterpart is sought.
-// Takes genOp which is the general-bank fallback opcode, or zero when no fallback.
-// Takes dest which is the destination int register receiving the 0/1 result.
-// Takes left which is the left uint operand register location.
-// Takes right which is the right uint operand register location.
+// Takes intOp (isa.Opcode) which is the int comparison opcode whose uint counterpart is
+// sought.
+// Takes genOp (isa.Opcode) which is the general-bank fallback opcode, or zero when no
+// fallback.
+// Takes dest (uint8) which is the destination int register receiving the 0/1 result.
+// Takes left (program.VarLocation) which is the left uint operand register location.
+// Takes right (program.VarLocation) which is the right uint operand register location.
 func (c *Compiler) emitUintCompare(_ context.Context, intOp, genOp isa.Opcode, dest uint8, left, right program.VarLocation) {
 	uintCmpOp, ok := intToUintCmpOp(intOp)
 	if !ok {
@@ -1079,10 +1084,11 @@ func (c *Compiler) emitUintCompare(_ context.Context, intOp, genOp isa.Opcode, d
 // emitComplexCompare emits isa.OpEqComplex or isa.OpNeComplex into dest. Returns an error
 // for ordering operators because complex numbers support only == and != in Go.
 //
-// Takes intOp which is the int-bank comparison opcode determining equality or inequality.
-// Takes dest which is the destination int register receiving the 0/1 result.
-// Takes left which is the left complex operand register location.
-// Takes right which is the right complex operand register location.
+// Takes intOp (isa.Opcode) which is the int-bank comparison opcode determining equality
+// or inequality.
+// Takes dest (uint8) which is the destination int register receiving the 0/1 result.
+// Takes left (program.VarLocation) which is the left complex operand register location.
+// Takes right (program.VarLocation) which is the right complex operand register location.
 //
 // Returns a nil error for == and !=, or an error for ordering operators.
 func (c *Compiler) emitComplexCompare(_ context.Context, intOp isa.Opcode, dest uint8, left, right program.VarLocation) error {
@@ -1102,9 +1108,10 @@ func (c *Compiler) emitComplexCompare(_ context.Context, intOp isa.Opcode, dest 
 // bridged through an IntToUint or UintToInt temporary so the dispatched instruction
 // receives matching banks.
 //
-// Takes op which is the int-bank opcode to Emit (or whose uint counterpart applies).
-// Takes left which is the left operand register location.
-// Takes right which is the right operand register location.
+// Takes op (isa.Opcode) which is the int-bank opcode to Emit (or whose uint counterpart
+// applies).
+// Takes left (program.VarLocation) which is the left operand register location.
+// Takes right (program.VarLocation) which is the right operand register location.
 //
 // Returns the register location holding the result, or an error when the operand banks
 // are unsupported for the operation.
@@ -1192,7 +1199,8 @@ func (c *Compiler) ensureIntRegister(_ context.Context, location *program.VarLoc
 // locations are first unpacked through isa.OpUnpackInterface to a bool and then converted
 // to int.
 //
-// Takes location which is the register location to coerce to the int bank.
+// Takes location (program.VarLocation) which is the register location to coerce to the
+// int bank.
 //
 // Returns an int-bank register location holding the branch-ready value.
 func (c *Compiler) ensureIntForBranch(_ context.Context, location program.VarLocation) program.VarLocation {
@@ -1423,7 +1431,7 @@ func comparisonOpcodes(op token.Token) (comparisonOpcodeSet, bool) {
 // scalarKindForConstant maps a go/constant kind to the scalar isa.RegisterKind used for
 // loading the value, returning isa.RegisterGeneral for unknown kinds.
 //
-// Takes value which is the constant.Value whose kind selects the bank.
+// Takes value (constant.Value) which is the constant.Value whose kind selects the bank.
 //
 // Returns the matching register bank, or isa.RegisterGeneral for unknown kinds.
 func scalarKindForConstant(value constant.Value) isa.RegisterKind {
@@ -1446,7 +1454,7 @@ func scalarKindForConstant(value constant.Value) isa.RegisterKind {
 // intToUintCmpOp maps an int comparison opcode to its uint counterpart, returning (0,
 // false) when no mapping exists.
 //
-// Takes intOp which is the int-bank comparison opcode to translate.
+// Takes intOp (isa.Opcode) which is the int-bank comparison opcode to translate.
 //
 // Returns the matching uint opcode and true, or (0, false) when no mapping exists.
 func intToUintCmpOp(intOp isa.Opcode) (isa.Opcode, bool) {

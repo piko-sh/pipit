@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=5 general=2 bool=1
-;   dispatch:  asm=18 shim=9 exit=0 go=2
+;   dispatch:  asm=17 shim=9 exit=0 go=2
 ;   params:    (none)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -36,12 +36,11 @@
 0019 G 1:LEN                       70   1   0
 0020 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
 0021 A 1:LT_INT_JUMP_FALSE        116   2   1
-0022   0:EXT                        7   0   0
+0022   0:EXT                        6   0   0
 0023 S 0:SLICE_GET_BOOL             0   0   2
 0024 G 1:BOOL_TO_INT               53   4   0
 0025 A 0:JUMP_IF_FALSE              4   1   0    ; if ints[4] == 0 goto +1
 0026 A 2:TIER2_INC_INT              0   1   0
-0027 A 1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
-0028 A 0:ADD_INT                    2   2   4
-0029 A 1:JUMP                      74 247 255    ; goto -9
-0030 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0027 A 0:ADD_INT_CONST              2   2   2    ; const = 1
+0028 A 1:JUMP                      74 248 255    ; goto -8
+0029 A 2:TIER2_RETURN               0  10   1    ; 1 values

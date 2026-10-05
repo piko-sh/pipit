@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=4 string=4
-;   dispatch:  asm=11 shim=4 exit=0 go=1
+;   dispatch:  asm=9 shim=4 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -24,9 +24,6 @@
 0007 A 0:LOAD_STRING_CONST          1   2   0    ; strings[1] = ":"
 0008 S 0:CONCAT_STRING              2   0   1
 0009 A 1:LOAD_INT_CONST_SMALL      75   1  48    ; ints[1] = 48
-0010 A 0:ADD_INT                    2   1   0
-0011 A 1:MOVE_INT                  35   3   2
-0012 A 0:TRUNCATE_NARROW            3  32   0
-0013 S 0:CONCAT_RUNE_STRING         0   2   3
-0014 G 3:TIER3_NOP                  0   0   0
-0015 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0010 A 0:ADD_INT32                  3   1   0
+0011 S 0:CONCAT_RUNE_STRING         0   2   3
+0012 A 2:TIER2_RETURN               0  10   1    ; 1 values

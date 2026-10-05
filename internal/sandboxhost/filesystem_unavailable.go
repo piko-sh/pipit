@@ -24,8 +24,6 @@ import "context"
 
 // newIsolatedFilesystemProcess rejects platforms without the required native boundary.
 //
-// Takes the host context and configuration without performing filesystem I/O.
-//
 // Returns no owner and ErrIsolatedUnavailable, never a weaker fallback.
 func newIsolatedFilesystemProcess(_ context.Context, _ *IsolatedFilesystemConfig) (isolatedFilesystemProcess, error) {
 	return nil, ErrIsolatedUnavailable

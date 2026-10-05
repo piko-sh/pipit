@@ -75,8 +75,6 @@ func (d *Debugger) Session() *engine.DebugSession {
 // within it must not call this again; the returned function ends the execution and, once
 // every open execution has ended, queues an EventExited carrying err.
 //
-// Takes nothing.
-//
 // Returns func(error) which the caller invokes with the execution's error when it ends.
 //
 // Concurrency: safe for concurrent use; acquires d.mu.

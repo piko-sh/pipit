@@ -32,7 +32,7 @@ const (
 
 	// postPurityPipelineCapacity is the length of the full PostPurityPipeline, used to size
 	// the slice up front.
-	postPurityPipelineCapacity = 10
+	postPurityPipelineCapacity = 15
 )
 
 // licmPass hoists loop-invariant struct-field reads, and when constantLoads is set also
@@ -53,11 +53,32 @@ func (licmPass) Name() string { return "licm" }
 // Run applies HoistLoopInvariantStructFieldReads() with the shared analysis, then the
 // constant-load hoist when the pass enables it.
 //
+// A hoist releases the pointer-alias facts because it moves PCs, so the analysis is
+// recomputed when the function had them; the in-place append and composite reuse passes
+// would otherwise skip the function.
+//
 // Takes state (*PassContext) which carries the options and the shared analysis.
 // Takes compiledFunction (*program.CompiledFunction) whose body is rewritten in place.
 //
 // Returns error when cancellation fires.
 func (pass licmPass) Run(ctx context.Context, state *PassContext, compiledFunction *program.CompiledFunction) error {
+	hadAliasInfo := compiledFunction.AliasInfo != nil
+	if err := pass.hoist(ctx, state, compiledFunction); err != nil {
+		return err
+	}
+	if hadAliasInfo && compiledFunction.AliasInfo == nil {
+		return RunPointerAliasAnalysis(ctx, compiledFunction)
+	}
+	return nil
+}
+
+// hoist runs the enabled LICM families in order.
+//
+// Takes state (*PassContext) which carries the shared analysis.
+// Takes compiledFunction (*program.CompiledFunction) whose body is rewritten in place.
+//
+// Returns error when cancellation fires.
+func (pass licmPass) hoist(ctx context.Context, state *PassContext, compiledFunction *program.CompiledFunction) error {
 	if pass.constantLoads {
 		if err := hoistLoopInvariantGlobalLoads(ctx, compiledFunction, state.Analysis); err != nil {
 			return err
@@ -72,7 +93,38 @@ func (pass licmPass) Run(ctx context.Context, state *PassContext, compiledFuncti
 	if err := hoistLoopInvariantConstantLoads(ctx, compiledFunction, state.Analysis); err != nil {
 		return err
 	}
+	if err := hoistLoopInvariantArithmetic(ctx, compiledFunction, state.Analysis); err != nil {
+		return err
+	}
 	hoistLoopInvariantSliceChains(compiledFunction, state.Analysis)
+	return nil
+}
+
+// fuseConstOperandsPass folds constant loads into the arithmetic that consumes them once
+// inlining has made them adjacent, before LICM would hoist the loads away.
+type fuseConstOperandsPass struct{}
+
+// Name returns the pass identifier.
+//
+// Returns string which is the pass identifier.
+func (fuseConstOperandsPass) Name() string { return "fuse-const-operands" }
+
+// Run applies FuseArithConst() at every slot.
+//
+// Takes state (*PassContext) which carries the shared analysis, invalidated on change.
+// Takes compiledFunction (*program.CompiledFunction) whose body is rewritten in place.
+//
+// Returns error (always nil).
+func (fuseConstOperandsPass) Run(_ context.Context, state *PassContext, compiledFunction *program.CompiledFunction) error {
+	body := compiledFunction.Body
+	jumpTargets := state.Analysis.JumpTargets()
+	changed := false
+	for i := range body {
+		changed = FuseArithConst(compiledFunction, body, i, len(body), jumpTargets) || changed
+	}
+	if changed {
+		state.Analysis.invalidate()
+	}
 	return nil
 }
 
@@ -375,9 +427,11 @@ func functionPipeline(opts Options) []Pass {
 // PostPurityPipeline returns the per-function passes the post-purity peephole stage runs,
 // in order.
 //
-// The stage re-runs LICM, GVN, CSE and BCE once heap purity and pointer aliasing are
-// known, then resolves the range-value snapshots, promotes inlineable method calls,
-// demotes unsafe in-place appends and releases the alias information.
+// The stage first resolves the range-value snapshots, so the snapshots that remain can be
+// scalarised, then re-runs LICM, GVN, CSE and BCE once heap purity and pointer aliasing
+// are known, promotes inlineable method calls, demotes unsafe in-place appends, releases
+// the alias information, fuses 32-bit truncations into their operations and finally
+// deletes the dead words the earlier passes left.
 //
 // Takes opts (Options) which selects the optional passes.
 // Takes rewriteMethodCalls (Pass) which promotes inlineable method calls. It lives in the
@@ -387,9 +441,11 @@ func functionPipeline(opts Options) []Pass {
 // Returns the passes in execution order.
 func PostPurityPipeline(opts Options, rewriteMethodCalls Pass) []Pass {
 	pipeline := make([]Pass, 0, postPurityPipelineCapacity)
+	pipeline = append(pipeline, rangeAliasPass{})
 	if opts.CSE {
 		pipeline = append(pipeline, scalarizeSnapshotsPass{})
 	}
+	pipeline = append(pipeline, fuseConstOperandsPass{})
 	if opts.LICM {
 		pipeline = append(pipeline, licmPass{constantLoads: true})
 	}
@@ -402,9 +458,11 @@ func PostPurityPipeline(opts Options, rewriteMethodCalls Pass) []Pass {
 	if opts.BCE {
 		pipeline = append(pipeline, bcePass{})
 	}
-	pipeline = append(pipeline, rangeAliasPass{})
+	if opts.CSE {
+		pipeline = append(pipeline, coalesceMovesPass{}, elideRangedTruncatesPass{})
+	}
 	if rewriteMethodCalls != nil {
 		pipeline = append(pipeline, rewriteMethodCalls)
 	}
-	return append(pipeline, inPlaceAppendPass{}, compositeZeroReusePass{}, releaseAliasInfoPass{})
+	return append(pipeline, inPlaceAppendPass{}, compositeZeroReusePass{}, releaseAliasInfoPass{}, fuseNarrow32Pass{}, compactBodyPass{})
 }

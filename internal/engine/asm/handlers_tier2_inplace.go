@@ -36,6 +36,34 @@ func tier2InPlaceHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort]
 			"handlerSubOpTier2IncUint increments uints[C] by one (tier-2 in-place sub-op)."),
 		tier2UintInPlaceHandler("handlerSubOpTier2DecUint", "DEC",
 			"handlerSubOpTier2DecUint decrements uints[C] by one (tier-2 in-place sub-op)."),
+		tier2Integer32InPlaceHandler("handlerSubOpTier2IncInt32", "INC",
+			"handlerSubOpTier2IncInt32 increments ints[C] by one with int32 wrap-around."),
+		tier2Integer32InPlaceHandler("handlerSubOpTier2DecInt32", "DEC",
+			"handlerSubOpTier2DecInt32 decrements ints[C] by one with int32 wrap-around."),
+	}
+}
+
+// tier2Integer32InPlaceHandler builds a tier-2 int32 in-place handler: the in-place
+// operation followed by sign-extension from 32 bits.
+//
+// Takes name (string) which is the handler function name.
+// Takes operation (string) which is the in-place operation mnemonic.
+// Takes comment (string) which is the handler's doc comment.
+//
+// Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
+func tier2Integer32InPlaceHandler(name, operation, comment string) asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
+		Name:      name,
+		Comment:   comment,
+		FrameSize: frameSizeZero,
+		Flags:     flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			scratches := architecture.ScratchRegisters()
+			architecture.ExtractC(emitter, scratches[0])
+			architecture.IntegerInPlace(emitter, operation, scratches[0])
+			architecture.IntegerNarrow32(emitter, scratches[0])
+			architecture.DispatchNext(emitter)
+		},
 	}
 }
 

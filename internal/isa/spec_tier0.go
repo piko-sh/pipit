@@ -272,4 +272,10 @@ var tierMainSpecs = []OpSpec{
 	main0(OpAppendFloatFast, "APPEND_FLOAT_FAST").cost(costExpensive).handler("handleAppendFloat").exit("handlerAppendFloatFastExit", "exitAppendFloatFast").mutates(),
 	main0(OpAppendStringFast, "APPEND_STRING_FAST").cost(costExpensive).handler("handleAppendString").exit("handlerAppendStringFastExit", "exitAppendStringFast").mutates(),
 	main0(OpTypeSwitchCase, "TYPE_SWITCH_CASE").flags(SpecJump).pure(),
+	main0(OpAddInt32, "ADD_INT32").handler("handleAddInt32").asm("handlerAddInt32").pure(),
+	main0(OpSubInt32, "SUB_INT32").handler("handleSubInt32").asm("handlerSubInt32").pure(),
+	main0(OpMulInt32, "MUL_INT32").handler("handleMulInt32").asm("handlerMulInt32").pure(),
+	main0(OpAddInt32Const, "ADD_INT32_CONST").handler("handleAddInt32Const").asm("handlerAddInt32Const").pure(),
+	main0(OpSubInt32Const, "SUB_INT32_CONST").handler("handleSubInt32Const").asm("handlerSubInt32Const").pure(),
+	main0(OpAddUint32, "ADD_UINT32").handler("handleAddUint32").asm("handlerAddUint32").pure(),
 }

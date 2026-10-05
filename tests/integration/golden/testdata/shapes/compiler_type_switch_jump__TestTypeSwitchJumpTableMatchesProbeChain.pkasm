@@ -66,8 +66,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function itoa
-;   registers: int=8 string=2
-;   dispatch:  asm=16 shim=1 exit=0 go=3
+;   registers: int=10 string=2
+;   dispatch:  asm=14 shim=1 exit=0 go=1
 ;   params:    (int)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -77,32 +77,28 @@
 ;   strings: [0]="0"  [1]=""
 
 0000 A 1:EQ_INT_CONST_JUMP_FALSE  124   0   0
-0001   0:EXT                        3   0   0
-0002 G 3:TIER3_NOP                  0   0   0
-0003 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "0"
-0004 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0005 A 0:LOAD_STRING_CONST          0   1   0    ; strings[0] = ""
-0006 A 1:GT_INT_CONST_JUMP_FALSE  127   0   0
-0007   0:EXT                       13   0   0
-0008 G 3:TIER3_NOP                  0   0   0
-0009 A 1:LOAD_INT_CONST_SMALL      75   3  48    ; ints[3] = 48
-0010 A 1:LOAD_INT_CONST_SMALL      75   4  10    ; ints[4] = 10
-0011 A 0:REM_INT                    5   0   4
-0012 A 0:ADD_INT                    6   3   5
-0013 A 1:MOVE_INT                  35   7   6
-0014 A 0:TRUNCATE_NARROW            7  32   0
-0015 G 1:RUNE_TO_STRING            66   1   7
-0016 S 0:CONCAT_STRING              0   1   0
-0017 A 1:LOAD_INT_CONST_SMALL      75   3  10    ; ints[3] = 10
-0018 A 0:DIV_INT                    4   0   3
-0019 A 1:MOVE_INT                  35   0   4
-0020 A 1:JUMP                      74 241 255    ; goto -15
-0021 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0001   0:EXT                        2   0   0
+0002 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "0"
+0003 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0004 A 0:LOAD_STRING_CONST          0   1   0    ; strings[0] = ""
+0005 A 1:LOAD_INT_CONST_SMALL      75   8  48    ; LICM hoist of PC 10
+0006 A 1:LOAD_INT_CONST_SMALL      75   9  10    ; LICM hoist of PC 10
+0007 A 1:LOAD_INT_CONST_SMALL      75   3  10    ; LICM hoist of PC 13
+0008 A 1:GT_INT_CONST_JUMP_FALSE  127   0   0
+0009   0:EXT                        7   0   0
+0010 A 0:REM_INT                    5   0   9
+0011 A 0:ADD_INT32                  7   8   5
+0012 G 1:RUNE_TO_STRING            66   1   7
+0013 S 0:CONCAT_STRING              0   1   0
+0014 A 0:DIV_INT                    4   0   3
+0015 A 1:MOVE_INT                  35   0   4
+0016 A 1:JUMP                      74 247 255    ; goto -9
+0017 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun
 ;   registers: int=4 float=1 string=5 general=4 bool=1
-;   dispatch:  asm=39 shim=19 exit=0 go=12
+;   dispatch:  asm=38 shim=19 exit=0 go=12
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -178,16 +174,15 @@
 0062 A 0:LOAD_STRING_CONST          0   3   0    ; strings[0] = ""
 0063 G 1:LEN                       70   0   1
 0064 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0065 A 0:LOAD_STRING_CONST          2   4   0    ; LICM hoist of PC 71
-0066 A 1:LOAD_INT_CONST_SMALL      75   3   1    ; LICM hoist of PC 74
-0067 A 1:LT_INT_JUMP_FALSE        116   1   0
-0068   0:EXT                        8   0   0
-0069 S 0:INDEX                      2   1   1
-0070 A 0:MOVE_GENERAL               2   2   0
-0071 A 1:CALL                     128   0   0    ; call (site 0)
-0072 S 0:CONCAT_STRING              3   1   2
-0073 S 0:CONCAT_STRING              4   0   3
-0074 A 1:MOVE_STRING               37   0   4
-0075 A 0:ADD_INT                    1   1   3
-0076 A 1:JUMP                      74 246 255    ; goto -10
-0077 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0065 A 0:LOAD_STRING_CONST          2   4   0    ; LICM hoist of PC 70
+0066 A 1:LT_INT_JUMP_FALSE        116   1   0
+0067   0:EXT                        8   0   0
+0068 S 0:INDEX                      2   1   1
+0069 A 0:MOVE_GENERAL               2   2   0
+0070 A 1:CALL                     128   0   0    ; call (site 0)
+0071 S 0:CONCAT_STRING              3   1   2
+0072 S 0:CONCAT_STRING              4   0   3
+0073 A 1:MOVE_STRING               37   0   4
+0074 A 0:ADD_INT_CONST              1   1   3    ; const = 1
+0075 A 1:JUMP                      74 246 255    ; goto -10
+0076 A 2:TIER2_RETURN               0  10   1    ; 1 values

@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=271
-;   dispatch:  asm=527 shim=0 exit=0 go=553
+;   dispatch:  asm=527 shim=0 exit=0 go=552
 ;   params:    (none)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -1637,12 +1637,11 @@
 1621 G 1:RELOAD                    85 246   0
 1622   0:EXT                       13   0   0
 1623 A 1:GT_INT_CONST_JUMP_FALSE  127 246 100
-1624   0:EXT                        5   0   0
-1625 G 3:TIER3_NOP                  0   0   0
-1626 G 1:RELOAD                    85 246   0
-1627   0:EXT                       13   0   0
-1628 A 1:MOVE_INT                  35   0 246
-1629 A 2:TIER2_RETURN               0  10   1    ; 1 values
-1630 A 0:LOAD_INT_CONST           246   4   1    ; ints[246] = -1
-1631 A 1:MOVE_INT                  35   0 246
-1632 A 2:TIER2_RETURN               0  10   1    ; 1 values
+1624   0:EXT                        4   0   0
+1625 G 1:RELOAD                    85 246   0
+1626   0:EXT                       13   0   0
+1627 A 1:MOVE_INT                  35   0 246
+1628 A 2:TIER2_RETURN               0  10   1    ; 1 values
+1629 A 0:LOAD_INT_CONST           246   4   1    ; ints[246] = -1
+1630 A 1:MOVE_INT                  35   0 246
+1631 A 2:TIER2_RETURN               0  10   1    ; 1 values

@@ -301,6 +301,24 @@ initjt_fill:
 	LEAQ    ·handlerGetStructFieldSliceIndexScalar(SB), AX
 	MOVQ    AX, 1704(DI)
 
+	LEAQ    ·handlerAddInt32(SB), AX
+	MOVQ    AX, 1752(DI)
+
+	LEAQ    ·handlerSubInt32(SB), AX
+	MOVQ    AX, 1760(DI)
+
+	LEAQ    ·handlerMulInt32(SB), AX
+	MOVQ    AX, 1768(DI)
+
+	LEAQ    ·handlerAddInt32Const(SB), AX
+	MOVQ    AX, 1776(DI)
+
+	LEAQ    ·handlerSubInt32Const(SB), AX
+	MOVQ    AX, 1784(DI)
+
+	LEAQ    ·handlerAddUint32(SB), AX
+	MOVQ    AX, 1792(DI)
+
 	LEAQ    ·handlerPathBShimLoadGeneralConst(SB), AX
 	MOVQ    AX, 352(DI)
 
@@ -916,6 +934,12 @@ TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
 
 	LEAQ    ·handlerSubOpAllocStructLiteral(SB), AX
 	MOVQ    AX, ·tier2JumpTable+112(SB)
+
+	LEAQ    ·handlerSubOpTier2IncInt32(SB), AX
+	MOVQ    AX, ·tier2JumpTable+128(SB)
+
+	LEAQ    ·handlerSubOpTier2DecInt32(SB), AX
+	MOVQ    AX, ·tier2JumpTable+136(SB)
 
 	LEAQ    ·handlerReturnVoidInline(SB), AX
 	MOVQ    AX, ·tier3JumpTable+8(SB)

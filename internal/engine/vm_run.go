@@ -41,6 +41,20 @@ const (
 	UnmeteredCostSentinel = -1
 )
 
+// spanStop says why dispatchSpan() returned.
+type spanStop uint8
+
+const (
+	// spanStopResult means a handler returned something other than opContinue.
+	spanStopResult spanStop = iota
+
+	// spanStopCheckpoint means the periodic checks are due.
+	spanStopCheckpoint
+
+	// spanStopEndOfBody means the frame ran off the end of its body.
+	spanStopEndOfBody
+)
+
 // RunDispatchedGuarded wraps runDispatched with a recover() so that a native Go panic
 // raised by an opcode handler (for example the invalid-register and not-a-struct
 // diagnostics in vm_bounds_check.go, or any reflect operation that panics) is contained
@@ -206,9 +220,25 @@ func (vm *VM) handleRecoveredHandlerPanic(recovered any, baseFramePointer int, r
 }
 
 // run is the main execution loop, dispatching all opcodes via flatDispatchSwitch (Path-B)
-// defined in vm_handler_flat_switch.go. The ASM dispatch loop (Path-A) covers most
-// opcodes inline and only returns to this loop on exit reasons that need a Go-side
-// handler.
+// defined in vm_handler_flat_switch.go.
+//
+// The ASM dispatch loop (Path-A) covers most opcodes inline and only returns to this loop
+// on exit reasons that need a Go-side handler. A VM with no debugger, cost budget or
+// yield interval takes the unmetered loop.
+//
+// Takes baseFramePointer (int) which specifies the frame index at which this invocation
+// should stop and return results.
+//
+// Returns the execution result and any error encountered during dispatch.
+func (vm *VM) run(baseFramePointer int) (any, error) {
+	if vm.Limits.Debug == nil && vm.Limits.CostBudget == 0 && vm.Limits.YieldInterval == 0 {
+		return vm.runUnmetered(baseFramePointer)
+	}
+	return vm.runMetered(baseFramePointer)
+}
+
+// runMetered is run() for a VM with a debugger, a cost budget or a yield interval, which
+// checks each of them before every instruction.
 //
 // Takes baseFramePointer (int) which specifies the frame index at which this invocation
 // should stop and return results.
@@ -216,7 +246,7 @@ func (vm *VM) handleRecoveredHandlerPanic(recovered any, baseFramePointer int, r
 // Returns the execution result and any error encountered during dispatch.
 //
 //revive:disable:cognitive-complexity // VM dispatch loops are inherently complex.
-func (vm *VM) run(baseFramePointer int) (any, error) {
+func (vm *VM) runMetered(baseFramePointer int) (any, error) {
 	savedBaseFp := vm.baseFramePointer
 	vm.baseFramePointer = baseFramePointer
 	vm.debugEnter()
@@ -276,6 +306,102 @@ func (vm *VM) run(baseFramePointer int) (any, error) {
 		frame = &vm.CallStack[vm.FramePointer]
 		registers = &frame.Registers
 	}
+}
+
+// runUnmetered is run() for a VM with no debugger, cost budget or yield interval, the
+// common case and the only one WASM builds take. It leaves out the per-instruction checks
+// those features need: dispatchSpan() runs instructions until something needs the slow
+// path, and finishSpan() handles it.
+//
+// Takes baseFramePointer (int) which specifies the frame index at which this invocation
+// should stop and return results.
+//
+// Returns the execution result and any error encountered during dispatch.
+func (vm *VM) runUnmetered(baseFramePointer int) (any, error) {
+	savedBaseFp := vm.baseFramePointer
+	vm.baseFramePointer = baseFramePointer
+	vm.debugEnter()
+	defer func() {
+		vm.baseFramePointer = savedBaseFp
+		vm.debugLeave()
+	}()
+
+	var ops uint32
+	for {
+		frame := &vm.CallStack[vm.FramePointer]
+		stop, rc, executed := dispatchSpan(vm, frame, ops)
+		ops = executed
+		if done, result, err := vm.finishSpan(frame, stop, rc, baseFramePointer); done {
+			return result, err
+		}
+	}
+}
+
+// dispatchSpan runs the frame's instructions until a handler changes the frame or fails,
+// the periodic checks fall due, or the body ends. The body is held in a local because
+// only those events can change it.
+//
+// Takes vm (*VM) which executes the instructions.
+// Takes frame (*CallFrame) which is the running frame.
+// Takes ops (uint32) which is the instruction counter for the periodic checks.
+//
+// Returns why the span stopped, the handler result for spanStopResult, and the updated
+// counter.
+func dispatchSpan(vm *VM, frame *CallFrame, ops uint32) (spanStop, OpResult, uint32) {
+	registers := &frame.Registers
+	body := frame.Function.Body
+	for {
+		ops++
+		if ops&cancellationCheckMask == 0 {
+			return spanStopCheckpoint, opContinue, ops
+		}
+		pc := frame.ProgramCounter
+		if pc >= len(body) {
+			return spanStopEndOfBody, opContinue, ops
+		}
+		frame.ProgramCounter = pc + 1
+		if rc := flatDispatchSwitch(vm, frame, registers, body[pc]); rc != opContinue {
+			return spanStopResult, rc, ops
+		}
+	}
+}
+
+// finishSpan handles the event that ended a dispatch span.
+//
+// Takes frame (*CallFrame) which is the frame the span ran.
+// Takes stop (spanStop) which says why the span ended.
+// Takes rc (OpResult) which is the handler result for spanStopResult.
+// Takes baseFramePointer (int) which is the frame index run() returns at.
+//
+// Returns done (bool) which is true when run() must return.
+// Returns result (any) which is run()'s return value when done is true.
+// Returns err (error) which is run()'s error when done is true.
+func (vm *VM) finishSpan(frame *CallFrame, stop spanStop, rc OpResult, baseFramePointer int) (done bool, result any, err error) {
+	switch stop {
+	case spanStopCheckpoint:
+		return vm.unmeteredCheckpoint()
+	case spanStopEndOfBody:
+		return vm.handleEndOfBody(frame, baseFramePointer)
+	default:
+		result, terminal, err := vm.handleOpResult(rc)
+		return terminal, result, err
+	}
+}
+
+// unmeteredCheckpoint runs the periodic cancellation, panic, checkpoint and lock checks.
+//
+// Returns done (bool) which is true when run() must return.
+// Returns result (any) which is run()'s return value when done is true.
+// Returns err (error) which is run()'s error when done is true.
+func (vm *VM) unmeteredCheckpoint() (done bool, result any, err error) {
+	if done, result, err := vm.runPeriodicChecks(); done {
+		return true, result, err
+	}
+	if vm.checkpointFlags != 0 || (vm.Arena != nil && vm.Arena.gcShouldRun()) {
+		vm.runPendingCheckpoints()
+	}
+	vm.yieldInterpreterLock()
+	return false, nil, nil
 }
 
 // chargeInstructionCost is the metered half of AccountForInstructionCost, kept out of

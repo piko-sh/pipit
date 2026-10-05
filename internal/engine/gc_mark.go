@@ -397,9 +397,9 @@ func markUintSlice(arena *RegisterArena, state *gcMarkState, s []uint64) {
 
 // pointerInIntSlice reports whether pointer lies within backing, given an element stride.
 //
-// Takes pointer which is the address being classified.
-// Takes backing which is the int64 slab to test against.
-// Takes elementSize which is the byte stride per element.
+// Takes pointer (uintptr) which is the address being classified.
+// Takes backing ([]int64) which is the int64 slab to test against.
+// Takes elementSize (uintptr) which is the byte stride per element.
 //
 // Returns true when pointer falls inside backing; false on empty backing.
 func pointerInIntSlice(pointer uintptr, backing []int64, elementSize uintptr) bool {
@@ -414,9 +414,9 @@ func pointerInIntSlice(pointer uintptr, backing []int64, elementSize uintptr) bo
 // pointerInFloatSlice reports whether pointer lies within backing, given an element
 // stride.
 //
-// Takes pointer which is the address being classified.
-// Takes backing which is the float64 slab to test against.
-// Takes elementSize which is the byte stride per element.
+// Takes pointer (uintptr) which is the address being classified.
+// Takes backing ([]float64) which is the float64 slab to test against.
+// Takes elementSize (uintptr) which is the byte stride per element.
 //
 // Returns true when pointer falls inside backing; false on empty backing.
 func pointerInFloatSlice(pointer uintptr, backing []float64, elementSize uintptr) bool {
@@ -431,9 +431,9 @@ func pointerInFloatSlice(pointer uintptr, backing []float64, elementSize uintptr
 // pointerInStringSlice reports whether pointer lies within backing, given the per-header
 // stride.
 //
-// Takes pointer which is the address being classified.
-// Takes backing which is the string slab to test against.
-// Takes headerSize which is the byte stride per string header.
+// Takes pointer (uintptr) which is the address being classified.
+// Takes backing ([]string) which is the string slab to test against.
+// Takes headerSize (uintptr) which is the byte stride per string header.
 //
 // Returns true when pointer falls inside backing; false on empty backing.
 func pointerInStringSlice(pointer uintptr, backing []string, headerSize uintptr) bool {
@@ -448,9 +448,9 @@ func pointerInStringSlice(pointer uintptr, backing []string, headerSize uintptr)
 // pointerInBoolSlice reports whether pointer lies within backing, given an element
 // stride.
 //
-// Takes pointer which is the address being classified.
-// Takes backing which is the bool slab to test against.
-// Takes elementSize which is the byte stride per element.
+// Takes pointer (uintptr) which is the address being classified.
+// Takes backing ([]bool) which is the bool slab to test against.
+// Takes elementSize (uintptr) which is the byte stride per element.
 //
 // Returns true when pointer falls inside backing; false on empty backing.
 func pointerInBoolSlice(pointer uintptr, backing []bool, elementSize uintptr) bool {
@@ -465,9 +465,9 @@ func pointerInBoolSlice(pointer uintptr, backing []bool, elementSize uintptr) bo
 // pointerInUintSlice reports whether pointer lies within backing, given an element
 // stride.
 //
-// Takes pointer which is the address being classified.
-// Takes backing which is the uint64 slab to test against.
-// Takes elementSize which is the byte stride per element.
+// Takes pointer (uintptr) which is the address being classified.
+// Takes backing ([]uint64) which is the uint64 slab to test against.
+// Takes elementSize (uintptr) which is the byte stride per element.
 //
 // Returns true when pointer falls inside backing; false on empty backing.
 func pointerInUintSlice(pointer uintptr, backing []uint64, elementSize uintptr) bool {

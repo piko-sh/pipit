@@ -198,10 +198,6 @@ jobs:
             echo "## Commits"
             echo ""
             git log --no-merges --format="- %s (%h)" "$range"
-            echo ""
-            if [ -n "$previous_tag" ]; then
-              echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${previous_tag}...${{ github.ref_name }}"
-            fi
             echo 'RELEASE_NOTES_EOF'
           } >> "$GITHUB_OUTPUT"
 

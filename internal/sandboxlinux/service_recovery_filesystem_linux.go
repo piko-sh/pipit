@@ -79,7 +79,7 @@ func (owner *ServiceRecoveryClaim) RecoverFilesystem(ctx context.Context, config
 
 // checkFilesystemRecoveryAdmission rejects fresh work after durable release readiness.
 //
-// Takes a bounded context while exclusive recovery ownership is held.
+// The caller must hold exclusive recovery ownership.
 //
 // Returns failure without changing retained recovery or cleanup state.
 func (owner *ServiceRecoveryClaim) checkFilesystemRecoveryAdmission(ctx context.Context) error {
@@ -132,7 +132,7 @@ func (owner *ServiceRecoveryClaim) checkRecoveryImageStore(store *sandboxbroker.
 // prepareFilesystemRecovery reaps previous attempts before touching their cgroups. The
 // caller must hold owner.mutex.
 //
-// Takes a fresh bounded retry context with exclusive recovery ownership held.
+// The caller must hold exclusive recovery ownership throughout the retry.
 //
 // Returns only after old process resources and empty descendant directories are gone.
 func (owner *ServiceRecoveryClaim) prepareFilesystemRecovery(ctx context.Context) error {

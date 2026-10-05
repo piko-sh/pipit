@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun
 ;   registers: int=3 string=1 general=2
-;   dispatch:  asm=9 shim=1 exit=0 go=4
+;   dispatch:  asm=9 shim=1 exit=1 go=3
 ;   params:    (int)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -26,7 +26,7 @@
 0009 A 0:SET_STRUCT_FIELD_INT_T0    1   1   0
 0010 G 1:SET_STRUCT_FIELD_STRING   95   1   0
 0011   0:EXT                        1   0   0
-0012 G 0:APPEND_INPLACE             0   0   1
+0012 X 0:APPEND                     0   0   1
 0013 A 2:TIER2_INC_INT              0   1   1
 0014 A 1:JUMP                      74 246 255    ; goto -10
 0015 G 1:LEN                       70   1   0

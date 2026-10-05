@@ -20,6 +20,7 @@ package passes
 
 import (
 	"math"
+	"slices"
 
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
@@ -583,11 +584,12 @@ func matchSmallUintConstLoad(compiledFunction *program.CompiledFunction, instr i
 	return uint8(value), instr.A, true
 }
 
-// fuseIntArithConst fuses a LoadIntConst followed by AddInt, SubInt, or MulInt into the
-// corresponding *IntConst superinstruction.
+// fuseIntArithConst fuses a LoadIntConst or LoadIntConstSmall followed by AddInt, SubInt,
+// or MulInt into the corresponding *IntConst superinstruction.
 //
 // The load must write the same register the arith op reads as its right operand, and the
-// slot immediately after the load must not be a jump target.
+// slot immediately after the load must not be a jump target. A small load's value is
+// found in, or added to, the constant pool, whose index the fused op carries.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
@@ -601,13 +603,12 @@ func fuseIntArithConst(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
-	if i+1 >= n ||
-		body[i].Op != isa.OpLoadIntConst || body[i].C != 0 ||
-		jumpTargets[i+1] {
+	if i+1 >= n || jumpTargets[i+1] {
 		return false
 	}
+	loaded, ok := intConstLoadDestination(body[i])
 	next := body[i+1]
-	if body[i].A != next.C {
+	if !ok || loaded != next.C {
 		return false
 	}
 	var fusedOp isa.Opcode
@@ -621,29 +622,95 @@ func fuseIntArithConst(compiledFunction *program.CompiledFunction,
 	default:
 		return false
 	}
-	if !loadedRegisterConsumedOnlyByFusedOp(compiledFunction, body, i, isa.RegisterInt, jumpTargets) {
+	if !loadedRegisterConsumedOnlyByFusedOp(compiledFunction, body, i, loaded, isa.RegisterInt) {
 		return false
 	}
-	body[i] = isa.NewInstruction(fusedOp, next.A, next.B, body[i].B)
+	index, ok := intConstPoolIndex(compiledFunction, body[i])
+	if !ok {
+		return false
+	}
+	body[i] = isa.NewInstruction(fusedOp, next.A, next.B, index)
 	body[i+1] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
 	return true
 }
 
+// intConstLoadDestination names the register an int constant load writes.
+//
+// Takes inst (isa.Instruction) which is the candidate load.
+//
+// Returns the destination and whether inst is a pool or small int constant load.
+func intConstLoadDestination(inst isa.Instruction) (uint8, bool) {
+	if inst.Op == isa.OpLoadIntConst && inst.C == 0 {
+		return inst.A, true
+	}
+	if isa.InstrIsTier1SubOp(inst, isa.SubOpLoadIntConstSmall) {
+		return inst.B, true
+	}
+	return 0, false
+}
+
+// intConstPoolIndex returns the 8-bit pool index an *IntConst op needs for the constant
+// load inst, adding a small load's value to the pool when it is missing and there is
+// room.
+//
+// Takes compiledFunction (*program.CompiledFunction) whose int pool is searched.
+// Takes inst (isa.Instruction) which is the constant load.
+//
+// Returns the index and false when it does not fit in one byte.
+func intConstPoolIndex(compiledFunction *program.CompiledFunction, inst isa.Instruction) (uint8, bool) {
+	if inst.Op == isa.OpLoadIntConst {
+		return inst.B, true
+	}
+	value := int64(inst.C)
+	if index := slices.Index(compiledFunction.IntConstants, value); index >= 0 && index <= math.MaxUint8 {
+		return uint8(index), true
+	}
+	if len(compiledFunction.IntConstants) > math.MaxUint8 {
+		return 0, false
+	}
+	compiledFunction.IntConstants = append(slices.Clip(compiledFunction.IntConstants), value)
+	compiledFunction.PrecomputedAllocCountsValid = false
+	return safeconv.MustIntToUint8(len(compiledFunction.IntConstants) - 1), true
+}
+
+// uintConstPoolIndex returns the 16-bit pool index the uint *Const ops carry in their
+// extension word for the constant load inst, adding a small load's value to the pool when
+// it is missing.
+//
+// Takes compiledFunction (*program.CompiledFunction) whose uint pool is searched.
+// Takes inst (isa.Instruction) which is the constant load.
+//
+// Returns the index and false when it does not fit in 16 bits.
+func uintConstPoolIndex(compiledFunction *program.CompiledFunction, inst isa.Instruction) (uint16, bool) {
+	if inst.Op == isa.OpLoadUintConst {
+		return isa.JoinWide(inst.B, inst.C), true
+	}
+	value := uint64(inst.C)
+	if index := slices.Index(compiledFunction.UintConstants, value); index >= 0 && index <= math.MaxUint16 {
+		return uint16(index), true
+	}
+	if len(compiledFunction.UintConstants) > math.MaxUint16 {
+		return 0, false
+	}
+	compiledFunction.UintConstants = append(slices.Clip(compiledFunction.UintConstants), value)
+	compiledFunction.PrecomputedAllocCountsValid = false
+	return safeconv.MustIntToUint16(len(compiledFunction.UintConstants) - 1), true
+}
+
 // loadedRegisterConsumedOnlyByFusedOp reports whether the register written by the
-// constant load at i is consumed solely as the right operand of the instruction at i+1.
+// constant load at i is consumed solely as the right operand of the instruction at i+1,
+// following every path after it. A register holding a named variable stays written, so
+// the debugger still sees the variable's value.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
 // Takes body ([]instruction) which is the instruction sequence.
 // Takes i (int) which is the index of the constant load.
+// Takes loaded (uint8) which is the register the load writes.
 // Takes kind (isa.RegisterKind) which is the bank of the loaded register.
-// Takes jumpTargets (map[int]bool) which marks protected jump destinations.
 //
 // Returns true when folding the load into body[i+1] preserves every later read.
-// moveScanContinue means keep scanning, so it is expressed by falling out of the switch
-// into the next loop iteration rather than by an arm.
-func loadedRegisterConsumedOnlyByFusedOp(compiledFunction *program.CompiledFunction, body []isa.Instruction, i int, kind isa.RegisterKind, jumpTargets map[int]bool) bool {
-	loaded := body[i].A
+func loadedRegisterConsumedOnlyByFusedOp(compiledFunction *program.CompiledFunction, body []isa.Instruction, i int, loaded uint8, kind isa.RegisterKind) bool {
 	next := body[i+1]
 	if next.B == loaded {
 		return false
@@ -651,31 +718,14 @@ func loadedRegisterConsumedOnlyByFusedOp(compiledFunction *program.CompiledFunct
 	if next.A == loaded {
 		return true
 	}
-	if int(loaded) < returnSlotCount(compiledFunction, kind) {
-		return false
-	}
-	candidate := MoveCandidate{Kind: kind, Destination: loaded, Source: loaded}
-	limit := min(i+2+moveElimScanWindow, len(body))
-	for k := i + 2; k < limit; k++ {
-		if jumpTargets[k] {
-			return false
-		}
-		if program.IsReturnInstruction(body[k]) {
-			return true
-		}
-		switch classifyDeadPathStep(body[k], candidate) {
-		case moveScanEliminate:
-			return true
-		case moveScanBail:
-			return false
-		default:
-		}
-	}
-	return limit == len(body)
+	return int(loaded) >= returnSlotCount(compiledFunction, kind) &&
+		!namesDebugVariable(compiledFunction, kind, loaded, i, i+1) &&
+		registerDeadFrom(compiledFunction, body, i+2, kind, loaded)
 }
 
-// fuseUintArithConst fuses a LoadUintConst followed by AddUint, SubUint, or BitAndUint
-// into a tier-1 subop carrying the constant via a trailing isa.OpExt word.
+// fuseUintArithConst fuses a LoadUintConst or LoadUintConstSmall followed by AddUint,
+// SubUint, or BitAndUint into a tier-1 subop carrying the constant via a trailing
+// isa.OpExt word.
 //
 // The uint constant pool index can be up to 16 bits, so it does not fit in the tier-1
 // operand budget alone; the isa.OpExt word holds the full index. The load's destination
@@ -693,14 +743,15 @@ func fuseUintArithConst(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction, i, n int,
 	jumpTargets map[int]bool,
 ) bool {
-	if i+1 >= n ||
-		body[i].Op != isa.OpLoadUintConst ||
-		jumpTargets[i+1] {
+	if i+1 >= n || jumpTargets[i+1] {
 		return false
 	}
-	load := body[i]
+	_, loaded, ok := matchSmallUintConstLoad(compiledFunction, body[i])
+	if body[i].Op == isa.OpLoadUintConst {
+		loaded, ok = body[i].A, true
+	}
 	next := body[i+1]
-	if load.A != next.C {
+	if !ok || loaded != next.C {
 		return false
 	}
 	var fusedSubOp isa.SubOpcode
@@ -714,11 +765,16 @@ func fuseUintArithConst(compiledFunction *program.CompiledFunction,
 	default:
 		return false
 	}
-	if !loadedRegisterConsumedOnlyByFusedOp(compiledFunction, body, i, isa.RegisterUint, jumpTargets) {
+	if !loadedRegisterConsumedOnlyByFusedOp(compiledFunction, body, i, loaded, isa.RegisterUint) {
 		return false
 	}
+	index, ok := uintConstPoolIndex(compiledFunction, body[i])
+	if !ok {
+		return false
+	}
+	lo, hi := isa.SplitWide(index)
 	body[i] = isa.NewInstruction(isa.OpDrillTier1, uint8(fusedSubOp), next.A, next.B)
-	body[i+1] = isa.NewInstruction(isa.OpExt, load.B, load.C, 0)
+	body[i+1] = isa.NewInstruction(isa.OpExt, lo, hi, 0)
 	return true
 }
 

@@ -114,6 +114,12 @@ func buildStaticJumpTableEntries() []asm.AsmHandlerJumpTableEntry {
 		{Name: "handlerDerefSliceSetInt", TableSymbol: "", Offset: int(isa.OpDerefSliceSetInt) * bytesPerJumpTableSlot},
 		{Name: "handlerGetStructFieldSliceLen", TableSymbol: "", Offset: int(isa.OpGetStructFieldSliceLen) * bytesPerJumpTableSlot},
 		{Name: "handlerGetStructFieldSliceIndexScalar", TableSymbol: "", Offset: int(isa.OpGetStructFieldSliceIndexScalar) * bytesPerJumpTableSlot},
+		{Name: "handlerAddInt32", TableSymbol: "", Offset: int(isa.OpAddInt32) * bytesPerJumpTableSlot},
+		{Name: "handlerSubInt32", TableSymbol: "", Offset: int(isa.OpSubInt32) * bytesPerJumpTableSlot},
+		{Name: "handlerMulInt32", TableSymbol: "", Offset: int(isa.OpMulInt32) * bytesPerJumpTableSlot},
+		{Name: "handlerAddInt32Const", TableSymbol: "", Offset: int(isa.OpAddInt32Const) * bytesPerJumpTableSlot},
+		{Name: "handlerSubInt32Const", TableSymbol: "", Offset: int(isa.OpSubInt32Const) * bytesPerJumpTableSlot},
+		{Name: "handlerAddUint32", TableSymbol: "", Offset: int(isa.OpAddUint32) * bytesPerJumpTableSlot},
 		{Name: "handlerSubOpMathSin", TableSymbol: tier1JumpTableSymbol, Offset: int(isa.SubOpMathSin) * bytesPerJumpTableSlot},
 		{Name: "handlerSubOpMathCos", TableSymbol: tier1JumpTableSymbol, Offset: int(isa.SubOpMathCos) * bytesPerJumpTableSlot},
 		{Name: "handlerSubOpMathExp", TableSymbol: tier1JumpTableSymbol, Offset: int(isa.SubOpMathExp) * bytesPerJumpTableSlot},
@@ -220,6 +226,8 @@ func buildStaticJumpTableEntries() []asm.AsmHandlerJumpTableEntry {
 		{Name: "handlerReturnInline", TableSymbol: tier2JumpTableSymbol, Offset: int(isa.SubOpTier2Return) * bytesPerJumpTableSlot},
 		{Name: "handlerSubOpRangeCheckUintJumpFalse", TableSymbol: tier2JumpTableSymbol, Offset: int(isa.SubOpTier2RangeCheckUintJumpFalse) * bytesPerJumpTableSlot},
 		{Name: "handlerSubOpAllocStructLiteral", TableSymbol: tier2JumpTableSymbol, Offset: int(isa.SubOpTier2AllocStructLiteral) * bytesPerJumpTableSlot},
+		{Name: "handlerSubOpTier2IncInt32", TableSymbol: tier2JumpTableSymbol, Offset: int(isa.SubOpTier2IncInt32) * bytesPerJumpTableSlot},
+		{Name: "handlerSubOpTier2DecInt32", TableSymbol: tier2JumpTableSymbol, Offset: int(isa.SubOpTier2DecInt32) * bytesPerJumpTableSlot},
 		{Name: "handlerReturnVoidInline", TableSymbol: tier3JumpTableSymbol, Offset: int(isa.SubOpTier3ReturnVoid) * bytesPerJumpTableSlot},
 	}
 }

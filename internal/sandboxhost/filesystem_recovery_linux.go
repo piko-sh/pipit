@@ -64,7 +64,7 @@ type linuxFilesystemRecovery struct {
 
 // Recover advances every claimed record, keeping the failed ones for a retry.
 //
-// Takes a fresh attempt context while the public owner serialises lifecycle operations.
+// The public owner serialises lifecycle operations.
 //
 // Returns public error categories without discarding native failure details.
 func (owner *linuxFilesystemRecovery) Recover(ctx context.Context) error {
@@ -121,7 +121,7 @@ type linuxFilesystemRecoveryRecord struct {
 
 // Recover advances only completed phases and retains failed helper ownership for retry.
 //
-// Takes a fresh attempt context while the public owner serialises lifecycle operations.
+// The public owner serialises lifecycle operations.
 //
 // Returns public error categories without discarding native failure details; the launch
 // record is removed once the original service has been released.
@@ -139,7 +139,7 @@ func (owner *linuxFilesystemRecoveryRecord) Recover(ctx context.Context) error {
 
 // recover selects durable release resumption or the original confined cleanup sequence.
 //
-// Takes a bounded attempt context while exclusive public ownership is held.
+// The caller must hold exclusive public ownership.
 //
 // Returns success only after the original service has been safely released.
 func (owner *linuxFilesystemRecoveryRecord) recover(ctx context.Context) error {
@@ -175,7 +175,7 @@ func (owner *linuxFilesystemRecoveryRecord) recover(ctx context.Context) error {
 
 // selectRecoveryPhase authenticates readiness before touching reusable image storage.
 //
-// Takes a bounded attempt context with exclusive recovery ownership.
+// The caller must hold exclusive recovery ownership.
 //
 // Returns error when readiness cannot be determined.
 func (owner *linuxFilesystemRecoveryRecord) selectRecoveryPhase(ctx context.Context) error {

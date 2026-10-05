@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=2 string=5 general=2 uint=1
-;   dispatch:  asm=37 shim=22 exit=0 go=10
+;   dispatch:  asm=36 shim=22 exit=0 go=10
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -79,17 +79,16 @@
 0061 S 0:CONCAT_STRING              3   1   2
 0062 S 0:CONCAT_STRING              4   0   3
 0063 A 1:MOVE_STRING               37   0   4
-0064 A 0:LOAD_INT_CONST             1   8   0    ; ints[1] = -1
-0065 A 1:MOVE_INT                  35   0   1
-0066 G 1:RUNE_TO_STRING            66   1   0
-0067 A 0:LOAD_STRING_CONST          2   4   0    ; strings[2] = ";"
-0068 S 0:CONCAT_STRING              3   1   2
-0069 S 0:CONCAT_STRING              4   0   3
-0070 A 1:MOVE_STRING               37   0   4
-0071 S 0:LOAD_GENERAL_CONST         0   0   0
-0072 A 0:LOAD_STRING_CONST          1   5   0    ; strings[1] = "len=%d"
-0073 A 1:LOAD_INT_CONST_SMALL      75   1   4    ; ints[1] = 4
-0074 G 1:CALL_NATIVE              130   0   0    ; call native general[0] (site 0)
-0075 S 0:CONCAT_STRING              3   0   2
-0076 A 1:MOVE_STRING               37   0   3
-0077 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0064 A 0:LOAD_INT_CONST             0   8   0    ; ints[0] = -1
+0065 G 1:RUNE_TO_STRING            66   1   0
+0066 A 0:LOAD_STRING_CONST          2   4   0    ; strings[2] = ";"
+0067 S 0:CONCAT_STRING              3   1   2
+0068 S 0:CONCAT_STRING              4   0   3
+0069 A 1:MOVE_STRING               37   0   4
+0070 S 0:LOAD_GENERAL_CONST         0   0   0
+0071 A 0:LOAD_STRING_CONST          1   5   0    ; strings[1] = "len=%d"
+0072 A 1:LOAD_INT_CONST_SMALL      75   1   4    ; ints[1] = 4
+0073 G 1:CALL_NATIVE              130   0   0    ; call native general[0] (site 0)
+0074 S 0:CONCAT_STRING              3   0   2
+0075 A 1:MOVE_STRING               37   0   3
+0076 A 2:TIER2_RETURN               0  10   1    ; 1 values

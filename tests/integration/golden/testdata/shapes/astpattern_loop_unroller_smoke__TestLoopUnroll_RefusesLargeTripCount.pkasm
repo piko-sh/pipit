@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun
 ;   registers: int=7
-;   dispatch:  asm=10 shim=0 exit=0 go=1
+;   dispatch:  asm=9 shim=0 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -15,13 +15,11 @@
 
 0000 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
 0001 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0002 A 1:LOAD_INT_CONST_SMALL      75   4   3    ; LICM hoist of PC 5
-0003 A 1:LT_INT_CONST_JUMP_FALSE  123   1   1
-0004   0:EXT                        6   0   0
-0005 G 3:TIER3_NOP                  0   0   0
-0006 A 0:MUL_INT                    5   1   4
-0007 A 0:ADD_INT                    6   0   5
-0008 A 1:MOVE_INT                  35   0   6
-0009 A 2:TIER2_INC_INT              0   1   1
-0010 A 1:JUMP                      74 248 255    ; goto -8
-0011 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0002 A 1:LT_INT_CONST_JUMP_FALSE  123   1   1
+0003   0:EXT                        5   0   0
+0004 A 0:MUL_INT_CONST              5   1   2    ; const = 3
+0005 A 0:ADD_INT                    6   0   5
+0006 A 1:MOVE_INT                  35   0   6
+0007 A 2:TIER2_INC_INT              0   1   1
+0008 A 1:JUMP                      74 249 255    ; goto -7
+0009 A 2:TIER2_RETURN               0  10   1    ; 1 values

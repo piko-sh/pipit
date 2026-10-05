@@ -568,6 +568,12 @@ func init() {
 // bitwise opcodes that operate on a single register bank.
 func populateScalarArithShapes() {
 	describeDstSrcSrc(OpAddInt, RoleRegInt)
+	describeDstSrcSrc(OpAddInt32, RoleRegInt)
+	describeDstSrcSrc(OpSubInt32, RoleRegInt)
+	describeDstSrcSrc(OpMulInt32, RoleRegInt)
+	describeArithConst(OpAddInt32Const, RoleRegInt)
+	describeArithConst(OpSubInt32Const, RoleRegInt)
+	describeDstSrcSrc(OpAddUint32, RoleRegUint)
 	describeDstSrcSrc(OpSubInt, RoleRegInt)
 	describeDstSrcSrc(OpMulInt, RoleRegInt)
 	describeDstSrcSrc(OpDivInt, RoleRegInt)

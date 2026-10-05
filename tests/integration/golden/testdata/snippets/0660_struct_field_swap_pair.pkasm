@@ -15,7 +15,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=4 general=5
-;   dispatch:  asm=21 shim=3 exit=0 go=2
+;   dispatch:  asm=21 shim=3 exit=0 go=1
 ;   params:    (none)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -47,8 +47,7 @@
 0021 A 0:GET_STRUCT_FIELD_GENERAL_T0   3   2   1
 0022 A 0:GET_STRUCT_FIELD_INT_T0    0   3   0
 0023 A 0:MUL_INT_CONST              2   0   2    ; const = 10
-0024 G 3:TIER3_NOP                  0   0   0
-0025 A 0:GET_STRUCT_FIELD_GENERAL_T0   4   2   2
-0026 A 0:GET_STRUCT_FIELD_INT_T0    3   4   0
-0027 A 0:ADD_INT                    0   2   3
-0028 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0024 A 0:GET_STRUCT_FIELD_GENERAL_T0   4   2   2
+0025 A 0:GET_STRUCT_FIELD_INT_T0    3   4   0
+0026 A 0:ADD_INT                    0   2   3
+0027 A 2:TIER2_RETURN               0  10   1    ; 1 values

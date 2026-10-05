@@ -1,0 +1,46 @@
+; pkasm - pipit bytecode assembly
+; dispatch: A assembly, S in-loop shim call to Go, X dedicated exit to Go, G generic exit to Go
+
+
+; ═════════════════════════════════════════════════════════════
+; function Counter.Inc
+;   registers: general=1
+;   dispatch:  asm=1 shim=0 exit=0 go=0
+;   params:    (general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+0000 A 1:INC_STRUCT_FIELD_INT     107   0   0
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=1 general=3
+;   dispatch:  asm=8 shim=4 exit=2 go=2
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=10
+
+0000 A 2:ALLOC_STRUCT_LITERAL       0  14   0
+0001   0:EXT                        0   0   0
+0002 A 2:ALLOC_STRUCT_LITERAL       0  14   1
+0003   0:EXT                        1   0   0
+0004 A 1:LOAD_INT_CONST_SMALL      75   0  10    ; ints[0] = 10
+0005 A 0:SET_STRUCT_FIELD_INT_T0    1   0   0
+0006 X 0:SET_FIELD                  0   0   1
+0007 S 0:ALLOC_INDIRECT             0   0   3
+0008   0:EXT                        0   0   0
+0009 S 0:DEREF                      2   0   0
+0010 G 1:FIELD_ADDR               214   1   2
+0011   0:EXT                        0   0   0
+0012 A 1:CALL                     128   0   0    ; call (site 0)
+0013 S 0:DEREF                      2   0   0
+0014 G 1:FIELD_ADDR               214   1   2
+0015   0:EXT                        0   0   0
+0016 A 1:CALL                     128   1   0    ; call (site 1)
+0017 S 0:DEREF                      1   0   0
+0018 X 0:GET_FIELD                  2   1   0
+0019 A 0:GET_STRUCT_FIELD_INT_T0    0   2   0
+0020 A 2:TIER2_RETURN               0  10   1    ; 1 values

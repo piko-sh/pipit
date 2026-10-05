@@ -57,9 +57,9 @@ func mergeLoopsSharingHeader(loops []loopRange) []loopRange {
 // hoistSafeAcrossLoopEntry reports whether lifting the read at readPC to the pre-header
 // of loop is unobservable on the entry path.
 //
-// Safe when the read runs before any exit edge, or when a dominating dereference proves
-// the receiver non-nil, nothing reads the destination before the read, and the
-// destination is dead on every exit edge the read sits behind.
+// Nothing in the loop before the read may read the destination. Then it is safe when the
+// read runs before any exit edge, or when a dominating dereference proves the receiver
+// non-nil and the destination is dead on every exit edge the read sits behind.
 //
 // Takes compiledFunction (*CompiledFunction) whose body holds the loop.
 // Takes loop (LoopRange) which is the loop the read belongs to.
@@ -73,18 +73,18 @@ func hoistSafeAcrossLoopEntry(compiledFunction *program.CompiledFunction, loop l
 	if !ok {
 		return false
 	}
-	if len(exits) == 0 {
-		return true
-	}
-	if !receiverProvenNonNilAtHeader(compiledFunction, loop.header, hoistedReadReceiverRegister(body, readPC), dominators) {
-		return false
-	}
 	destKind, ok := isa.KindForRole(hoistedReadDestBank(body, readPC))
 	if !ok {
 		return false
 	}
 	destReg := hoistedReadDestRegister(body, readPC)
 	if registerReadInRange(compiledFunction, loop.header, readPC, destKind, destReg) {
+		return false
+	}
+	if len(exits) == 0 {
+		return true
+	}
+	if !receiverProvenNonNilAtHeader(compiledFunction, loop.header, hoistedReadReceiverRegister(body, readPC), dominators) {
 		return false
 	}
 	for _, exitPC := range exits {

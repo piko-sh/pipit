@@ -280,6 +280,14 @@ func handleFlatSubOpTier2DecUint(vm *VM, frame *CallFrame, registers *Registers,
 	return handleDecUint(vm, frame, registers, isa.Instruction{A: instr.C})
 }
 
+func handleFlatSubOpTier2IncInt32(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleIncInt32(vm, frame, registers, isa.Instruction{A: instr.C})
+}
+
+func handleFlatSubOpTier2DecInt32(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+	return handleDecInt32(vm, frame, registers, isa.Instruction{A: instr.C})
+}
+
 func handleFlatSubOpTier2Panic(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	return handlePanic(vm, frame, registers, isa.Instruction{A: instr.C})
 }

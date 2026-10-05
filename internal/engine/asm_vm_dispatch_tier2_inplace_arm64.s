@@ -58,3 +58,25 @@ TEXT ·handlerSubOpTier2DecUint(SB), NOSPLIT|NOFRAME, $0
 	SUB  $1, R5, R5
 	MOVD R5, (R4)(R3<<3)
 	DISPATCH_NEXT()
+
+// handlerSubOpTier2IncInt32 increments ints[C] by one with int32 wrap-around.
+TEXT ·handlerSubOpTier2IncInt32(SB), NOSPLIT|NOFRAME, $0
+	LSR  $24, R0, R3
+	MOVD (R23)(R3<<3), R5
+	ADD  $1, R5, R5
+	MOVD R5, (R23)(R3<<3)
+	MOVD (R23)(R3<<3), R5
+	MOVW R5, R5
+	MOVD R5, (R23)(R3<<3)
+	DISPATCH_NEXT()
+
+// handlerSubOpTier2DecInt32 decrements ints[C] by one with int32 wrap-around.
+TEXT ·handlerSubOpTier2DecInt32(SB), NOSPLIT|NOFRAME, $0
+	LSR  $24, R0, R3
+	MOVD (R23)(R3<<3), R5
+	SUB  $1, R5, R5
+	MOVD R5, (R23)(R3<<3)
+	MOVD (R23)(R3<<3), R5
+	MOVW R5, R5
+	MOVD R5, (R23)(R3<<3)
+	DISPATCH_NEXT()

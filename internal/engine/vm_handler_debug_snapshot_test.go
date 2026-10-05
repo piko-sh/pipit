@@ -19,15 +19,18 @@
 package engine
 
 import (
-	"github.com/stretchr/testify/require"
-	"pipit.sh/pipit/internal/isa"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+	"pipit.sh/pipit/internal/isa"
 )
 
 func TestMoveGeneralDebugSnapshot(t *testing.T) {
+	t.Parallel()
 	for _, attached := range []bool{false, true} {
 		t.Run(map[bool]string{false: "no debugger", true: "idle debugger"}[attached], func(t *testing.T) {
+			t.Parallel()
 			vm := newTestVM(t)
 			if attached {
 				vm.Limits.Debug = NewDebugSession()

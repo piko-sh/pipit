@@ -20,15 +20,17 @@ package app
 
 import (
 	"context"
-	"github.com/stretchr/testify/require"
-	"pipit.sh/pipit/internal/debug"
-	"pipit.sh/pipit/internal/symtab"
 	"reflect"
 	"testing"
 	"unsafe"
+
+	"github.com/stretchr/testify/require"
+	"pipit.sh/pipit/internal/debug"
+	"pipit.sh/pipit/internal/symtab"
 )
 
 func TestSnapshotCaptureWithNativeAliasedBytes(t *testing.T) {
+	t.Parallel()
 	for name, options := range map[string][]Option{
 		"assembly":       {},
 		"go":             {WithForceGoDispatch()},
@@ -36,6 +38,7 @@ func TestSnapshotCaptureWithNativeAliasedBytes(t *testing.T) {
 		"debugger":       {WithDebugger(debug.NewDebugger())},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			service := NewService(options...)
 			service.UseSymbols(symtab.NewSymbolRegistry(symtab.SymbolExports{"host": {
 				"Raw": reflect.ValueOf(func(value any) []byte {
@@ -62,6 +65,7 @@ func run() int {
 }
 
 func TestSnapshotCaptureDebuggerRetainsAggregate(t *testing.T) {
+	t.Parallel()
 	h := newDebugHarness(t, `package main
 type item struct { Value byte; Data [2]byte }
 var items = []item{{Value: 3, Data: [2]byte{4, 5}}}

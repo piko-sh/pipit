@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function flags
 ;   registers: int=4 string=3 bool=1 sliceBool=1
-;   dispatch:  asm=15 shim=2 exit=0 go=1
+;   dispatch:  asm=14 shim=2 exit=0 go=1
 ;   params:    (sliceBool)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -18,7 +18,7 @@
 0001 A 1:LEN_SLICE_BOOL_DIRECT     29   0   0
 0002 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
 0003 A 1:LT_INT_JUMP_FALSE        116   1   0
-0004   0:EXT                       14   0   0
+0004   0:EXT                       13   0   0
 0005 A 1:SLICE_GET_BOOL_DIRECT     27   0   0
 0006   0:EXT                        1   0   0
 0007 G 1:BOOL_TO_INT               53   3   0
@@ -30,10 +30,9 @@
 0013 A 0:LOAD_STRING_CONST          1   2   0    ; strings[1] = "0"
 0014 S 0:CONCAT_STRING              2   0   1
 0015 A 1:MOVE_STRING               37   0   2
-0016 A 1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
-0017 A 0:ADD_INT                    1   1   3
-0018 A 1:JUMP                      74 240 255    ; goto -16
-0019 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0016 A 0:ADD_INT_CONST              1   1   1    ; const = 1
+0017 A 1:JUMP                      74 241 255    ; goto -15
+0018 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function probe
@@ -52,7 +51,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=15 string=3 general=20 bool=1 sliceInt=2 sliceFloat=1 sliceString=1 sliceBool=1 sliceUint=1 sliceByte=1
-;   dispatch:  asm=108 shim=84 exit=1 go=61
+;   dispatch:  asm=104 shim=84 exit=1 go=57
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -294,43 +293,35 @@
 0230 S 0:PACK_INTERFACE            18   0   4
 0231 S 0:INDEX_SET                 16   9  18
 0232 A 1:LOAD_INT_CONST_SMALL      75   8   0    ; ints[8] = 0
-0233 A 0:TEST_NIL_JUMP_TRUE         0   3   0
-0234 G 3:TIER3_NOP                  0   0   0
-0235 G 3:TIER3_NOP                  0   0   0
-0236 A 2:TIER2_INC_INT              0   1   8
-0237 A 0:TEST_NIL_JUMP_FALSE        5   5   0
-0238 G 3:TIER3_NOP                  0   0   0
-0239 G 3:TIER3_NOP                  0   0   0
-0240 A 1:LOAD_INT_CONST_SMALL      75   9   2    ; ints[9] = 2
-0241 A 0:ADD_INT                   10   8   9
-0242 A 1:MOVE_INT                  35   8  10
-0243 G 2:TIER2_LOAD_NIL             0   9  17
-0244 S 0:PACK_INTERFACE            18   0  12
-0245 A 0:EQ_GENERAL                 9  18  17
-0246 A 0:JUMP_IF_FALSE              9   3   0    ; if ints[9] == 0 goto +3
-0247 A 1:LOAD_INT_CONST_SMALL      75   9   4    ; ints[9] = 4
-0248 A 0:ADD_INT                   10   8   9
-0249 A 1:MOVE_INT                  35   8  10
-0250 A 1:LOAD_INT_CONST_SMALL      75   9   0    ; ints[9] = 0
-0251 A 1:CALL                     128   0   0    ; call (site 0)
-0252 G 1:BOOL_TO_INT               53  10   0
-0253 A 0:JUMP_IF_FALSE             10   1   0    ; if ints[10] == 0 goto +1
-0254 A 2:TIER2_INC_INT              0   1   9
-0255 A 1:CALL                     128   1   0    ; call (site 1)
-0256 G 1:BOOL_TO_INT               53  10   0
-0257 A 0:JUMP_IF_FALSE             10   3   0    ; if ints[10] == 0 goto +3
-0258 A 1:LOAD_INT_CONST_SMALL      75  10   2    ; ints[10] = 2
-0259 A 0:ADD_INT                   11   9  10
-0260 A 1:MOVE_INT                  35   9  11
-0261 G 1:LEN                       70  10   0
-0262 A 1:CAP                       13  11   1
-0263 A 0:ADD_INT                   12  10  11
-0264 G 1:LEN                       70  13   8
-0265 A 0:ADD_INT                   14  12  13
-0266 A 1:MOVE_INT                  35  10  14
-0267 S 0:LOAD_GENERAL_CONST        17   4   0
-0268 A 0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "%s %d %d %d"
-0269 A 1:CALL                     128   2   0    ; call (site 2)
-0270 G 1:CALL_NATIVE              130   3   0    ; call native general[17] (site 3)
-0271 A 1:MOVE_STRING               37   0   2
-0272 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0233 A 0:TEST_NIL_JUMP_TRUE         0   1   0
+0234 A 2:TIER2_INC_INT              0   1   8
+0235 A 0:TEST_NIL_JUMP_FALSE        5   2   0
+0236 A 0:ADD_INT_CONST             10   8   4    ; const = 2
+0237 A 1:MOVE_INT                  35   8  10
+0238 G 2:TIER2_LOAD_NIL             0   9  17
+0239 S 0:PACK_INTERFACE            18   0  12
+0240 A 0:EQ_GENERAL                 9  18  17
+0241 A 0:JUMP_IF_FALSE              9   2   0    ; if ints[9] == 0 goto +2
+0242 A 0:ADD_INT_CONST             10   8   1    ; const = 4
+0243 A 1:MOVE_INT                  35   8  10
+0244 A 1:LOAD_INT_CONST_SMALL      75   9   0    ; ints[9] = 0
+0245 A 1:CALL                     128   0   0    ; call (site 0)
+0246 G 1:BOOL_TO_INT               53  10   0
+0247 A 0:JUMP_IF_FALSE             10   1   0    ; if ints[10] == 0 goto +1
+0248 A 2:TIER2_INC_INT              0   1   9
+0249 A 1:CALL                     128   1   0    ; call (site 1)
+0250 G 1:BOOL_TO_INT               53  10   0
+0251 A 0:JUMP_IF_FALSE             10   2   0    ; if ints[10] == 0 goto +2
+0252 A 0:ADD_INT_CONST             11   9   4    ; const = 2
+0253 A 1:MOVE_INT                  35   9  11
+0254 G 1:LEN                       70  10   0
+0255 A 1:CAP                       13  11   1
+0256 A 0:ADD_INT                   12  10  11
+0257 G 1:LEN                       70  13   8
+0258 A 0:ADD_INT                   10  12  13
+0259 S 0:LOAD_GENERAL_CONST        17   4   0
+0260 A 0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "%s %d %d %d"
+0261 A 1:CALL                     128   2   0    ; call (site 2)
+0262 G 1:CALL_NATIVE              130   3   0    ; call native general[17] (site 3)
+0263 A 1:MOVE_STRING               37   0   2
+0264 A 2:TIER2_RETURN               0  10   1    ; 1 values

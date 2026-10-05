@@ -665,7 +665,7 @@ func lookupStructFieldSliceSubOpPair(fieldType types.Type) (structFieldSliceSubO
 // intToUintArithOp maps an int arithmetic opcode to its uint counterpart, returning (0,
 // false) when no mapping exists.
 //
-// Takes intOp which is the int-bank arithmetic opcode to translate.
+// Takes intOp (isa.Opcode) which is the int-bank arithmetic opcode to translate.
 //
 // Returns the matching uint opcode and true, or (0, false) when no mapping exists.
 func intToUintArithOp(intOp isa.Opcode) (isa.Opcode, bool) {
@@ -688,7 +688,7 @@ func intToUintArithOp(intOp isa.Opcode) (isa.Opcode, bool) {
 // intToComplexArithOp maps an int arithmetic opcode to its complex counterpart, returning
 // (0, false) when no mapping exists.
 //
-// Takes intOp which is the int-bank arithmetic opcode to translate.
+// Takes intOp (isa.Opcode) which is the int-bank arithmetic opcode to translate.
 //
 // Returns the matching complex opcode and true, or (0, false) when no mapping exists.
 func intToComplexArithOp(intOp isa.Opcode) (isa.Opcode, bool) {

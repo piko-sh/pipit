@@ -149,7 +149,7 @@ func (owner *LinuxRecoveryCheckpointStore) entries() (names []string, result err
 
 // metadataEntries bounds a private metadata directory to internally named entries.
 //
-// Takes expected basenames while the storage owner is exclusively held.
+// Takes expected (...string) basenames while the storage owner is exclusively held.
 //
 // Returns no unexpected names and never removes colliding entries.
 func (owner *LinuxRecoveryJournal) metadataEntries(expected ...string) (names []string, result error) {

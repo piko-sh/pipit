@@ -4,8 +4,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function sum
-;   registers: int=4 float=3 general=4
-;   dispatch:  asm=13 shim=3 exit=2 go=1
+;   registers: int=4 float=4 general=4
+;   dispatch:  asm=12 shim=3 exit=2 go=1
 ;   params:    (general)
 ;   returns:   (float)
 ; ═════════════════════════════════════════════════════════════
@@ -17,23 +17,22 @@
 0000 A 0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 0
 0001 G 1:LEN                       70   0   0
 0002 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0003 A 1:LOAD_INT_CONST_SMALL      75   3   1    ; LICM hoist of PC 16
+0003 A 0:LOAD_FLOAT_CONST           3   1   0    ; LICM hoist of PC 9
 0004 A 1:LT_INT_JUMP_FALSE        116   1   0
-0005   0:EXT                       13   0   0
+0005   0:EXT                       12   0   0
 0006 S 0:INDEX                      1   0   1
 0007 A 0:MOVE_GENERAL               1   1   2
 0008 X 0:GET_FIELD                  2   1   0
 0009 S 0:UNPACK_INTERFACE           1   2   1
-0010 A 0:LOAD_FLOAT_CONST           2   1   0    ; floats[2] = 1
-0011 A 0:ADD_FLOAT                  1   1   2
-0012 S 0:PACK_INTERFACE             3   1   1
-0013 X 0:SET_FIELD                  1   0   3
-0014 A 0:GET_STRUCT_FIELD_FLOAT_T0   1   1   0
-0015 A 0:ADD_FLOAT                  2   0   1
-0016 A 1:MOVE_FLOAT                36   0   2
-0017 A 0:ADD_INT                    1   1   3
-0018 A 1:JUMP                      74 241 255    ; goto -15
-0019 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0010 A 0:ADD_FLOAT                  1   1   3
+0011 S 0:PACK_INTERFACE             3   1   1
+0012 X 0:SET_FIELD                  1   0   3
+0013 A 0:GET_STRUCT_FIELD_FLOAT_T0   1   1   0
+0014 A 0:ADD_FLOAT                  2   0   1
+0015 A 1:MOVE_FLOAT                36   0   2
+0016 A 0:ADD_INT_CONST              1   1   1    ; const = 1
+0017 A 1:JUMP                      74 242 255    ; goto -14
+0018 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun

@@ -89,10 +89,13 @@ func TestInlinerKeepsSourceMapParallel(t *testing.T) {
 	bodyStart, annotation := findInlineAnnotation(t, run)
 	_, line, _ := run.DebugSourcePosition(bodyStart)
 	require.Equal(t, 9, line, "first inlined instruction must carry the callee's source line")
-	_, callLine, _ := run.DebugSourcePosition(annotation.Origin)
-	require.Equal(t, 16, callLine, "the replaced opCall keeps the call-site line")
-	_, synthLine, _ := run.DebugSourcePosition(bodyStart - 1)
-	require.Equal(t, 16, synthLine, "synthetic trampoline instructions inherit the call-site line")
+	if annotation.Origin != bodyStart {
+		_, callLine, _ := run.DebugSourcePosition(annotation.Origin)
+		require.Equal(t, 16, callLine, "the replaced opCall keeps the call-site line")
+		_, synthLine, _ := run.DebugSourcePosition(bodyStart - 1)
+		require.Equal(t, 16, synthLine, "synthetic trampoline instructions inherit the call-site line")
+	}
+	require.True(t, sourceLineHasInstruction(run, 16), "a breakpoint on the call line still binds")
 	require.Equal(t, int(cfs.Entrypoints()["sum"]), annotation.OriginFunction)
 }
 
@@ -122,4 +125,13 @@ func TestVerifySourceMapsParallelReportsDrift(t *testing.T) {
 	err := inline.VerifySourceMapsParallel(root, "probe")
 	require.ErrorIs(t, err, inline.ErrSourceMapNotParallel)
 	require.Contains(t, err.Error(), "probe")
+}
+
+func sourceLineHasInstruction(compiledFunction *program.CompiledFunction, line int) bool {
+	for pc := range compiledFunction.Body {
+		if _, at, _ := compiledFunction.DebugSourcePosition(pc); at == line {
+			return true
+		}
+	}
+	return false
 }

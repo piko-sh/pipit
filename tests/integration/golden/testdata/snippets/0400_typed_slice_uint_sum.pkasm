@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=5 uint=3 sliceUint=1
-;   dispatch:  asm=29 shim=1 exit=0 go=1
+;   dispatch:  asm=28 shim=1 exit=0 go=1
 ;   params:    (none)
 ;   returns:   (uint)
 ; ═════════════════════════════════════════════════════════════
@@ -44,13 +44,12 @@
 0027 G 1:LOAD_ZERO                 79   0   5
 0028 A 1:LEN_SLICE_UINT_DIRECT     33   1   0
 0029 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
-0030 A 1:LOAD_INT_CONST_SMALL      75   4   1    ; LICM hoist of PC 36
-0031 A 1:LT_INT_JUMP_FALSE        116   2   1
-0032   0:EXT                        6   0   0
-0033 A 1:SLICE_GET_UINT_DIRECT     31   1   0
-0034   0:EXT                        2   0   0
-0035 A 0:ADD_UINT                   2   0   1
-0036 A 1:MOVE_UINT                 39   0   2
-0037 A 0:ADD_INT                    2   2   4
-0038 A 1:JUMP                      74 248 255    ; goto -8
-0039 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0030 A 1:LT_INT_JUMP_FALSE        116   2   1
+0031   0:EXT                        6   0   0
+0032 A 1:SLICE_GET_UINT_DIRECT     31   1   0
+0033   0:EXT                        2   0   0
+0034 A 0:ADD_UINT                   2   0   1
+0035 A 1:MOVE_UINT                 39   0   2
+0036 A 0:ADD_INT_CONST              2   2   2    ; const = 1
+0037 A 1:JUMP                      74 248 255    ; goto -8
+0038 A 2:TIER2_RETURN               0  10   1    ; 1 values

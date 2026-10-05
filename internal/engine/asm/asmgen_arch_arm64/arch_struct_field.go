@@ -275,6 +275,29 @@ func (*BytecodeARM64Arch) IntegerUnaryOperation(e *asmgen.Emitter, operation str
 	inst5(e, asmarm64.OperationMove64Bits, "R5, (R23)("+destinationIndex+"<<3)")
 }
 
+// IntegerNarrow32 implements BytecodeArchPort. A 32-bit load cannot use an index scaled
+// by eight, so the slot is loaded whole and sign-extended in the register.
+//
+// Takes e (*asmgen.Emitter) which receives emitted instructions.
+// Takes indexRegister (string) which holds the int register index.
+func (*BytecodeARM64Arch) IntegerNarrow32(e *asmgen.Emitter, indexRegister string) {
+	inst5(e, asmarm64.OperationMove64Bits, "(R23)("+indexRegister+"<<3), R5")
+	inst5(e, asmarm64.OperationMove32Bits, "R5, R5")
+	inst5(e, asmarm64.OperationMove64Bits, "R5, (R23)("+indexRegister+"<<3)")
+}
+
+// UintNarrow32 implements BytecodeArchPort, zero-extending in the register.
+//
+// Takes e (*asmgen.Emitter) which receives emitted instructions.
+// Takes indexRegister (string) which holds the uint register index.
+// Takes baseScratch (string) which receives the loaded uint base.
+func (*BytecodeARM64Arch) UintNarrow32(e *asmgen.Emitter, indexRegister, baseScratch string) {
+	inst5(e, asmarm64.OperationMove64Bits, "CTX_UINTS_BASE(R19), "+baseScratch)
+	inst5(e, asmarm64.OperationMove64Bits, "("+baseScratch+")("+indexRegister+"<<3), R5")
+	inst5(e, asmarm64.OperationMove32BitsUnsigned, "R5, R5")
+	inst5(e, asmarm64.OperationMove64Bits, "R5, ("+baseScratch+")("+indexRegister+"<<3)")
+}
+
 // IntegerInPlace implements BytecodeArchPort.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.

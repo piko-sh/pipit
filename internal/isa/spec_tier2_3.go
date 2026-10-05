@@ -25,6 +25,8 @@ var tierSub2Specs = []OpSpec{
 	sub2(SubOpTier2DecInt, "TIER2_DEC_INT").cost(costCheap).handler("handleFlatSubOpTier2DecInt").asmIn("tier2JumpTable", "handlerSubOpTier2DecInt").pure(),
 	sub2(SubOpTier2IncUint, "TIER2_INC_UINT").cost(costCheap).handler("handleFlatSubOpTier2IncUint").asmIn("tier2JumpTable", "handlerSubOpTier2IncUint").pure(),
 	sub2(SubOpTier2DecUint, "TIER2_DEC_UINT").cost(costCheap).handler("handleFlatSubOpTier2DecUint").asmIn("tier2JumpTable", "handlerSubOpTier2DecUint").pure(),
+	sub2(SubOpTier2IncInt32, "TIER2_INC_INT32").cost(costCheap).handler("handleFlatSubOpTier2IncInt32").asmIn("tier2JumpTable", "handlerSubOpTier2IncInt32").pure(),
+	sub2(SubOpTier2DecInt32, "TIER2_DEC_INT32").cost(costCheap).handler("handleFlatSubOpTier2DecInt32").asmIn("tier2JumpTable", "handlerSubOpTier2DecInt32").pure(),
 	sub2(SubOpTier2Panic, "TIER2_PANIC").cost(costModerate).handler("handleFlatSubOpTier2Panic").pure(),
 	sub2(SubOpTier2Recover, "TIER2_RECOVER").cost(costModerate).handler("handleFlatSubOpTier2Recover").pure(),
 	sub2(SubOpTier2SetZero, "TIER2_SET_ZERO").cost(costFree).handler("handleFlatSubOpTier2SetZero").mutates(),

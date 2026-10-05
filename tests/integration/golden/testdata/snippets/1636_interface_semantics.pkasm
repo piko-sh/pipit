@@ -82,7 +82,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function OneArg.M
 ;   registers: int=2 general=1
-;   dispatch:  asm=2 shim=0 exit=0 go=1
+;   dispatch:  asm=2 shim=0 exit=0 go=0
 ;   params:    (general, int)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -91,8 +91,7 @@
 ;   ints:    [0]=1
 
 0000 A 0:ADD_INT_CONST              0   0   0    ; const = 1
-0001 G 3:TIER3_NOP                  0   0   0
-0002 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0001 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function TwoOut.M
@@ -354,7 +353,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function <closure>
 ;   registers: int=7 string=2 general=6 bool=1
-;   dispatch:  asm=21 shim=10 exit=3 go=6
+;   dispatch:  asm=20 shim=10 exit=3 go=6
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -382,7 +381,7 @@
 0016 G 1:LEN                       70   0   0
 0017 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
 0018 A 1:LT_INT_JUMP_FALSE        116   1   0
-0019   0:EXT                       23   0   0
+0019   0:EXT                       22   0   0
 0020 S 0:INDEX                      2   0   1
 0021 A 0:MOVE_GENERAL               2   2   0
 0022 S 0:TYPE_ASSERT                4   2   4
@@ -403,13 +402,12 @@
 0037 A 1:JUMP                      74   2   0    ; goto 2
 0038 A 0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "-"
 0039 X 0:APPEND_STRING_FAST         1   1   0
-0040 A 1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
-0041 A 0:ADD_INT                    1   1   3
-0042 A 1:JUMP                      74 231 255    ; goto -25
-0043 A 0:LOAD_STRING_CONST          0   2   0    ; strings[0] = ","
-0044 S 0:STR_JOIN                   1   1   0
-0045 A 1:MOVE_STRING               37   0   1
-0046 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0040 A 0:ADD_INT_CONST              1   1   2    ; const = 1
+0041 A 1:JUMP                      74 232 255    ; goto -24
+0042 A 0:LOAD_STRING_CONST          0   2   0    ; strings[0] = ","
+0043 S 0:STR_JOIN                   1   1   0
+0044 A 1:MOVE_STRING               37   0   1
+0045 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function <closure>

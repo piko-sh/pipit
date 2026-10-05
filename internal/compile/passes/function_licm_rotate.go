@@ -126,10 +126,8 @@ func applyLoopHoistWords(compiledFunction *program.CompiledFunction, analysis *f
 			sourceMap.Positions[headerPC+offset] = header
 		}
 	}
-	compiledFunction.PeepholeProvenance = remapPeepholeProvenance(compiledFunction.PeepholeProvenance, pcMap)
-	compiledFunction.ArenaSafeAllocPCs = remapPCKeyedSet(compiledFunction.ArenaSafeAllocPCs, pcMap)
-	compiledFunction.FieldStoreArenaSafePCs = remapPCKeyedSet(compiledFunction.FieldStoreArenaSafePCs, pcMap)
-	compiledFunction.InPlaceHeaderReusePCs = remapPCKeyedSet(compiledFunction.InPlaceHeaderReusePCs, pcMap)
+	remapPCKeyedMetadata(compiledFunction, func(pc int) (int, bool) { return pcMap.newPC(pc), true })
+	remapDebugVarScopes(compiledFunction.DebugVarTable, pcMap.newPC)
 	for _, retarget := range retargets {
 		if !program.SetJumpTarget(body, retarget.sourcePC, retarget.target) {
 			panic(fmt.Sprintf("licm: jump at pc %d cannot be repointed at %d after hoisting pc %d to %d",
@@ -176,44 +174,4 @@ func rotateWordsToFront[T any](words []T, front, at, width int) {
 	moved := slices.Clone(words[at : at+width])
 	copy(words[front+width:at+width], words[front:at])
 	copy(words[front:front+width], moved)
-}
-
-// remapPeepholeProvenance rebuilds the provenance map after a rotation.
-//
-// Takes provenance (map[int]program.PeepholeAnnotation) which is the pre-rotation map;
-// nil is returned unchanged.
-// Takes pcMap (loopHoistPCMap) which describes the rotation.
-//
-// Returns the rebuilt map.
-func remapPeepholeProvenance(provenance map[int]program.PeepholeAnnotation, pcMap loopHoistPCMap) map[int]program.PeepholeAnnotation {
-	if len(provenance) == 0 {
-		return provenance
-	}
-	rebuilt := make(map[int]program.PeepholeAnnotation, len(provenance))
-	for pc, annotation := range provenance {
-		if annotation.Origin >= 0 {
-			annotation.Origin = pcMap.newPC(annotation.Origin)
-		}
-		rebuilt[pcMap.newPC(pc)] = annotation
-	}
-	return rebuilt
-}
-
-// remapPCKeyedSet rebuilds a PC-keyed annotation set after a rotation so each entry keeps
-// naming the instruction it was recorded for.
-//
-// Takes set (map[int]bool) which is the pre-rotation set; nil or empty is returned
-// unchanged.
-// Takes pcMap (loopHoistPCMap) which describes the rotation.
-//
-// Returns the rebuilt set.
-func remapPCKeyedSet(set map[int]bool, pcMap loopHoistPCMap) map[int]bool {
-	if len(set) == 0 {
-		return set
-	}
-	rebuilt := make(map[int]bool, len(set))
-	for pc, flagged := range set {
-		rebuilt[pcMap.newPC(pc)] = flagged
-	}
-	return rebuilt
 }

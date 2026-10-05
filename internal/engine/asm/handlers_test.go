@@ -35,13 +35,14 @@ import (
 func TestFileGroupsReturnsAllExpectedGroups(t *testing.T) {
 	groups := FileGroups()
 
-	require.Len(t, groups, 26, "expected 26 file groups")
+	require.Len(t, groups, 27, "expected 27 file groups")
 
 	expectedBaseNames := []string{
 		"asm_vm_dispatch_arith",
 		"asm_vm_dispatch_cmp",
 		"asm_vm_dispatch_string",
 		"asm_vm_dispatch_super",
+		"asm_vm_dispatch_narrow32",
 		"asm_vm_dispatch_init",
 		"asm_vm_dispatch_struct_field",
 		"asm_vm_dispatch_upvalue",
@@ -98,6 +99,7 @@ func TestHandlerCountPerGroup(t *testing.T) {
 		"asm_vm_dispatch_cmp":                       21,
 		"asm_vm_dispatch_string":                    6,
 		"asm_vm_dispatch_super":                     6,
+		"asm_vm_dispatch_narrow32":                  6,
 		"asm_vm_dispatch_init":                      10,
 		"asm_vm_dispatch_struct_field":              10,
 		"asm_vm_dispatch_upvalue":                   1,
@@ -112,7 +114,7 @@ func TestHandlerCountPerGroup(t *testing.T) {
 		"asm_vm_dispatch_tier1_runtime":             4,
 		"asm_vm_dispatch_tier1_move":                5,
 		"asm_vm_dispatch_tier1_struct_field_incdec": 4,
-		"asm_vm_dispatch_tier2_inplace":             4,
+		"asm_vm_dispatch_tier2_inplace":             6,
 		"asm_vm_dispatch_tier1_unary":               3,
 		"asm_vm_dispatch_tier1_conversion":          4,
 		"asm_vm_dispatch_tier1_math_unary":          6,

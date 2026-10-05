@@ -29,7 +29,7 @@ import (
 // reapForRecovery separates execution failure from proof of safe cleanup. A crashed
 // broker is recoverable, but an unreaped process or retained cgroup is not.
 //
-// Takes a recovery context without extending original process lifetime.
+// Recovery does not extend the original process lifetime.
 //
 // Returns only after original reaping and a successful descendant-cleanup retry.
 func (process *WorkerProcess) reapForRecovery(ctx context.Context) error {

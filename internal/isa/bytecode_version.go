@@ -25,5 +25,5 @@ const (
 
 	// bytecodeVersionMinor identifies an additive bytecode revision. Bumped when new opcodes
 	// are appended without disturbing existing iota assignments.
-	bytecodeVersionMinor uint16 = 0
+	bytecodeVersionMinor uint16 = 1
 )

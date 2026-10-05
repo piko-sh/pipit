@@ -27,14 +27,26 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-// snapshotFieldLimit bounds the number of captured fields per aggregate.
-const snapshotFieldLimit = 8
+const (
+	// snapshotFieldLimit bounds the number of captured fields per aggregate.
+	snapshotFieldLimit = 8
 
-// snapshotScanLimit bounds the control-flow search for one aggregate copy.
-const snapshotScanLimit = 256
+	// snapshotScanLimit bounds the control-flow search for one aggregate copy.
+	snapshotScanLimit = 256
+
+	// wideFieldReadWords is the word count of a field read that carries its layout index in
+	// an extension word.
+	wideFieldReadWords = 2
+)
 
 // snapshotField records a direct field read and its uses of a copied aggregate.
 type snapshotField struct {
+	// uses lists every field read to replace.
+	uses []int
+
+	// width counts the field-load instruction words.
+	width int
+
 	// read is the original field-load instruction.
 	read isa.Instruction
 
@@ -43,21 +55,24 @@ type snapshotField struct {
 
 	// kind identifies the captured field register bank.
 	kind isa.RegisterKind
+}
 
-	// width counts the field-load instruction words.
-	width int
-
-	// uses lists every field read to replace.
-	uses []int
+// sameField reports whether other reads the same field as field.
+//
+// Takes other (snapshotField) which is the field read to compare.
+//
+// Returns true when both reads name the same operation and layout.
+func (field snapshotField) sameField(other snapshotField) bool {
+	return field.read.Op == other.read.Op && field.read.C == other.read.C && field.extension == other.extension
 }
 
 // snapshotRegion contains uses reached before the copied register is replaced.
 type snapshotRegion struct {
-	// fields groups supported reads by field layout.
-	fields []snapshotField
-
 	// members records PCs reached before the copied register is replaced.
 	members map[int]bool
+
+	// fields groups supported reads by field layout.
+	fields []snapshotField
 }
 
 // scalarizeSnapshotsPass replaces private aggregate copies with field captures.
@@ -87,24 +102,19 @@ func (scalarizeSnapshotsPass) Run(ctx context.Context, state *PassContext, cf *p
 			return err
 		}
 		region, ok := findSnapshotFields(cf, pc, state.Analysis)
-		if !ok {
-			continue
-		}
-		if captureSnapshotFields(cf, pc, region.fields) {
+		if ok && captureSnapshotFields(cf, pc, region.fields) {
 			changed = true
 			state.Analysis.invalidate()
 		}
 	}
-	if changed {
-		state.Analysis.invalidate()
-		cf.AliasInfo = nil
-		cf.PrecomputedAllocCountsValid = false
-		return RunPointerAliasAnalysis(ctx, cf)
+	if !changed {
+		return nil
 	}
-	return nil
+	cf.PrecomputedAllocCountsValid = false
+	return RunPointerAliasAnalysis(ctx, cf)
 }
 
-// snapshotFieldAt recognizes direct scalar and byte-slice reads from receiver.
+// snapshotFieldAt recognises direct scalar and byte-slice reads from receiver.
 //
 // Takes cf (*program.CompiledFunction) which supplies the instruction stream and field
 // layouts.
@@ -116,37 +126,47 @@ func (scalarizeSnapshotsPass) Run(ctx context.Context, state *PassContext, cf *p
 // or another aggregate copy.
 func snapshotFieldAt(cf *program.CompiledFunction, pc int, receiver uint8) (snapshotField, bool) {
 	inst := cf.Body[pc]
-	field := snapshotField{read: inst, width: 1}
+	field := snapshotField{uses: nil, width: 1, read: inst, extension: isa.Instruction{}, kind: isa.RegisterInt}
 	layout := int(inst.C)
 	if isa.InstrIsTier1SubOp(inst, isa.SubOpGetStructFieldSliceByte) {
 		if inst.C != receiver || pc+1 >= len(cf.Body) || cf.Body[pc+1].Op != isa.OpExt {
 			return field, false
 		}
 		field.extension = cf.Body[pc+1]
-		field.width = 2
+		field.width = wideFieldReadWords
 		field.kind = isa.RegisterSliceByte
-		layout = int(field.extension.A) | int(field.extension.B)<<8
+		layout = int(isa.JoinWide(field.extension.A, field.extension.B))
 	} else {
-		if inst.B != receiver {
+		kind, ok := scalarFieldReadKind(inst.Op)
+		if !ok || inst.B != receiver {
 			return field, false
 		}
-		switch inst.Op {
-		case isa.OpGetStructFieldIntT0, isa.OpGetStructFieldSliceLen:
-			field.kind = isa.RegisterInt
-		case isa.OpGetStructFieldUint:
-			field.kind = isa.RegisterUint
-		case isa.OpGetStructFieldFloat:
-			field.kind = isa.RegisterFloat
-		case isa.OpGetStructFieldBool:
-			field.kind = isa.RegisterBool
-		default:
-			return field, false
-		}
+		field.kind = kind
 	}
 	if layout >= len(cf.StructLayoutTable) || cf.StructLayoutTable[layout].PathLength != 1 {
 		return field, false
 	}
 	return field, true
+}
+
+// scalarFieldReadKind maps a tier-0 scalar field read to its destination bank.
+//
+// Takes op (isa.Opcode) which is the candidate field read.
+//
+// Returns the destination bank and whether op is a supported field read.
+func scalarFieldReadKind(op isa.Opcode) (isa.RegisterKind, bool) {
+	switch op {
+	case isa.OpGetStructFieldIntT0, isa.OpGetStructFieldSliceLen:
+		return isa.RegisterInt, true
+	case isa.OpGetStructFieldUint:
+		return isa.RegisterUint, true
+	case isa.OpGetStructFieldFloat:
+		return isa.RegisterFloat, true
+	case isa.OpGetStructFieldBool:
+		return isa.RegisterBool, true
+	default:
+		return isa.RegisterInt, false
+	}
 }
 
 // findSnapshotFields proves a copied aggregate has only supported field uses.
@@ -160,106 +180,181 @@ func snapshotFieldAt(cf *program.CompiledFunction, pc int, receiver uint8) (snap
 // Returns bool which is false for escaping, opaque, ambiguous, or excessively large
 // regions.
 func findSnapshotFields(cf *program.CompiledFunction, copyPC int, analysis *functionAnalysis) (snapshotRegion, bool) {
-	region := snapshotRegion{members: make(map[int]bool)}
+	region := snapshotRegion{members: make(map[int]bool), fields: nil}
 	receiver := cf.Body[copyPC].A
-	if resultSlotReadByRecover(cf, isa.RegisterGeneral, receiver) {
+	if analysis.HasTypeSwitch() || resultSlotReadByRecover(cf, isa.RegisterGeneral, receiver) {
 		return region, false
 	}
-	walk := newRegisterLivenessWalk(cf, cf.Body, isa.RegisterGeneral, receiver)
-	pending := []int{copyPC + 1}
-	for len(pending) > 0 {
-		pc := pending[len(pending)-1]
-		pending = pending[:len(pending)-1]
-		owner := -1
-		for pc < len(cf.Body) {
-			if pc < 0 || len(region.members) >= snapshotScanLimit {
-				return region, false
-			}
-			if region.members[pc] {
-				break
-			}
-			inst := cf.Body[pc]
-			if IsCallInstruction(inst) || isa.InstrIsTier1SubOp(inst, isa.SubOpTypeSwitchJump) {
-				return region, false
-			}
-			if field, ok := snapshotFieldAt(cf, pc, receiver); ok {
-				index := slices.IndexFunc(region.fields, func(prior snapshotField) bool {
-					return prior.read.Op == field.read.Op && prior.read.C == field.read.C && prior.extension == field.extension
-				})
-				if index < 0 {
-					if len(region.fields) >= snapshotFieldLimit {
-						return region, false
-					}
-					index = len(region.fields)
-					region.fields = append(region.fields, field)
-				}
-				region.fields[index].uses = append(region.fields[index].uses, pc)
-				for offset := 0; offset < field.width; offset++ {
-					region.members[pc+offset] = true
-				}
-				pc += field.width
-				owner = -1
-				continue
-			}
-			verdict, next := walk.step(pc, &owner)
-			if verdict == walkLive {
-				return region, false
-			}
-			if verdict == walkDead {
-				break
-			}
-			if !instructionShapeAllowsCseScan(inst) && inst.Op != isa.OpExt {
-				return region, false
-			}
-			region.members[pc] = true
-			if verdict == walkBranch {
-				target, ok := program.JumpTargetAt(cf.Body, pc)
-				if !ok {
-					return region, false
-				}
-				pending = append(pending, target)
-				if !isa.InstrIsTier1SubOp(inst, isa.SubOpJump) {
-					pending = append(pending, pc+program.JumpFootprint(inst))
-				}
-				for ext := pc + 1; ext < pc+program.JumpFootprint(inst); ext++ {
-					region.members[ext] = true
-				}
-				break
-			}
-			pc = next
+	walk := snapshotWalk{
+		cf:       cf,
+		liveness: newRegisterLivenessWalk(cf, cf.Body, isa.RegisterGeneral, receiver),
+		region:   &region,
+		pending:  []int{copyPC + 1},
+		receiver: receiver,
+	}
+	if !walk.run() || len(region.fields) == 0 {
+		return region, false
+	}
+	return region, snapshotUsesHaveSingleDefinition(region, copyPC, analysis)
+}
+
+// snapshotWalk follows every path from an aggregate copy until the copied register is
+// replaced, collecting the field reads and refusing any other use.
+type snapshotWalk struct {
+	// cf supplies the body and field layouts.
+	cf *program.CompiledFunction
+
+	// liveness classifies the words that are not field reads.
+	liveness *registerLivenessWalk
+
+	// region collects the members and field reads.
+	region *snapshotRegion
+
+	// pending holds path starts still to follow.
+	pending []int
+
+	// receiver is the copied aggregate register.
+	receiver uint8
+}
+
+// run follows every pending path.
+//
+// Returns false when some path uses the copy in an unsupported way.
+func (w *snapshotWalk) run() bool {
+	for len(w.pending) > 0 {
+		pc := w.pending[len(w.pending)-1]
+		w.pending = w.pending[:len(w.pending)-1]
+		if !w.follow(pc) {
+			return false
 		}
 	}
-	if len(region.fields) == 0 {
-		return region, false
-	}
-	analysis.buildCFG()
-	pending = pending[:0]
-	for _, field := range region.fields {
-		pending = append(pending, field.uses...)
-	}
-	checked := make(map[int]bool)
-	for len(pending) > 0 {
-		pc := pending[len(pending)-1]
-		pending = pending[:len(pending)-1]
-		if pc == copyPC || checked[pc] {
+	return true
+}
+
+// follow walks one straight-line path from pc until the copy dies, the path joins a
+// visited word, or a branch queues its successors.
+//
+// Takes pc (int) which is the first word of the path.
+//
+// Returns false when the path uses the copy in an unsupported way.
+func (w *snapshotWalk) follow(pc int) bool {
+	owner := -1
+	for pc < len(w.cf.Body) && !w.region.members[pc] {
+		if pc < 0 || len(w.region.members) >= snapshotScanLimit || IsCallInstruction(w.cf.Body[pc]) {
+			return false
+		}
+		if field, ok := snapshotFieldAt(w.cf, pc, w.receiver); ok {
+			if !w.recordField(pc, field) {
+				return false
+			}
+			pc += field.width
+			owner = -1
 			continue
 		}
-		if pc == 0 || !region.members[pc] {
-			return region, false
+		next, done, ok := w.step(pc, &owner)
+		if !ok || done {
+			return ok
 		}
-		checked[pc] = true
-		for _, pred := range analysis.predecessors[pc] {
-			if analysis.reachable[pred] {
-				pending = append(pending, pred)
-			}
-		}
+		pc = next
 	}
-	for _, inst := range cf.Body {
-		if isa.InstrIsTier1SubOp(inst, isa.SubOpTypeSwitchJump) {
-			return region, false
-		}
+	return true
+}
+
+// step classifies one word that is not a field read.
+//
+// Takes pc (int) which is the word's program counter.
+// Takes owner (*int) which tracks the instruction owning later extension words.
+//
+// Returns the next PC, whether the path ended, and false when the word refutes the
+// rewrite.
+func (w *snapshotWalk) step(pc int, owner *int) (next int, done, ok bool) {
+	inst := w.cf.Body[pc]
+	verdict, next := w.liveness.step(pc, owner)
+	switch {
+	case verdict == walkLive:
+		return 0, true, false
+	case verdict == walkDead:
+		return 0, true, true
+	case !instructionShapeAllowsCseScan(inst) && inst.Op != isa.OpExt:
+		return 0, true, false
 	}
-	return region, true
+	w.region.members[pc] = true
+	if verdict == walkBranch {
+		return 0, true, w.branch(pc, inst)
+	}
+	return next, false, true
+}
+
+// branch queues the successors of the jump at pc and marks its footprint as visited.
+//
+// Takes pc (int) which is the jump's program counter.
+// Takes inst (isa.Instruction) which is the jump.
+//
+// Returns false when the jump has no single decodable target.
+func (w *snapshotWalk) branch(pc int, inst isa.Instruction) bool {
+	target, ok := program.JumpTargetAt(w.cf.Body, pc)
+	if !ok {
+		return false
+	}
+	footprint := program.JumpFootprint(inst)
+	w.pending = append(w.pending, target)
+	if !isa.InstrIsTier1SubOp(inst, isa.SubOpJump) {
+		w.pending = append(w.pending, pc+footprint)
+	}
+	for ext := pc + 1; ext < pc+footprint; ext++ {
+		w.region.members[ext] = true
+	}
+	return true
+}
+
+// recordField adds a field read to the region, grouping reads of the same field.
+//
+// Takes pc (int) which is the read's program counter.
+// Takes field (snapshotField) which describes the read.
+//
+// Returns false when the aggregate has too many distinct fields.
+func (w *snapshotWalk) recordField(pc int, field snapshotField) bool {
+	index := slices.IndexFunc(w.region.fields, field.sameField)
+	if index < 0 {
+		if len(w.region.fields) >= snapshotFieldLimit {
+			return false
+		}
+		index = len(w.region.fields)
+		w.region.fields = append(w.region.fields, field)
+	}
+	w.region.fields[index].uses = append(w.region.fields[index].uses, pc)
+	for offset := range field.width {
+		w.region.members[pc+offset] = true
+	}
+	return true
+}
+
+// snapshotUsesHaveSingleDefinition proves every reachable path to a field read starts at
+// the copy, so no other definition of the copied register reaches it.
+//
+// Takes region (snapshotRegion) which holds the field reads and visited words.
+// Takes copyPC (int) which is the copy instruction.
+// Takes analysis (*functionAnalysis) which supplies predecessor edges.
+//
+// Returns true when every predecessor chain stays inside the region until the copy.
+func snapshotUsesHaveSingleDefinition(region snapshotRegion, copyPC int, analysis *functionAnalysis) bool {
+	var uses []int
+	for _, field := range region.fields {
+		uses = append(uses, field.uses...)
+	}
+	return usesReachedOnlyFrom(analysis, region.members, uses, copyPC, copyPC+1)
+}
+
+// snapshotCapture holds the words that replace one aggregate copy.
+type snapshotCapture struct {
+	// replacements maps each replaced field-read word to its new instruction.
+	replacements map[int]isa.Instruction
+
+	// captures are the words inserted in place of the copy.
+	captures []isa.Instruction
+
+	// counts are the register counts after allocating the capture registers.
+	counts [isa.NumRegisterKinds]uint32
 }
 
 // captureSnapshotFields replaces one copy with direct field captures.
@@ -272,115 +367,102 @@ func findSnapshotFields(cf *program.CompiledFunction, copyPC int, analysis *func
 // Returns false without mutation if register or jump encodings cannot hold the
 // transformed function.
 func captureSnapshotFields(cf *program.CompiledFunction, pc int, fields []snapshotField) bool {
-	old := cf.Body
-	if sm := cf.DebugSourceMap; sm != nil && len(sm.Positions) != len(old) {
+	capture, ok := buildSnapshotCapture(cf, pc, fields)
+	if !ok {
 		return false
 	}
-	counts := cf.NumRegisters
-	var captures []isa.Instruction
-	receiver := old[pc].B
-	if cf.DebugVarTable != nil {
-		snapshot := old[pc]
-		snapshot.C = engine.MoveGeneralModeDebugSnapshot
-		captures = append(captures, snapshot)
-		receiver = snapshot.A
-	}
-	replacements := make(map[int]isa.Instruction)
-	for _, field := range fields {
-		if counts[field.kind] >= 256 {
-			return false
-		}
-		reg := uint8(counts[field.kind])
-		counts[field.kind]++
-		read := field.read
-		if field.width == 2 {
-			read.B = reg
-			read.C = receiver
-		} else {
-			read.A = reg
-			read.B = receiver
-		}
-		captures = append(captures, read)
-		if field.width == 2 {
-			captures = append(captures, field.extension)
-		}
-		for _, use := range field.uses {
-			inst := old[use]
-			if field.width == 2 {
-				replacements[use] = isa.NewTier1Instruction(isa.SubOpMoveSliceByte, inst.B, reg)
-				replacements[use+1] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
-			} else if inst.Op == isa.OpGetStructFieldSliceLen {
-				replacements[use] = isa.NewTier1Instruction(isa.SubOpMoveInt, inst.A, reg)
-			} else {
-				replacements[use] = emitMoveForTier0ReadOp(inst.Op, inst.A, reg)
-			}
-		}
-	}
-	growth := len(captures) - 1
-	relocate := func(index int) int {
-		if index > pc {
-			return index + growth
-		}
-		return index
-	}
-	body := make([]isa.Instruction, 0, len(old)+growth)
-	body = append(body, old[:pc]...)
-	body = append(body, captures...)
-	body = append(body, old[pc+1:]...)
-	for index, inst := range replacements {
-		body[relocate(index)] = inst
-	}
+	old := cf.Body
+	rewrite := newBodyRewrite(len(old), len(old)+len(capture.captures))
 	for index := range old {
-		if target, ok := program.JumpTargetAt(old, index); ok && !program.SetJumpTarget(body, relocate(index), relocate(target)) {
-			return false
-		}
-	}
-	if sm := cf.DebugSourceMap; sm != nil {
-		positions := append(sm.Positions[:0:0], sm.Positions[:pc]...)
-		for range captures {
-			positions = append(positions, sm.Positions[pc])
-		}
-		sm.Positions = append(positions, sm.Positions[pc+1:]...)
-	}
-	if table := cf.DebugVarTable; table != nil {
-		for index := range table.Entries {
-			entry := &table.Entries[index]
-			entry.StartPC = relocate(entry.StartPC)
-			if entry.EndPC != 0 {
-				entry.EndPC = relocate(entry.EndPC)
+		if index != pc {
+			if inst, replaced := capture.replacements[index]; replaced {
+				rewrite.keepAs(inst, index)
+			} else {
+				rewrite.keep(old, index)
 			}
+			continue
+		}
+		rewrite.drop(index)
+		for _, inst := range capture.captures {
+			rewrite.insert(inst, index)
 		}
 	}
-	cf.PeepholeProvenance = remapSnapshotEntries(cf.PeepholeProvenance, relocate)
-	for index, ann := range cf.PeepholeProvenance {
-		if ann.Origin >= 0 {
-			ann.Origin = relocate(ann.Origin)
-			cf.PeepholeProvenance[index] = ann
-		}
+	if !rewrite.apply(cf) {
+		return false
 	}
-	cf.ArenaSafeAllocPCs = remapSnapshotEntries(cf.ArenaSafeAllocPCs, relocate)
-	cf.FieldStoreArenaSafePCs = remapSnapshotEntries(cf.FieldStoreArenaSafePCs, relocate)
-	cf.InPlaceHeaderReusePCs = remapSnapshotEntries(cf.InPlaceHeaderReusePCs, relocate)
-	cf.GetMethodReceiverTypeNames = remapSnapshotEntries(cf.GetMethodReceiverTypeNames, relocate)
-	cf.Body = body
-	cf.NumRegisters = counts
+	cf.NumRegisters = capture.counts
 	RecordPeepholeRewrite(cf, pc, peepholeRewriteSnapshotFields, pc)
 	return true
 }
 
-// remapSnapshotEntries relocates PC-keyed annotations after inserting captures.
+// buildSnapshotCapture allocates a register per field and builds the capture words and
+// the moves that replace each field read.
 //
-// Takes entries (map[K]V) which supplies the old annotations.
-// Takes relocate (func(int) int) which maps original PCs to the expanded stream.
+// With debug variables, the copy is kept as a debugger-only snapshot so the aggregate
+// stays inspectable, and the captures read from it.
 //
-// Returns map[K]V containing relocated annotations, preserving nil input.
-func remapSnapshotEntries[K ~int | ~uint32, V any](entries map[K]V, relocate func(int) int) map[K]V {
-	if entries == nil {
-		return nil
+// Takes cf (*program.CompiledFunction) which owns the body and register counts.
+// Takes pc (int) which identifies the copy to replace.
+// Takes fields ([]snapshotField) which lists the proven field reads and their uses.
+//
+// Returns the capture and false when a register bank is full.
+func buildSnapshotCapture(cf *program.CompiledFunction, pc int, fields []snapshotField) (snapshotCapture, bool) {
+	old := cf.Body
+	capture := snapshotCapture{replacements: make(map[int]isa.Instruction), captures: nil, counts: cf.NumRegisters}
+	receiver := old[pc].B
+	if cf.DebugVarTable != nil {
+		snapshot := old[pc]
+		snapshot.C = engine.MoveGeneralModeDebugSnapshot
+		capture.captures = append(capture.captures, snapshot)
+		receiver = snapshot.A
 	}
-	result := make(map[K]V, len(entries))
-	for key, value := range entries {
-		result[K(relocate(int(key)))] = value
+	for _, field := range fields {
+		if capture.counts[field.kind] >= isa.GeneralRegisterBankSize {
+			return capture, false
+		}
+		reg := uint8(capture.counts[field.kind])
+		capture.counts[field.kind]++
+		capture.captures = append(capture.captures, field.captureRead(reg, receiver)...)
+		for _, use := range field.uses {
+			field.replaceUse(capture.replacements, old, use, reg)
+		}
 	}
-	return result
+	return capture, true
+}
+
+// captureRead builds the words that read the captured field from receiver into reg.
+//
+// Takes reg (uint8) which is the capture register.
+// Takes receiver (uint8) which is the general register holding the aggregate.
+//
+// Returns the capture words.
+func (field snapshotField) captureRead(reg, receiver uint8) []isa.Instruction {
+	read := field.read
+	if field.width == wideFieldReadWords {
+		read.B = reg
+		read.C = receiver
+		return []isa.Instruction{read, field.extension}
+	}
+	read.A = reg
+	read.B = receiver
+	return []isa.Instruction{read}
+}
+
+// replaceUse records the move that replaces the field read at use.
+//
+// Takes replacements (map[int]isa.Instruction) which receives the new words.
+// Takes old ([]isa.Instruction) which is the body before the rewrite.
+// Takes use (int) which is the field read's program counter.
+// Takes reg (uint8) which is the capture register.
+func (field snapshotField) replaceUse(replacements map[int]isa.Instruction, old []isa.Instruction, use int, reg uint8) {
+	inst := old[use]
+	switch {
+	case field.width == wideFieldReadWords:
+		replacements[use] = isa.NewTier1Instruction(isa.SubOpMoveSliceByte, inst.B, reg)
+		replacements[use+1] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	case inst.Op == isa.OpGetStructFieldSliceLen:
+		replacements[use] = isa.NewTier1Instruction(isa.SubOpMoveInt, inst.A, reg)
+	default:
+		replacements[use] = emitMoveForTier0ReadOp(inst.Op, inst.A, reg)
+	}
 }

@@ -67,8 +67,8 @@ func HoistLoopInvariantStructFieldReads(ctx context.Context, compiledFunction *p
 // loopHeaderReachableByFallThrough reports whether linear fall-through enters the loop
 // header.
 //
-// Takes body which is the compiled function's instruction stream.
-// Takes loop which is the natural loop being considered for hoisting.
+// Takes body ([]isa.Instruction) which is the compiled function's instruction stream.
+// Takes loop (loopRange) which is the natural loop being considered for hoisting.
 //
 // Returns true when the loop header is reached via fall-through, false otherwise.
 func loopHeaderReachableByFallThrough(body []isa.Instruction, loop loopRange) bool {
@@ -80,7 +80,8 @@ func loopHeaderReachableByFallThrough(body []isa.Instruction, loop loopRange) bo
 
 // BuildAllJumpTargets returns every jump or branch target PC in body.
 //
-// Takes body which is the instruction stream to scan for jump targets.
+// Takes body ([]isa.Instruction) which is the instruction stream to scan for jump
+// targets.
 //
 // Returns a map whose keys are every PC reached by any jump in body.
 func BuildAllJumpTargets(body []isa.Instruction) map[int]bool {
@@ -148,34 +149,19 @@ func tryOneStructFieldHoist(compiledFunction *program.CompiledFunction, analysis
 // Returns bool which is true when a hoistable read is found.
 func findHoistableReadInLoop(compiledFunction *program.CompiledFunction, loop loopRange, analysis *functionAnalysis) (int, bool) {
 	body := compiledFunction.Body
-	var dominators *functionDominators
-	var members []int
+	facts := newLoopFacts(analysis, loop)
 	for pc := loop.header; pc <= loop.latch; pc++ {
 		if !isHoistableReadAt(body, pc) {
 			continue
 		}
-		if members == nil {
-			members = naturalLoopMembers(analysis, loop)
-			if len(members) == 0 {
-				return 0, false
-			}
+		members := facts.loopMembers()
+		if len(members) == 0 {
+			return 0, false
 		}
-		if !readIsLoopInvariant(compiledFunction, members, pc) {
-			continue
+		if readIsLoopInvariant(compiledFunction, members, pc) && facts.dominatesLatch(pc) &&
+			hoistSafeAcrossLoopEntry(compiledFunction, loop, pc, facts.dominators()) {
+			return pc, true
 		}
-		if dominators == nil {
-			dominators = dominatorsFor(analysis, body)
-			if dominators == nil {
-				return 0, false
-			}
-		}
-		if !dominators.Dominates(pc, loop.latch) {
-			continue
-		}
-		if !hoistSafeAcrossLoopEntry(compiledFunction, loop, pc, dominators) {
-			continue
-		}
-		return pc, true
 	}
 	return 0, false
 }
@@ -214,10 +200,11 @@ func readIsLoopInvariant(compiledFunction *program.CompiledFunction, members []i
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
-// Takes pc which is the PC of the loop-body instruction being analysed.
-// Takes receiverReg which is the general-bank register holding the read's receiver.
-// Takes destReg which is the destination register the hoisted read writes.
-// Takes destBank which is the operand bank role of destReg.
+// Takes pc (int) which is the PC of the loop-body instruction being analysed.
+// Takes receiverReg (uint8) which is the general-bank register holding the read's
+// receiver.
+// Takes destReg (uint8) which is the destination register the hoisted read writes.
+// Takes destBank (isa.OperandRole) which is the operand bank role of destReg.
 //
 // Returns true when the instruction at pc preserves the hoisted read.
 func loopBodyInstructionPreservesRead(compiledFunction *program.CompiledFunction, pc int, receiverReg, destReg uint8, destBank isa.OperandRole) bool {
@@ -239,7 +226,7 @@ func loopBodyInstructionPreservesRead(compiledFunction *program.CompiledFunction
 
 // identifyLoops scans the body for natural loops defined by back-edges.
 //
-// Takes body which is the instruction stream to scan.
+// Takes body ([]isa.Instruction) which is the instruction stream to scan.
 //
 // Returns the loops in a deterministic order that places tight inner loops ahead of wider
 // outer ones when the hoist cap is reached.
@@ -269,7 +256,8 @@ func sortLoopRangesAscendingSpan(loops []loopRange) {
 // isLinearFallThroughFrom reports whether inst falls through to the next PC. Conditional
 // jumps return true because they fall through on the not-taken side.
 //
-// Takes inst which is the instruction whose control-flow behaviour is being classified.
+// Takes inst (isa.Instruction) which is the instruction whose control-flow behaviour is
+// being classified.
 //
 // Returns true when inst falls through to the next sequential PC.
 func isLinearFallThroughFrom(inst isa.Instruction) bool {
@@ -285,8 +273,8 @@ func isLinearFallThroughFrom(inst isa.Instruction) bool {
 // tier1RedirectsControlFlow reports whether a tier-1 instruction transfers control rather
 // than falling through: direct jumps, returns, and the return-void tier-3 sub-op.
 //
-// Takes inst which is the tier-1 instruction whose control-flow behaviour is being
-// classified.
+// Takes inst (isa.Instruction) which is the tier-1 instruction whose control-flow
+// behaviour is being classified.
 //
 // Returns true when inst redirects control rather than falling through.
 func tier1RedirectsControlFlow(inst isa.Instruction) bool {
@@ -306,8 +294,8 @@ func tier1RedirectsControlFlow(inst isa.Instruction) bool {
 
 // isHoistableReadAt reports whether body[pc] is a struct-field read eligible for LICM.
 //
-// Takes body which is the compiled function's instruction stream.
-// Takes pc which is the candidate PC to classify.
+// Takes body ([]isa.Instruction) which is the compiled function's instruction stream.
+// Takes pc (int) which is the candidate PC to classify.
 //
 // Returns true when body[pc] begins a hoistable read.
 func isHoistableReadAt(body []isa.Instruction, pc int) bool {
@@ -329,8 +317,8 @@ func isHoistableReadAt(body []isa.Instruction, pc int) bool {
 //
 // Behaviour is undefined when isHoistableReadAt(body, pc) is false.
 //
-// Takes body which is the compiled function's instruction stream.
-// Takes pc which is the PC of the hoistable read whose width is being measured.
+// Takes body ([]isa.Instruction) which is the compiled function's instruction stream.
+// Takes pc (int) which is the PC of the hoistable read whose width is being measured.
 //
 // Returns the instruction-word width of the read.
 func hoistedReadWordCount(body []isa.Instruction, pc int) int {
@@ -344,8 +332,9 @@ func hoistedReadWordCount(body []isa.Instruction, pc int) int {
 // by the invariance analysis to detect writes that would clobber the cached value once
 // the read is lifted to the pre-header.
 //
-// Takes body which is the compiled function's instruction stream.
-// Takes pc which is the PC of the hoistable read whose destination bank is being queried.
+// Takes body ([]isa.Instruction) which is the compiled function's instruction stream.
+// Takes pc (int) which is the PC of the hoistable read whose destination bank is being
+// queried.
 //
 // Returns the isa.OperandRole identifying the destination bank.
 func hoistedReadDestBank(body []isa.Instruction, pc int) isa.OperandRole {
@@ -358,9 +347,9 @@ func hoistedReadDestBank(body []isa.Instruction, pc int) isa.OperandRole {
 // hoistedReadDestRegister returns the destination register index of the read starting at
 // pc.
 //
-// Takes body which is the compiled function's instruction stream.
-// Takes pc which is the PC of the hoistable read whose destination register is being
-// queried.
+// Takes body ([]isa.Instruction) which is the compiled function's instruction stream.
+// Takes pc (int) which is the PC of the hoistable read whose destination register is
+// being queried.
 //
 // Returns the destination register index.
 func hoistedReadDestRegister(body []isa.Instruction, pc int) uint8 {
@@ -373,8 +362,8 @@ func hoistedReadDestRegister(body []isa.Instruction, pc int) uint8 {
 // hoistedReadReceiverRegister returns the general-bank register holding the struct
 // receiver for the read starting at pc.
 //
-// Takes body which is the compiled function's instruction stream.
-// Takes pc which is the PC of the hoistable read whose receiver register is being
+// Takes body ([]isa.Instruction) which is the compiled function's instruction stream.
+// Takes pc (int) which is the PC of the hoistable read whose receiver register is being
 // queried.
 //
 // Returns the receiver register index.

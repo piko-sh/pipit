@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function inc
 ;   registers: int=2
-;   dispatch:  asm=2 shim=0 exit=0 go=1
+;   dispatch:  asm=2 shim=0 exit=0 go=0
 ;   params:    (int)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -14,13 +14,12 @@
 ;   ints:    [0]=1
 
 0000 A 0:ADD_INT_CONST              0   0   0    ; const = 1
-0001 G 3:TIER3_NOP                  0   0   0
-0002 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0001 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function dec
 ;   registers: int=2
-;   dispatch:  asm=2 shim=0 exit=0 go=1
+;   dispatch:  asm=2 shim=0 exit=0 go=0
 ;   params:    (int)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -29,8 +28,7 @@
 ;   ints:    [0]=1
 
 0000 A 0:SUB_INT_CONST              0   0   0    ; const = 1
-0001 G 3:TIER3_NOP                  0   0   0
-0002 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0001 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function run

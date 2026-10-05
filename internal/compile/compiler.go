@@ -382,7 +382,7 @@ func (c *Compiler) expressionDepthLimit() int {
 // When the substitution map is nil (the common non-generic case), t is returned
 // unchanged.
 //
-// Takes t: the type to substitute through the active generic map.
+// Takes t (types.Type): the type to substitute through the active generic map.
 //
 // Returns the substituted type, or t unchanged when no substitutions apply.
 func (c *Compiler) substitutedType(t types.Type) types.Type {
@@ -397,7 +397,7 @@ func (c *Compiler) substitutedType(t types.Type) types.Type {
 // Specialised bodies pick typed-bank kinds for the concrete instantiation rather than
 // isa.RegisterGeneral.
 //
-// Takes t: the type whose register kind is required.
+// Takes t (types.Type): the type whose register kind is required.
 //
 // Returns the isa.RegisterKind selected for the substituted type.
 func (c *Compiler) kindFor(t types.Type) isa.RegisterKind {
@@ -466,8 +466,8 @@ func (c *Compiler) underlyingTypeOf(expr ast.Expr) (types.Type, bool) {
 // checkFeature returns an error when feature is not enabled in the Compiler's feature
 // set.
 //
-// Takes feature: the interpreter feature being checked.
-// Takes pos: the source position formatted into the error message.
+// Takes feature (policy.InterpFeature): the interpreter feature being checked.
+// Takes pos (token.Pos): the source position formatted into the error message.
 //
 // Returns nil when the feature is enabled.
 //
@@ -485,9 +485,10 @@ func (c *Compiler) checkFeature(feature policy.InterpFeature, pos token.Pos) err
 // Eval returns a bool regardless of whether the value was constant-folded or computed at
 // runtime.
 //
-// Takes info: type information used to read the expression's static type.
-// Takes expression: the AST node whose result is being coerced.
-// Takes location: the source register holding the comparison or logical result.
+// Takes info (*types.Info): type information used to read the expression's static type.
+// Takes expression (ast.Expr): the AST node whose result is being coerced.
+// Takes location (program.VarLocation): the source register holding the comparison or
+// logical result.
 //
 // Returns the coerced VarLocation in isa.RegisterBool, or the original location when no
 // coercion is required.
@@ -514,7 +515,7 @@ func (c *Compiler) coerceEvalBoolResult(_ context.Context, info *types.Info, exp
 // Restore between statements. Declaring statements (:= and var) are exempt because their
 // registers must survive to subsequent statements.
 //
-// Takes statements: the statements to compile in source order.
+// Takes statements ([]ast.Stmt): the statements to compile in source order.
 //
 // Returns the result location of the last statement, or the zero VarLocation when the
 // list is empty.
@@ -546,7 +547,8 @@ func (c *Compiler) compileStmtList(ctx context.Context, statements []ast.Stmt) (
 
 // compileStmt compiles a single statement, dispatching by AST node type.
 //
-// Takes statement: the statement node to compile by dispatching on its AST type.
+// Takes statement (ast.Stmt): the statement node to compile by dispatching on its AST
+// type.
 //
 // Returns the result location produced by the compiled statement.
 //
@@ -629,8 +631,8 @@ func (c *Compiler) compileConcurrencyStmt(ctx context.Context, statement ast.Stm
 
 // compileDecl compiles a declaration node, dispatching by concrete AST type.
 //
-// Takes declaration: the declaration node to compile by dispatching on its concrete AST
-// type.
+// Takes declaration (ast.Decl): the declaration node to compile by dispatching on its
+// concrete AST type.
 //
 // Returns the location of the last compiled spec.
 //
@@ -664,7 +666,7 @@ func (c *Compiler) compileMultiValueSpec(ctx context.Context, spec *ast.ValueSpe
 //
 // Type specs do not emit bytecode.
 //
-// Takes declaration: the general declaration node to compile.
+// Takes declaration (*ast.GenDecl): the general declaration node to compile.
 //
 // Returns the location of the last value spec emitted, or the zero VarLocation when no
 // value specs were emitted.
@@ -693,7 +695,7 @@ func (c *Compiler) compileGenDecl(ctx context.Context, declaration *ast.GenDecl)
 // Declares each name in the current scope and emits either its initialiser or the
 // zero-value for its type.
 //
-// Takes spec: the value specification to compile.
+// Takes spec (*ast.ValueSpec): the value specification to compile.
 //
 // Returns the location of the first declared variable, or the zero VarLocation when no
 // variables are declared.
@@ -788,8 +790,9 @@ func (c *Compiler) emitValueSpecInitialiser(ctx context.Context, name string, va
 // named-type zero from the symbol registry, then a composite (array/struct) zero, then a
 // generic reflect.Zero before falling back to isa.SubOpLoadZero.
 //
-// Takes typeObject: the type object describing the local being initialised.
-// Takes location: the destination register location.
+// Takes typeObject (types.Object): the type object describing the local being
+// initialised.
+// Takes location (program.VarLocation): the destination register location.
 func (c *Compiler) emitLocalZeroValue(ctx context.Context, typeObject types.Object, location program.VarLocation) {
 	if location.Kind != isa.RegisterGeneral {
 		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLoadZero), location.Register, uint8(location.Kind))
@@ -890,7 +893,7 @@ func (c *Compiler) tryEmitReflectZero(ctx context.Context, typeObject types.Obje
 // zeroValueForCompositeType returns an addressable zero reflect.Value for an array or
 // struct type.
 //
-// Takes t: the type whose zero value is required.
+// Takes t (types.Type): the type whose zero value is required.
 //
 // Returns the addressable zero reflect.Value and true when t's underlying type is an
 // array or struct, and (reflect.Value{}, false) otherwise.
@@ -910,7 +913,7 @@ func (c *Compiler) zeroValueForCompositeType(ctx context.Context, t types.Type) 
 // zeroValueForNamedType returns an addressable zero reflect.Value for a registered named
 // type.
 //
-// Takes t: the type whose zero value is required.
+// Takes t (types.Type): the type whose zero value is required.
 //
 // Returns the addressable zero reflect.Value and true when t is a named type registered
 // in the symbol registry, and (reflect.Value{}, false) otherwise.
@@ -933,7 +936,7 @@ func (c *Compiler) zeroValueForNamedType(_ context.Context, t types.Type) (refle
 // Recognised paths: short-variable, compound, multi-assignment, index-RMW rewrite, or
 // generic single-pair.
 //
-// Takes statement: the assignment statement to compile.
+// Takes statement (*ast.AssignStmt): the assignment statement to compile.
 //
 // Returns the location of the final assignment target.
 //
@@ -965,7 +968,8 @@ func (c *Compiler) compileAssign(ctx context.Context, statement *ast.AssignStmt)
 // Each pair is first offered to the structural fast paths (struct-into-collection,
 // star-append-byte) before falling back to the generic expression-then-store sequence.
 //
-// Takes statement: the assignment statement whose pairs are being emitted.
+// Takes statement (*ast.AssignStmt): the assignment statement whose pairs are being
+// emitted.
 //
 // Returns the location of the final emitted assignment, or the zero VarLocation when no
 // pairs were processed.
@@ -993,8 +997,8 @@ func (c *Compiler) compileSingleAssignPairs(ctx context.Context, statement *ast.
 // compileAssignPair compiles the RHS expression and emits the store into the supplied LHS
 // target.
 //
-// Takes leftHandSide: the LHS expression receiving the value.
-// Takes rightHandSide: the RHS expression producing the value.
+// Takes leftHandSide (ast.Expr): the LHS expression receiving the value.
+// Takes rightHandSide (ast.Expr): the RHS expression producing the value.
 //
 // Returns the location holding the stored value.
 //
@@ -1078,8 +1082,9 @@ func (c *Compiler) compileAssignValue(ctx context.Context, leftHandSide, rightHa
 //
 // Dispatches on the AST node type (identifier, index, selector, or star expression).
 //
-// Takes leftHandSide: the LHS expression receiving the value.
-// Takes valueLocation: the source location holding the value to store.
+// Takes leftHandSide (ast.Expr): the LHS expression receiving the value.
+// Takes valueLocation (program.VarLocation): the source location holding the value to
+// store.
 //
 // Returns the resulting location of the store.
 //
@@ -1113,8 +1118,9 @@ func (c *Compiler) emitAssignTarget(ctx context.Context, leftHandSide ast.Expr, 
 // Resolves the identifier against the upvalue map, the global variable table, and the
 // lexical scope chain in that order. Blank identifiers are silently dropped.
 //
-// Takes target: the identifier receiving the value.
-// Takes valueLocation: the source location holding the value to store.
+// Takes target (*ast.Ident): the identifier receiving the value.
+// Takes valueLocation (program.VarLocation): the source location holding the value to
+// store.
 //
 // Returns the location of the resolved destination, or valueLocation when the target is
 // blank.
@@ -1155,7 +1161,7 @@ func (c *Compiler) emitIdentAssign(ctx context.Context, target *ast.Ident, value
 
 // positionString formats pos as a "file:line:col" string for error messages.
 //
-// Takes pos: the source position to format.
+// Takes pos (token.Pos): the source position to format.
 //
 // Returns the formatted position, or "<unknown>" when pos is invalid or the file set is
 // nil.
@@ -1171,7 +1177,7 @@ func (c *Compiler) positionString(pos token.Pos) string {
 //
 // No-op when debug info is disabled.
 //
-// Takes pos: the source position to record.
+// Takes pos (token.Pos): the source position to record.
 func (c *Compiler) setDebugPosition(_ context.Context, pos token.Pos) {
 	c.currentPosition = pos
 }
@@ -1229,7 +1235,7 @@ func (c *Compiler) initDebugInfo(ctx context.Context) {
 //
 // Appends the filename to the source map's shared files slice when not already present.
 //
-// Takes filename: the source file name to resolve.
+// Takes filename (string): the source file name to resolve.
 //
 // Returns the uint16 file ID assigned to the filename.
 func (c *Compiler) resolveFileID(_ context.Context, filename string) uint16 {
@@ -1539,7 +1545,7 @@ func collectHeapPromotedParamNames(typeContext *Compiler, functionType *ast.Func
 //
 // The recognised set is +=, -=, *=, /=, %=, &=, |=, ^=, &^=, <<=, >>=.
 //
-// Takes operatorToken: the token to classify.
+// Takes operatorToken (token.Token): the token to classify.
 //
 // Returns true when operatorToken is a compound assignment operator; false otherwise.
 func isCompoundAssign(operatorToken token.Token) bool {
@@ -1558,7 +1564,7 @@ func isCompoundAssign(operatorToken token.Token) bool {
 //
 // For example, ADD_ASSIGN maps to ADD.
 //
-// Takes operatorToken: the token to map.
+// Takes operatorToken (token.Token): the token to map.
 //
 // Returns the matching binary operator token, or operatorToken unchanged when it is not a
 // compound assignment.

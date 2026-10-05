@@ -25,9 +25,11 @@
 //
 // # Pass contract
 //
-// No pass removes or moves an instruction: a dead slot becomes isa.OpNop so every
-// instruction index and jump offset stays valid. The body only changes length through the
-// inliner's splice. Register liveness is not computed; a pass may only rely on local
-// proofs bounded by the next jump target, call or return, or the dominator table. Passes
-// are idempotent.
+// A pass that kills an instruction turns it into isa.OpNop so every instruction index and
+// jump offset stays valid for the passes after it. Bodies change length only through
+// helpers that move jumps and PC-keyed metadata with their words: the inliner's splice,
+// the loop rewrites, and the final compaction pass that deletes NOPs and jumps to the
+// next instruction once nothing else will run. Register liveness is not computed; a pass
+// may only rely on local proofs bounded by the next jump target, call or return, or the
+// dominator table. Passes are idempotent.
 package passes

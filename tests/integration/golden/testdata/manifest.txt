@@ -109,3 +109,8 @@
 1686_typed_slice_from_map_lookup
 1687_arena_struct_literal_confined
 1680_byte_switch_chain
+0358_method_call_pointer_receiver_on_struct_field
+1695_appended_pointer_escapes
+1714_scalarised_value_copies
+0636_uint_subtraction_under
+1715_int32_wraparound

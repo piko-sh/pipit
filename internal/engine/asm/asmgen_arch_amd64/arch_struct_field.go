@@ -32,6 +32,10 @@ import (
 // immediate for the program-counter adjustment.
 const eqUintConstJumpFalseSkipWords = "2"
 
+// operationMove32To64BitsSignExtended is the MOVLQSX mnemonic: load 4 bytes into a 64-bit
+// register, sign-extending.
+const operationMove32To64BitsSignExtended = "MOVLQSX"
+
 // EmitTypedRangeNextByte implements BytecodeArchPort.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
@@ -435,6 +439,27 @@ func (*BytecodeAMD64Arch) IntegerUnaryOperation(e *asmgen.Emitter, operation str
 		inst(e, asmamd64.OperationBitwiseNot64Bits, "SI")
 	}
 	inst(e, asmamd64.OperationMove64Bits, "SI, (R8)("+destinationIndex+"*8)")
+}
+
+// IntegerNarrow32 implements BytecodeArchPort.
+//
+// Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
+// Takes indexRegister (string) which is the register index to narrow.
+func (*BytecodeAMD64Arch) IntegerNarrow32(e *asmgen.Emitter, indexRegister string) {
+	inst(e, operationMove32To64BitsSignExtended, "(R8)("+indexRegister+"*8), SI")
+	inst(e, asmamd64.OperationMove64Bits, "SI, (R8)("+indexRegister+"*8)")
+}
+
+// UintNarrow32 implements BytecodeArchPort. A 32-bit load zero-extends into the full
+// register.
+//
+// Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
+// Takes indexRegister (string) which is the register index to narrow.
+// Takes baseScratch (string) which receives the loaded uint base.
+func (*BytecodeAMD64Arch) UintNarrow32(e *asmgen.Emitter, indexRegister, baseScratch string) {
+	inst(e, asmamd64.OperationMove64Bits, "CTX_UINTS_BASE(R15), "+baseScratch)
+	inst(e, asmamd64.OperationMove32Bits, "("+baseScratch+")("+indexRegister+"*8), SI")
+	inst(e, asmamd64.OperationMove64Bits, "SI, ("+baseScratch+")("+indexRegister+"*8)")
 }
 
 // IntegerInPlace implements BytecodeArchPort.

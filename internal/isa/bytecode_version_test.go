@@ -35,11 +35,12 @@ func TestBytecodeVersionMajorIsTwelve(t *testing.T) {
 			"cached payloads must be rejected rather than mis-rendered")
 }
 
-func TestBytecodeVersionMinorIsZero(t *testing.T) {
+func TestBytecodeVersionMinorIsOne(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, uint16(0), bytecodeVersionMinor,
-		"BytecodeVersionMinor resets to 0 with each major bump")
+	require.Equal(t, uint16(1), bytecodeVersionMinor,
+		"the 32-bit fused arithmetic operations were appended after major 12; the minor "+
+			"resets to 0 with each major bump")
 }
 
 func TestDrillMarkersAtIotaZero(t *testing.T) {

@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun
 ;   registers: int=6
-;   dispatch:  asm=10 shim=0 exit=0 go=2
+;   dispatch:  asm=10 shim=0 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -16,14 +16,12 @@
 0000 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
 0001 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
 0002 A 1:LT_INT_CONST_JUMP_FALSE  123   1   1
-0003   0:EXT                        9   0   0
-0004 G 3:TIER3_NOP                  0   0   0
-0005 A 1:EQ_INT_CONST_JUMP_FALSE  124   1   2
-0006   0:EXT                        2   0   0
-0007 G 3:TIER3_NOP                  0   0   0
-0008 A 1:JUMP                      74   4   0    ; goto 4
-0009 A 0:ADD_INT                    4   0   1
-0010 A 1:MOVE_INT                  35   0   4
-0011 A 2:TIER2_INC_INT              0   1   1
-0012 A 1:JUMP                      74 245 255    ; goto -11
-0013 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0003   0:EXT                        7   0   0
+0004 A 1:EQ_INT_CONST_JUMP_FALSE  124   1   2
+0005   0:EXT                        1   0   0
+0006 A 1:JUMP                      74   4   0    ; goto 4
+0007 A 0:ADD_INT                    4   0   1
+0008 A 1:MOVE_INT                  35   0   4
+0009 A 2:TIER2_INC_INT              0   1   1
+0010 A 1:JUMP                      74 247 255    ; goto -9
+0011 A 2:TIER2_RETURN               0  10   1    ; 1 values

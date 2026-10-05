@@ -123,11 +123,11 @@ type fmtInterceptState struct {
 // processFormatRune advances the format-string scan by one logical step: copies plain
 // text, handles `%%`, decodes a single verb, and rewrites it when it is a `%T`.
 //
-// Takes rewritten which receives the emitted output bytes.
-// Takes cursor which is the current rune position into state.runes.
-// Takes site which provides argument static-type strings.
-// Takes siteArgOffset which offsets variadic args within site arguments.
-// Takes arguments which is the original argument slice; mutated on rewrite.
+// Takes rewritten (*strings.Builder) which receives the emitted output bytes.
+// Takes cursor (int) which is the current rune position into state.runes.
+// Takes site (*program.CallSite) which provides argument static-type strings.
+// Takes siteArgOffset (int) which offsets variadic args within site arguments.
+// Takes arguments ([]any) which is the original argument slice; mutated on rewrite.
 //
 // Returns the cursor position the outer loop should resume at.
 func (state *fmtInterceptState) processFormatRune(rewritten *strings.Builder, cursor int, site *program.CallSite, siteArgOffset int, arguments []any) int {
@@ -176,9 +176,10 @@ func (state *fmtInterceptState) processFormatRune(rewritten *strings.Builder, cu
 
 // parseExplicitIndex consumes an optional `[N]` argument-index prefix.
 //
-// Takes rewritten which receives the leading `%` on malformed prefixes.
-// Takes percentCursor which is the position of the leading `%` rune.
-// Takes verbCursor which is the position immediately after the `%`.
+// Takes rewritten (*strings.Builder) which receives the leading `%` on malformed
+// prefixes.
+// Takes percentCursor (int) which is the position of the leading `%` rune.
+// Takes verbCursor (int) which is the position immediately after the `%`.
 //
 // Returns the parsed zero-based index (or -1 when absent), the cursor just past the
 // prefix, and false when the prefix was malformed and the caller should write the leading
@@ -203,10 +204,10 @@ func (state *fmtInterceptState) parseExplicitIndex(rewritten *strings.Builder, p
 // writeRewrittenVerb emits the rewritten `%[...]s` form for a `%T` interception,
 // preserving flags/width/precision between the verb start and the verb rune.
 //
-// Takes rewritten which receives the rebuilt verb fragment.
-// Takes verbCursor which is the position of the verb's flag region.
-// Takes flagEnd which is the position of the verb rune itself.
-// Takes explicitIndex which is the zero-based [N] index or -1 when absent.
+// Takes rewritten (*strings.Builder) which receives the rebuilt verb fragment.
+// Takes verbCursor (int) which is the position of the verb's flag region.
+// Takes flagEnd (int) which is the position of the verb rune itself.
+// Takes explicitIndex (int) which is the zero-based [N] index or -1 when absent.
 func (state *fmtInterceptState) writeRewrittenVerb(rewritten *strings.Builder, verbCursor int, flagEnd int, explicitIndex int) {
 	_, _ = rewritten.WriteString("%")
 	if explicitIndex >= 0 {
@@ -1086,8 +1087,8 @@ func skipVerbFlagsAndWidth(runes []rune, cursor int) int {
 // skipVerbFlagChars advances past leading fmt verb flag runes: `+`, `-`, `#`, `0`, and
 // space.
 //
-// Takes runes which is the format string as a rune slice.
-// Takes cursor which is the position immediately after the `%`.
+// Takes runes ([]rune) which is the format string as a rune slice.
+// Takes cursor (int) which is the position immediately after the `%`.
 //
 // Returns the cursor at the first non-flag rune.
 func skipVerbFlagChars(runes []rune, cursor int) int {
@@ -1104,8 +1105,8 @@ func skipVerbFlagChars(runes []rune, cursor int) int {
 
 // skipVerbWidth advances past width digits and the `*` indirect-width marker.
 //
-// Takes runes which is the format string as a rune slice.
-// Takes cursor which is the position after any flag runes.
+// Takes runes ([]rune) which is the format string as a rune slice.
+// Takes cursor (int) which is the position after any flag runes.
 //
 // Returns the cursor at the first non-width rune.
 func skipVerbWidth(runes []rune, cursor int) int {
@@ -1120,8 +1121,8 @@ func skipVerbWidth(runes []rune, cursor int) int {
 
 // skipVerbPrecision advances past precision digits and the `*` indirect-precision marker.
 //
-// Takes runes which is the format string as a rune slice.
-// Takes cursor which is the position after the `.` separator.
+// Takes runes ([]rune) which is the format string as a rune slice.
+// Takes cursor (int) which is the position after the `.` separator.
 //
 // Returns the cursor at the first non-precision rune.
 func skipVerbPrecision(runes []rune, cursor int) int {

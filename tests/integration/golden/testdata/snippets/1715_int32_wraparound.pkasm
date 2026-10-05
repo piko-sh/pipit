@@ -1,0 +1,231 @@
+; pkasm - pipit bytecode assembly
+; dispatch: A assembly, S in-loop shim call to Go, X dedicated exit to Go, G generic exit to Go
+
+
+; ═════════════════════════════════════════════════════════════
+; function counters
+;   registers: int=8 string=2 general=3
+;   dispatch:  asm=12 shim=1 exit=0 go=3
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2147483645  [1]=-2147483646  [2]=5  [3]=0  [4]=1
+;   strings: [0]=" "
+
+0000 A 0:LOAD_INT_CONST             0   0   0    ; ints[0] = 2147483645
+0001 A 0:LOAD_INT_CONST             2   1   0    ; ints[2] = -2147483646
+0002 A 1:LOAD_INT_CONST_SMALL      75   4   5    ; ints[4] = 5
+0003 A 1:LOAD_INT_CONST_SMALL      75   5   0    ; ints[5] = 0
+0004 A 1:LT_INT_JUMP_FALSE        116   5   4
+0005   0:EXT                        4   0   0
+0006 A 2:TIER2_INC_INT32            0  16   0
+0007 A 2:TIER2_DEC_INT32            0  17   2
+0008 A 0:ADD_INT_CONST              5   5   4    ; const = 1
+0009 A 1:JUMP                      74 250 255    ; goto -6
+0010 S 0:LOAD_GENERAL_CONST         0   0   0
+0011 G 0:PACK_TYPED                 1   0   0
+0012   0:EXT                        0   0   0
+0013 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = " "
+0014 G 0:PACK_TYPED                 2   2   0
+0015   0:EXT                        0   0   0
+0016 G 1:CALL_NATIVE              130   0   0    ; call native general[0] (site 0)
+0017 A 1:MOVE_STRING               37   0   1
+0018 A 2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function constants
+;   registers: int=9 string=2 general=3
+;   dispatch:  asm=13 shim=1 exit=0 go=3
+;   params:    (int)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2147483547  [1]=-2147483548  [2]=0  [3]=37  [4]=41
+;   strings: [0]=" "
+
+0000 A 0:LOAD_INT_CONST             1   0   0    ; ints[1] = 2147483547
+0001 A 0:LOAD_INT_CONST             3   1   0    ; ints[3] = -2147483548
+0002 A 1:LOAD_INT_CONST_SMALL      75   5   0    ; ints[5] = 0
+0003 A 1:LT_INT_JUMP_FALSE        116   5   0
+0004   0:EXT                        6   0   0
+0005 A 0:ADD_INT32_CONST            8   1   3    ; const = 37
+0006 A 1:MOVE_INT                  35   1   8
+0007 A 0:SUB_INT32_CONST            8   3   4    ; const = 41
+0008 A 1:MOVE_INT                  35   3   8
+0009 A 2:TIER2_INC_INT              0   1   5
+0010 A 1:JUMP                      74 248 255    ; goto -8
+0011 S 0:LOAD_GENERAL_CONST         0   0   0
+0012 G 0:PACK_TYPED                 1   1   0
+0013   0:EXT                        0   0   0
+0014 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = " "
+0015 G 0:PACK_TYPED                 2   3   0
+0016   0:EXT                        0   0   0
+0017 G 1:CALL_NATIVE              130   0   0    ; call native general[0] (site 0)
+0018 A 1:MOVE_STRING               37   0   1
+0019 A 2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function products
+;   registers: int=11 string=3 general=5
+;   dispatch:  asm=17 shim=2 exit=0 go=5
+;   params:    (general)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2147483647  [1]=7  [2]=-2147483648  [3]=0  [4]=1
+;   strings: [0]=" "
+
+0000 A 0:LOAD_INT_CONST             0   0   0    ; ints[0] = 2147483647
+0001 A 1:LOAD_INT_CONST_SMALL      75   2   7    ; ints[2] = 7
+0002 A 0:LOAD_INT_CONST             4   2   0    ; ints[4] = -2147483648
+0003 G 1:LEN                       70   6   0
+0004 A 1:LOAD_INT_CONST_SMALL      75   7   0    ; ints[7] = 0
+0005 A 1:LT_INT_JUMP_FALSE        116   7   6
+0006   0:EXT                        9   0   0
+0007 S 0:SLICE_GET_INT              9   0   7
+0008 A 0:ADD_INT32                 10   0   9
+0009 A 1:MOVE_INT                  35   0  10
+0010 A 0:SUB_INT32                 10   4   9
+0011 A 1:MOVE_INT                  35   4  10
+0012 A 0:MUL_INT32                 10   2   9
+0013 A 1:MOVE_INT                  35   2  10
+0014 A 0:ADD_INT_CONST              7   7   4    ; const = 1
+0015 A 1:JUMP                      74 245 255    ; goto -11
+0016 S 0:LOAD_GENERAL_CONST         1   0   0
+0017 G 0:PACK_TYPED                 2   0   0
+0018   0:EXT                        0   0   0
+0019 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = " "
+0020 G 0:PACK_TYPED                 3   4   0
+0021   0:EXT                        0   0   0
+0022 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = " "
+0023 G 0:PACK_TYPED                 4   2   0
+0024   0:EXT                        0   0   0
+0025 G 1:CALL_NATIVE              130   0   0    ; call native general[1] (site 0)
+0026 A 1:MOVE_STRING               37   0   2
+0027 A 2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function unsigned
+;   registers: int=4 general=1 uint=4
+;   dispatch:  asm=9 shim=1 exit=0 go=1
+;   params:    (general)
+;   returns:   (uint)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=1
+;   uints:   [0]=4294967290
+
+0000 A 0:LOAD_UINT_CONST            1   0   0
+0001 A 1:MOVE_UINT                 39   0   1
+0002 G 1:LEN                       70   0   0
+0003 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0004 A 1:LT_INT_JUMP_FALSE        116   1   0
+0005   0:EXT                        5   0   0
+0006 S 0:SLICE_GET_UINT             2   0   1
+0007 A 0:ADD_UINT32                 3   0   2
+0008 A 1:MOVE_UINT                 39   0   3
+0009 A 0:ADD_INT_CONST              1   1   1    ; const = 1
+0010 A 1:JUMP                      74 249 255    ; goto -7
+0011 A 2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function maskedAdd
+;   registers: uint=2
+;   dispatch:  asm=3 shim=0 exit=0 go=0
+;   params:    (uint, uint)
+;   returns:   (uint)
+; ═════════════════════════════════════════════════════════════
+
+0000 A 0:ADD_UINT                   0   0   1
+0001 A 0:TRUNCATE_NARROW            0  32   5
+0002 A 2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=3 string=8 general=5 uint=4
+;   dispatch:  asm=34 shim=12 exit=0 go=12
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=70000000  [1]=5  [2]=3  [3]=0  [4]=1048576  [5]=1  [6]=-7  [7]=2  [8]=1073741824  [9]=65537  [10]=4
+;   strings: [0]=" | "
+;   uints:   [0]=3  [1]=9  [2]=4294967295  [3]=2147483648  [4]=2
+
+0000 S 0:LOAD_GENERAL_CONST         0   0   0
+0001 A 1:CALL_SCALAR              134   0   0
+0002 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = " | "
+0003 A 0:LOAD_INT_CONST             0   0   0    ; ints[0] = 70000000
+0004 A 1:CALL_SCALAR              134   1   0
+0005 A 0:LOAD_STRING_CONST          3   0   0    ; strings[3] = " | "
+0006 A 1:LOAD_INT_CONST_SMALL      75   1   5    ; ints[1] = 5
+0007 S 0:MAKE_SLICE                 1   1   1
+0008   0:EXT                        0   0   0
+0009 A 1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
+0010 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0011 G 0:PACK_TYPED                 2   1   0
+0012   0:EXT                        1   0   0
+0013 S 0:INDEX_SET                  1   2   2
+0014 A 0:LOAD_INT_CONST             1   4   0    ; ints[1] = 1048576
+0015 A 1:LOAD_INT_CONST_SMALL      75   2   1    ; ints[2] = 1
+0016 G 0:PACK_TYPED                 2   1   0
+0017   0:EXT                        1   0   0
+0018 S 0:INDEX_SET                  1   2   2
+0019 A 0:LOAD_INT_CONST             1   6   0    ; ints[1] = -7
+0020 A 1:LOAD_INT_CONST_SMALL      75   2   2    ; ints[2] = 2
+0021 G 0:PACK_TYPED                 2   1   0
+0022   0:EXT                        1   0   0
+0023 S 0:INDEX_SET                  1   2   2
+0024 A 0:LOAD_INT_CONST             1   8   0    ; ints[1] = 1073741824
+0025 A 1:LOAD_INT_CONST_SMALL      75   2   3    ; ints[2] = 3
+0026 G 0:PACK_TYPED                 2   1   0
+0027   0:EXT                        1   0   0
+0028 S 0:INDEX_SET                  1   2   2
+0029 A 0:LOAD_INT_CONST             1   9   0    ; ints[1] = 65537
+0030 A 1:LOAD_INT_CONST_SMALL      75   2   4    ; ints[2] = 4
+0031 G 0:PACK_TYPED                 2   1   0
+0032   0:EXT                        1   0   0
+0033 S 0:INDEX_SET                  1   2   2
+0034 A 1:CALL                     128   2   0    ; call (site 2)
+0035 A 0:LOAD_STRING_CONST          5   0   0    ; strings[5] = " | "
+0036 A 1:LOAD_INT_CONST_SMALL      75   1   4    ; ints[1] = 4
+0037 S 0:MAKE_SLICE                 2   1   1
+0038   0:EXT                        2   0   0
+0039 A 1:LOAD_UINT_CONST_SMALL     99   0   3    ; uints[0] = 3
+0040 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0041 G 0:PACK_TYPED                 3   0   5
+0042   0:EXT                        3   0   0
+0043 S 0:INDEX_SET                  2   1   3
+0044 A 1:LOAD_UINT_CONST_SMALL     99   0   9    ; uints[0] = 9
+0045 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0046 G 0:PACK_TYPED                 3   0   5
+0047   0:EXT                        3   0   0
+0048 S 0:INDEX_SET                  2   1   3
+0049 A 0:LOAD_UINT_CONST            0   2   0
+0050 A 1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0051 G 0:PACK_TYPED                 3   0   5
+0052   0:EXT                        3   0   0
+0053 S 0:INDEX_SET                  2   1   3
+0054 A 0:LOAD_UINT_CONST            0   3   0
+0055 A 1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
+0056 G 0:PACK_TYPED                 3   0   5
+0057   0:EXT                        3   0   0
+0058 S 0:INDEX_SET                  2   1   3
+0059 A 1:CALL                     128   3   0    ; call (site 3)
+0060 G 0:PACK_TYPED                 3   0   5
+0061   0:EXT                        3   0   0
+0062 A 0:LOAD_STRING_CONST          6   0   0    ; strings[6] = " | "
+0063 A 0:LOAD_UINT_CONST            1   2   0
+0064 A 1:LOAD_UINT_CONST_SMALL     99   2   2    ; uints[2] = 2
+0065 A 1:CALL_SCALAR              134   4   0
+0066 G 0:PACK_TYPED                 4   3   5
+0067   0:EXT                        3   0   0
+0068 G 1:CALL_NATIVE              130   5   0    ; call native general[0] (site 5)
+0069 A 1:MOVE_STRING               37   0   7
+0070 A 2:TIER2_RETURN               0  10   1    ; 1 values

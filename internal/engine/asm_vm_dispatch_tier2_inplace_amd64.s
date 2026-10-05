@@ -54,3 +54,21 @@ TEXT ·handlerSubOpTier2DecUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_UINTS_BASE(R15), BX
 	DECQ    (BX)(AX*8)
 	DISPATCH_NEXT()
+
+// handlerSubOpTier2IncInt32 increments ints[C] by one with int32 wrap-around.
+TEXT ·handlerSubOpTier2IncInt32(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $24, AX
+	INCQ    (R8)(AX*8)
+	MOVLQSX (R8)(AX*8), SI
+	MOVQ    SI, (R8)(AX*8)
+	DISPATCH_NEXT()
+
+// handlerSubOpTier2DecInt32 decrements ints[C] by one with int32 wrap-around.
+TEXT ·handlerSubOpTier2DecInt32(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $24, AX
+	DECQ    (R8)(AX*8)
+	MOVLQSX (R8)(AX*8), SI
+	MOVQ    SI, (R8)(AX*8)
+	DISPATCH_NEXT()

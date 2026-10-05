@@ -130,8 +130,8 @@ func (c *Compiler) registerStructFieldLayoutFromReflect(reflectStructType reflec
 // Takes leafKind (reflect.Kind) which is the reflect kind of the leaf field.
 // Takes totalOffset (uint32) which is the cumulative byte offset of the leaf within the
 // deref'd struct.
-// Takes encodedPath which is the field-index path padded to
-// isa.StructFieldLayoutMaxPathDepth.
+// Takes encodedPath ([isa.StructFieldLayoutMaxPathDepth]uint8) which is the field-index
+// path padded to isa.StructFieldLayoutMaxPathDepth.
 // Takes fieldPath ([]int) which is the original field-index chain from the type-checker.
 //
 // Returns the populated StructFieldLayout record.

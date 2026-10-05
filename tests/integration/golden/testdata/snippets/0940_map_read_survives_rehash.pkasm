@@ -4,8 +4,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=5 string=6 general=4 sliceString=1
-;   dispatch:  asm=41 shim=13 exit=0 go=19
+;   registers: int=9 string=7 general=4 sliceString=1
+;   dispatch:  asm=41 shim=13 exit=0 go=17
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -47,52 +47,50 @@
 0030 A 1:LOAD_INT_CONST_SMALL      75   0   7    ; ints[0] = 7
 0031 S 0:MAP_GET_INT_STRING         0   1   0
 0032 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0033 A 1:LT_INT_CONST_JUMP_FALSE  123   0   5
-0034   0:EXT                       17   0   0
-0035 G 3:TIER3_NOP                  0   0   0
-0036 A 1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
-0037 S 0:MAKE_SLICE                 2   3   3
-0038   0:EXT                        1   0   0
-0039 A 0:LOAD_STRING_CONST          1   4   0    ; strings[1] = "filler"
-0040 A 1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
-0041 G 1:MOVE_STRING_TO_GENERAL    44   3   1
-0042 S 0:INDEX_SET                  2   3   3
-0043 A 1:LOAD_INT_CONST_SMALL      75   3 100    ; ints[3] = 100
-0044 A 0:ADD_INT                    4   3   0
+0033 A 1:LOAD_INT_CONST_SMALL      75   6   1    ; LICM hoist of PC 40
+0034 A 0:LOAD_STRING_CONST          6   4   0    ; LICM hoist of PC 41
+0035 A 1:LOAD_INT_CONST_SMALL      75   7   0    ; LICM hoist of PC 41
+0036 A 1:LOAD_INT_CONST_SMALL      75   8 100    ; LICM hoist of PC 43
+0037 A 1:LOAD_INT_CONST_SMALL      75   3 100    ; LICM hoist of PC 46
+0038 A 1:LT_INT_CONST_JUMP_FALSE  123   0   5
+0039   0:EXT                       11   0   0
+0040 S 0:MAKE_SLICE                 2   6   6
+0041   0:EXT                        1   0   0
+0042 G 1:MOVE_STRING_TO_GENERAL    44   3   6
+0043 S 0:INDEX_SET                  2   7   3
+0044 A 0:ADD_INT                    4   8   0
 0045 S 0:MAP_SET_INT_GENERAL        0   4   2
 0046 A 0:LOAD_STRING_CONST          1   4   0    ; strings[1] = "filler"
-0047 A 1:LOAD_INT_CONST_SMALL      75   3 100    ; ints[3] = 100
-0048 A 0:ADD_INT                    4   3   0
-0049 S 0:MAP_SET_INT_STRING         1   4   1
-0050 A 2:TIER2_INC_INT              0   1   0
-0051 A 1:JUMP                      74 237 255    ; goto -19
-0052 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0053 A 1:LT_INT_CONST_JUMP_FALSE  123   0   7
-0054   0:EXT                       11   0   0
-0055 G 3:TIER3_NOP                  0   0   0
-0056 A 1:LOAD_INT_CONST_SMALL      75   3 100    ; ints[3] = 100
-0057 A 0:ADD_INT                    4   3   0
-0058 G 1:MOVE_INT_TO_GENERAL       40   2   4
-0059 G 1:MAP_DELETE                81   0   2
-0060 A 1:LOAD_INT_CONST_SMALL      75   3 100    ; ints[3] = 100
-0061 A 0:ADD_INT                    4   3   0
-0062 G 1:MOVE_INT_TO_GENERAL       40   2   4
-0063 G 1:MAP_DELETE                81   1   2
-0064 A 2:TIER2_INC_INT              0   1   0
-0065 A 1:JUMP                      74 243 255    ; goto -13
-0066 S 0:LOAD_GENERAL_CONST         2   0   0
-0067 A 0:LOAD_STRING_CONST          1   5   0    ; strings[1] = "%s-%s-%s %s %d %d"
-0068 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0069 A 1:SLICE_GET_STRING_DIRECT   23   2   0
-0070   0:EXT                        0   0   0
-0071 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
-0072 A 1:SLICE_GET_STRING_DIRECT   23   3   0
-0073   0:EXT                        1   0   0
-0074 A 1:LOAD_INT_CONST_SMALL      75   2   2    ; ints[2] = 2
-0075 A 1:SLICE_GET_STRING_DIRECT   23   4   0
-0076   0:EXT                        2   0   0
-0077 G 1:LEN                       70   3   0
-0078 G 1:LEN                       70   4   1
-0079 G 1:CALL_NATIVE              130   0   0    ; call native general[2] (site 0)
-0080 A 1:MOVE_STRING               37   0   5
-0081 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0047 A 0:ADD_INT                    4   3   0
+0048 S 0:MAP_SET_INT_STRING         1   4   1
+0049 A 2:TIER2_INC_INT              0   1   0
+0050 A 1:JUMP                      74 243 255    ; goto -13
+0051 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0052 A 1:LOAD_INT_CONST_SMALL      75   5 100    ; LICM hoist of PC 56
+0053 A 1:LOAD_INT_CONST_SMALL      75   3 100    ; LICM hoist of PC 58
+0054 A 1:LT_INT_CONST_JUMP_FALSE  123   0   7
+0055   0:EXT                        8   0   0
+0056 A 0:ADD_INT                    4   5   0
+0057 G 1:MOVE_INT_TO_GENERAL       40   2   4
+0058 G 1:MAP_DELETE                81   0   2
+0059 A 0:ADD_INT                    4   3   0
+0060 G 1:MOVE_INT_TO_GENERAL       40   2   4
+0061 G 1:MAP_DELETE                81   1   2
+0062 A 2:TIER2_INC_INT              0   1   0
+0063 A 1:JUMP                      74 246 255    ; goto -10
+0064 S 0:LOAD_GENERAL_CONST         2   0   0
+0065 A 0:LOAD_STRING_CONST          1   5   0    ; strings[1] = "%s-%s-%s %s %d %d"
+0066 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0067 A 1:SLICE_GET_STRING_DIRECT   23   2   0
+0068   0:EXT                        0   0   0
+0069 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0070 A 1:SLICE_GET_STRING_DIRECT   23   3   0
+0071   0:EXT                        1   0   0
+0072 A 1:LOAD_INT_CONST_SMALL      75   2   2    ; ints[2] = 2
+0073 A 1:SLICE_GET_STRING_DIRECT   23   4   0
+0074   0:EXT                        2   0   0
+0075 G 1:LEN                       70   3   0
+0076 G 1:LEN                       70   4   1
+0077 G 1:CALL_NATIVE              130   0   0    ; call native general[2] (site 0)
+0078 A 1:MOVE_STRING               37   0   5
+0079 A 2:TIER2_RETURN               0  10   1    ; 1 values

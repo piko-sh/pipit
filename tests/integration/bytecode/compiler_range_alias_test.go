@@ -89,7 +89,7 @@ total`)
 	require.InDelta(t, 16.0, result, 1e-9)
 }
 
-func TestRangeStructValueCopiesWhenBodyMutatesSlice(t *testing.T) {
+func TestRangeStructValueCapturesFieldsWhenBodyMutatesSlice(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		index string

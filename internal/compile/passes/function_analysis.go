@@ -56,6 +56,12 @@ type functionAnalysis struct {
 
 	// loopsComputed is true when loops is current.
 	loopsComputed bool
+
+	// hasTypeSwitch caches whether the body holds an isa.SubOpTypeSwitchJump.
+	hasTypeSwitch bool
+
+	// typeSwitchScanned is true when hasTypeSwitch is current.
+	typeSwitchScanned bool
 }
 
 // newFunctionAnalysis builds the shared analysis for compiledFunction's current body.
@@ -105,6 +111,18 @@ func (analysis *functionAnalysis) Loops() []loopRange {
 	return analysis.loops
 }
 
+// HasTypeSwitch reports whether the body holds a multi-way type-switch dispatch, whose
+// targets the single-target loop and region analyses cannot follow.
+//
+// Returns true when some instruction is an isa.SubOpTypeSwitchJump.
+func (analysis *functionAnalysis) HasTypeSwitch() bool {
+	if !analysis.typeSwitchScanned {
+		analysis.hasTypeSwitch = bodyHasTypeSwitch(analysis.compiledFunction.Body)
+		analysis.typeSwitchScanned = true
+	}
+	return analysis.hasTypeSwitch
+}
+
 // invalidate drops all cached analysis so later passes rebuild against the current body.
 // A nil receiver is a no-op.
 func (analysis *functionAnalysis) invalidate() {
@@ -138,6 +156,8 @@ func (analysis *functionAnalysis) rebuild() {
 	analysis.dominatorsComputed = false
 	analysis.loops = nil
 	analysis.loopsComputed = false
+	analysis.hasTypeSwitch = false
+	analysis.typeSwitchScanned = false
 }
 
 // functionAnalysisFor() returns the empty analysis value for compiledFunction. Every
@@ -159,6 +179,8 @@ func functionAnalysisFor(compiledFunction *program.CompiledFunction) functionAna
 		dominatorsComputed: false,
 		loops:              nil,
 		loopsComputed:      false,
+		hasTypeSwitch:      false,
+		typeSwitchScanned:  false,
 	}
 }
 
@@ -190,6 +212,34 @@ func dominatorsFor(analysis *functionAnalysis, body []isa.Instruction) *function
 	return ComputeFunctionDominators(body)
 }
 
+// typeSwitchFor reports whether body holds a type-switch dispatch, using the shared
+// analysis when one is available.
+//
+// Takes analysis (*FunctionAnalysis) which may be nil when the caller has no analysis.
+// Takes body ([]isa.Instruction) which is the instruction stream to scan when it is.
+//
+// Returns true when some instruction is an isa.SubOpTypeSwitchJump.
+func typeSwitchFor(analysis *functionAnalysis, body []isa.Instruction) bool {
+	if analysis != nil {
+		return analysis.HasTypeSwitch()
+	}
+	return bodyHasTypeSwitch(body)
+}
+
+// bodyHasTypeSwitch scans body for a type-switch dispatch.
+//
+// Takes body ([]isa.Instruction) which is the instruction stream to scan.
+//
+// Returns true when some instruction is an isa.SubOpTypeSwitchJump.
+func bodyHasTypeSwitch(body []isa.Instruction) bool {
+	for _, inst := range body {
+		if isa.InstrIsTier1SubOp(inst, isa.SubOpTypeSwitchJump) {
+			return true
+		}
+	}
+	return false
+}
+
 // loopsFor returns the shared loop list when an analysis is available and discovers a
 // private one from body otherwise.
 //
@@ -214,15 +264,15 @@ func loopsFor(analysis *functionAnalysis, body []isa.Instruction) []loopRange {
 // Returns []int containing sorted member PCs, or nil for side entries and unsupported
 // multi-way dispatch.
 func naturalLoopMembers(analysis *functionAnalysis, loop loopRange) []int {
+	if analysis.HasTypeSwitch() {
+		return nil
+	}
 	analysis.buildCFG()
 	body := analysis.compiledFunction.Body
 	seen := make([]bool, len(body))
 	seen[loop.header] = true
 	var pending []int
-	for pc, inst := range body {
-		if isa.InstrIsTier1SubOp(inst, isa.SubOpTypeSwitchJump) {
-			return nil
-		}
+	for pc := range body {
 		if target, jump := program.JumpTargetAt(body, pc); jump && target == loop.header && pc >= loop.header {
 			pending = append(pending, pc)
 		}
@@ -246,4 +296,73 @@ func naturalLoopMembers(analysis *functionAnalysis, loop loopRange) []int {
 		}
 	}
 	return members
+}
+
+// loopFacts lazily computes the facts a loop hoist needs, so loops without candidates
+// never pay for them.
+type loopFacts struct {
+	// analysis supplies the cached control-flow facts.
+	analysis *functionAnalysis
+
+	// dominatorTable caches the dominator relation once requested.
+	dominatorTable *functionDominators
+
+	// members caches the natural loop members once requested.
+	members []int
+
+	// loop is the loop under consideration.
+	loop loopRange
+
+	// membersDone is true when members is current.
+	membersDone bool
+
+	// dominatorsDone is true when dominatorTable is current.
+	dominatorsDone bool
+
+	// renamed is true when a search renamed a destination, which invalidates these facts and
+	// calls for a fresh search.
+	renamed bool
+}
+
+// newLoopFacts prepares the lazy facts for loop.
+//
+// Takes analysis (*functionAnalysis) which must not be nil.
+// Takes loop (loopRange) which is the loop under consideration.
+//
+// Returns the facts with nothing computed yet.
+func newLoopFacts(analysis *functionAnalysis, loop loopRange) *loopFacts {
+	return &loopFacts{analysis: analysis, dominatorTable: nil, members: nil, loop: loop, membersDone: false, dominatorsDone: false, renamed: false}
+}
+
+// loopMembers returns the natural loop members.
+//
+// Returns the sorted member PCs, or nil when the loop has side entries or multi-way
+// dispatch.
+func (facts *loopFacts) loopMembers() []int {
+	if !facts.membersDone {
+		facts.members = naturalLoopMembers(facts.analysis, facts.loop)
+		facts.membersDone = true
+	}
+	return facts.members
+}
+
+// dominators returns the function's dominator relation.
+//
+// Returns the relation, or nil when the dataflow did not converge.
+func (facts *loopFacts) dominators() *functionDominators {
+	if !facts.dominatorsDone {
+		facts.dominatorTable = facts.analysis.Dominators()
+		facts.dominatorsDone = true
+	}
+	return facts.dominatorTable
+}
+
+// dominatesLatch reports whether pc runs on every traversal that reaches the latch.
+//
+// Takes pc (int) which is the candidate instruction.
+//
+// Returns false when dominance is unknown.
+func (facts *loopFacts) dominatesLatch(pc int) bool {
+	dominators := facts.dominators()
+	return dominators != nil && dominators.Dominates(pc, facts.loop.latch)
 }

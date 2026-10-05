@@ -1,0 +1,155 @@
+; pkasm - pipit bytecode assembly
+; dispatch: A assembly, S in-loop shim call to Go, X dedicated exit to Go, G generic exit to Go
+
+
+; ═════════════════════════════════════════════════════════════
+; function collect
+;   registers: int=3 general=3
+;   dispatch:  asm=21 shim=5 exit=0 go=4
+;   params:    (int)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+0000 S 0:LOAD_GENERAL_CONST         0   0   0
+0001 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0002 A 2:ALLOC_STRUCT_LITERAL       0  14   1
+0003   0:EXT                        0   0   0
+0004 A 0:ADD_INT                    2   0   1
+0005 A 0:SET_STRUCT_FIELD_INT_T0    1   2   0
+0006 S 0:ADDR                       2   1   0
+0007 A 0:MOVE_GENERAL               1   2   1
+0008 G 0:APPEND_INPLACE             0   0   1
+0009 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0010 A 2:ALLOC_STRUCT_LITERAL       0  14   1
+0011   0:EXT                        0   0   0
+0012 A 0:ADD_INT                    2   0   1
+0013 A 0:SET_STRUCT_FIELD_INT_T0    1   2   0
+0014 S 0:ADDR                       2   1   0
+0015 A 0:MOVE_GENERAL               1   2   1
+0016 G 0:APPEND_INPLACE             0   0   1
+0017 A 1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0018 A 2:ALLOC_STRUCT_LITERAL       0  14   1
+0019   0:EXT                        0   0   0
+0020 A 0:ADD_INT                    2   0   1
+0021 A 0:SET_STRUCT_FIELD_INT_T0    1   2   0
+0022 S 0:ADDR                       2   1   0
+0023 A 0:MOVE_GENERAL               1   2   1
+0024 G 0:APPEND_INPLACE             0   0   1
+0025 A 1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
+0026 A 2:ALLOC_STRUCT_LITERAL       0  14   1
+0027   0:EXT                        0   0   0
+0028 A 0:ADD_INT                    2   0   1
+0029 A 0:SET_STRUCT_FIELD_INT_T0    1   2   0
+0030 S 0:ADDR                       2   1   0
+0031 A 0:MOVE_GENERAL               1   2   1
+0032 G 0:APPEND_INPLACE             0   0   1
+0033 A 2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function collectBoxed
+;   registers: int=3 general=3
+;   dispatch:  asm=16 shim=4 exit=3 go=0
+;   params:    (int)
+;   returns:   (general)
+; ═════════════════════════════════════════════════════════════
+
+0000 S 0:LOAD_GENERAL_CONST         0   0   0
+0001 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0002 A 2:ALLOC_STRUCT_LITERAL       0  14   1
+0003   0:EXT                        0   0   0
+0004 A 0:ADD_INT                    2   0   1
+0005 A 0:SET_STRUCT_FIELD_INT_T0    1   2   0
+0006 S 0:ADDR                       2   1   0
+0007 A 0:MOVE_GENERAL               1   2   1
+0008 X 0:APPEND                     0   0   1
+0009 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0010 A 2:ALLOC_STRUCT_LITERAL       0  14   1
+0011   0:EXT                        0   0   0
+0012 A 0:ADD_INT                    2   0   1
+0013 A 0:SET_STRUCT_FIELD_INT_T0    1   2   0
+0014 S 0:ADDR                       2   1   0
+0015 A 0:MOVE_GENERAL               1   2   1
+0016 X 0:APPEND                     0   0   1
+0017 A 1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0018 A 2:ALLOC_STRUCT_LITERAL       0  14   1
+0019   0:EXT                        0   0   0
+0020 A 0:ADD_INT                    2   0   1
+0021 A 0:SET_STRUCT_FIELD_INT_T0    1   2   0
+0022 S 0:ADDR                       2   1   0
+0023 A 0:MOVE_GENERAL               1   2   1
+0024 X 0:APPEND                     0   0   1
+0025 A 2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int=6 string=4 general=6
+;   dispatch:  asm=38 shim=11 exit=0 go=7
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=1  [1]=100  [2]=50  [3]=0  [4]=10
+;   strings: [0]=""  [1]=","  [2]=";"  [3]="."
+
+0000 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0001 A 1:CALL                     128   0   0    ; call (site 0)
+0002 A 1:LOAD_INT_CONST_SMALL      75   0 100    ; ints[0] = 100
+0003 A 1:CALL                     128   1   0    ; call (site 1)
+0004 A 1:LOAD_INT_CONST_SMALL      75   0  50    ; ints[0] = 50
+0005 A 1:CALL                     128   2   0    ; call (site 2)
+0006 G 1:LEN                       70   0   0
+0007 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0008 A 1:LOAD_INT_CONST_SMALL      75   3  10    ; LICM hoist of PC 11
+0009 A 1:LT_INT_JUMP_FALSE        116   1   0
+0010   0:EXT                        6   0   0
+0011 S 0:INDEX                      3   0   1
+0012 A 0:GET_STRUCT_FIELD_INT_T0    4   3   0
+0013 A 0:MUL_INT                    5   4   3
+0014 A 0:SET_STRUCT_FIELD_INT_T0    3   5   0
+0015 A 0:ADD_INT_CONST              1   1   0    ; const = 1
+0016 A 1:JUMP                      74 248 255    ; goto -8
+0017 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = ""
+0018 G 1:LEN                       70   0   0
+0019 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0020 A 0:LOAD_STRING_CONST          1   1   0    ; LICM hoist of PC 25
+0021 A 1:LT_INT_JUMP_FALSE        116   1   0
+0022   0:EXT                        8   0   0
+0023 S 0:INDEX                      3   0   1
+0024 S 0:LOAD_GENERAL_CONST         4   0   0
+0025 A 0:GET_STRUCT_FIELD_INT_T0    3   3   0
+0026 G 1:CALL_NATIVE              130   3   0    ; call native general[4] (site 3)
+0027 S 0:CONCAT_STRING              3   0   2
+0028 A 1:MOVE_STRING               37   0   3
+0029 A 0:ADD_INT_CONST              1   1   0    ; const = 1
+0030 A 1:JUMP                      74 246 255    ; goto -10
+0031 G 1:LEN                       70   0   1
+0032 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0033 A 0:LOAD_STRING_CONST          1   2   0    ; LICM hoist of PC 38
+0034 A 1:LT_INT_JUMP_FALSE        116   1   0
+0035   0:EXT                        8   0   0
+0036 S 0:INDEX                      3   1   1
+0037 S 0:LOAD_GENERAL_CONST         4   1   0
+0038 A 0:GET_STRUCT_FIELD_INT_T0    3   3   0
+0039 G 1:CALL_NATIVE              130   4   0    ; call native general[4] (site 4)
+0040 S 0:CONCAT_STRING              3   0   2
+0041 A 1:MOVE_STRING               37   0   3
+0042 A 0:ADD_INT_CONST              1   1   0    ; const = 1
+0043 A 1:JUMP                      74 246 255    ; goto -10
+0044 G 1:LEN                       70   0   2
+0045 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0046 A 0:LOAD_STRING_CONST          1   3   0    ; LICM hoist of PC 54
+0047 A 1:LT_INT_JUMP_FALSE        116   1   0
+0048   0:EXT                       11   0   0
+0049 S 0:INDEX                      3   2   1
+0050 A 0:MOVE_GENERAL               3   3   0
+0051 S 0:LOAD_GENERAL_CONST         4   2   0
+0052 S 0:TYPE_ASSERT                5   3   3
+0053   0:EXT                        1   0   1
+0054 A 0:GET_STRUCT_FIELD_INT_T0    4   5   0
+0055 G 1:CALL_NATIVE              130   5   0    ; call native general[4] (site 5)
+0056 S 0:CONCAT_STRING              3   0   2
+0057 A 1:MOVE_STRING               37   0   3
+0058 A 0:ADD_INT_CONST              1   1   0    ; const = 1
+0059 A 1:JUMP                      74 243 255    ; goto -13
+0060 A 2:TIER2_RETURN               0  10   1    ; 1 values

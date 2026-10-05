@@ -98,6 +98,7 @@ func tier0FileGroups() []asmgen.FileGroup[BytecodeArchitecturePort] {
 		dispatchGroup("asm_vm_dispatch_cmp", comparisonHandlers()),
 		dispatchGroup("asm_vm_dispatch_string", stringHandlers()),
 		dispatchGroup("asm_vm_dispatch_super", superinstructionHandlers()),
+		dispatchGroup("asm_vm_dispatch_narrow32", narrow32Handlers()),
 		dispatchGroup("asm_vm_dispatch_init", initialisationHandlers()),
 		dispatchGroup("asm_vm_dispatch_struct_field", structFieldHandlers()),
 		dispatchGroup("asm_vm_dispatch_upvalue", upvalueHandlers()),

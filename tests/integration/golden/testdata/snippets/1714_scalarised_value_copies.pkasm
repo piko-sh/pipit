@@ -1,0 +1,445 @@
+; pkasm - pipit bytecode assembly
+; dispatch: A assembly, S in-loop shim call to Go, X dedicated exit to Go, G generic exit to Go
+
+
+; ═════════════════════════════════════════════════════════════
+; function view.at
+;   registers: int=3 general=1 uint=1 sliceByte=1
+;   dispatch:  asm=4 shim=0 exit=0 go=1
+;   params:    (general, int)
+;   returns:   (uint)
+; ═════════════════════════════════════════════════════════════
+
+0000 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
+0001   0:EXT                        0   0   0
+0002 A 0:GET_STRUCT_FIELD_INT_T0    1   0   1
+0003 A 0:ADD_INT                    2   1   0
+0004 A 1:SLICE_GET_BYTE_DIRECT    112   0   0
+0005   0:EXT                        2   0   0
+0006 A 2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function arrayView.at
+;   registers: int=3 general=2 uint=1
+;   dispatch:  asm=4 shim=1 exit=0 go=0
+;   params:    (general, int)
+;   returns:   (uint)
+; ═════════════════════════════════════════════════════════════
+
+0000 A 0:GET_STRUCT_FIELD_GENERAL_T0   1   0   0
+0001 A 0:GET_STRUCT_FIELD_INT_T0    1   0   1
+0002 A 0:ADD_INT                    2   1   0
+0003 S 0:SLICE_GET_UINT             0   1   2
+0004 A 2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function copyFields
+;   registers: int=5 string=3 general=5 bool=1 uint=3 sliceByte=2
+;   dispatch:  asm=36 shim=9 exit=0 go=13
+;   params:    (bool)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=3  [1]=0  [2]=1  [3]=2
+;   strings: [0]=" "
+;   uints:   [0]=2  [1]=3  [2]=5  [3]=11  [4]=7  [5]=13
+
+0000 G 2:MAKE_MAP                   0  12   0
+0001   0:EXT                        0   0   0
+0002 A 1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0003 S 0:MAKE_SLICE                 1   0   0
+0004   0:EXT                        1   0   0
+0005 A 1:LOAD_UINT_CONST_SMALL     99   0   2    ; uints[0] = 2
+0006 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0007 G 0:PACK_TYPED                 2   0   5
+0008   0:EXT                        2   0   0
+0009 S 0:INDEX_SET                  1   0   2
+0010 A 1:LOAD_UINT_CONST_SMALL     99   0   3    ; uints[0] = 3
+0011 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0012 G 0:PACK_TYPED                 2   0   5
+0013   0:EXT                        2   0   0
+0014 S 0:INDEX_SET                  1   0   2
+0015 A 1:LOAD_UINT_CONST_SMALL     99   0   5    ; uints[0] = 5
+0016 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0017 G 0:PACK_TYPED                 2   0   5
+0018   0:EXT                        2   0   0
+0019 S 0:INDEX_SET                  1   0   2
+0020 A 0:SET_STRUCT_FIELD_GENERAL_T0   0   1   0
+0021 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0022 A 0:SET_STRUCT_FIELD_INT_T0    0   0   1
+0023 S 0:DEREF                      0   0   1
+0024 A 0:MOVE_GENERAL               1   0   2
+0025 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0026 A 0:SET_STRUCT_FIELD_INT_T0    0   0   1
+0027 A 1:LOAD_UINT_CONST_SMALL     99   0  11    ; uints[0] = 11
+0028 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
+0029   0:EXT                        0   0   0
+0030 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0031 A 1:SLICE_SET_BYTE_DIRECT    113   0   0
+0032   0:EXT                        0   0   0
+0033 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0034 S 0:MAKE_SLICE                 2   0   0
+0035   0:EXT                        1   0   0
+0036 A 1:LOAD_UINT_CONST_SMALL     99   0   7    ; uints[0] = 7
+0037 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0038 G 0:PACK_TYPED                 3   0   5
+0039   0:EXT                        2   0   0
+0040 S 0:INDEX_SET                  2   0   3
+0041 A 1:LOAD_UINT_CONST_SMALL     99   0  13    ; uints[0] = 13
+0042 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0043 G 0:PACK_TYPED                 3   0   5
+0044   0:EXT                        2   0   0
+0045 S 0:INDEX_SET                  2   0   3
+0046 A 0:SET_STRUCT_FIELD_GENERAL_T0   0   2   0
+0047 G 1:BOOL_TO_INT               53   0   0
+0048 A 0:JUMP_IF_FALSE              0   2   0    ; if ints[0] == 0 goto +2
+0049 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0050 A 0:SET_STRUCT_FIELD_INT_T0    0   0   1
+0051 S 0:LOAD_GENERAL_CONST         2   0   0
+0052 A 0:GET_STRUCT_FIELD_INT_T0    0   1   1
+0053 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = " "
+0054 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   1
+0055   0:EXT                        0   0   0
+0056 A 1:SLICE_GET_BYTE_DIRECT    112   0   0
+0057   0:EXT                        0   0   0
+0058 G 0:PACK_TYPED                 3   0   5
+0059   0:EXT                        2   0   0
+0060 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = " "
+0061 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0062 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   1   0    ; inlined body of function 0 called at PC 62
+0063   0:EXT                        0   0   0
+0064 A 0:GET_STRUCT_FIELD_INT_T0    3   0   1
+0065 A 0:ADD_INT                    4   3   2
+0066 A 1:SLICE_GET_BYTE_DIRECT    112   2   1
+0067   0:EXT                        4   0   0
+0068 A 1:MOVE_UINT                 39   1   2
+0069 G 0:PACK_TYPED                 4   1   5
+0070   0:EXT                        2   0   0
+0071 G 1:CALL_NATIVE              130   1   0    ; call native general[2] (site 1)
+0072 A 1:MOVE_STRING               37   0   2
+0073 A 2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function escaped
+;   registers: int=5 string=3 general=9 uint=2 sliceByte=1
+;   dispatch:  asm=23 shim=11 exit=0 go=6
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2  [1]=0  [2]=1
+;   strings: [0]=" "
+;   uints:   [0]=17  [1]=19
+
+0000 G 2:MAKE_MAP                   0  12   0
+0001   0:EXT                        0   0   0
+0002 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0003 S 0:MAKE_SLICE                 1   0   0
+0004   0:EXT                        1   0   0
+0005 A 1:LOAD_UINT_CONST_SMALL     99   0  17    ; uints[0] = 17
+0006 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0007 G 0:PACK_TYPED                 2   0   5
+0008   0:EXT                        2   0   0
+0009 S 0:INDEX_SET                  1   0   2
+0010 A 1:LOAD_UINT_CONST_SMALL     99   0  19    ; uints[0] = 19
+0011 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0012 G 0:PACK_TYPED                 2   0   5
+0013   0:EXT                        2   0   0
+0014 S 0:INDEX_SET                  1   0   2
+0015 A 0:SET_STRUCT_FIELD_GENERAL_T0   0   1   0
+0016 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0017 A 0:SET_STRUCT_FIELD_INT_T0    0   0   1
+0018 S 0:DEREF                      0   0   1
+0019 S 0:DEREF                      0   0   1
+0020 A 0:MOVE_GENERAL               1   0   2
+0021 S 0:ALLOC_INDIRECT             2   1   3
+0022   0:EXT                        0   0   0
+0023 A 0:MOVE_GENERAL               3   2   1
+0024 S 0:ALLOC_INDIRECT             4   3   3
+0025   0:EXT                        3   0   0
+0026 S 0:MAKE_CLOSURE               5   8   0    ; closure (func 8)
+0027 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0028 A 0:SET_STRUCT_FIELD_INT_T0    0   0   1
+0029 S 0:LOAD_GENERAL_CONST         6   0   0
+0030 A 1:CALL                     128   0   0    ; call closure general[5] (site 0)
+0031 S 2:SYNC_CLOSURE_UPVALUES      0  15   5
+0032 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = " "
+0033 A 0:GET_STRUCT_FIELD_INT_T0    1   0   1
+0034 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = " "
+0035 S 0:DEREF                      7   2   0
+0036 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0037 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   7    ; inlined body of function 0 called at PC 37
+0038   0:EXT                        0   0   0
+0039 A 0:GET_STRUCT_FIELD_INT_T0    3   7   1
+0040 A 0:ADD_INT                    4   3   2
+0041 A 1:SLICE_GET_BYTE_DIRECT    112   1   0
+0042   0:EXT                        4   0   0
+0043 A 1:MOVE_UINT                 39   0   1
+0044 G 0:PACK_TYPED                 8   0   5
+0045   0:EXT                        2   0   0
+0046 G 1:CALL_NATIVE              130   2   0    ; call native general[6] (site 2)
+0047 A 1:MOVE_STRING               37   0   2
+0048 A 2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function arrays
+;   registers: int=2 string=2 general=6 uint=2
+;   dispatch:  asm=22 shim=7 exit=0 go=6
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0  [1]=1  [2]=2
+;   strings: [0]=" "
+;   uints:   [0]=23  [1]=29  [2]=31  [3]=37
+
+0000 A 2:ALLOC_STRUCT_LITERAL       0  14   0
+0001   0:EXT                        0   0   0
+0002 S 0:LOAD_GENERAL_CONST         1   0   0
+0003 A 1:LOAD_UINT_CONST_SMALL     99   0  23    ; uints[0] = 23
+0004 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0005 G 0:PACK_TYPED                 2   0   5
+0006   0:EXT                        1   0   0
+0007 S 0:INDEX_SET                  1   0   2
+0008 A 1:LOAD_UINT_CONST_SMALL     99   0  29    ; uints[0] = 29
+0009 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0010 G 0:PACK_TYPED                 2   0   5
+0011   0:EXT                        1   0   0
+0012 S 0:INDEX_SET                  1   0   2
+0013 A 1:LOAD_UINT_CONST_SMALL     99   0  31    ; uints[0] = 31
+0014 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0015 G 0:PACK_TYPED                 2   0   5
+0016   0:EXT                        1   0   0
+0017 S 0:INDEX_SET                  1   0   2
+0018 A 0:SET_STRUCT_FIELD_GENERAL_T0   0   1   0
+0019 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0020 A 0:SET_STRUCT_FIELD_INT_T0    0   0   1
+0021 A 0:MOVE_GENERAL               1   0   2
+0022 A 0:GET_STRUCT_FIELD_GENERAL_T0   2   0   0
+0023 S 1:SLICE_OP                 141   3   2
+0024   0:EXT                        0   0   0
+0025 A 0:MOVE_GENERAL               2   3   1
+0026 A 1:LOAD_UINT_CONST_SMALL     99   0  37    ; uints[0] = 37
+0027 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0028 S 0:SLICE_SET_UINT             2   0   0
+0029 S 0:LOAD_GENERAL_CONST         3   1   0
+0030 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0031 A 1:CALL                     128   0   0    ; call (site 0)
+0032 G 0:PACK_TYPED                 4   0   5
+0033   0:EXT                        1   0   0
+0034 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = " "
+0035 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0036 A 1:CALL                     128   1   0    ; call (site 1)
+0037 G 0:PACK_TYPED                 5   1   5
+0038   0:EXT                        1   0   0
+0039 G 1:CALL_NATIVE              130   2   0    ; call native general[3] (site 2)
+0040 A 1:MOVE_STRING               37   0   1
+0041 A 2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function indirect
+;   registers: int=7 string=3 general=10 uint=5 sliceByte=2
+;   dispatch:  asm=28 shim=5 exit=3 go=11
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2  [1]=0  [2]=1
+;   strings: [0]=" "  [1]="at"
+;   uints:   [0]=41  [1]=43
+
+0000 G 2:MAKE_MAP                   0  12   0
+0001   0:EXT                        0   0   0
+0002 G 2:MAKE_MAP                   0  12   1
+0003   0:EXT                        1   0   0
+0004 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0005 S 0:MAKE_SLICE                 2   0   0
+0006   0:EXT                        2   0   0
+0007 A 1:LOAD_UINT_CONST_SMALL     99   0  41    ; uints[0] = 41
+0008 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0009 G 0:PACK_TYPED                 3   0   5
+0010   0:EXT                        3   0   0
+0011 S 0:INDEX_SET                  2   0   3
+0012 A 1:LOAD_UINT_CONST_SMALL     99   0  43    ; uints[0] = 43
+0013 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0014 G 0:PACK_TYPED                 3   0   5
+0015   0:EXT                        3   0   0
+0016 S 0:INDEX_SET                  2   0   3
+0017 A 0:SET_STRUCT_FIELD_GENERAL_T0   1   2   0
+0018 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0019 A 0:SET_STRUCT_FIELD_INT_T0    1   0   1
+0020 X 0:SET_FIELD                  0   0   1
+0021 S 0:DEREF                      0   0   1
+0022 A 0:MOVE_GENERAL               1   0   2
+0023 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0024 A 0:SET_STRUCT_FIELD_INT_T0    0   0   2
+0025 X 0:GET_FIELD                  3   1   0
+0026 A 0:MOVE_GENERAL               2   3   2
+0027 S 0:LOAD_GENERAL_CONST         4   0   0
+0028 A 0:MOVE_GENERAL               5   3   1    ; CSE'd from PC 25
+0029 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0030 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   5    ; inlined body of function 0 called at PC 30
+0031   0:EXT                        0   0   0
+0032 A 0:GET_STRUCT_FIELD_INT_T0    3   5   1
+0033 A 0:ADD_INT                    4   3   0
+0034 A 1:SLICE_GET_BYTE_DIRECT    112   3   0
+0035   0:EXT                        4   0   0
+0036 A 1:MOVE_UINT                 39   0   3
+0037 G 0:PACK_TYPED                 6   0   5
+0038   0:EXT                        3   0   0
+0039 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = " "
+0040 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0041 G 1:CALL_METHOD_INLINEABLE   135   1   0    ; call method inlineable (site 1)
+0042   0:EXT                        1   0   0
+0043 G 0:PACK_TYPED                 7   1   5
+0044   0:EXT                        3   0   0
+0045 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = " "
+0046 X 0:GET_FIELD                  8   0   0
+0047 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0048 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   1   8    ; inlined body of function 0 called at PC 48
+0049   0:EXT                        0   0   0
+0050 A 0:GET_STRUCT_FIELD_INT_T0    5   8   1
+0051 A 0:ADD_INT                    6   5   2
+0052 A 1:SLICE_GET_BYTE_DIRECT    112   4   1
+0053   0:EXT                        6   0   0
+0054 A 1:MOVE_UINT                 39   2   4
+0055 G 0:PACK_TYPED                 9   2   5
+0056   0:EXT                        3   0   0
+0057 G 1:CALL_NATIVE              130   3   0    ; call native general[4] (site 3)
+0058 A 1:MOVE_STRING               37   0   2
+0059 A 2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function deferred
+;   registers: int=1 string=3 general=5 uint=1
+;   dispatch:  asm=12 shim=12 exit=0 go=5
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=2  [1]=0  [2]=1
+;   uints:   [0]=47  [1]=53
+
+0000 G 1:LOAD_ZERO                 79   1   2
+0001 S 0:ALLOC_INDIRECT             0   1   2
+0002   0:EXT                        0   0   0
+0003 G 2:MAKE_MAP                   0  12   1
+0004   0:EXT                        1   0   0
+0005 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0006 S 0:MAKE_SLICE                 2   0   0
+0007   0:EXT                        2   0   0
+0008 A 1:LOAD_UINT_CONST_SMALL     99   0  47    ; uints[0] = 47
+0009 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0010 G 0:PACK_TYPED                 3   0   5
+0011   0:EXT                        3   0   0
+0012 S 0:INDEX_SET                  2   0   3
+0013 A 1:LOAD_UINT_CONST_SMALL     99   0  53    ; uints[0] = 53
+0014 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0015 G 0:PACK_TYPED                 3   0   5
+0016   0:EXT                        3   0   0
+0017 S 0:INDEX_SET                  2   0   3
+0018 A 0:SET_STRUCT_FIELD_GENERAL_T0   1   2   0
+0019 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0020 A 0:SET_STRUCT_FIELD_INT_T0    1   0   1
+0021 S 0:DEREF                      1   1   1
+0022 S 0:ALLOC_INDIRECT             2   1   3
+0023   0:EXT                        1   0   0
+0024 S 0:DEREF                      3   2   0
+0025 S 0:DEREF                      3   3   1
+0026 S 0:MAKE_CLOSURE               4   9   0    ; closure (func 9)
+0027 G 0:DEFER                      4   1   0
+0028   0:EXT                        0   3   3
+0029 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0030 S 0:DEREF                      4   2   0
+0031 A 0:SET_STRUCT_FIELD_INT_T0    4   0   1
+0032 S 0:DEREF                      4   0   0
+0033 S 0:UNPACK_INTERFACE           2   4   2
+0034 A 1:MOVE_STRING               37   0   2
+0035 A 2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: string=12 general=1 bool=2
+;   dispatch:  asm=15 shim=1 exit=0 go=1
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   strings: [0]="; "
+;   bools:   [0]=false  [1]=true
+
+0000 S 0:LOAD_GENERAL_CONST         0   0   0
+0001 A 1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = false
+0002 A 1:CALL_SCALAR              134   0   0
+0003 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "; "
+0004 A 1:LOAD_BOOL_CONST          138   1   1    ; bools[1] = true
+0005 A 1:CALL_SCALAR              134   1   0
+0006 A 0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "; "
+0007 A 1:CALL_SCALAR              134   2   0
+0008 A 0:LOAD_STRING_CONST          5   0   0    ; strings[5] = "; "
+0009 A 1:CALL_SCALAR              134   3   0
+0010 A 0:LOAD_STRING_CONST          7   0   0    ; strings[7] = "; "
+0011 A 1:CALL_SCALAR              134   4   0
+0012 A 0:LOAD_STRING_CONST          9   0   0    ; strings[9] = "; "
+0013 A 1:CALL_SCALAR              134   5   0
+0014 G 1:CALL_NATIVE              130   6   0    ; call native general[0] (site 6)
+0015 A 1:MOVE_STRING               37   0  11
+0016 A 2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=1 general=1
+;   dispatch:  asm=5 shim=0 exit=0 go=0
+;   params:    (none)
+;   returns:   (int)
+; ═════════════════════════════════════════════════════════════
+
+0000 A 0:GET_UPVALUE                0   1   3
+0001 A 1:INC_STRUCT_FIELD_INT     107   0   0
+0002 A 0:GET_UPVALUE                0   0   3
+0003 A 0:GET_STRUCT_FIELD_INT_T0    0   0   0
+0004 A 2:TIER2_RETURN               0  10   1    ; 1 values
+
+; ═════════════════════════════════════════════════════════════
+; function <closure>
+;   registers: int=6 string=2 general=5 uint=4 sliceByte=2
+;   dispatch:  asm=12 shim=2 exit=0 go=5
+;   params:    (general)
+;   returns:   (none)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=0
+;   strings: [0]=" "
+
+0000 S 0:LOAD_GENERAL_CONST         1   0   0
+0001 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0002 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0    ; inlined body of function 0 called at PC 2
+0003   0:EXT                        0   0   0
+0004 A 0:GET_STRUCT_FIELD_INT_T0    2   0   1
+0005 A 0:ADD_INT                    3   2   0
+0006 A 1:SLICE_GET_BYTE_DIRECT    112   2   0
+0007   0:EXT                        3   0   0
+0008 A 1:MOVE_UINT                 39   0   2
+0009 G 0:PACK_TYPED                 2   0   5
+0010   0:EXT                        0   0   0
+0011 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = " "
+0012 A 0:GET_UPVALUE                3   1   3
+0013 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0014 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   1   3    ; inlined body of function 0 called at PC 14
+0015   0:EXT                        0   0   0
+0016 A 0:GET_STRUCT_FIELD_INT_T0    4   3   1
+0017 A 0:ADD_INT                    5   4   1
+0018 A 1:SLICE_GET_BYTE_DIRECT    112   3   1
+0019   0:EXT                        5   0   0
+0020 A 1:MOVE_UINT                 39   1   3
+0021 G 0:PACK_TYPED                 4   1   5
+0022   0:EXT                        0   0   0
+0023 G 1:CALL_NATIVE              130   2   0    ; call native general[1] (site 2)
+0024 S 0:SET_UPVALUE                1   0   2

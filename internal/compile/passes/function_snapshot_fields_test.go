@@ -58,6 +58,7 @@ func runSnapshotPass(t *testing.T, cf *program.CompiledFunction) {
 }
 
 func TestSnapshotFieldsCaptureBeforeSourceMutation(t *testing.T) {
+	t.Parallel()
 	cf := snapshotFixture()
 	runSnapshotPass(t, cf)
 	require.Equal(t, mk(isa.OpGetStructFieldIntT0, 2, 0, 0), cf.Body[0])
@@ -71,6 +72,7 @@ func TestSnapshotFieldsCaptureBeforeSourceMutation(t *testing.T) {
 }
 
 func TestSnapshotFieldsRefuseObservableCopies(t *testing.T) {
+	t.Parallel()
 	for name, op := range map[string]isa.Instruction{
 		"whole value":    mk(isa.OpMoveGeneral, 0, 1, engine.MoveGeneralModeAlias),
 		"field mutation": mk(isa.OpSetStructFieldIntT0, 1, 0, 0),
@@ -78,6 +80,7 @@ func TestSnapshotFieldsRefuseObservableCopies(t *testing.T) {
 		"opaque":         mk(isa.Opcode(255), 255, 1, 0),
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			cf := snapshotFixture()
 			cf.Body[1] = op
 			old := slices.Clone(cf.Body)
@@ -86,6 +89,7 @@ func TestSnapshotFieldsRefuseObservableCopies(t *testing.T) {
 		})
 	}
 	t.Run("embedded pointer path", func(t *testing.T) {
+		t.Parallel()
 		cf := snapshotFixture()
 		cf.StructLayoutTable[0].PathLength = 2
 		old := slices.Clone(cf.Body)
@@ -93,6 +97,7 @@ func TestSnapshotFieldsRefuseObservableCopies(t *testing.T) {
 		require.Equal(t, old, cf.Body)
 	})
 	t.Run("register overflow", func(t *testing.T) {
+		t.Parallel()
 		cf := snapshotFixture()
 		cf.NumRegisters[isa.RegisterInt] = 256
 		old := slices.Clone(cf.Body)
@@ -102,6 +107,7 @@ func TestSnapshotFieldsRefuseObservableCopies(t *testing.T) {
 }
 
 func TestSnapshotFieldsRejectMixedDefinitions(t *testing.T) {
+	t.Parallel()
 	cf := snapshotFixture()
 	cf.Body = []isa.Instruction{
 		mk(isa.OpMoveGeneral, 1, 0, engine.MoveGeneralModeSnapshot),
@@ -117,6 +123,7 @@ func TestSnapshotFieldsRejectMixedDefinitions(t *testing.T) {
 }
 
 func TestSnapshotFieldsCaptureOutOfLineRead(t *testing.T) {
+	t.Parallel()
 	cf := snapshotFixture()
 	cf.Body = []isa.Instruction{
 		mk(isa.OpMoveGeneral, 1, 0, engine.MoveGeneralModeSnapshot),
@@ -131,6 +138,7 @@ func TestSnapshotFieldsCaptureOutOfLineRead(t *testing.T) {
 }
 
 func TestSnapshotFieldsPreserveDebugValues(t *testing.T) {
+	t.Parallel()
 	cf := snapshotFixture()
 	cf.DebugVarTable = &program.DebugVarTable{Entries: []program.DebugVarEntry{{StartPC: 1, EndPC: 5}}}
 	runSnapshotPass(t, cf)
@@ -142,6 +150,7 @@ func TestSnapshotFieldsPreserveDebugValues(t *testing.T) {
 }
 
 func TestSnapshotFieldsRelocateSourceAndJumpMetadata(t *testing.T) {
+	t.Parallel()
 	cf := snapshotFixture()
 	cf.Body = append([]isa.Instruction{tier1Jump(0)}, cf.Body...)
 	files := []string{"source.go"}
@@ -160,6 +169,7 @@ func TestSnapshotFieldsRelocateSourceAndJumpMetadata(t *testing.T) {
 }
 
 func TestSnapshotFieldsIgnoreUnreachablePaddingPredecessors(t *testing.T) {
+	t.Parallel()
 	cf := snapshotFixture()
 	cf.Body = []isa.Instruction{
 		mk(isa.OpMoveGeneral, 1, 0, engine.MoveGeneralModeSnapshot),

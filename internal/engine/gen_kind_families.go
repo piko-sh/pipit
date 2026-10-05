@@ -509,6 +509,8 @@ var flatWrappers = []flatWrapper{
 	{Name: "Tier2DecInt", Inner: "handleDecInt", Unary: true},
 	{Name: "Tier2IncUint", Inner: "handleIncUint", Unary: true},
 	{Name: "Tier2DecUint", Inner: "handleDecUint", Unary: true},
+	{Name: "Tier2IncInt32", Inner: "handleIncInt32", Unary: true},
+	{Name: "Tier2DecInt32", Inner: "handleDecInt32", Unary: true},
 	{Name: "Tier2Panic", Inner: "handlePanic", Unary: true},
 	{Name: "Tier2Recover", Inner: "handleRecover", Unary: true},
 	{Name: "Tier2SetZero", Inner: "handleSetZero", Unary: true},

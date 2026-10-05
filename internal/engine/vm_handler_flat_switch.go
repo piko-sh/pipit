@@ -32,12 +32,18 @@ func flatDispatchSwitch(vm *VM, frame *CallFrame, registers *Registers, instr is
 		return handleAddFloat(vm, frame, registers, instr)
 	case uint(isa.OpAddInt):
 		return handleAddInt(vm, frame, registers, instr)
+	case uint(isa.OpAddInt32):
+		return handleAddInt32(vm, frame, registers, instr)
+	case uint(isa.OpAddInt32Const):
+		return handleAddInt32Const(vm, frame, registers, instr)
 	case uint(isa.OpAddIntConst):
 		return handleAddIntConst(vm, frame, registers, instr)
 	case uint(isa.OpAddIntJump):
 		return handleAddIntJump(vm, frame, registers, instr)
 	case uint(isa.OpAddUint):
 		return handleAddUint(vm, frame, registers, instr)
+	case uint(isa.OpAddUint32):
+		return handleAddUint32(vm, frame, registers, instr)
 	case uint(isa.OpAddr):
 		return handleAddr(vm, frame, registers, instr)
 	case uint(isa.OpAllocIndirect):
@@ -290,6 +296,8 @@ func flatDispatchSwitch(vm *VM, frame *CallFrame, registers *Registers, instr is
 		return handleMulFloat(vm, frame, registers, instr)
 	case uint(isa.OpMulInt):
 		return handleMulInt(vm, frame, registers, instr)
+	case uint(isa.OpMulInt32):
+		return handleMulInt32(vm, frame, registers, instr)
 	case uint(isa.OpMulIntConst):
 		return handleMulIntConst(vm, frame, registers, instr)
 	case uint(isa.OpMulUint):
@@ -436,6 +444,10 @@ func flatDispatchSwitch(vm *VM, frame *CallFrame, registers *Registers, instr is
 		return handleSubFloat(vm, frame, registers, instr)
 	case uint(isa.OpSubInt):
 		return handleSubInt(vm, frame, registers, instr)
+	case uint(isa.OpSubInt32):
+		return handleSubInt32(vm, frame, registers, instr)
+	case uint(isa.OpSubInt32Const):
+		return handleSubInt32Const(vm, frame, registers, instr)
 	case uint(isa.OpSubIntConst):
 		return handleSubIntConst(vm, frame, registers, instr)
 	case uint(isa.OpSubUint):
@@ -892,10 +904,14 @@ func flatDispatchSwitch(vm *VM, frame *CallFrame, registers *Registers, instr is
 		return handleFlatSubOpTier2ChannelClose(vm, frame, registers, instr)
 	case flatHandlerTier2Base + uint(isa.SubOpTier2DecInt):
 		return handleFlatSubOpTier2DecInt(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2DecInt32):
+		return handleFlatSubOpTier2DecInt32(vm, frame, registers, instr)
 	case flatHandlerTier2Base + uint(isa.SubOpTier2DecUint):
 		return handleFlatSubOpTier2DecUint(vm, frame, registers, instr)
 	case flatHandlerTier2Base + uint(isa.SubOpTier2IncInt):
 		return handleFlatSubOpTier2IncInt(vm, frame, registers, instr)
+	case flatHandlerTier2Base + uint(isa.SubOpTier2IncInt32):
+		return handleFlatSubOpTier2IncInt32(vm, frame, registers, instr)
 	case flatHandlerTier2Base + uint(isa.SubOpTier2IncUint):
 		return handleFlatSubOpTier2IncUint(vm, frame, registers, instr)
 	case flatHandlerTier2Base + uint(isa.SubOpTier2LoadNil):

@@ -301,6 +301,24 @@ initjt_fill:
 	MOVD $·handlerGetStructFieldSliceIndexScalar(SB), R1
 	MOVD R1, 1704(R0)
 
+	MOVD $·handlerAddInt32(SB), R1
+	MOVD R1, 1752(R0)
+
+	MOVD $·handlerSubInt32(SB), R1
+	MOVD R1, 1760(R0)
+
+	MOVD $·handlerMulInt32(SB), R1
+	MOVD R1, 1768(R0)
+
+	MOVD $·handlerAddInt32Const(SB), R1
+	MOVD R1, 1776(R0)
+
+	MOVD $·handlerSubInt32Const(SB), R1
+	MOVD R1, 1784(R0)
+
+	MOVD $·handlerAddUint32(SB), R1
+	MOVD R1, 1792(R0)
+
 	MOVD $·handlerPathBShimLoadGeneralConst(SB), R1
 	MOVD R1, 352(R0)
 
@@ -1013,6 +1031,14 @@ TEXT ·initSubOpJumpTables(SB), NOSPLIT, $0-0
 	MOVD $·handlerSubOpAllocStructLiteral(SB), R1
 	MOVD $·tier2JumpTable(SB), R2
 	MOVD R1, 112(R2)
+
+	MOVD $·handlerSubOpTier2IncInt32(SB), R1
+	MOVD $·tier2JumpTable(SB), R2
+	MOVD R1, 128(R2)
+
+	MOVD $·handlerSubOpTier2DecInt32(SB), R1
+	MOVD $·tier2JumpTable(SB), R2
+	MOVD R1, 136(R2)
 
 	MOVD $·handlerReturnVoidInline(SB), R1
 	MOVD $·tier3JumpTable(SB), R2

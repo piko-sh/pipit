@@ -116,7 +116,7 @@ func TestHoistLoopInvariantConstantLoads(t *testing.T) {
 		},
 		{
 			name:      "refuses when another instruction in the loop writes the destination",
-			body:      exitTestedConstLoop(smallIntConst(5, 7), smallIntConst(5, 8), mk(isa.OpLoadIntConst, 5, 0, 0)),
+			body:      exitTestedConstLoop(smallIntConst(5, 7), mk(isa.OpAddInt, 5, 5, 6), mk(isa.OpLoadIntConst, 5, 0, 0)),
 			wantHoist: false,
 		},
 		{
@@ -303,4 +303,47 @@ func TestRegisterDeadFromTreatsResultSlotsPrecisely(t *testing.T) {
 			require.Equal(t, tt.want, registerDeadFrom(compiledFunction, tt.body, 0, isa.RegisterString, 0))
 		})
 	}
+}
+
+func TestConstantHoistRefusesReadsBeforeTheLoadWithoutExits(t *testing.T) {
+	t.Parallel()
+	body := []isa.Instruction{
+		mk(isa.OpLoadIntConst, 0, 0, 0),
+		mk(isa.OpNop, 0, 0, 0),
+		mk(isa.OpAddInt, 12, 10, 0),
+		mk(isa.OpLoadIntConst, 10, 1, 0),
+		mk(isa.OpAddInt, 0, 0, 1),
+		tier1Jump(0),
+		isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
+	}
+	require.True(t, program.SetJumpTarget(body, 5, 1))
+	cf := &program.CompiledFunction{Body: slices.Clone(body), IntConstants: []int64{0, 7}}
+	require.NoError(t, hoistLoopInvariantConstantLoads(context.Background(), cf, nil))
+	require.Equal(t, body, cf.Body, "the first traversal reads the destination before the load")
+}
+
+func TestConstantHoistRenamesReusedTemporaries(t *testing.T) {
+	t.Parallel()
+	body := []isa.Instruction{
+		mk(isa.OpLoadIntConst, 0, 0, 0),
+		mk(isa.OpJumpIfFalse, 0, 0, 0),
+		smallIntConst(9, 4),
+		mk(isa.OpAddInt, 6, 6, 9),
+		smallIntConst(9, 26),
+		mk(isa.OpAddInt, 7, 7, 9),
+		tier1Jump(0),
+		isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
+	}
+	require.True(t, program.SetJumpTarget(body, 1, 7))
+	require.True(t, program.SetJumpTarget(body, 6, 1))
+	cf := &program.CompiledFunction{Body: body, NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 10}}
+	require.NoError(t, hoistLoopInvariantConstantLoads(context.Background(), cf, nil))
+	hoisted := 0
+	for pc := range 3 {
+		if isa.InstrIsTier1SubOp(cf.Body[pc], isa.SubOpLoadIntConstSmall) {
+			hoisted++
+		}
+	}
+	require.Equal(t, 2, hoisted, "both loads leave the loop once each has its own register")
+	require.Equal(t, uint32(11), cf.NumRegisters[isa.RegisterInt])
 }

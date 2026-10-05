@@ -29,7 +29,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun
 ;   registers: int=2 float=1 string=1 bool=1 uint=1
-;   dispatch:  asm=9 shim=0 exit=0 go=1
+;   dispatch:  asm=9 shim=0 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -49,5 +49,4 @@
 0005 A 1:CALL_SCALAR              134   0   0
 0006 A 1:MOVE_INT                  35   0   1
 0007 A 0:ADD_INT_CONST              0   0   0    ; const = 1
-0008 G 3:TIER3_NOP                  0   0   0
-0009 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0008 A 2:TIER2_RETURN               0  10   1    ; 1 values

@@ -24,7 +24,7 @@ const (
 
 	// OpcodeCount is the number of opcodes. It is declared as int so array-sizing compiles
 	// even when the active opcode set fills the uint8 range.
-	OpcodeCount = int(OpTypeSwitchCase) + 1
+	OpcodeCount = int(OpAddUint32) + 1
 )
 
 const (
@@ -799,6 +799,25 @@ const (
 	// OpTypeSwitchCase is one row of a SubOpTypeSwitchJump table. A indexes the case type
 	// and B|(C<<8) is the signed offset to the case body.
 	OpTypeSwitchCase
+
+	// OpAddInt32 sets ints[A] = int64(int32(ints[B] + ints[C])). Fuses OpAddInt with the
+	// 32-bit OpTruncateNarrow of its result.
+	OpAddInt32
+
+	// OpSubInt32 sets ints[A] = int64(int32(ints[B] - ints[C])).
+	OpSubInt32
+
+	// OpMulInt32 sets ints[A] = int64(int32(ints[B] * ints[C])).
+	OpMulInt32
+
+	// OpAddInt32Const sets ints[A] = int64(int32(ints[B] + intConstants[C])).
+	OpAddInt32Const
+
+	// OpSubInt32Const sets ints[A] = int64(int32(ints[B] - intConstants[C])).
+	OpSubInt32Const
+
+	// OpAddUint32 sets uints[A] = uint64(uint32(uints[B] + uints[C])).
+	OpAddUint32
 )
 
 const (
@@ -1628,6 +1647,13 @@ const (
 	// SubOpTier2SyncClosureUpvalues copies shared upvalue cells from the closure in
 	// general[C] back into this frame's registers.
 	SubOpTier2SyncClosureUpvalues
+
+	// SubOpTier2IncInt32 sets ints[C] = int64(int32(ints[C] + 1)). Fuses SubOpTier2IncInt
+	// with the 32-bit OpTruncateNarrow of its register.
+	SubOpTier2IncInt32
+
+	// SubOpTier2DecInt32 sets ints[C] = int64(int32(ints[C] - 1)).
+	SubOpTier2DecInt32
 )
 
 const (

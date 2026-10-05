@@ -129,8 +129,6 @@ func registerJSFunctions() {
 
 // jsInit reports that the module is loaded and returns the interpreter version.
 //
-// Takes no arguments.
-//
 // Returns any which is a Promise resolving to { ok: true, version: string }.
 func jsInit(_ js.Value, _ []js.Value) any {
 	return newPromise(func() any {

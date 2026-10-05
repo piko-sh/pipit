@@ -156,3 +156,21 @@ func TestKindForRoleNonRegisterRolesAreOpaque(t *testing.T) {
 		require.False(t, ok, "role %v should not be register-shaped", role)
 	}
 }
+
+func TestIncrementShapesReadTheirRegister(t *testing.T) {
+	t.Parallel()
+	for _, op := range []SubOpcodeTier2{SubOpTier2IncInt, SubOpTier2DecInt, SubOpTier2IncUint, SubOpTier2DecUint} {
+		shape := ShapeForInstruction(NewTier2Instruction(op, 4))
+		require.True(t, shape.Reads[2], "%d reads the register it updates", op)
+		require.True(t, shape.Writes[2], "%d writes the register it updates", op)
+	}
+}
+
+func TestAccumulatingKernelsReadTheirDestination(t *testing.T) {
+	t.Parallel()
+	for _, op := range []SubOpcode{SubOpSimdDotProductFloat64, SubOpSimdSumSliceFloat64} {
+		shape := ShapeForInstruction(NewTier1Instruction(op, 4, 5))
+		require.True(t, shape.Reads[1], "%d adds into the register it names in B", op)
+		require.True(t, shape.Writes[1], "%d writes the register it names in B", op)
+	}
+}

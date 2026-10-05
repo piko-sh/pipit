@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=7 string=1 general=12
-;   dispatch:  asm=22 shim=10 exit=0 go=17
+;   dispatch:  asm=22 shim=10 exit=0 go=15
 ;   params:    (none)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -36,47 +36,45 @@
 0019   0:EXT                        1   0   0
 0020 A 1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
 0021 A 1:LT_INT_CONST_JUMP_FALSE  123   3   3
-0022   0:EXT                       10   0   0
-0023 G 3:TIER3_NOP                  0   0   0
-0024 S 0:DEREF                     10   9   0
-0025 G 1:GET_METHOD                83  11  10
-0026   0:EXT                        1   0   0
-0027 A 1:LOAD_INT_CONST_SMALL      75   6   1    ; ints[6] = 1
-0028 G 1:CALL_NATIVE              130   3   0    ; call native method general[11] (site 3)
-0029 S 0:MAKE_CLOSURE              10   1   0    ; closure (func 1)
-0030 G 0:GO                        10   0   0
-0031 A 2:TIER2_INC_INT              0   1   3
-0032 A 1:JUMP                      74 244 255    ; goto -12
-0033 A 1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
-0034 A 1:LE_INT_CONST_JUMP_FALSE  122   3   1
-0035   0:EXT                        4   0   0
-0036 G 3:TIER3_NOP                  0   0   0
-0037 G 0:CHAN_SEND                  1   3   0
-0038 A 2:TIER2_INC_INT              0   1   3
-0039 A 1:JUMP                      74 250 255    ; goto -6
-0040 G 2:TIER2_CHANNEL_CLOSE        0   8   1
-0041 S 0:DEREF                     10   9   0
-0042 G 1:GET_METHOD                83  11  10
-0043   0:EXT                        2   0   0
-0044 G 1:CALL_NATIVE              130   4   0    ; call native method general[11] (site 4)
-0045 G 2:TIER2_CHANNEL_CLOSE        0   8   7
-0046 A 1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
-0047 S 1:RANGE_INIT               142  10   7
-0048 S 1:RANGE_NEXT               143  10   4
-0049   0:EXT                        1   5   0
-0050   0:EXT                        0   0   0
-0051 A 0:JUMP_IF_FALSE              4   3   0    ; if ints[4] == 0 goto +3
-0052 A 0:ADD_INT                    6   3   5
-0053 A 1:MOVE_INT                  35   3   6
-0054 A 1:JUMP                      74 249 255    ; goto -7
-0055 A 1:MOVE_INT                  35   1   3
-0056 A 1:MOVE_INT                  35   0   1
-0057 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0022   0:EXT                        9   0   0
+0023 S 0:DEREF                     10   9   0
+0024 G 1:GET_METHOD                83  11  10
+0025   0:EXT                        1   0   0
+0026 A 1:LOAD_INT_CONST_SMALL      75   6   1    ; ints[6] = 1
+0027 G 1:CALL_NATIVE              130   3   0    ; call native method general[11] (site 3)
+0028 S 0:MAKE_CLOSURE              10   1   0    ; closure (func 1)
+0029 G 0:GO                        10   0   0
+0030 A 2:TIER2_INC_INT              0   1   3
+0031 A 1:JUMP                      74 245 255    ; goto -11
+0032 A 1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0033 A 1:LE_INT_CONST_JUMP_FALSE  122   3   1
+0034   0:EXT                        3   0   0
+0035 G 0:CHAN_SEND                  1   3   0
+0036 A 2:TIER2_INC_INT              0   1   3
+0037 A 1:JUMP                      74 251 255    ; goto -5
+0038 G 2:TIER2_CHANNEL_CLOSE        0   8   1
+0039 S 0:DEREF                     10   9   0
+0040 G 1:GET_METHOD                83  11  10
+0041   0:EXT                        2   0   0
+0042 G 1:CALL_NATIVE              130   4   0    ; call native method general[11] (site 4)
+0043 G 2:TIER2_CHANNEL_CLOSE        0   8   7
+0044 A 1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
+0045 S 1:RANGE_INIT               142  10   7
+0046 S 1:RANGE_NEXT               143  10   4
+0047   0:EXT                        1   5   0
+0048   0:EXT                        0   0   0
+0049 A 0:JUMP_IF_FALSE              4   3   0    ; if ints[4] == 0 goto +3
+0050 A 0:ADD_INT                    6   3   5
+0051 A 1:MOVE_INT                  35   3   6
+0052 A 1:JUMP                      74 249 255    ; goto -7
+0053 A 1:MOVE_INT                  35   1   3
+0054 A 1:MOVE_INT                  35   0   1
+0055 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function <closure>
 ;   registers: int=7 general=6 bool=2
-;   dispatch:  asm=16 shim=0 exit=0 go=12
+;   dispatch:  asm=15 shim=0 exit=0 go=10
 ;   params:    (none)
 ;   returns:   (none)
 ; ═════════════════════════════════════════════════════════════
@@ -99,25 +97,22 @@
 0011   0:EXT                        0   3   1
 0012   0:EXT                        4   3   0
 0013 A 1:EQ_INT_CONST_JUMP_TRUE   125   1   0
-0014   0:EXT                        5   0   0
-0015 G 3:TIER3_NOP                  0   0   0
-0016 A 1:EQ_INT_CONST_JUMP_TRUE   125   1   1
-0017   0:EXT                        4   0   0
-0018 G 3:TIER3_NOP                  0   0   0
-0019 A 1:JUMP                      74  15   0    ; goto 15
-0020 A 3:TIER3_RETURN_VOID          0   0   1
-0021 A 1:JUMP                      74  13   0    ; goto 13
-0022 G 1:INT_TO_BOOL               54   0   0
-0023 G 1:BOOL_TO_INT               53   4   0
-0024 G 1:NOT                       52   4   4
-0025 G 1:INT_TO_BOOL               54   1   4
-0026 G 1:BOOL_TO_INT               53   4   1
-0027 A 0:JUMP_IF_FALSE              4   1   0    ; if ints[4] == 0 goto +1
-0028 A 3:TIER3_RETURN_VOID          0   0   1
-0029 A 0:GET_UPVALUE                5   2   3
-0030 A 1:LOAD_INT_CONST_SMALL      75   4   2    ; ints[4] = 2
-0031 G 1:MOVE_GENERAL_TO_INT       41   5   4
-0032 A 0:MUL_INT                    6   5   4
-0033 G 0:CHAN_SEND                  5   6   0
-0034 A 1:JUMP                      74   0   0    ; goto 0
-0035 A 1:JUMP                      74 224 255    ; goto -32
+0014   0:EXT                        3   0   0
+0015 A 1:EQ_INT_CONST_JUMP_TRUE   125   1   1
+0016   0:EXT                        3   0   0
+0017 A 1:JUMP                      74 242 255    ; goto -14
+0018 A 3:TIER3_RETURN_VOID          0   0   1
+0019 A 1:JUMP                      74 240 255    ; goto -16
+0020 G 1:INT_TO_BOOL               54   0   0
+0021 G 1:BOOL_TO_INT               53   4   0
+0022 G 1:NOT                       52   4   4
+0023 G 1:INT_TO_BOOL               54   1   4
+0024 G 1:BOOL_TO_INT               53   4   1
+0025 A 0:JUMP_IF_FALSE              4   1   0    ; if ints[4] == 0 goto +1
+0026 A 3:TIER3_RETURN_VOID          0   0   1
+0027 A 0:GET_UPVALUE                5   2   3
+0028 A 1:LOAD_INT_CONST_SMALL      75   4   2    ; ints[4] = 2
+0029 G 1:MOVE_GENERAL_TO_INT       41   5   4
+0030 A 0:MUL_INT                    6   5   4
+0031 G 0:CHAN_SEND                  5   6   0
+0032 A 1:JUMP                      74 227 255    ; goto -29

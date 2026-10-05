@@ -38,8 +38,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=9 string=6 general=24 uint=6
-;   dispatch:  asm=108 shim=68 exit=0 go=77
+;   registers: int=9 string=22 general=24 uint=6
+;   dispatch:  asm=106 shim=68 exit=0 go=77
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -301,19 +301,19 @@
 0249 G 1:LEN                       70   0  18
 0250 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
 0251 A 1:LT_INT_JUMP_FALSE        116   1   0
-0252   0:EXT                       48   0   0
+0252   0:EXT                       46   0   0
 0253 S 1:RESET_SHARED_CELL        139  19   3
 0254 S 0:INDEX                     19  18   1
 0255 A 0:MOVE_GENERAL              19  19   2
 0256 A 0:GET_STRUCT_FIELD_GENERAL_T0  20  19   1
 0257 A 1:CALL                     128  21   0    ; call (site 21)
-0258 A 0:LOAD_STRING_CONST          1  22   0    ; strings[1] = ""
+0258 A 0:LOAD_STRING_CONST         21  22   0    ; strings[21] = ""
 0259 S 1:RESET_SHARED_CELL        139   1   2
-0260 S 0:ALLOC_INDIRECT            20   1   2
+0260 S 0:ALLOC_INDIRECT            20  21   2
 0261   0:EXT                        4   0   0
 0262 A 0:GET_STRUCT_FIELD_GENERAL_T0  21  19   1
 0263 S 1:NE_INTERFACE_NIL         147   3  21
-0264 A 0:JUMP_IF_FALSE              3  23   0    ; if ints[3] == 0 goto +23
+0264 A 0:JUMP_IF_FALSE              3  22   0    ; if ints[3] == 0 goto +22
 0265 A 0:MOVE_GENERAL              21  21   1    ; CSE'd from PC 262
 0266 A 1:CALL_METHOD              132  22   0    ; call method (site 22)
 0267   0:EXT                       23   0   0
@@ -333,27 +333,25 @@
 0281 A 1:LOAD_UINT_CONST_SMALL     99   5  21    ; uints[5] = 21
 0282 A 0:EQ_UINT                    8   0   5
 0283 A 0:BIT_OR                     3   3   8
-0284 A 0:JUMP_IF_FALSE              3   3   0    ; if ints[3] == 0 goto +3
+0284 A 0:JUMP_IF_FALSE              3   2   0    ; if ints[3] == 0 goto +2
 0285 G 1:CALL_IIFE                133  23   0    ; iife (site 23)
 0286 G 3:SYNC_IIFE_UPVALUES         0   0   2
-0287 A 1:JUMP                      74   0   0    ; goto 0
-0288 G 1:GET_METHOD                83  21  16
-0289   0:EXT                       24   0   0
-0290 S 0:LOAD_GENERAL_CONST        22  38   0
-0291 A 0:LOAD_STRING_CONST          2  25   0    ; strings[2] = "%-48s = %s%s\n"
-0292 G 1:GET_STRUCT_FIELD_STRING   90   3  19
-0293   0:EXT                        0   0   0
-0294 S 0:DEREF                     23  20   0
-0295 S 0:UNPACK_INTERFACE           4  23   2
-0296 G 1:CALL_NATIVE              130  24   0    ; call native general[22] (site 24)
-0297 G 1:CALL_NATIVE              130  25   0    ; call native method general[21] (site 25)
-0298 A 1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
-0299 A 0:ADD_INT                    1   1   3
-0300 A 1:JUMP                      74 206 255    ; goto -50
-0301 G 1:GET_METHOD                83  21  16
-0302   0:EXT                       26   0   0
-0303 G 1:CALL_NATIVE              130  26   0    ; call native method general[21] (site 26)
-0304 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0287 G 1:GET_METHOD                83  21  16
+0288   0:EXT                       24   0   0
+0289 S 0:LOAD_GENERAL_CONST        22  38   0
+0290 A 0:LOAD_STRING_CONST          2  25   0    ; strings[2] = "%-48s = %s%s\n"
+0291 G 1:GET_STRUCT_FIELD_STRING   90   3  19
+0292   0:EXT                        0   0   0
+0293 S 0:DEREF                     23  20   0
+0294 S 0:UNPACK_INTERFACE           4  23   2
+0295 G 1:CALL_NATIVE              130  24   0    ; call native general[22] (site 24)
+0296 G 1:CALL_NATIVE              130  25   0    ; call native method general[21] (site 25)
+0297 A 0:ADD_INT_CONST              1   1   2    ; const = 1
+0298 A 1:JUMP                      74 208 255    ; goto -48
+0299 G 1:GET_METHOD                83  21  16
+0300   0:EXT                       26   0   0
+0301 G 1:CALL_NATIVE              130  26   0    ; call native method general[21] (site 26)
+0302 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function <closure>

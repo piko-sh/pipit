@@ -269,8 +269,6 @@ func (client *FilesystemClient) abort() error {
 
 // watchCancellation joins cancellation cleanup before an operation returns.
 //
-// Takes the caller context without deriving it from the broker's exit notification.
-//
 // Returns a completion function that stops or joins the cancellation callback.
 func (client *FilesystemClient) watchCancellation(ctx context.Context) func() error {
 	done := make(chan struct{})

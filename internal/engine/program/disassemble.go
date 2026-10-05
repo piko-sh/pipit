@@ -160,7 +160,7 @@ func (compiledFunction *CompiledFunction) disassembleLoadComment(instr isa.Instr
 		}
 	case isa.OpLoadStringConst:
 		return compiledFunction.disassembleStringConstComment(instr)
-	case isa.OpAddIntConst, isa.OpSubIntConst, isa.OpMulIntConst:
+	case isa.OpAddIntConst, isa.OpSubIntConst, isa.OpMulIntConst, isa.OpAddInt32Const, isa.OpSubInt32Const:
 		if int(instr.C) < len(compiledFunction.IntConstants) {
 			return fmt.Sprintf("const = %d", compiledFunction.IntConstants[instr.C])
 		}

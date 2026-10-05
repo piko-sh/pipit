@@ -52,7 +52,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function generateTerm
 ;   registers: int=5 general=3 uint=4 sliceByte=1
-;   dispatch:  asm=39 shim=6 exit=0 go=9
+;   dispatch:  asm=35 shim=6 exit=0 go=9
 ;   params:    (general, uint, int)
 ;   returns:   (uint)
 ; ═════════════════════════════════════════════════════════════
@@ -64,66 +64,62 @@
 0000 A 1:CALL_SCALAR              134   0   0
 0001 A 1:MOVE_UINT                 39   0   1
 0002 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0003 A 0:EQ_INT                     2   0   1
-0004 A 1:MOVE_INT                  35   3   2
-0005 A 0:JUMP_IF_TRUE               3   6   0    ; if ints[3] != 0 goto +6
-0006 A 1:LOAD_UINT_CONST_SMALL     99   1   3    ; uints[1] = 3
-0007 A 0:REM_UINT                   2   0   1
-0008 A 0:TRUNCATE_NARROW            2  32   5
-0009 A 1:LOAD_UINT_CONST_SMALL     99   3   0    ; uints[3] = 0
-0010 A 0:EQ_UINT                    4   2   3
-0011 A 1:MOVE_INT                  35   3   4
-0012 A 0:JUMP_IF_FALSE              3   8   0    ; if ints[3] == 0 goto +8
-0013 A 1:LOAD_UINT_CONST_SMALL     99   1 100    ; uints[1] = 100
-0014 A 0:REM_UINT                   2   0   1
-0015 A 0:TRUNCATE_NARROW            2  32   5
-0016 G 1:UINT_TO_INT               56   1   2
-0017 A 1:CALL                     128   1   0    ; call (site 1)
-0018 S 0:PACK_INTERFACE             1   0  12
-0019 G 1:STAR_APPEND_BYTE_SPREAD  106   0   1
-0020 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0021 A 1:LOAD_UINT_CONST_SMALL     99   1  40    ; uints[1] = 40
-0022 G 1:STAR_APPEND_BYTE_FAST    105   0   1
-0023 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
-0024 A 0:SUB_INT                    2   0   1
-0025 A 1:CALL                     128   2   0    ; call (site 2)
-0026 A 1:MOVE_UINT                 39   0   1
-0027 A 1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
-0028 S 0:MAKE_SLICE                 1   1   1
-0029   0:EXT                        0   0   0
-0030 A 1:LOAD_UINT_CONST_SMALL     99   1  43    ; uints[1] = 43
-0031 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0032 G 0:PACK_TYPED                 2   1   5
-0033   0:EXT                        1   0   0
-0034 S 0:INDEX_SET                  1   1   2
-0035 A 1:LOAD_UINT_CONST_SMALL     99   1  45    ; uints[1] = 45
-0036 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
-0037 G 0:PACK_TYPED                 2   1   5
-0038   0:EXT                        1   0   0
-0039 S 0:INDEX_SET                  1   1   2
-0040 A 1:LOAD_UINT_CONST_SMALL     99   1  42    ; uints[1] = 42
-0041 A 1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
-0042 G 0:PACK_TYPED                 2   1   5
-0043   0:EXT                        1   0   0
-0044 S 0:INDEX_SET                  1   1   2
-0045 A 1:LOAD_UINT_CONST_SMALL     99   1   3    ; uints[1] = 3
-0046 A 0:REM_UINT                   2   0   1
-0047 A 0:TRUNCATE_NARROW            2  32   5
-0048 G 1:UINT_TO_INT               56   1   2
-0049 S 0:SLICE_GET_UINT             3   1   1
-0050 G 1:STAR_APPEND_BYTE_FAST    105   0   3
-0051 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
-0052 A 0:SUB_INT                    2   0   1
-0053 A 1:CALL                     128   3   0    ; call (site 3)
-0054 A 1:MOVE_UINT                 39   0   1
-0055 A 1:LOAD_UINT_CONST_SMALL     99   1  41    ; uints[1] = 41
-0056 G 1:STAR_APPEND_BYTE_FAST    105   0   1
-0057 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0003 A 0:EQ_INT                     3   0   1
+0004 A 0:JUMP_IF_TRUE               3   5   0    ; if ints[3] != 0 goto +5
+0005 A 1:LOAD_UINT_CONST_SMALL     99   1   3    ; uints[1] = 3
+0006 A 0:REM_UINT                   2   0   1
+0007 A 0:TRUNCATE_NARROW            2  32   5
+0008 A 1:LOAD_UINT_CONST_SMALL     99   3   0    ; uints[3] = 0
+0009 A 0:EQ_UINT                    3   2   3
+0010 A 0:JUMP_IF_FALSE              3   8   0    ; if ints[3] == 0 goto +8
+0011 A 1:LOAD_UINT_CONST_SMALL     99   1 100    ; uints[1] = 100
+0012 A 0:REM_UINT                   2   0   1
+0013 A 0:TRUNCATE_NARROW            2  32   5
+0014 G 1:UINT_TO_INT               56   1   2
+0015 A 1:CALL                     128   1   0    ; call (site 1)
+0016 S 0:PACK_INTERFACE             1   0  12
+0017 G 1:STAR_APPEND_BYTE_SPREAD  106   0   1
+0018 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0019 A 1:LOAD_UINT_CONST_SMALL     99   1  40    ; uints[1] = 40
+0020 G 1:STAR_APPEND_BYTE_FAST    105   0   1
+0021 A 0:SUB_INT_CONST              2   0   1    ; const = 1
+0022 A 1:CALL                     128   2   0    ; call (site 2)
+0023 A 1:MOVE_UINT                 39   0   1
+0024 A 1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
+0025 S 0:MAKE_SLICE                 1   1   1
+0026   0:EXT                        0   0   0
+0027 A 1:LOAD_UINT_CONST_SMALL     99   1  43    ; uints[1] = 43
+0028 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0029 G 0:PACK_TYPED                 2   1   5
+0030   0:EXT                        1   0   0
+0031 S 0:INDEX_SET                  1   1   2
+0032 A 1:LOAD_UINT_CONST_SMALL     99   1  45    ; uints[1] = 45
+0033 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0034 G 0:PACK_TYPED                 2   1   5
+0035   0:EXT                        1   0   0
+0036 S 0:INDEX_SET                  1   1   2
+0037 A 1:LOAD_UINT_CONST_SMALL     99   1  42    ; uints[1] = 42
+0038 A 1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0039 G 0:PACK_TYPED                 2   1   5
+0040   0:EXT                        1   0   0
+0041 S 0:INDEX_SET                  1   1   2
+0042 A 1:LOAD_UINT_CONST_SMALL     99   1   3    ; uints[1] = 3
+0043 A 0:REM_UINT                   2   0   1
+0044 A 0:TRUNCATE_NARROW            2  32   5
+0045 G 1:UINT_TO_INT               56   1   2
+0046 S 0:SLICE_GET_UINT             3   1   1
+0047 G 1:STAR_APPEND_BYTE_FAST    105   0   3
+0048 A 0:SUB_INT_CONST              2   0   1    ; const = 1
+0049 A 1:CALL                     128   3   0    ; call (site 3)
+0050 A 1:MOVE_UINT                 39   0   1
+0051 A 1:LOAD_UINT_CONST_SMALL     99   1  41    ; uints[1] = 41
+0052 G 1:STAR_APPEND_BYTE_FAST    105   0   1
+0053 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function intToDecimalBytes
-;   registers: int=8 general=2 uint=1 sliceByte=1
-;   dispatch:  asm=18 shim=5 exit=0 go=6
+;   registers: int=10 general=2 uint=1 sliceByte=1
+;   dispatch:  asm=18 shim=5 exit=0 go=4
 ;   params:    (int)
 ;   returns:   (sliceByte)
 ; ═════════════════════════════════════════════════════════════
@@ -133,44 +129,42 @@
 ;   uints:   [0]=48
 
 0000 A 1:EQ_INT_CONST_JUMP_FALSE  124   0   0
-0001   0:EXT                       11   0   0
-0002 G 3:TIER3_NOP                  0   0   0
-0003 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
-0004 S 0:MAKE_SLICE                 0   1   1
-0005   0:EXT                        0   0   0
-0006 A 1:LOAD_UINT_CONST_SMALL     99   0  48    ; uints[0] = 48
-0007 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0008 G 0:PACK_TYPED                 1   0   5
-0009   0:EXT                        1   0   0
-0010 S 0:INDEX_SET                  0   1   1
-0011 G 1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   0
-0012 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0013 S 0:LOAD_GENERAL_CONST         0   0   0
-0014 A 1:LOAD_INT_CONST_SMALL      75   1   4    ; ints[1] = 4
-0015 A 1:GT_INT_CONST_JUMP_FALSE  127   0   0
-0016   0:EXT                       13   0   0
-0017 G 3:TIER3_NOP                  0   0   0
-0018 A 2:TIER2_DEC_INT              0   2   1
-0019 A 1:LOAD_INT_CONST_SMALL      75   4  48    ; ints[4] = 48
-0020 A 1:LOAD_INT_CONST_SMALL      75   5  10    ; ints[5] = 10
-0021 A 0:REM_INT                    6   0   5
-0022 A 0:ADD_INT                    7   4   6
-0023 G 1:INT_TO_UINT               55   0   7
-0024 A 0:TRUNCATE_NARROW            0   8   5
-0025 S 0:SLICE_SET_UINT             0   1   0
-0026 A 1:LOAD_INT_CONST_SMALL      75   4  10    ; ints[4] = 10
-0027 A 0:DIV_INT                    5   0   4
-0028 A 1:MOVE_INT                  35   0   5
-0029 A 1:JUMP                      74 241 255    ; goto -15
-0030 S 1:SLICE_OP                 141   1   0
-0031   0:EXT                        1   1   0
-0032 G 1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   1
-0033 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0001   0:EXT                       10   0   0
+0002 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0003 S 0:MAKE_SLICE                 0   1   1
+0004   0:EXT                        0   0   0
+0005 A 1:LOAD_UINT_CONST_SMALL     99   0  48    ; uints[0] = 48
+0006 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0007 G 0:PACK_TYPED                 1   0   5
+0008   0:EXT                        1   0   0
+0009 S 0:INDEX_SET                  0   1   1
+0010 G 1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   0
+0011 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0012 S 0:LOAD_GENERAL_CONST         0   0   0
+0013 A 1:LOAD_INT_CONST_SMALL      75   1   4    ; ints[1] = 4
+0014 A 1:LOAD_INT_CONST_SMALL      75   8  48    ; LICM hoist of PC 19
+0015 A 1:LOAD_INT_CONST_SMALL      75   9  10    ; LICM hoist of PC 19
+0016 A 1:LOAD_INT_CONST_SMALL      75   4  10    ; LICM hoist of PC 24
+0017 A 1:GT_INT_CONST_JUMP_FALSE  127   0   0
+0018   0:EXT                        9   0   0
+0019 A 2:TIER2_DEC_INT              0   2   1
+0020 A 0:REM_INT                    6   0   9
+0021 A 0:ADD_INT                    7   8   6
+0022 G 1:INT_TO_UINT               55   0   7
+0023 A 0:TRUNCATE_NARROW            0   8   5
+0024 S 0:SLICE_SET_UINT             0   1   0
+0025 A 0:DIV_INT                    5   0   4
+0026 A 1:MOVE_INT                  35   0   5
+0027 A 1:JUMP                      74 245 255    ; goto -11
+0028 S 1:SLICE_OP                 141   1   0
+0029   0:EXT                        1   1   0
+0030 G 1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   1
+0031 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=6 string=4 uint=1
-;   dispatch:  asm=14 shim=2 exit=0 go=3
+;   dispatch:  asm=14 shim=2 exit=0 go=2
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -185,21 +179,20 @@
 0002 G 1:LOAD_ZERO                 79   0   2
 0003 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
 0004 A 1:LT_INT_CONST_JUMP_FALSE  123   1   1
-0005   0:EXT                        9   0   0
-0006 G 3:TIER3_NOP                  0   0   0
-0007 G 1:LOAD_ZERO                 79   1   2
-0008 A 1:CALL                     128   0   0    ; call (site 0)
-0009 A 1:LEN_STRING                65   4   1
-0010 A 0:ADD_INT                    5   0   4
-0011 A 1:MOVE_INT                  35   0   5
-0012 A 1:MOVE_STRING               37   0   1
-0013 A 2:TIER2_INC_INT              0   1   1
-0014 A 1:JUMP                      74 245 255    ; goto -11
-0015 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = " "
-0016 S 0:CONCAT_STRING              2   0   1
-0017 A 1:CALL_SCALAR              134   1   0
-0018 S 0:CONCAT_STRING              0   2   3
-0019 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0005   0:EXT                        8   0   0
+0006 G 1:LOAD_ZERO                 79   1   2
+0007 A 1:CALL                     128   0   0    ; call (site 0)
+0008 A 1:LEN_STRING                65   4   1
+0009 A 0:ADD_INT                    5   0   4
+0010 A 1:MOVE_INT                  35   0   5
+0011 A 1:MOVE_STRING               37   0   1
+0012 A 2:TIER2_INC_INT              0   1   1
+0013 A 1:JUMP                      74 246 255    ; goto -10
+0014 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = " "
+0015 S 0:CONCAT_STRING              2   0   1
+0016 A 1:CALL_SCALAR              134   1   0
+0017 S 0:CONCAT_STRING              0   2   3
+0018 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function intToString

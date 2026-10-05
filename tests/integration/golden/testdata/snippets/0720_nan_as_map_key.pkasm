@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=5 float=2 string=4 general=7 bool=1
-;   dispatch:  asm=26 shim=20 exit=0 go=19
+;   dispatch:  asm=25 shim=20 exit=0 go=19
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -70,18 +70,17 @@
 0052 G 1:CALL_NATIVE              130   5   0    ; call native general[6] (site 5)
 0053 S 0:CONCAT_STRING              3   0   2
 0054 A 1:MOVE_STRING               37   0   3
-0055 A 1:LOAD_INT_CONST_SMALL      75   4   0    ; ints[4] = 0
-0056 A 1:MOVE_INT                  35   0   4
-0057 S 1:RANGE_INIT               142   6   0
-0058 S 1:RANGE_NEXT               143   6   4
+0055 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0056 S 1:RANGE_INIT               142   6   0
+0057 S 1:RANGE_NEXT               143   6   4
+0058   0:EXT                        0   0   0
 0059   0:EXT                        0   0   0
-0060   0:EXT                        0   0   0
-0061 A 0:JUMP_IF_FALSE              4   2   0    ; if ints[4] == 0 goto +2
-0062 A 2:TIER2_INC_INT              0   1   0
-0063 A 1:JUMP                      74 250 255    ; goto -6
-0064 S 0:LOAD_GENERAL_CONST         6   6   0
-0065 A 0:LOAD_STRING_CONST          1   4   0    ; strings[1] = "range=%d"
-0066 G 1:CALL_NATIVE              130   6   0    ; call native general[6] (site 6)
-0067 S 0:CONCAT_STRING              3   0   2
-0068 A 1:MOVE_STRING               37   0   3
-0069 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0060 A 0:JUMP_IF_FALSE              4   2   0    ; if ints[4] == 0 goto +2
+0061 A 2:TIER2_INC_INT              0   1   0
+0062 A 1:JUMP                      74 250 255    ; goto -6
+0063 S 0:LOAD_GENERAL_CONST         6   6   0
+0064 A 0:LOAD_STRING_CONST          1   4   0    ; strings[1] = "range=%d"
+0065 G 1:CALL_NATIVE              130   6   0    ; call native general[6] (site 6)
+0066 S 0:CONCAT_STRING              3   0   2
+0067 A 1:MOVE_STRING               37   0   3
+0068 A 2:TIER2_RETURN               0  10   1    ; 1 values

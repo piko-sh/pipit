@@ -137,6 +137,8 @@ func registerInlineLoadConstShapes() {
 // by the inliner.
 func registerInlineConstFusedArithShapes() {
 	inlinePoolShapes[isa.FlatIndexOf(isa.OpAddIntConst)] = inlinePoolShape{cKindByte: poolIntConsts}
+	inlinePoolShapes[isa.FlatIndexOf(isa.OpAddInt32Const)] = inlinePoolShape{cKindByte: poolIntConsts}
+	inlinePoolShapes[isa.FlatIndexOf(isa.OpSubInt32Const)] = inlinePoolShape{cKindByte: poolIntConsts}
 	inlinePoolShapes[isa.FlatIndexOf(isa.OpSubIntConst)] = inlinePoolShape{cKindByte: poolIntConsts}
 	inlinePoolShapes[isa.FlatIndexOf(isa.OpMulIntConst)] = inlinePoolShape{cKindByte: poolIntConsts}
 }

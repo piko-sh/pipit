@@ -122,7 +122,7 @@ func NewIsolatedFilesystemWorker(ctx context.Context, config IsolatedFilesystemC
 
 // Eval runs one expression or statement submission with the fixed pipit/fs manifest.
 //
-// Takes source bytes, never a host path.
+// Takes source (string) bytes, never a host path.
 //
 // Returns bounded output and a scalar only after both process owners are cleaned up.
 func (worker *IsolatedFilesystemWorker) Eval(source string) (RestrictedResult, error) {

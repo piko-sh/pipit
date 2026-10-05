@@ -79,8 +79,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=10 string=1 general=5 bool=1 uint=4
-;   dispatch:  asm=75 shim=14 exit=0 go=21
+;   registers: int=22 string=1 general=5 bool=1 uint=5
+;   dispatch:  asm=66 shim=14 exit=3 go=14
 ;   params:    (none)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -94,127 +94,114 @@
 0002 S 0:MAKE_SLICE                 0   0   1
 0003   0:EXT                        0   0   0
 0004 A 0:LOAD_UINT_CONST            0   0   0
-0005 A 1:LOAD_INT_CONST_SMALL      75   4   7    ; LICM hoist of PC 17
-0006 G 1:LEN                       70   0   0
-0007 A 1:LT_INT_CONST_JUMP_FALSE  123   0   2
-0008   0:EXT                       26   0   0
-0009 G 3:TIER3_NOP                  0   0   0
-0010 A 0:LOAD_UINT_CONST            1   1   0
-0011 A 0:MUL_UINT                   2   0   1
-0012 A 0:TRUNCATE_NARROW            2  32   5
-0013 A 0:LOAD_UINT_CONST            3   2   0
-0014 A 0:ADD_UINT                   0   2   3
-0015 A 0:TRUNCATE_NARROW            0  32   5
-0016 S 0:GET_GLOBAL                 1   0   3
-0017 G 1:UINT_TO_INT               56   3   0
-0018 A 0:BIT_AND                    5   3   4
-0019 S 0:SLICE_GET_STRING           0   1   5
-0020 G 1:LEN                       70   3   0
-0021 A 1:GT_INT_CONST_JUMP_FALSE  127   3   0
-0022   0:EXT                        3   0   0
-0023 G 3:TIER3_NOP                  0   0   0
-0024 A 1:LOAD_UINT_CONST_SMALL     99   1  32    ; uints[1] = 32
-0025 G 0:APPEND_BYTE_FAST_INPLACE   0   0   1
-0026 A 1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
-0027 A 1:LEN_STRING_LT_JUMP_FALSE  78   3   0
-0028   0:EXT                        5   0   0
-0029 G 3:TIER3_NOP                  0   0   0
-0030 A 0:STRING_INDEX               1   0   3
-0031 G 0:APPEND_BYTE_FAST_INPLACE   0   0   1
-0032 A 2:TIER2_INC_INT              0   1   3
-0033 A 1:JUMP                      74 249 255    ; goto -7
-0034 A 1:JUMP                      74 227 255    ; goto -29
-0035 G 2:MAKE_MAP                   0  12   1
-0036   0:EXT                        1   0   0
-0037 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0038 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0039 G 1:LEN                       70   2   0
-0040 A 1:LE_INT_JUMP_FALSE        117   1   2
-0041   0:EXT                       20   0   0
-0042 G 1:LEN                       70   4   0
-0043 A 0:EQ_INT                     5   1   4
-0044 A 1:MOVE_INT                  35   6   5
-0045 A 0:JUMP_IF_TRUE               6   4   0    ; if ints[6] != 0 goto +4
-0046 S 0:SLICE_GET_UINT             1   0   1
-0047 A 1:LOAD_UINT_CONST_SMALL     99   2  32    ; uints[2] = 32
-0048 A 0:EQ_UINT                    7   1   2
-0049 A 1:MOVE_INT                  35   6   7
-0050 A 0:JUMP_IF_FALSE              6   9   0    ; if ints[6] == 0 goto +9
-0051 A 1:GT_INT_JUMP_FALSE        118   1   0
-0052   0:EXT                        5   0   0
-0053 S 1:SLICE_OP                 141   2   0
-0054   0:EXT                        3   0   1
-0055 A 1:BYTES_TO_STRING           11   0   2
-0056 A 1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
-0057 S 0:MAP_ADD_STRING_INT         1   0   4
-0058 A 1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
-0059 A 0:ADD_INT                    0   1   4
-0060 A 2:TIER2_INC_INT              0   1   1
-0061 A 1:JUMP                      74 233 255    ; goto -23
-0062 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0063 A 1:LOAD_INT_CONST_SMALL      75   2   4    ; ints[2] = 4
-0064 S 0:MAKE_SLICE                 2   1   2
-0065   0:EXT                        2   0   0
-0066 A 0:MOVE_GENERAL               0   2   1
-0067 S 1:RANGE_INIT               142   2   1
-0068 S 1:RANGE_NEXT               143   2   1
-0069   0:EXT                        3   0   2
-0070   0:EXT                        0   2   0
-0071 A 0:JUMP_IF_FALSE              1  44   0    ; if ints[1] == 0 goto +44
-0072 G 2:MAKE_MAP                   0  12   3
-0073   0:EXT                        3   0   0
-0074 G 1:SET_STRUCT_FIELD_STRING   95   3   0
-0075   0:EXT                        0   0   0
-0076 A 0:SET_STRUCT_FIELD_INT_T0    3   2   1
-0077 G 1:LEN                       70   3   0
-0078 A 1:LOAD_INT_CONST_SMALL      75   4   0    ; LICM hoist of PC 78
-0079 A 0:GT_INT                     5   3   4
-0080 A 1:MOVE_INT                  35   6   5
-0081 A 0:JUMP_IF_FALSE              6   6   0    ; if ints[6] == 0 goto +6
-0082 A 1:LOAD_INT_CONST_SMALL      75   7   1    ; ints[7] = 1
-0083 A 0:SUB_INT                    8   3   7
-0084 S 0:INDEX                      4   0   8
-0085 A 1:CALL                     128   0   0    ; call (site 0)
-0086 G 1:BOOL_TO_INT               53   9   0
-0087 A 1:MOVE_INT                  35   6   9
-0088 A 0:JUMP_IF_FALSE              6   2   0    ; if ints[6] == 0 goto +2
-0089 A 2:TIER2_DEC_INT              0   2   3
-0090 A 1:JUMP                      74 244 255    ; goto -12
-0091 G 2:MAKE_MAP                   0  12   4
-0092   0:EXT                        3   0   0
-0093 G 0:APPEND_INPLACE             0   0   4
-0094 G 1:LEN                       70   4   0
-0095 A 1:LOAD_INT_CONST_SMALL      75   5   1    ; ints[5] = 1
-0096 A 0:SUB_INT                    6   4   5
-0097 A 1:MOVE_INT                  35   4   6
-0098 A 1:LOAD_INT_CONST_SMALL      75   6   1    ; LICM hoist of PC 100
-0099 A 1:GT_INT_JUMP_FALSE        118   4   3
-0100   0:EXT                        5   0   0
-0101 A 0:SUB_INT                    7   4   6
-0102 S 0:INDEX                      4   0   7
-0103 S 0:INDEX_SET                  0   4   4
-0104 A 2:TIER2_DEC_INT              0   2   4
-0105 A 1:JUMP                      74 249 255    ; goto -7
-0106 S 0:INDEX_SET                  0   3   3
-0107 G 1:LEN                       70   4   0
-0108 A 1:GT_INT_CONST_JUMP_FALSE  127   4   6
-0109   0:EXT                        5   0   0
-0110 G 3:TIER3_NOP                  0   0   0
-0111 A 1:LOAD_INT_CONST_SMALL      75   4   3    ; ints[4] = 3
-0112 S 1:SLICE_OP                 141   4   0
-0113   0:EXT                        2   0   4
-0114 A 0:MOVE_GENERAL               0   4   1
-0115 A 1:JUMP                      74 208 255    ; goto -48
-0116 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0117 A 1:MOVE_INT                  35   0   1
-0118 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0119 G 1:LEN                       70   2   0
-0120 A 1:LT_INT_JUMP_FALSE        116   1   2
-0121   0:EXT                        6   0   0
-0122 A 0:SLICE_INDEX_STRUCT_FIELD_INT   4   0   1
-0123   0:EXT                        1   0   0
-0124 A 0:ADD_INT                    5   0   4
-0125 A 1:MOVE_INT                  35   0   5
-0126 A 2:TIER2_INC_INT              0   1   1
-0127 A 1:JUMP                      74 247 255    ; goto -9
-0128 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0005 A 0:LOAD_UINT_CONST            4   1   0    ; LICM hoist of PC 10
+0006 A 1:LOAD_INT_CONST_SMALL      75   4   7    ; LICM hoist of PC 15
+0007 G 1:LEN                       70   0   0
+0008 A 1:LT_INT_CONST_JUMP_FALSE  123   0   2
+0009   0:EXT                       21   0   0
+0010 A 0:MUL_UINT                   2   0   4
+0011 A 0:TRUNCATE_NARROW            2  32   5
+0012 A 0:LOAD_UINT_CONST            3   2   0
+0013 A 0:ADD_UINT32                 0   2   3
+0014 S 0:GET_GLOBAL                 1   0   3
+0015 G 1:UINT_TO_INT               56   3   0
+0016 A 0:BIT_AND                    5   3   4
+0017 S 0:SLICE_GET_STRING           0   1   5
+0018 G 1:LEN                       70   3   0
+0019 A 1:GT_INT_CONST_JUMP_FALSE  127   3   0
+0020   0:EXT                        2   0   0
+0021 A 1:LOAD_UINT_CONST_SMALL     99   1  32    ; uints[1] = 32
+0022 X 0:APPEND_BYTE_FAST           0   0   1
+0023 A 1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
+0024 A 1:LEN_STRING_LT_JUMP_FALSE  78   3   0
+0025   0:EXT                      237 255   0
+0026 A 0:STRING_INDEX               1   0   3
+0027 X 0:APPEND_BYTE_FAST           0   0   1
+0028 A 2:TIER2_INC_INT              0   1   3
+0029 A 1:JUMP                      74 250 255    ; goto -6
+0030 A 1:JUMP                      74 232 255    ; goto -24
+0031 G 2:MAKE_MAP                   0  12   1
+0032   0:EXT                        1   0   0
+0033 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0034 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0035 G 1:LEN                       70   2   0
+0036 A 1:LE_INT_JUMP_FALSE        117   1   2
+0037   0:EXT                       17   0   0
+0038 G 1:LEN                       70   4   0
+0039 A 0:EQ_INT                     6   1   4
+0040 A 0:JUMP_IF_TRUE               6   3   0    ; if ints[6] != 0 goto +3
+0041 S 0:SLICE_GET_UINT             1   0   1
+0042 A 1:LOAD_UINT_CONST_SMALL     99   2  32    ; uints[2] = 32
+0043 A 0:EQ_UINT                    6   1   2
+0044 A 0:JUMP_IF_FALSE              6   8   0    ; if ints[6] == 0 goto +8
+0045 A 1:GT_INT_JUMP_FALSE        118   1   0
+0046   0:EXT                        5   0   0
+0047 S 1:SLICE_OP                 141   2   0
+0048   0:EXT                        3   0   1
+0049 A 1:BYTES_TO_STRING           11   0   2
+0050 A 1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
+0051 S 0:MAP_ADD_STRING_INT         1   0   4
+0052 A 0:ADD_INT_CONST              0   1   4    ; const = 1
+0053 A 2:TIER2_INC_INT              0   1   1
+0054 A 1:JUMP                      74 236 255    ; goto -20
+0055 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0056 A 1:LOAD_INT_CONST_SMALL      75   2   4    ; ints[2] = 4
+0057 S 0:MAKE_SLICE                 2   1   2
+0058   0:EXT                        2   0   0
+0059 A 0:MOVE_GENERAL               0   2   1
+0060 S 1:RANGE_INIT               142   2   1
+0061 S 1:RANGE_NEXT               143   2   1
+0062   0:EXT                        3   0   2
+0063   0:EXT                        0   2   0
+0064 A 0:JUMP_IF_FALSE              1  38   0    ; if ints[1] == 0 goto +38
+0065 G 2:MAKE_MAP                   0  12   3
+0066   0:EXT                        3   0   0
+0067 G 1:SET_STRUCT_FIELD_STRING   95   3   0
+0068   0:EXT                        0   0   0
+0069 A 0:SET_STRUCT_FIELD_INT_T0    3   2   1
+0070 G 1:LEN                       70   3   0
+0071 A 1:LOAD_INT_CONST_SMALL      75  21   0    ; LICM hoist of PC 71
+0072 A 0:GT_INT                     6   3  21
+0073 A 0:JUMP_IF_FALSE              6   4   0    ; if ints[6] == 0 goto +4
+0074 A 0:SUB_INT_CONST              8   3   4    ; const = 1
+0075 S 0:INDEX                      4   0   8
+0076 A 1:CALL                     128   0   0    ; call (site 0)
+0077 G 1:BOOL_TO_INT               53   6   0
+0078 A 0:JUMP_IF_FALSE              6   2   0    ; if ints[6] == 0 goto +2
+0079 A 2:TIER2_DEC_INT              0   2   3
+0080 A 1:JUMP                      74 247 255    ; goto -9
+0081 G 2:MAKE_MAP                   0  12   4
+0082   0:EXT                        3   0   0
+0083 X 0:APPEND                     0   0   4
+0084 G 1:LEN                       70   4   0
+0085 A 0:SUB_INT_CONST              6   4   4    ; const = 1
+0086 A 1:MOVE_INT                  35   4   6
+0087 A 1:GT_INT_JUMP_FALSE        118   4   3
+0088   0:EXT                        5   0   0
+0089 A 0:SUB_INT_CONST              7   4   4    ; const = 1
+0090 S 0:INDEX                      4   0   7
+0091 S 0:INDEX_SET                  0   4   4
+0092 A 2:TIER2_DEC_INT              0   2   4
+0093 A 1:JUMP                      74 249 255    ; goto -7
+0094 S 0:INDEX_SET                  0   3   3
+0095 G 1:LEN                       70   4   0
+0096 A 1:GT_INT_CONST_JUMP_FALSE  127   4   6
+0097   0:EXT                      219 255   0
+0098 A 1:LOAD_INT_CONST_SMALL      75   4   3    ; ints[4] = 3
+0099 S 1:SLICE_OP                 141   4   0
+0100   0:EXT                        2   0   4
+0101 A 0:MOVE_GENERAL               0   4   1
+0102 A 1:JUMP                      74 214 255    ; goto -42
+0103 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0104 A 1:MOVE_INT                  35   0   1
+0105 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0106 G 1:LEN                       70   2   0
+0107 A 1:LT_INT_JUMP_FALSE        116   1   2
+0108   0:EXT                        6   0   0
+0109 A 0:SLICE_INDEX_STRUCT_FIELD_INT   4   0   1
+0110   0:EXT                        1   0   0
+0111 A 0:ADD_INT                    5   0   4
+0112 A 1:MOVE_INT                  35   0   5
+0113 A 2:TIER2_INC_INT              0   1   1
+0114 A 1:JUMP                      74 247 255    ; goto -9
+0115 A 2:TIER2_RETURN               0  10   1    ; 1 values

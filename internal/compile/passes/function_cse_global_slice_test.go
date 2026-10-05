@@ -55,7 +55,8 @@ func TestGlobalSliceFieldReusePreservesMemoryBarriers(t *testing.T) {
 			body = append(body, chain...)
 			cf := &program.CompiledFunction{Body: body}
 			require.NoError(t, ElideRedundantStructFieldRead(context.Background(), cf, body))
-			require.Equal(t, tc.reuse, isa.InstrIsTier1SubOp(body[second], isa.SubOpJump))
+			reused := isCanonicalNop(body[second]) && isCanonicalNop(body[second+1]) && isCanonicalNop(body[second+2])
+			require.Equal(t, tc.reuse, reused)
 		})
 	}
 }

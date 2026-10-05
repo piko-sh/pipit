@@ -190,22 +190,28 @@ func elideRedundantStructFieldRead(ctx context.Context, compiledFunction *progra
 				return fmt.Errorf("elideRedundantStructFieldRead cancelled: %w", err)
 			}
 		}
-		if body[i].Op == isa.OpGetGlobal {
-			elideRepeatedGlobalSliceFieldRead(compiledFunction, body, i, jumpTargets)
-		}
-		if isTier0StructFieldRead(body[i].Op) {
-			elideTier0Read(compiledFunction, body, i, jumpTargets)
-			continue
-		}
-		if isTier1StructFieldReadAt(body, i) {
-			elideTier1Read(compiledFunction, body, i, jumpTargets)
-			continue
-		}
-		if isGeneralBankFieldWrite(body[i]) {
-			elidePostSetRead(compiledFunction, body, i, jumpTargets)
-		}
+		elideStructFieldReadAt(compiledFunction, body, i, jumpTargets)
 	}
 	return nil
+}
+
+// elideStructFieldReadAt applies whichever redundant-read elision matches the word at i.
+//
+// Takes compiledFunction (*program.CompiledFunction) which receives rewrite provenance.
+// Takes body ([]isa.Instruction) which is rewritten in place.
+// Takes i (int) which is the word to consider.
+// Takes jumpTargets (map[int]bool) which marks branch destinations.
+func elideStructFieldReadAt(compiledFunction *program.CompiledFunction, body []isa.Instruction, i int, jumpTargets map[int]bool) {
+	switch {
+	case body[i].Op == isa.OpGetGlobal:
+		elideRepeatedGlobalSliceFieldRead(compiledFunction, body, i, jumpTargets)
+	case isTier0StructFieldRead(body[i].Op):
+		elideTier0Read(compiledFunction, body, i, jumpTargets)
+	case isTier1StructFieldReadAt(body, i):
+		elideTier1Read(compiledFunction, body, i, jumpTargets)
+	case isGeneralBankFieldWrite(body[i]):
+		elidePostSetRead(compiledFunction, body, i, jumpTargets)
+	}
 }
 
 // elideTier0Read rewrites a redundant tier-0 struct-field read at firstIdx as a MOVE from

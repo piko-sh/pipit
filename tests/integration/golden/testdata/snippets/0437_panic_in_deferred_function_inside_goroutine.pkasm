@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=1 string=2 general=2
-;   dispatch:  asm=5 shim=1 exit=0 go=5
+;   dispatch:  asm=5 shim=1 exit=0 go=4
 ;   params:    (none)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -22,12 +22,11 @@
 0005 G 1:CHANNEL_RECEIVE           82   0   0
 0006   0:EXT                        0   2   0
 0007 G 1:EQ_STRING_CONST_JUMP_FALSE 136   0   0
-0008   0:EXT                        3   0   0
-0009 G 3:TIER3_NOP                  0   0   0
-0010 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0011 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0012 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0013 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0008   0:EXT                        2   0   0
+0009 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0010 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0011 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0012 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function <closure>

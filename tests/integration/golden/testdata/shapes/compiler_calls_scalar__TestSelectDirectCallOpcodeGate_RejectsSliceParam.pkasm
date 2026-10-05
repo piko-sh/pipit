@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function sumSlice
 ;   registers: int=6 sliceInt=1
-;   dispatch:  asm=11 shim=0 exit=0 go=0
+;   dispatch:  asm=10 shim=0 exit=0 go=0
 ;   params:    (sliceInt)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -17,14 +17,13 @@
 0001 A 1:LEN_SLICE_INT_DIRECT      17   1   0
 0002 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
 0003 A 1:LT_INT_JUMP_FALSE        116   2   1
-0004   0:EXT                        6   0   0
+0004   0:EXT                        5   0   0
 0005 A 0:SLICE_GET_INT_DIRECT_UNCHECKED   4   0   2
 0006 A 0:ADD_INT                    5   0   4
 0007 A 1:MOVE_INT                  35   0   5
-0008 A 1:LOAD_INT_CONST_SMALL      75   5   1    ; ints[5] = 1
-0009 A 0:ADD_INT                    2   2   5
-0010 A 1:JUMP                      74 248 255    ; goto -8
-0011 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0008 A 0:ADD_INT_CONST              2   2   1    ; const = 1
+0009 A 1:JUMP                      74 249 255    ; goto -7
+0010 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun

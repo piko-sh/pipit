@@ -110,8 +110,6 @@ func (root *orphanImageRoot) close() error {
 // CleanupOrphans removes only bounded image roots beneath authenticated original storage.
 // The native owner must first prove original service termination and retain all leases.
 //
-// Takes a cleanup context after original host and worker termination.
-//
 // Returns failure with storage ownership retained and new staging admission closed.
 //
 // Safe for concurrent use by multiple goroutines.

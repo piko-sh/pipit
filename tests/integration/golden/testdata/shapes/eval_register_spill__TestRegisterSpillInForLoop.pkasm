@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=272
-;   dispatch:  asm=530 shim=0 exit=0 go=556
+;   dispatch:  asm=530 shim=0 exit=0 go=555
 ;   params:    (none)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -1642,16 +1642,15 @@
 1626 G 1:RELOAD                    85 246   0
 1627   0:EXT                       15   0   0
 1628 A 1:LT_INT_CONST_JUMP_FALSE  123 246   3
-1629   0:EXT                       11   0   0
-1630 G 3:TIER3_NOP                  0   0   0
-1631 G 1:RELOAD                    85 249   0
-1632   0:EXT                       13   0   0
-1633 A 0:ADD_INT                  250   0 249
-1634 A 1:MOVE_INT                  35   0 250
-1635 G 1:RELOAD                    85 249   0
-1636   0:EXT                       15   0   0
-1637 A 2:TIER2_INC_INT              0   1 249
-1638 G 1:SPILL                     84 249   0
-1639   0:EXT                       15   0   0
-1640 A 1:JUMP                      74 241 255    ; goto -15
-1641 A 2:TIER2_RETURN               0  10   1    ; 1 values
+1629   0:EXT                       10   0   0
+1630 G 1:RELOAD                    85 249   0
+1631   0:EXT                       13   0   0
+1632 A 0:ADD_INT                  250   0 249
+1633 A 1:MOVE_INT                  35   0 250
+1634 G 1:RELOAD                    85 249   0
+1635   0:EXT                       15   0   0
+1636 A 2:TIER2_INC_INT              0   1 249
+1637 G 1:SPILL                     84 249   0
+1638   0:EXT                       15   0   0
+1639 A 1:JUMP                      74 242 255    ; goto -14
+1640 A 2:TIER2_RETURN               0  10   1    ; 1 values

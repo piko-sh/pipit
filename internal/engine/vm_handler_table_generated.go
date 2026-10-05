@@ -242,6 +242,12 @@ var handlerRegistrations = map[isa.Opcode]opcodeHandler{
 	isa.OpAppendIntFast:                      handleAppendInt,
 	isa.OpAppendFloatFast:                    handleAppendFloat,
 	isa.OpAppendStringFast:                   handleAppendString,
+	isa.OpAddInt32:                           handleAddInt32,
+	isa.OpSubInt32:                           handleSubInt32,
+	isa.OpMulInt32:                           handleMulInt32,
+	isa.OpAddInt32Const:                      handleAddInt32Const,
+	isa.OpSubInt32Const:                      handleSubInt32Const,
+	isa.OpAddUint32:                          handleAddUint32,
 }
 
 var flatTier1Registrations = map[isa.SubOpcode]opcodeHandler{
@@ -477,6 +483,8 @@ var flatTier2Registrations = map[isa.SubOpcodeTier2]opcodeHandler{
 	isa.SubOpTier2RangeCheckUintJumpFalse: handleSubOpRangeCheckUintJumpFalse,
 	isa.SubOpTier2AllocStructLiteral:      handleSubOpAllocStructLiteral,
 	isa.SubOpTier2SyncClosureUpvalues:     handleSyncClosureUpvalues,
+	isa.SubOpTier2IncInt32:                handleFlatSubOpTier2IncInt32,
+	isa.SubOpTier2DecInt32:                handleFlatSubOpTier2DecInt32,
 }
 
 var flatTier3Registrations = map[isa.SubOpcodeTier3]opcodeHandler{

@@ -78,7 +78,8 @@ func (c *Compiler) registerPackageLevelVar(_ context.Context, spec *ast.ValueSpe
 // isa.SubOpLoadZero + isa.OpSetGlobal so the varinit function can be re-run to reset
 // globals between Execute calls.
 //
-// Takes spec: the value specification holding one or more package-level variables.
+// Takes spec (*ast.ValueSpec): the value specification holding one or more package-level
+// variables.
 //
 // Returns nil on success.
 //
@@ -137,10 +138,11 @@ func (c *Compiler) compilePackageLevelMultiValue(ctx context.Context, spec *ast.
 // compilePackageLevelVar emits the initialiser for a single package-level variable within
 // spec.
 //
-// Takes spec: the value specification holding the variable's source declaration.
-// Takes i: the index of the variable within spec.Names.
-// Takes name: the identifier being initialised.
-// Takes gv: the global slot information for the variable.
+// Takes spec (*ast.ValueSpec): the value specification holding the variable's source
+// declaration.
+// Takes i (int): the index of the variable within spec.Names.
+// Takes name (*ast.Ident): the identifier being initialised.
+// Takes gv (program.GlobalVariableInfo): the global slot information for the variable.
 //
 // Returns nil on success.
 //
@@ -176,8 +178,8 @@ func (c *Compiler) compilePackageLevelVar(ctx context.Context, spec *ast.ValueSp
 // Prefers a named-type zero from the symbol registry before falling back to a composite
 // (array/struct) zero reflect.Value.
 //
-// Takes name: the identifier being initialised.
-// Takes gv: the global slot information for the variable.
+// Takes name (*ast.Ident): the identifier being initialised.
+// Takes gv (program.GlobalVariableInfo): the global slot information for the variable.
 func (c *Compiler) emitGlobalZeroGeneral(ctx context.Context, name *ast.Ident, gv program.GlobalVariableInfo) {
 	typeObject := c.Info.Defs[name]
 	if typeObject == nil {
@@ -223,7 +225,8 @@ func (c *Compiler) emitGlobalGeneralConst(ctx context.Context, gv program.Global
 // emitGetGlobal loads the value of the global identified by gv into a freshly allocated
 // register. An indirect global (gv.IsIndirect) is read through its pointer cell.
 //
-// Takes gv: the global slot information identifying the source global.
+// Takes gv (program.GlobalVariableInfo): the global slot information identifying the
+// source global.
 //
 // Returns the VarLocation holding the loaded value, in the global's value bank.
 func (c *Compiler) emitGetGlobal(_ context.Context, gv program.GlobalVariableInfo) program.VarLocation {
@@ -262,7 +265,8 @@ func (c *Compiler) emitGetGlobalSlot(gv program.GlobalVariableInfo) program.VarL
 // register of the slot's bank (gv.SlotKind()).
 //
 // Takes dest (uint8) which receives the slot content.
-// Takes gv: the global slot information identifying the source global.
+// Takes gv (program.GlobalVariableInfo): the global slot information identifying the
+// source global.
 func (c *Compiler) emitGetGlobalSlotInto(dest uint8, gv program.GlobalVariableInfo) {
 	bank := gv.SlotKind()
 	if gv.Index <= math.MaxUint8 {
@@ -278,8 +282,9 @@ func (c *Compiler) emitGetGlobalSlotInto(dest uint8, gv program.GlobalVariableIn
 // Inserts a bank coercion through a temporary register when source.Kind differs from
 // gv.Kind. An indirect global (gv.IsIndirect) is written through its pointer cell.
 //
-// Takes gv: the global slot information identifying the destination global.
-// Takes source: the source location holding the value to store.
+// Takes gv (program.GlobalVariableInfo): the global slot information identifying the
+// destination global.
+// Takes source (program.VarLocation): the source location holding the value to store.
 func (c *Compiler) emitSetGlobal(ctx context.Context, gv program.GlobalVariableInfo, source program.VarLocation) {
 	if gv.IsIndirect {
 		c.emitSetIndirectGlobal(ctx, gv, source)
@@ -300,8 +305,8 @@ func (c *Compiler) emitSetGlobal(ctx context.Context, gv program.GlobalVariableI
 // The value is first moved into the global's own bank, then boxed and stored through the
 // cell.
 //
-// Takes gv: the indirect global to write.
-// Takes source: the source location holding the value to store.
+// Takes gv (program.GlobalVariableInfo): the indirect global to write.
+// Takes source (program.VarLocation): the source location holding the value to store.
 func (c *Compiler) emitSetIndirectGlobal(ctx context.Context, gv program.GlobalVariableInfo, source program.VarLocation) {
 	cell := c.emitGetGlobalSlot(gv)
 	if source.Kind != gv.Kind {
@@ -320,8 +325,9 @@ func (c *Compiler) emitSetIndirectGlobal(ctx context.Context, gv program.GlobalV
 //
 // Selects the wide form when the global index does not fit in a uint8.
 //
-// Takes sourceRegister: the register supplying the value to store.
-// Takes gv: the global slot information identifying the destination global.
+// Takes sourceRegister (uint8): the register supplying the value to store.
+// Takes gv (program.GlobalVariableInfo): the global slot information identifying the
+// destination global.
 func (c *Compiler) emitSetGlobalOp(_ context.Context, sourceRegister uint8, gv program.GlobalVariableInfo) {
 	bank := gv.SlotKind()
 	if gv.Index <= math.MaxUint8 {

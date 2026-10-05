@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=3 string=3 general=4
-;   dispatch:  asm=24 shim=14 exit=1 go=9
+;   dispatch:  asm=23 shim=14 exit=1 go=9
 ;   params:    (none)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -49,19 +49,18 @@
 0032 G 1:MOVE_STRING_TO_GENERAL    44   2   0
 0033 S 0:MAP_SET                    0   2   1
 0034 A 0:MOVE_GENERAL               1   0   0
-0035 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "a"
-0036 A 1:MOVE_STRING               37   1   0
-0037 A 0:LOAD_STRING_CONST          2   0   0    ; strings[2] = "a"
-0038 S 0:MAP_GET_STRING_GENERAL     2   0   2
-0039 A 1:LOAD_INT_CONST_SMALL      75   0   4    ; ints[0] = 4
-0040 X 0:APPEND_INT_FAST            3   2   0
-0041 S 0:MAP_SET_STRING_GENERAL     1   1   3
-0042 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "a"
-0043 S 0:MAP_GET_STRING_GENERAL     1   0   0
-0044 G 1:LEN                       70   0   1
-0045 A 0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "b"
-0046 S 0:MAP_GET_STRING_GENERAL     2   0   1
-0047 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
-0048 S 0:SLICE_GET_INT              2   2   1
-0049 A 0:ADD_INT                    0   0   2
-0050 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0035 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "a"
+0036 A 0:LOAD_STRING_CONST          2   0   0    ; strings[2] = "a"
+0037 S 0:MAP_GET_STRING_GENERAL     2   0   2
+0038 A 1:LOAD_INT_CONST_SMALL      75   0   4    ; ints[0] = 4
+0039 X 0:APPEND_INT_FAST            3   2   0
+0040 S 0:MAP_SET_STRING_GENERAL     1   1   3
+0041 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "a"
+0042 S 0:MAP_GET_STRING_GENERAL     1   0   0
+0043 G 1:LEN                       70   0   1
+0044 A 0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "b"
+0045 S 0:MAP_GET_STRING_GENERAL     2   0   1
+0046 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0047 S 0:SLICE_GET_INT              2   2   1
+0048 A 0:ADD_INT                    0   0   2
+0049 A 2:TIER2_RETURN               0  10   1    ; 1 values

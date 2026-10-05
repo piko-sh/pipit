@@ -33,7 +33,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function typeStr
 ;   registers: int=6 string=6 general=3
-;   dispatch:  asm=15 shim=5 exit=0 go=3
+;   dispatch:  asm=14 shim=5 exit=0 go=2
 ;   params:    (general)
 ;   returns:   (string)
 ;   variadic:  true
@@ -46,28 +46,26 @@
 0000 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = ""
 0001 G 1:LEN                       70   0   0
 0002 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0003 A 0:LOAD_STRING_CONST          3   3   0    ; LICM hoist of PC 18
-0004 A 1:LOAD_INT_CONST_SMALL      75   4   1    ; LICM hoist of PC 21
-0005 A 1:LT_INT_JUMP_FALSE        116   1   0
-0006   0:EXT                       17   0   0
-0007 A 1:MOVE_INT                  35   3   1
-0008 S 0:INDEX                      1   0   1
-0009 A 0:MOVE_GENERAL               1   1   0
-0010 A 1:GT_INT_CONST_JUMP_FALSE  127   3   0
-0011   0:EXT                        4   0   0
-0012 G 3:TIER3_NOP                  0   0   0
-0013 A 0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "->"
-0014 S 0:CONCAT_STRING              2   0   1
-0015 A 1:MOVE_STRING               37   0   2
-0016 S 0:LOAD_GENERAL_CONST         2   0   0
-0017 A 0:LOAD_STRING_CONST          1   2   0    ; strings[1] = "%T"
-0018 G 1:CALL_NATIVE              130   0   0    ; call native general[2] (site 0)
-0019 S 0:STR_TRIM_PREFIX            4   2   3
-0020 S 0:CONCAT_STRING              5   0   4
-0021 A 1:MOVE_STRING               37   0   5
-0022 A 0:ADD_INT                    1   1   4
-0023 A 1:JUMP                      74 237 255    ; goto -19
-0024 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0003 A 0:LOAD_STRING_CONST          3   3   0    ; LICM hoist of PC 16
+0004 A 1:LT_INT_JUMP_FALSE        116   1   0
+0005   0:EXT                       16   0   0
+0006 A 1:MOVE_INT                  35   3   1
+0007 S 0:INDEX                      1   0   1
+0008 A 0:MOVE_GENERAL               1   1   0
+0009 A 1:GT_INT_CONST_JUMP_FALSE  127   3   0
+0010   0:EXT                        3   0   0
+0011 A 0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "->"
+0012 S 0:CONCAT_STRING              2   0   1
+0013 A 1:MOVE_STRING               37   0   2
+0014 S 0:LOAD_GENERAL_CONST         2   0   0
+0015 A 0:LOAD_STRING_CONST          1   2   0    ; strings[1] = "%T"
+0016 G 1:CALL_NATIVE              130   0   0    ; call native general[2] (site 0)
+0017 S 0:STR_TRIM_PREFIX            4   2   3
+0018 S 0:CONCAT_STRING              5   0   4
+0019 A 1:MOVE_STRING               37   0   5
+0020 A 0:ADD_INT_CONST              1   1   1    ; const = 1
+0021 A 1:JUMP                      74 238 255    ; goto -18
+0022 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function nCal
@@ -132,7 +130,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: string=2 general=7
-;   dispatch:  asm=36 shim=4 exit=16 go=10
+;   dispatch:  asm=36 shim=4 exit=16 go=6
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -176,50 +174,46 @@
 0033   0:EXT                        7   0   0
 0034 A 0:MOVE_GENERAL               2   3   1
 0035 A 1:CALL                     128   8   0    ; call closure general[1] (site 8)
-0036 G 3:TIER3_NOP                  0   0   0
-0037 X 0:APPEND_STRING_FAST         3   0   0
-0038 A 1:CALL                     128   9   0    ; call closure general[2] (site 9)
-0039 G 3:TIER3_NOP                  0   0   0
-0040 X 0:APPEND_STRING_FAST         4   3   1
-0041 A 0:MOVE_GENERAL               0   4   1
-0042 A 1:CALL                     128  10   0    ; call (site 10)
-0043 G 1:CALL_NATIVE              130  11   0    ; call native general[3] (site 11)
-0044 X 0:APPEND_STRING_FAST         4   0   0
-0045 A 1:CALL                     128  12   0    ; call (site 12)
-0046 G 1:CALL_NATIVE              130  13   0    ; call native general[5] (site 13)
-0047 X 0:APPEND_STRING_FAST         6   4   1
-0048 A 0:MOVE_GENERAL               0   6   1
-0049 G 1:MAKE_METHOD_EXPR          12   3   0
-0050   0:EXT                        6   0   0
-0051 A 0:MOVE_GENERAL               2   3   1
-0052 G 1:MAKE_METHOD_EXPR          12   3   0
-0053   0:EXT                        7   0   0
-0054 A 0:MOVE_GENERAL               1   3   1
-0055 A 2:ALLOC_STRUCT_LITERAL       0  14   3
-0056   0:EXT                        0   0   0
-0057 A 1:CALL                     128  14   0    ; call closure general[2] (site 14)
-0058 G 3:TIER3_NOP                  0   0   0
-0059 X 0:APPEND_STRING_FAST         4   0   0
-0060 A 2:ALLOC_STRUCT_LITERAL       0  14   5
-0061   0:EXT                        1   0   0
-0062 A 1:CALL                     128  15   0    ; call closure general[1] (site 15)
-0063 G 3:TIER3_NOP                  0   0   0
-0064 X 0:APPEND_STRING_FAST         6   4   1
-0065 A 0:MOVE_GENERAL               0   6   1
-0066 A 1:CALL                     128  16   0    ; call (site 16)
-0067 A 2:ALLOC_STRUCT_LITERAL       0  14   4
-0068   0:EXT                        0   0   0
-0069 G 1:CALL_NATIVE              130  17   0    ; call native general[3] (site 17)
-0070 X 0:APPEND_STRING_FAST         0   0   0
-0071 A 1:CALL                     128  18   0    ; call (site 18)
-0072 A 2:ALLOC_STRUCT_LITERAL       0  14   4
-0073   0:EXT                        1   0   0
-0074 G 1:CALL_NATIVE              130  19   0    ; call native general[3] (site 19)
-0075 X 0:APPEND_STRING_FAST         0   0   0
-0076 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = " | "
-0077 S 0:STR_JOIN                   1   0   0
-0078 A 1:MOVE_STRING               37   0   1
-0079 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0036 X 0:APPEND_STRING_FAST         3   0   0
+0037 A 1:CALL                     128   9   0    ; call closure general[2] (site 9)
+0038 X 0:APPEND_STRING_FAST         4   3   1
+0039 A 0:MOVE_GENERAL               0   4   1
+0040 A 1:CALL                     128  10   0    ; call (site 10)
+0041 G 1:CALL_NATIVE              130  11   0    ; call native general[3] (site 11)
+0042 X 0:APPEND_STRING_FAST         4   0   0
+0043 A 1:CALL                     128  12   0    ; call (site 12)
+0044 G 1:CALL_NATIVE              130  13   0    ; call native general[5] (site 13)
+0045 X 0:APPEND_STRING_FAST         6   4   1
+0046 A 0:MOVE_GENERAL               0   6   1
+0047 G 1:MAKE_METHOD_EXPR          12   3   0
+0048   0:EXT                        6   0   0
+0049 A 0:MOVE_GENERAL               2   3   1
+0050 G 1:MAKE_METHOD_EXPR          12   3   0
+0051   0:EXT                        7   0   0
+0052 A 0:MOVE_GENERAL               1   3   1
+0053 A 2:ALLOC_STRUCT_LITERAL       0  14   3
+0054   0:EXT                        0   0   0
+0055 A 1:CALL                     128  14   0    ; call closure general[2] (site 14)
+0056 X 0:APPEND_STRING_FAST         4   0   0
+0057 A 2:ALLOC_STRUCT_LITERAL       0  14   5
+0058   0:EXT                        1   0   0
+0059 A 1:CALL                     128  15   0    ; call closure general[1] (site 15)
+0060 X 0:APPEND_STRING_FAST         6   4   1
+0061 A 0:MOVE_GENERAL               0   6   1
+0062 A 1:CALL                     128  16   0    ; call (site 16)
+0063 A 2:ALLOC_STRUCT_LITERAL       0  14   4
+0064   0:EXT                        0   0   0
+0065 G 1:CALL_NATIVE              130  17   0    ; call native general[3] (site 17)
+0066 X 0:APPEND_STRING_FAST         0   0   0
+0067 A 1:CALL                     128  18   0    ; call (site 18)
+0068 A 2:ALLOC_STRUCT_LITERAL       0  14   4
+0069   0:EXT                        1   0   0
+0070 G 1:CALL_NATIVE              130  19   0    ; call native general[3] (site 19)
+0071 X 0:APPEND_STRING_FAST         0   0   0
+0072 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = " | "
+0073 S 0:STR_JOIN                   1   0   0
+0074 A 1:MOVE_STRING               37   0   1
+0075 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function S.n[spec:main.T3,main.T4]

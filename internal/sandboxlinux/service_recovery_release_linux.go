@@ -28,7 +28,7 @@ import (
 // Release removes the original service reservation after successful filesystem recovery.
 // Failure before removal retains exclusive ownership for a bounded retry.
 //
-// Takes a cleanup context with successful recovery and no retained process.
+// Recovery must have succeeded with no retained process.
 //
 // Returns removal and metadata closure errors without deleting recovery records.
 //
@@ -50,7 +50,7 @@ func (owner *ServiceRecoveryClaim) Release(ctx context.Context) error {
 // release finalises verified cleanup while exclusive recovery ownership is held. The
 // caller must hold owner.mutex.
 //
-// Takes a bounded context and retains ownership on failures before service removal.
+// Failures before service removal retain ownership.
 //
 // Returns error when removal, metadata closure or prerequisites fail.
 func (owner *ServiceRecoveryClaim) release(ctx context.Context) error {

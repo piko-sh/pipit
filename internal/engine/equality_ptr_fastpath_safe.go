@@ -26,8 +26,6 @@ import "reflect"
 // path. The safe build forbids punning reflect.Value, so it reports handled=false and the
 // caller's generic Comparable/Equal path decides.
 //
-// Takes a and b (reflect.Value); both are ignored.
-//
 // Returns equal=false, handled=false always.
 func pointerIdentityEqual(_, _ reflect.Value) (equal bool, handled bool) {
 	return false, false

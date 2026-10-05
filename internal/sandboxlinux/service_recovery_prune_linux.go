@@ -59,8 +59,6 @@ type recoveryPruneNode struct {
 // Prune removes bounded empty descendants without deleting the original service. A
 // complete pinned plan is collected and rechecked before any removal begins.
 //
-// Takes a cleanup context after successful quiescence of this original service.
-//
 // Returns success without admitting execution or releasing the service reservation.
 //
 // Safe for concurrent use by multiple goroutines.

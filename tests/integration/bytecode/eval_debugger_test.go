@@ -148,12 +148,13 @@ func main() {
 		sm := fn.DebugSourceMap
 		require.NotNil(t, sm)
 
-		bodyLen := len(fn.Body)
-		if bodyLen > 1 {
-			live := vt.LiveVariables(bodyLen - 2)
-
-			require.NotEmpty(t, live)
+		liveSomewhere := false
+		for pc := range fn.Body {
+			for _, variable := range vt.LiveVariables(pc) {
+				liveSomewhere = liveSomewhere || variable.Name == "x"
+			}
 		}
+		require.True(t, liveSomewhere, "x is live at the instruction that reads it")
 	})
 
 	t.Run("without debug info has no source map", func(t *testing.T) {

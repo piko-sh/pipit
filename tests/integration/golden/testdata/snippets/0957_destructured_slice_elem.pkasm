@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function scanWithMutation
 ;   registers: int=11 float=3 general=3 bool=1
-;   dispatch:  asm=33 shim=1 exit=0 go=4
+;   dispatch:  asm=32 shim=1 exit=0 go=4
 ;   params:    (general)
 ;   returns:   (int, float, int)
 ; ═════════════════════════════════════════════════════════════
@@ -21,7 +21,7 @@
 0005 A 0:GET_STRUCT_FIELD_INT_T0    3   0   0
 0006 A 0:GET_STRUCT_FIELD_SLICE_LEN   4   0   1
 0007 A 1:LT_INT_JUMP_FALSE        116   3   4
-0008   0:EXT                       31   0   0
+0008   0:EXT                       30   0   0
 0009 A 1:MOVE_INT                  35   6   3    ; CSE'd from PC 5
 0010 A 0:GET_STRUCT_FIELD_SLICE_INDEX_SCALAR   7   0   1
 0011   0:EXT                       24   0   6
@@ -32,34 +32,33 @@
 0016 A 0:GET_STRUCT_FIELD_SLICE_INDEX_SCALAR   0   0   1
 0017   0:EXT                       24   0   6
 0018   0:EXT                       16   0   4
-0019 A 1:LOAD_INT_CONST_SMALL      75   8  10    ; ints[8] = 10
-0020 A 0:MUL_INT                    9   7   8
-0021 A 0:GET_STRUCT_FIELD_GENERAL_T0   1   0   1
-0022 A 0:GET_STRUCT_FIELD_INT_T0   10   0   0
-0023 S 0:INDEX                      2   1  10
-0024 A 0:SET_STRUCT_FIELD_INT_T0    2   9   2
-0025 A 0:ADD_INT                    8   0   7
-0026 A 1:MOVE_INT                  35   0   8
-0027 A 0:ADD_FLOAT                  2   0   1
-0028 A 1:MOVE_FLOAT                36   0   2
-0029 G 1:BOOL_TO_INT               53   8   0
-0030 A 0:JUMP_IF_FALSE              8   1   0    ; if ints[8] == 0 goto +1
-0031 A 2:TIER2_INC_INT              0   1   0
-0032 A 0:GET_STRUCT_FIELD_INT_T0    8   0   0
-0033 A 0:GET_STRUCT_FIELD_SLICE_INDEX_SCALAR   9   0   1
-0034   0:EXT                       24   0   8
-0035   0:EXT                        0   0   0
-0036 A 0:ADD_INT                   10   1   9
-0037 A 1:MOVE_INT                  35   1  10
-0038 A 1:INC_STRUCT_FIELD_INT     107   0   0
-0039 A 1:JUMP                      74 221 255    ; goto -35
-0040 A 1:MOVE_INT                  35   2   0
-0041 A 1:MOVE_FLOAT                36   1   0
-0042 A 1:MOVE_INT                  35   3   1
-0043 A 1:MOVE_INT                  35   0   2
-0044 A 1:MOVE_FLOAT                36   0   1
-0045 A 1:MOVE_INT                  35   1   3
-0046 A 2:TIER2_RETURN               0  10   3    ; 3 values
+0019 A 0:MUL_INT_CONST              9   7   1    ; const = 10
+0020 A 0:GET_STRUCT_FIELD_GENERAL_T0   1   0   1
+0021 A 0:GET_STRUCT_FIELD_INT_T0   10   0   0
+0022 S 0:INDEX                      2   1  10
+0023 A 0:SET_STRUCT_FIELD_INT_T0    2   9   2
+0024 A 0:ADD_INT                    8   0   7
+0025 A 1:MOVE_INT                  35   0   8
+0026 A 0:ADD_FLOAT                  2   0   1
+0027 A 1:MOVE_FLOAT                36   0   2
+0028 G 1:BOOL_TO_INT               53   8   0
+0029 A 0:JUMP_IF_FALSE              8   1   0    ; if ints[8] == 0 goto +1
+0030 A 2:TIER2_INC_INT              0   1   0
+0031 A 0:GET_STRUCT_FIELD_INT_T0    8   0   0
+0032 A 0:GET_STRUCT_FIELD_SLICE_INDEX_SCALAR   9   0   1
+0033   0:EXT                       24   0   8
+0034   0:EXT                        0   0   0
+0035 A 0:ADD_INT                   10   1   9
+0036 A 1:MOVE_INT                  35   1  10
+0037 A 1:INC_STRUCT_FIELD_INT     107   0   0
+0038 A 1:JUMP                      74 222 255    ; goto -34
+0039 A 1:MOVE_INT                  35   2   0
+0040 A 1:MOVE_FLOAT                36   1   0
+0041 A 1:MOVE_INT                  35   3   1
+0042 A 1:MOVE_INT                  35   0   2
+0043 A 1:MOVE_FLOAT                36   0   1
+0044 A 1:MOVE_INT                  35   1   3
+0045 A 2:TIER2_RETURN               0  10   3    ; 3 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function run

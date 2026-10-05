@@ -28,6 +28,12 @@ var tier1HandlerDeclarationNames = []string{
 	"handlerLoadBool",
 	"handlerAddInt",
 	"handlerAddUint",
+	"handlerAddInt32",
+	"handlerSubInt32",
+	"handlerMulInt32",
+	"handlerAddInt32Const",
+	"handlerSubInt32Const",
+	"handlerAddUint32",
 	"handlerSubUint",
 	"handlerMulUint",
 	"handlerBitAndUint",
@@ -202,6 +208,8 @@ var tier1SubOpDeclarations = []goDeclaration{
 	{Name: "handlerSubOpRangeCheckUintJumpFalse", Parameters: "", DocTail: nil, Architectures: nil},
 	{Name: "handlerSubOpTier2IncUint", Parameters: "", DocTail: nil, Architectures: nil},
 	{Name: "handlerSubOpTier2DecUint", Parameters: "", DocTail: nil, Architectures: nil},
+	{Name: "handlerSubOpTier2IncInt32", Parameters: "", DocTail: nil, Architectures: nil},
+	{Name: "handlerSubOpTier2DecInt32", Parameters: "", DocTail: nil, Architectures: nil},
 }
 
 // initStep is one entry in the ordered package-init sequence.

@@ -78,7 +78,7 @@ func (process *WorkerProcess) cleanupWatchdog() error {
 
 // stopSupervisor reaps a stopped watchdog without treating SIGKILL as failure.
 //
-// Takes a fresh bounded cleanup context after protected descendants are confirmed gone.
+// Protected descendants must be confirmed gone before cleanup begins.
 //
 // Returns cleanup errors while ignoring the expected execution cancellation.
 func (process *WorkerProcess) stopSupervisor(ctx context.Context) error {

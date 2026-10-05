@@ -29,7 +29,7 @@ import (
 // maxLicmConstHoistsPerFunction caps the constant loads the loop-invariant code motion
 // pass lifts per CompiledFunction, separately from the struct-field read cap so the two
 // families never compete for a budget.
-const maxLicmConstHoistsPerFunction = 8
+const maxLicmConstHoistsPerFunction = 16
 
 // hoistLoopInvariantConstantLoads lifts loop-invariant constant loads to the pre-header,
 // excluding fresh-storage loads that must produce a new value each execution.
@@ -66,7 +66,11 @@ func tryOneConstantLoadHoist(compiledFunction *program.CompiledFunction, analysi
 		if !loopHeaderReachableByFallThrough(compiledFunction.Body, loop) {
 			continue
 		}
-		loadPC, ok := findHoistableConstantLoadInLoop(compiledFunction, loop, analysis)
+		facts := newLoopFacts(analysis, loop)
+		loadPC, ok := findHoistableConstantLoadInLoop(compiledFunction, facts)
+		if facts.renamed {
+			return true
+		}
 		if !ok {
 			continue
 		}
@@ -81,41 +85,35 @@ func tryOneConstantLoadHoist(compiledFunction *program.CompiledFunction, analysi
 // entry path.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose body holds the loop.
-// Takes loop (loopRange) which is the loop to search.
-// Takes analysis (*functionAnalysis) which supplies dominators when non-nil.
+// Takes facts (*loopFacts) which supplies the loop's members and dominators, and records
+// a rename that gave a load its own register so the caller searches again.
 //
 // Returns the load's PC and true on success; (0, false) otherwise.
-func findHoistableConstantLoadInLoop(compiledFunction *program.CompiledFunction, loop loopRange, analysis *functionAnalysis) (int, bool) {
+func findHoistableConstantLoadInLoop(compiledFunction *program.CompiledFunction, facts *loopFacts) (int, bool) {
 	body := compiledFunction.Body
-	var dominators *functionDominators
-	var members []int
+	loop := facts.loop
 	for pc := loop.header; pc <= loop.latch; pc++ {
 		kind, reg, ok := constantLoadDestination(body[pc])
 		if !ok {
 			continue
 		}
-		if members == nil {
-			members = naturalLoopMembers(analysis, loop)
-			if len(members) == 0 {
-				return 0, false
-			}
+		members := facts.loopMembers()
+		if len(members) == 0 {
+			return 0, false
+		}
+		if !facts.dominatesLatch(pc) {
+			continue
 		}
 		if !constantLoadIsLoopInvariant(compiledFunction, members, pc, kind, reg) {
-			continue
-		}
-		if !constantHoistSafeAcrossLoopEntry(compiledFunction, loop, pc, kind, reg) {
-			continue
-		}
-		if dominators == nil {
-			dominators = dominatorsFor(analysis, body)
-			if dominators == nil {
+			if renameDefinition(compiledFunction, facts.analysis, pc, 1, kind, reg) {
+				facts.renamed = true
 				return 0, false
 			}
-		}
-		if !dominators.Dominates(pc, loop.latch) {
 			continue
 		}
-		return pc, true
+		if constantHoistSafeAcrossLoopEntry(compiledFunction, loop, pc, kind, reg) {
+			return pc, true
+		}
 	}
 	return 0, false
 }
@@ -177,9 +175,10 @@ func constantLoadIsLoopInvariant(compiledFunction *program.CompiledFunction, mem
 // constantHoistSafeAcrossLoopEntry reports whether running the load at loadPC in the
 // pre-header is unobservable on the entry path.
 //
-// It is when the load runs before any exit edge of the loop, or when nothing in the loop
-// before the load reads the destination and the destination is dead at every exit the
-// load sits behind. A constant load cannot fault, so no receiver proof is needed.
+// It is when nothing in the loop before the load reads the destination, since the first
+// traversal would otherwise see the hoisted value early, and the destination is dead at
+// every exit the load sits behind. A constant load cannot fault, so no receiver proof is
+// needed.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose body holds the loop.
 // Takes loop (LoopRange) which is the loop being analysed.
@@ -191,13 +190,7 @@ func constantLoadIsLoopInvariant(compiledFunction *program.CompiledFunction, mem
 func constantHoistSafeAcrossLoopEntry(compiledFunction *program.CompiledFunction, loop loopRange, loadPC int, kind isa.RegisterKind, reg uint8) bool {
 	body := compiledFunction.Body
 	exits, ok := loopExitsBeforeRead(body, loop, loadPC)
-	if !ok {
-		return false
-	}
-	if len(exits) == 0 {
-		return true
-	}
-	if registerReadInRange(compiledFunction, loop.header, loadPC, kind, reg) {
+	if !ok || registerReadInRange(compiledFunction, loop.header, loadPC, kind, reg) {
 		return false
 	}
 	for _, exitPC := range exits {

@@ -117,6 +117,7 @@ var (
 	// driver allows.
 	phase2AllowedConstFusedArith = []isa.Opcode{
 		isa.OpAddIntConst, isa.OpSubIntConst, isa.OpMulIntConst,
+		isa.OpAddInt32Const, isa.OpSubInt32Const,
 	}
 
 	// phase2AllowedTier0StructField carries the tier-0 struct-field opcodes whose operand C
@@ -140,6 +141,7 @@ var (
 		isa.OpAddUint, isa.OpSubUint, isa.OpMulUint, isa.OpDivUint, isa.OpRemUint,
 		isa.OpBitAndUint, isa.OpBitOrUint, isa.OpBitXorUint, isa.OpBitAndNotUint,
 		isa.OpShiftLeftUint, isa.OpShiftRightUint,
+		isa.OpAddInt32, isa.OpSubInt32, isa.OpMulInt32, isa.OpAddUint32,
 	}
 
 	// phase2AllowedComparisons carries the typed comparison opcodes the splice driver
@@ -1463,7 +1465,7 @@ func remapTier2SubOp(out *isa.Instruction, ctx *inlineContext) (isa.Instruction,
 	switch tier2 {
 	case isa.SubOpTier2DrillTier3:
 		return *out, true
-	case isa.SubOpTier2IncInt, isa.SubOpTier2DecInt:
+	case isa.SubOpTier2IncInt, isa.SubOpTier2DecInt, isa.SubOpTier2IncInt32, isa.SubOpTier2DecInt32:
 		return remapTier2OperandC(out, ctx, isa.RegisterInt)
 	case isa.SubOpTier2IncUint, isa.SubOpTier2DecUint:
 		return remapTier2OperandC(out, ctx, isa.RegisterUint)

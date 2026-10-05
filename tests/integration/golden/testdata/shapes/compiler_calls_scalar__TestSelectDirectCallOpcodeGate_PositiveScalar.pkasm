@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function fib
 ;   registers: int=7
-;   dispatch:  asm=10 shim=0 exit=0 go=1
+;   dispatch:  asm=8 shim=0 exit=0 go=0
 ;   params:    (int)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -14,17 +14,14 @@
 ;   ints:    [0]=2  [1]=1
 
 0000 A 1:LT_INT_CONST_JUMP_FALSE  123   0   0
-0001   0:EXT                        2   0   0
-0002 G 3:TIER3_NOP                  0   0   0
-0003 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0004 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
-0005 A 0:SUB_INT                    2   0   1
-0006 A 1:CALL_SCALAR              134   0   0
-0007 A 1:LOAD_INT_CONST_SMALL      75   4   2    ; ints[4] = 2
-0008 A 0:SUB_INT                    5   0   4
-0009 A 1:CALL_SCALAR              134   1   0
-0010 A 0:ADD_INT                    0   3   6
-0011 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0001   0:EXT                        1   0   0
+0002 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0003 A 0:SUB_INT_CONST              2   0   1    ; const = 1
+0004 A 1:CALL_SCALAR              134   0   0
+0005 A 0:SUB_INT_CONST              5   0   0    ; const = 2
+0006 A 1:CALL_SCALAR              134   1   0
+0007 A 0:ADD_INT                    0   3   6
+0008 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun

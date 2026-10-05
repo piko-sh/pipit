@@ -292,9 +292,29 @@ func TestRemapPCKeyedSet(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.want, remapPCKeyedSet(tt.set, pcMap))
+			require.Equal(t, tt.want, remapPCKeyed(tt.set, func(pc int) (int, bool) { return pcMap.newPC(pc), true }))
 		})
 	}
+}
+
+func TestLicmRemapsMethodNamesAndVariableScopes(t *testing.T) {
+	t.Parallel()
+	body := []isa.Instruction{
+		mk(isa.OpLoadIntConst, 1, 0, 0),
+		mk(isa.OpLoadIntConst, 2, 0, 0),
+		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
+		mk(isa.OpLoadIntConst, 3, 0, 0),
+		tier1Jump(-4),
+	}
+	compiledFunction := &program.CompiledFunction{
+		Body:                       body,
+		GetMethodReceiverTypeNames: map[uint32]string{1: "header", 3: "after"},
+		DebugVarTable:              &program.DebugVarTable{Entries: []program.DebugVarEntry{{StartPC: 1, EndPC: 3}, {StartPC: 3, EndPC: 0}}},
+	}
+	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
+	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[1].Op)
+	require.Equal(t, map[uint32]string{2: "header", 3: "after"}, compiledFunction.GetMethodReceiverTypeNames)
+	require.Equal(t, []program.DebugVarEntry{{StartPC: 2, EndPC: 3}, {StartPC: 3, EndPC: 0}}, compiledFunction.DebugVarTable.Entries)
 }
 
 func TestLicmRemapsArenaAnnotationsWithTheirInstructions(t *testing.T) {

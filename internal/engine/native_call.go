@@ -168,11 +168,9 @@ func (shaping nativeArgShaping) shape(vm *VM, site *program.CallSite, i int, raw
 }
 
 // buildNativeBackedErasurePointees scans every registered symbol for
-// link.NativeBackedGenericType sentinels and collects the set of pointee types that
-// delimit a genuine erasure boundary. The result is cached on the VM so the scan runs at
-// most once.
-//
-// Takes the receiver vm (*VM) whose symbol registry is scanned.
+// link.NativeBackedGenericType sentinels in the VM's symbol registry and collects the set
+// of pointee types that delimit a genuine erasure boundary. The result is cached on the
+// VM so the scan runs at most once.
 //
 // Returns the set of erased and erasure-argument pointee types; never nil so the caller's
 // nil check memoises a completed scan.
@@ -328,9 +326,6 @@ func tryClassifyNativeFastPath(vm *VM, registers *Registers, site *program.CallS
 
 // panicHandleCallNativeZeroValue raises Go's nil-dereference panic when the function
 // register a native call site names holds no value: the program called a nil func.
-//
-// Takes the frame, registers, site and site index for signature compatibility with the
-// diagnostic form this replaced; they are not read.
 //
 // Panics with a recoverable runtime error.
 func panicHandleCallNativeZeroValue(_ *CallFrame, _ *Registers, _ *program.CallSite, _ uint16) {

@@ -28,7 +28,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function <closure>
 ;   registers: int=4 general=1
-;   dispatch:  asm=10 shim=0 exit=0 go=2
+;   dispatch:  asm=9 shim=0 exit=0 go=0
 ;   params:    (int)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -37,15 +37,12 @@
 ;   ints:    [0]=1
 
 0000 A 1:LE_INT_CONST_JUMP_FALSE  122   0   0
-0001   0:EXT                        4   0   0
-0002 G 3:TIER3_NOP                  0   0   0
-0003 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
-0004 A 1:MOVE_INT                  35   0   1
-0005 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0006 A 0:GET_UPVALUE                0   0   3
-0007 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
-0008 A 0:SUB_INT                    2   0   1
-0009 A 1:CALL                     128   0   0    ; call closure general[0] (site 0)
-0010 G 3:TIER3_NOP                  0   0   0
-0011 A 0:MUL_INT                    0   0   3
-0012 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0001   0:EXT                        3   0   0
+0002 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0003 A 1:MOVE_INT                  35   0   1
+0004 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0005 A 0:GET_UPVALUE                0   0   3
+0006 A 0:SUB_INT_CONST              2   0   0    ; const = 1
+0007 A 1:CALL                     128   0   0    ; call closure general[0] (site 0)
+0008 A 0:MUL_INT                    0   0   3
+0009 A 2:TIER2_RETURN               0  10   1    ; 1 values

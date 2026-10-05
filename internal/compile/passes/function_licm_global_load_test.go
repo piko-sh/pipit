@@ -29,8 +29,10 @@ import (
 )
 
 func TestGlobalLoadHoistPreservesElementAliasing(t *testing.T) {
+	t.Parallel()
 	for _, wide := range []bool{false, true} {
 		t.Run(map[bool]string{false: "narrow", true: "wide"}[wide], func(t *testing.T) {
+			t.Parallel()
 			body := []isa.Instruction{mk(isa.OpLoadIntConst, 0, 0, 0), mk(isa.OpNop, 0, 0, 0)}
 			if wide {
 				body = append(body, isa.NewTier1Instruction(isa.SubOpGetGlobalWide, 2, uint8(isa.RegisterGeneral)), mk(isa.OpExt, 1, 1, 0))
@@ -53,19 +55,20 @@ func TestGlobalLoadHoistPreservesElementAliasing(t *testing.T) {
 }
 
 func TestGlobalLoadHoistRejectsInvalidationAndLiveEntry(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name          string
 		before, after []isa.Instruction
 	}{
 		{name: "global rebinding", after: []isa.Instruction{mk(isa.OpSetGlobal, 3, 7, uint8(isa.RegisterGeneral))}},
 		{name: "callback", after: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpCall, 0, 0)}},
-		{name: "receiver assignment", after: []isa.Instruction{mk(isa.OpMoveGeneral, 2, 3, 0)}},
 		{name: "header assignment", after: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSetStructFieldSliceByte, 3, 0), mk(isa.OpExt, 0, 0, 0)}},
 		{name: "indirect assignment", after: []isa.Instruction{mk(isa.OpIndexSet, 3, 0, 2)}},
 		{name: "live before load", before: []isa.Instruction{mk(isa.OpSliceGetUint, 0, 2, 0)}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			body := []isa.Instruction{mk(isa.OpLoadIntConst, 0, 0, 0), mk(isa.OpNop, 0, 0, 0)}
 			body = append(body, tc.before...)
 			body = append(body, mk(isa.OpGetGlobal, 2, 7, uint8(isa.RegisterGeneral)))
@@ -81,6 +84,7 @@ func TestGlobalLoadHoistRejectsInvalidationAndLiveEntry(t *testing.T) {
 }
 
 func TestGlobalLoadHoistPreservesZeroTripDestination(t *testing.T) {
+	t.Parallel()
 	body := []isa.Instruction{
 		mk(isa.OpLoadIntConst, 0, 0, 0),
 		mk(isa.OpJumpIfFalse, 0, 3, 0),
@@ -95,12 +99,14 @@ func TestGlobalLoadHoistPreservesZeroTripDestination(t *testing.T) {
 }
 
 func TestGlobalLoadHoistChecksOutOfLineLoopBlocks(t *testing.T) {
+	t.Parallel()
 	for name, instruction := range map[string]isa.Instruction{
 		"store":    mk(isa.OpSetGlobal, 3, 7, uint8(isa.RegisterGeneral)),
 		"callback": isa.NewTier1Instruction(isa.SubOpCall, 0, 0),
 		"pure":     mk(isa.OpNop, 0, 0, 0),
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			body := []isa.Instruction{
 				mk(isa.OpLoadIntConst, 0, 0, 0),
 				mk(isa.OpNop, 0, 0, 0),
@@ -123,10 +129,41 @@ func TestGlobalLoadHoistChecksOutOfLineLoopBlocks(t *testing.T) {
 	}
 }
 
+func TestGlobalLoadHoistChecksOutOfLineReadsBeforeLoad(t *testing.T) {
+	t.Parallel()
+	for name, instruction := range map[string]isa.Instruction{
+		"reads destination": mk(isa.OpSliceGetUint, 0, 2, 0),
+		"pure":              mk(isa.OpNop, 0, 0, 0),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			body := []isa.Instruction{
+				mk(isa.OpLoadIntConst, 0, 0, 0),
+				mk(isa.OpNop, 0, 0, 0),
+				tier1Jump(4),
+				mk(isa.OpGetGlobal, 2, 7, uint8(isa.RegisterGeneral)),
+				mk(isa.OpSliceGetUint, 0, 2, 0),
+				tier1Jump(-5),
+				isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
+				instruction,
+				tier1Jump(-6),
+			}
+			cf := &program.CompiledFunction{Body: slices.Clone(body)}
+			require.NoError(t, hoistLoopInvariantGlobalLoads(context.Background(), cf, nil))
+			if name == "pure" {
+				require.Equal(t, isa.OpGetGlobal, cf.Body[1].Op)
+			} else {
+				require.Equal(t, body, cf.Body)
+			}
+		})
+	}
+}
+
 func TestExistingHoistsCheckOutOfLineLoopBlocks(t *testing.T) {
+	t.Parallel()
 	for _, field := range []bool{false, true} {
 		load := mk(isa.OpLoadIntConst, 1, 0, 0)
-		mutation := mk(isa.OpLoadIntConst, 1, 1, 0)
+		mutation := mk(isa.OpAddInt, 1, 1, 2)
 		if field {
 			load = mk(isa.OpGetStructFieldIntT0, 1, 4, 0)
 			mutation = mk(isa.OpSetStructFieldIntT0, 4, 2, 0)
@@ -150,4 +187,44 @@ func TestExistingHoistsCheckOutOfLineLoopBlocks(t *testing.T) {
 		}
 		require.Equal(t, body, cf.Body)
 	}
+}
+
+func TestGlobalLoadHoistRenamesSharedTemporaries(t *testing.T) {
+	t.Parallel()
+	body := []isa.Instruction{
+		mk(isa.OpLoadIntConst, 0, 0, 0),
+		mk(isa.OpNop, 0, 0, 0),
+		mk(isa.OpGetGlobal, 2, 7, uint8(isa.RegisterGeneral)),
+		mk(isa.OpSliceGetUint, 0, 2, 0),
+		mk(isa.OpMoveGeneral, 2, 3, 0),
+		mk(isa.OpSliceGetUint, 1, 2, 0),
+		tier1Jump(0),
+		isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
+	}
+	require.True(t, program.SetJumpTarget(body, 6, 1))
+	cf := &program.CompiledFunction{Body: body, NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterGeneral: 4}}
+	require.NoError(t, hoistLoopInvariantGlobalLoads(context.Background(), cf, nil))
+	require.Equal(t, mk(isa.OpGetGlobal, 4, 7, uint8(isa.RegisterGeneral)), cf.Body[1], "the load moves to the pre-header in a fresh register")
+	require.Equal(t, mk(isa.OpSliceGetUint, 0, 4, 0), cf.Body[3], "its use reads the fresh register")
+	require.Equal(t, mk(isa.OpSliceGetUint, 1, 2, 0), cf.Body[5], "the reassigned temporary keeps its register")
+	require.Equal(t, uint32(5), cf.NumRegisters[isa.RegisterGeneral])
+}
+
+func TestGlobalLoadHoistKeepsTemporariesWithMergedDefinitions(t *testing.T) {
+	t.Parallel()
+	body := []isa.Instruction{
+		mk(isa.OpLoadIntConst, 0, 0, 0),
+		mk(isa.OpNop, 0, 0, 0),
+		mk(isa.OpGetGlobal, 2, 7, uint8(isa.RegisterGeneral)),
+		mk(isa.OpJumpIfFalse, 0, 0, 0),
+		mk(isa.OpMoveGeneral, 2, 3, 0),
+		mk(isa.OpSliceGetUint, 1, 2, 0),
+		tier1Jump(0),
+		isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
+	}
+	require.True(t, program.SetJumpTarget(body, 3, 5))
+	require.True(t, program.SetJumpTarget(body, 6, 1))
+	cf := &program.CompiledFunction{Body: slices.Clone(body), NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterGeneral: 4}}
+	require.NoError(t, hoistLoopInvariantGlobalLoads(context.Background(), cf, nil))
+	require.Equal(t, body, cf.Body)
 }

@@ -46,7 +46,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=2 string=2 general=13
-;   dispatch:  asm=17 shim=4 exit=2 go=6
+;   dispatch:  asm=11 shim=4 exit=2 go=6
 ;   params:    (none)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -62,34 +62,28 @@
 0004 A 1:LOAD_INT_CONST_SMALL      75   0  42    ; ints[0] = 42
 0005 G 0:PACK_TYPED                 2   0   0
 0006   0:EXT                        1   0   0
-0007 A 1:JUMP                      74  20   0    ; goto 20
-0008 A 0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "year"
-0009 G 0:PACK_TYPED                 1   0   2
-0010   0:EXT                        0   0   0
-0011 A 0:LOAD_INT_CONST             0   1   0    ; ints[0] = 2026
-0012 G 0:PACK_TYPED                 2   0   0
-0013   0:EXT                        1   0   0
-0014 A 1:JUMP                      74  17   0    ; goto 17
-0015 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "answer"
-0016 G 0:PACK_TYPED                 1   0   2
-0017   0:EXT                        0   0   0
-0018 A 1:CALL                     128   3   0    ; call (site 3)
-0019 S 0:UNPACK_INTERFACE           0   2   0
-0020 A 0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "year"
-0021 G 0:PACK_TYPED                 3   1   2
-0022   0:EXT                        0   0   0
-0023 A 1:CALL                     128   4   0    ; call (site 4)
-0024 S 0:UNPACK_INTERFACE           1   4   0
-0025 A 0:ADD_INT                    0   0   1
-0026 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0027 A 1:JUMP                      74   3   0    ; goto 3
-0028 X 0:GET_FIELD                  5   0   0    ; inlined body of function 1 called at PC 7
-0029 S 0:MAP_SET                    5   1   2
-0030 A 1:JUMP                      74 233 255    ; goto -23
-0031 A 1:JUMP                      74   3   0    ; goto 3
-0032 X 0:GET_FIELD                  6   0   0    ; inlined body of function 1 called at PC 14
-0033 S 0:MAP_SET                    6   1   2
-0034 A 1:JUMP                      74 236 255    ; goto -20
+0007 X 0:GET_FIELD                  5   0   0    ; inlined body of function 1 called at PC 7
+0008 S 0:MAP_SET                    5   1   2
+0009 A 0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "year"
+0010 G 0:PACK_TYPED                 1   0   2
+0011   0:EXT                        0   0   0
+0012 A 0:LOAD_INT_CONST             0   1   0    ; ints[0] = 2026
+0013 G 0:PACK_TYPED                 2   0   0
+0014   0:EXT                        1   0   0
+0015 X 0:GET_FIELD                  6   0   0    ; inlined body of function 1 called at PC 15
+0016 S 0:MAP_SET                    6   1   2
+0017 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "answer"
+0018 G 0:PACK_TYPED                 1   0   2
+0019   0:EXT                        0   0   0
+0020 A 1:CALL                     128   3   0    ; call (site 3)
+0021 S 0:UNPACK_INTERFACE           0   2   0
+0022 A 0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "year"
+0023 G 0:PACK_TYPED                 3   1   2
+0024   0:EXT                        0   0   0
+0025 A 1:CALL                     128   4   0    ; call (site 4)
+0026 S 0:UNPACK_INTERFACE           1   4   0
+0027 A 0:ADD_INT                    0   0   1
+0028 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function newIndex[spec:string,int]

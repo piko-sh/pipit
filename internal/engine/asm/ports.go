@@ -389,6 +389,21 @@ type BytecodeArchitecturePort interface {
 	// Takes indexRegister (string) which is the bank slot to modify in place.
 	IntegerInPlace(emitter *asmgen.Emitter, operation string, indexRegister string)
 
+	// IntegerNarrow32 sign-extends the low 32 bits of an int bank slot back into the slot,
+	// which is what a 32-bit OpTruncateNarrow of the int bank does.
+	//
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	// Takes indexRegister (string) which is the bank slot to narrow in place.
+	IntegerNarrow32(emitter *asmgen.Emitter, indexRegister string)
+
+	// UintNarrow32 zero-extends the low 32 bits of a uint bank slot back into the slot,
+	// which is what a 32-bit OpTruncateNarrow of the uint bank does.
+	//
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	// Takes indexRegister (string) which is the bank slot to narrow in place.
+	// Takes baseScratch (string) which receives the loaded uint bank base.
+	UintNarrow32(emitter *asmgen.Emitter, indexRegister, baseScratch string)
+
 	// UintInPlace emits an in-place uint64 operation on the uint register bank.
 	//
 	// Covers INC and DEC. Mirrors IntegerInPlace but addresses the uint bank via
@@ -397,11 +412,8 @@ type BytecodeArchitecturePort interface {
 	// handlerSubOpTier2IncUint / handlerSubOpTier2DecUint.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes operation (string) which is the in-place operation name (INC, DEC).
-	//
 	// Takes indexRegister (string) which is the uint bank slot to modify.
-	//
 	// Takes baseScratch (string) which is a scratch register for loading the uint bank base.
 	UintInPlace(emitter *asmgen.Emitter, operation string, indexRegister string, baseScratch string)
 
@@ -409,17 +421,12 @@ type BytecodeArchitecturePort interface {
 	// guard that branches to the given label.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes dividendIndex (string) which is the dividend bank slot.
-	//
 	// Takes divisorIndex (string) which is the divisor bank slot.
-	//
 	// Takes quotientDestinationIndex (string) which is the destination slot for the
 	// quotient.
-	//
 	// Takes remainderDestinationIndex (string) which is the destination slot for the
 	// remainder.
-	//
 	// Takes zeroLabel (string) which is the branch target for division by zero.
 	IntegerDivide(emitter *asmgen.Emitter, dividendIndex, divisorIndex, quotientDestinationIndex, remainderDestinationIndex, zeroLabel string)
 
@@ -427,13 +434,9 @@ type BytecodeArchitecturePort interface {
 	// direction (LEFT or RIGHT).
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes direction (string) which is LEFT or RIGHT.
-	//
 	// Takes destinationIndex (string) which is the destination bank slot.
-	//
 	// Takes valueIndex (string) which is the value to shift.
-	//
 	// Takes amountIndex (string) which is the shift amount.
 	IntegerShift(emitter *asmgen.Emitter, direction string, destinationIndex, valueIndex, amountIndex string)
 
@@ -441,13 +444,9 @@ type BytecodeArchitecturePort interface {
 	// write a boolean result (1 or 0) into the destination register.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes condition (string) which is the comparison relation.
-	//
 	// Takes destinationIndex (string) which is the destination slot for the boolean result.
-	//
 	// Takes leftIndex (string) which is the left operand bank slot.
-	//
 	// Takes rightIndex (string) which is the right operand bank slot.
 	IntegerCompareAndSet(emitter *asmgen.Emitter, condition string, destinationIndex, leftIndex, rightIndex string)
 
@@ -455,13 +454,9 @@ type BytecodeArchitecturePort interface {
 	// branch to the given label if the condition holds.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes condition (string) which is the comparison relation.
-	//
 	// Takes leftIndex (string) which is the left operand bank slot.
-	//
 	// Takes rightIndex (string) which is the right operand bank slot.
-	//
 	// Takes label (string) which is the branch target label.
 	IntegerCompareAndBranch(emitter *asmgen.Emitter, condition string, leftIndex, rightIndex, label string)
 
@@ -469,13 +464,9 @@ type BytecodeArchitecturePort interface {
 	// value against a constant pool entry and branch if the condition holds.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes condition (string) which is the comparison relation.
-	//
 	// Takes registerIndex (string) which is the register operand bank slot.
-	//
 	// Takes constantIndex (string) which is the constant pool index.
-	//
 	// Takes label (string) which is the branch target label.
 	IntegerCompareConstantAndBranch(emitter *asmgen.Emitter, condition string, registerIndex, constantIndex, label string)
 
@@ -483,13 +474,9 @@ type BytecodeArchitecturePort interface {
 	// SUB, MUL, DIV) on register bank values.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes operation (string) which is the floating-point operation name.
-	//
 	// Takes destinationIndex (string) which is the destination float bank slot.
-	//
 	// Takes leftSourceIndex (string) which is the left operand bank slot.
-	//
 	// Takes rightSourceIndex (string) which is the right operand bank slot.
 	FloatBinaryOperation(emitter *asmgen.Emitter, operation string, destinationIndex, leftSourceIndex, rightSourceIndex string)
 
@@ -497,11 +484,8 @@ type BytecodeArchitecturePort interface {
 	// ABS, FLOOR, CEIL, TRUNC, NEG, ROUND) on a register value.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes operation (string) which is the unary floating-point operation name.
-	//
 	// Takes destinationIndex (string) which is the destination float bank slot.
-	//
 	// Takes sourceIndex (string) which is the source operand bank slot.
 	FloatUnaryOperation(emitter *asmgen.Emitter, operation string, destinationIndex, sourceIndex string)
 
@@ -509,14 +493,10 @@ type BytecodeArchitecturePort interface {
 	// boolean result into an integer destination register.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes condition (string) which is the comparison relation.
-	//
 	// Takes integerDestinationIndex (string) which is the int bank slot for the boolean
 	// result.
-	//
 	// Takes floatLeftIndex (string) which is the left float operand bank slot.
-	//
 	// Takes floatRightIndex (string) which is the right float operand bank slot.
 	FloatCompareAndSet(emitter *asmgen.Emitter, condition string, integerDestinationIndex, floatLeftIndex, floatRightIndex string)
 
@@ -530,11 +510,8 @@ type BytecodeArchitecturePort interface {
 	//   - "FLOAT_TO_UNSIGNED": float64 -> uint64
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes direction (string) which is the conversion direction.
-	//
 	// Takes destinationIndex (string) which is the destination bank slot.
-	//
 	// Takes sourceIndex (string) which is the source operand bank slot.
 	FloatConversion(emitter *asmgen.Emitter, direction string, destinationIndex, sourceIndex string)
 
@@ -547,9 +524,7 @@ type BytecodeArchitecturePort interface {
 	// registers; the implementation destructively shifts sourceIndex by 4.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes destinationIndex (string) which is the int bank slot for the length result.
-	//
 	// Takes sourceIndex (string) which is the string bank slot to read.
 	StringLengthRead(emitter *asmgen.Emitter, destinationIndex, sourceIndex string)
 
@@ -561,9 +536,7 @@ type BytecodeArchitecturePort interface {
 	// implementation destructively shifts both by 4 to compute their byte offsets.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes destinationIndex (string) which is the destination string bank slot.
-	//
 	// Takes sourceIndex (string) which is the source string bank slot.
 	StringCopy(emitter *asmgen.Emitter, destinationIndex, sourceIndex string)
 
@@ -576,9 +549,7 @@ type BytecodeArchitecturePort interface {
 	// compute byte offsets.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes destinationIndex (string) which is the destination string bank slot.
-	//
 	// Takes constantIndex (string) which is the string constant pool index.
 	StringConstLoad(emitter *asmgen.Emitter, destinationIndex, constantIndex string)
 
@@ -589,9 +560,7 @@ type BytecodeArchitecturePort interface {
 	// bank base from CTX_BOOLS_BASE. Both indices are 1-byte-strided.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes destinationIndex (string) which is the destination bool bank slot.
-	//
 	// Takes constantIndex (string) which is the bool constant pool index.
 	BoolConstLoad(emitter *asmgen.Emitter, destinationIndex, constantIndex string)
 
@@ -603,11 +572,8 @@ type BytecodeArchitecturePort interface {
 	// dispatch context first.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes indexRegister (string) which holds the uint bank slot index.
-	//
 	// Takes destinationRegister (string) which receives the loaded uint64 value.
-	//
 	// Takes baseScratch (string) which is a scratch register for the bank base pointer.
 	LoadFromUintBank(emitter *asmgen.Emitter, indexRegister, destinationRegister, baseScratch string)
 
@@ -617,11 +583,8 @@ type BytecodeArchitecturePort interface {
 	// Requires a scratch for the bank base load.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes sourceRegister (string) which holds the uint64 value to store.
-	//
 	// Takes indexRegister (string) which holds the uint bank slot index.
-	//
 	// Takes baseScratch (string) which is a scratch register for the bank base pointer.
 	StoreToUintBank(emitter *asmgen.Emitter, sourceRegister, indexRegister, baseScratch string)
 
@@ -632,12 +595,9 @@ type BytecodeArchitecturePort interface {
 	// 8-byte typed banks.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes indexRegister (string) which holds the bool bank slot index.
-	//
 	// Takes destinationRegister (string) which receives the loaded bool value,
 	// zero-extended.
-	//
 	// Takes baseScratch (string) which is a scratch register for the bank base pointer.
 	LoadFromBoolBank(emitter *asmgen.Emitter, indexRegister, destinationRegister, baseScratch string)
 
@@ -645,11 +605,8 @@ type BytecodeArchitecturePort interface {
 	// the bool register bank.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes sourceRegister (string) which holds the bool value to store.
-	//
 	// Takes indexRegister (string) which holds the bool bank slot index.
-	//
 	// Takes baseScratch (string) which is a scratch register for the bank base pointer.
 	StoreToBoolBank(emitter *asmgen.Emitter, sourceRegister, indexRegister, baseScratch string)
 
@@ -660,7 +617,6 @@ type BytecodeArchitecturePort interface {
 	// through bank load/store.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes register (string) which is the register to complement in place.
 	BitwiseNotInPlace(emitter *asmgen.Emitter, register string)
 
@@ -671,10 +627,8 @@ type BytecodeArchitecturePort interface {
 	// `bool(int)` semantics).
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes destinationRegister (string) which receives 1 if source is non-zero, 0
 	// otherwise.
-	//
 	// Takes sourceRegister (string) which holds the value to test.
 	LogicalSetNonZero(emitter *asmgen.Emitter, destinationRegister, sourceRegister string)
 
@@ -682,9 +636,7 @@ type BytecodeArchitecturePort interface {
 	// writing 1 if the source is zero and 0 otherwise.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes destinationIndex (string) which is the destination bank slot for the result.
-	//
 	// Takes sourceIndex (string) which is the source operand bank slot.
 	LogicalNot(emitter *asmgen.Emitter, destinationIndex, sourceIndex string)
 
@@ -712,7 +664,6 @@ type BytecodeArchitecturePort interface {
 	// CTX_SAVED_PC, reloads the bank-base regs from ctx, and tail-jumps via DISPATCH_NEXT.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes goSymbol (string) which is the Go function symbol to call.
 	EmitInlineGoCallTwoOperandShim(emitter *asmgen.Emitter, goSymbol string)
 
@@ -724,7 +675,6 @@ type BytecodeArchitecturePort interface {
 	// CTX_SAVED_PC).
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes goSymbol (string) which is the Go function symbol to call.
 	EmitInlineGoCallThreeOperandShim(emitter *asmgen.Emitter, goSymbol string)
 
@@ -736,7 +686,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSubOpSliceSetFloatDirect.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceFloatSet(emitter *asmgen.Emitter, contextOffset string)
@@ -750,7 +699,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSubOpSliceGetUintDirect.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceUintGet(emitter *asmgen.Emitter, contextOffset string)
@@ -763,7 +711,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSubOpSliceSetUintDirect.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceUintSet(emitter *asmgen.Emitter, contextOffset string)
@@ -777,7 +724,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSubOpSliceGetBoolDirect.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceBoolGet(emitter *asmgen.Emitter, contextOffset string)
@@ -790,7 +736,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSubOpSliceSetBoolDirect.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceBoolSet(emitter *asmgen.Emitter, contextOffset string)
@@ -818,7 +763,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSubOpSliceSetByteDirect.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceByteSet(emitter *asmgen.Emitter, contextOffset string)
@@ -835,7 +779,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSubOpSliceByteSlice.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceByteSlice(emitter *asmgen.Emitter, contextOffset string)
@@ -853,7 +796,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSubOpMoveSlice<Kind> for all six typed-slice banks.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceMove(emitter *asmgen.Emitter, contextOffset string)
@@ -873,10 +815,8 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSubOpSliceSlice<Kind>Direct.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
-	//
 	// Takes elementSizeShift (uint8) which is the log2 element stride in bytes.
 	EmitTypedSliceSliceSlice(emitter *asmgen.Emitter, contextOffset string, elementSizeShift uint8)
 
@@ -892,7 +832,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerRangeNextSliceByte().
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedRangeNextByte(emitter *asmgen.Emitter, contextOffset string)
@@ -928,7 +867,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSubOpSliceGetStringDirect.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceStringGet(emitter *asmgen.Emitter, contextOffset string)
@@ -949,7 +887,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSubOpSliceGetFloatDirect.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceFloatGet(emitter *asmgen.Emitter, contextOffset string)
@@ -965,7 +902,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSliceGetIntDirect.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceIntGetDirect(emitter *asmgen.Emitter, contextOffset string)
@@ -977,7 +913,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSliceSetIntDirect.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceIntSetDirect(emitter *asmgen.Emitter, contextOffset string)
@@ -989,7 +924,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSliceGetIntDirectUnchecked.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceIntGetDirectUnchecked(emitter *asmgen.Emitter, contextOffset string)
@@ -1000,7 +934,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSliceSetIntDirectUnchecked.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceIntSetDirectUnchecked(emitter *asmgen.Emitter, contextOffset string)
@@ -1010,13 +943,9 @@ type BytecodeArchitecturePort interface {
 	// fallback for every other shape.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes kindA (string) which is the first operand kind selector.
-	//
 	// Takes kindB (string) which is the second operand kind selector.
-	//
 	// Takes destIsFloat (bool) which indicates whether the destination bank is float.
-	//
 	// Takes shimSymbol (string) which is the Go shim symbol for unsupported shapes.
 	EmitSliceIndexStructFieldScalar(emitter *asmgen.Emitter, kindA, kindB string, destIsFloat bool, shimSymbol string)
 
@@ -1025,9 +954,7 @@ type BytecodeArchitecturePort interface {
 	// unsupported shapes and range panics.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes isSet (bool) which selects set mode (true) or get mode (false).
-	//
 	// Takes shimSymbol (string) which is the Go shim symbol for fallback.
 	EmitDerefSliceIntAccess(emitter *asmgen.Emitter, isSet bool, shimSymbol string)
 
@@ -1071,7 +998,6 @@ type BytecodeArchitecturePort interface {
 	// by the signed 16-bit offset in B|C<<8 with the poll-budget back-edge exit.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes jumpWhenNil (bool) which selects jump-on-nil (true) or jump-on-non-nil (false).
 	EmitTestNilJump(emitter *asmgen.Emitter, jumpWhenNil bool)
 
@@ -1081,13 +1007,9 @@ type BytecodeArchitecturePort interface {
 	// tier-2 shim for unsupported shapes.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes kindA (string) which is the first operand kind selector.
-	//
 	// Takes kindB (string) which is the second operand kind selector.
-	//
 	// Takes bank (string) which names the destination register bank.
-	//
 	// Takes shimSymbol (string) which is the tier-2 shim symbol for unsupported shapes.
 	EmitStructFieldScalarGetT0(emitter *asmgen.Emitter, kindA, kindB, bank, shimSymbol string)
 
@@ -1096,13 +1018,9 @@ type BytecodeArchitecturePort interface {
 	// EmitStructFieldScalarGetT0() with bank naming the source bank.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes kindA (string) which is the first operand kind selector.
-	//
 	// Takes kindB (string) which is the second operand kind selector.
-	//
 	// Takes bank (string) which names the source register bank.
-	//
 	// Takes shimSymbol (string) which is the tier-2 shim symbol for unsupported shapes.
 	EmitStructFieldScalarSetT0(emitter *asmgen.Emitter, kindA, kindB, bank, shimSymbol string)
 
@@ -1112,7 +1030,6 @@ type BytecodeArchitecturePort interface {
 	// shapes jump to the named tier-2 shim.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes shimSymbol (string) which is the tier-2 shim symbol for unsupported shapes.
 	EmitStructFieldSliceLen(emitter *asmgen.Emitter, shimSymbol string)
 
@@ -1126,7 +1043,6 @@ type BytecodeArchitecturePort interface {
 	// interpreted panics) re-run the op from the original counter.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes shimSymbol (string) which is the tier-2 shim symbol for unsupported shapes.
 	EmitStructFieldSliceIndexScalar(emitter *asmgen.Emitter, shimSymbol string)
 
@@ -1140,7 +1056,6 @@ type BytecodeArchitecturePort interface {
 	// required.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes shimSymbol (string) which is the tier-2 shim symbol for unsupported shapes.
 	EmitGetUpvalueScalar(emitter *asmgen.Emitter, shimSymbol string)
 
@@ -1169,7 +1084,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSubOpAddUintConst / SubUintConst / BitAndUintConst.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes operation (string) which is the arithmetic operation (add, sub, or and).
 	EmitUintConstArith(emitter *asmgen.Emitter, operation string)
 
@@ -1198,7 +1112,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSubOpMoveComplex.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the complex
 	// bank.
 	EmitComplexCopy(emitter *asmgen.Emitter, contextOffset string)
@@ -1213,7 +1126,6 @@ type BytecodeArchitecturePort interface {
 	// Used by handlerSubOpNegComplex.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the complex
 	// bank.
 	EmitComplexNegate(emitter *asmgen.Emitter, contextOffset string)
@@ -1232,14 +1144,10 @@ type BytecodeArchitecturePort interface {
 	// single float64 half of a complex128 without leaving the ASM dispatch loop.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the complex
 	// bank.
-	//
 	// Takes indexRegister (string) which holds the complex bank slot index.
-	//
 	// Takes halfOffset (string) which is "0" for real or "8" for imaginary.
-	//
 	// Takes destinationFloatIndexRegister (string) which is the float bank slot to write.
 	LoadComplexHalfToFloatBank(emitter *asmgen.Emitter, contextOffset, indexRegister, halfOffset, destinationFloatIndexRegister string)
 
@@ -1258,12 +1166,9 @@ type BytecodeArchitecturePort interface {
 	// leaving the ASM dispatch loop.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	//
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
-	//
 	// Takes indexRegister (string) which holds the slice bank slot index.
-	//
 	// Takes destinationRegister (string) which receives the slice length.
 	LoadTypedSliceHeaderLength(emitter *asmgen.Emitter, contextOffset, indexRegister, destinationRegister string)
 

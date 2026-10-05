@@ -51,6 +51,24 @@ func handlerAddInt()
 func handlerAddUint()
 
 //go:noescape
+func handlerAddInt32()
+
+//go:noescape
+func handlerSubInt32()
+
+//go:noescape
+func handlerMulInt32()
+
+//go:noescape
+func handlerAddInt32Const()
+
+//go:noescape
+func handlerSubInt32Const()
+
+//go:noescape
+func handlerAddUint32()
+
+//go:noescape
 func handlerSubUint()
 
 //go:noescape
@@ -505,6 +523,12 @@ func handlerSubOpTier2IncUint()
 
 //go:noescape
 func handlerSubOpTier2DecUint()
+
+//go:noescape
+func handlerSubOpTier2IncInt32()
+
+//go:noescape
+func handlerSubOpTier2DecInt32()
 
 func installDispatchTables() {
 	installTier1Dispatcher()
