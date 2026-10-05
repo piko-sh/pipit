@@ -16,9 +16,9 @@ require (
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/mod v0.41.0
 	golang.org/x/sys v0.48.0
-	pipit.sh/pipit v0.0.0
-	pipit.sh/pipit/sdk/extract v0.0.0
-	pipit.sh/pipit/sdk/stdlib v0.0.0
+	pipit.sh/pipit v0.0.0-alpha.6
+	pipit.sh/pipit/sdk/extract v0.0.0-alpha.6
+	pipit.sh/pipit/sdk/stdlib v0.0.0-alpha.6
 )
 
 require (
