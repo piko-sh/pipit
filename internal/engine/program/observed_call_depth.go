@@ -18,7 +18,7 @@
 
 package program
 
-import "pipit.sh/pipit/internal/safeconv"
+import "piko.sh/safeconv"
 
 // RecordObservedCallDepth remembers the deepest frame stack a run of this root reached,
 // keeping the maximum across runs.

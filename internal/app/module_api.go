@@ -35,10 +35,10 @@ import (
 
 	"golang.org/x/tools/go/gcexportdata"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/logging"
 	"pipit.sh/pipit/internal/module"
-	"pipit.sh/pipit/internal/safeconv"
 	"pipit.sh/pipit/internal/verify"
 )
 

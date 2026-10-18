@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 
 	"github.com/google/go-dap"
-	"pipit.sh/pipit/internal/safeconv"
+	"piko.sh/safeconv"
 )
 
 // handleThreads answers a DAP threads request with one thread per live interpreted

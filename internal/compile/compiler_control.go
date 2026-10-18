@@ -34,9 +34,9 @@ import (
 
 	"pipit.sh/pipit/internal/engine"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/policy"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // loopPostDeclKey identifies a register slot occupied by a for-stmt-init-declared

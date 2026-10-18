@@ -33,8 +33,8 @@ import (
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/symtab/typemodel"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 const (

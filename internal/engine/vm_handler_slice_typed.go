@@ -21,8 +21,8 @@ package engine
 import (
 	"reflect"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // handleSliceGetInt handles the isa.OpSliceGetInt instruction by reading an integer

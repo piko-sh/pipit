@@ -25,7 +25,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"pipit.sh/pipit/internal/safeconv"
+	"piko.sh/safeconv"
 )
 
 // frameHeaderBytes is the fixed size of the length prefix before each frame.

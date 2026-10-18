@@ -33,9 +33,9 @@ import (
 	"pipit.sh/pipit/internal/symtab/descriptor"
 
 	flatbuffers "github.com/google/flatbuffers/go"
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/fbs"
 	"pipit.sh/pipit/internal/rootfs"
-	"pipit.sh/pipit/internal/safeconv"
 	"pipit.sh/pipit/internal/schema"
 	"pipit.sh/pipit/internal/schema/schemagen"
 )

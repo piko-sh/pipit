@@ -24,9 +24,9 @@ import (
 	"go/ast"
 	"go/types"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // compileCallArguments compiles function call arguments, handling variadic packing when

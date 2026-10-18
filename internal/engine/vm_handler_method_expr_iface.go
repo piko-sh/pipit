@@ -22,8 +22,8 @@ import (
 	"reflect"
 	"slices"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // runMakeInterfaceMethodExpr builds a method-expression function value.

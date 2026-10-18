@@ -26,8 +26,8 @@ import (
 	"pipit.sh/pipit/internal/compile/patterns"
 	"pipit.sh/pipit/internal/engine/program"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 const (

@@ -23,9 +23,9 @@ import (
 	"reflect"
 	"unsafe"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // handleSubOpAppendUintInPlace is the in-place sibling of handleSubOpAppendUint for the

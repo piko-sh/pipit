@@ -22,9 +22,9 @@ import (
 	"reflect"
 	"unsafe"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // nilDereferenceMessage is the Go runtime's text for a nil pointer dereference.

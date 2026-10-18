@@ -24,8 +24,8 @@ import (
 	"strings"
 	"unsafe"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // float32BitWidth is the width of a float32, the shift that packs a complex64's imaginary

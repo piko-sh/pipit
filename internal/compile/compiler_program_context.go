@@ -25,6 +25,7 @@ import (
 	"go/types"
 	"reflect"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/compile/appendlower"
 	"pipit.sh/pipit/internal/compile/astpattern"
 	"pipit.sh/pipit/internal/compile/escape"
@@ -34,7 +35,6 @@ import (
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/policy"
-	"pipit.sh/pipit/internal/safeconv"
 	"pipit.sh/pipit/internal/symtab"
 )
 

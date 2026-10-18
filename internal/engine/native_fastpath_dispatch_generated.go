@@ -21,8 +21,8 @@
 package engine
 
 import (
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 func fpDispatchStringString(vm *VM, cached any, site *program.CallSite, registers *Registers) {

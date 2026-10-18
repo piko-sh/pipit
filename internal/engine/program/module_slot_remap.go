@@ -21,8 +21,8 @@ package program
 import (
 	"fmt"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // RelativiseGlobalOperands rewrites global operands as bundle-relative by subtracting the

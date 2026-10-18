@@ -23,8 +23,8 @@ package engine
 import (
 	"reflect"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // handleSliceGetIntDirectUnchecked is the bounds-elided variant of

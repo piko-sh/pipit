@@ -22,7 +22,7 @@ import (
 	"reflect"
 	"unsafe"
 
-	"pipit.sh/pipit/internal/safeconv"
+	"piko.sh/safeconv"
 )
 
 // writeIntegerFieldFast attempts the integer-widening fast path for handleSetField,

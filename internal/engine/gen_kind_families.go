@@ -669,8 +669,8 @@ func emitAll() ([]outputFile, error) {
 		imports [][]string
 		body    string
 	}{
-		{path: sliceOutputPath, imports: [][]string{{"fmt", "unsafe"}, {"pipit.sh/pipit/internal/fault", "pipit.sh/pipit/internal/isa", "pipit.sh/pipit/internal/safeconv"}}, body: sliceBody},
-		{path: fastPathOutputPath, imports: [][]string{{"pipit.sh/pipit/internal/engine/program", "pipit.sh/pipit/internal/safeconv"}}, body: fastBody},
+		{path: sliceOutputPath, imports: [][]string{{"fmt", "unsafe"}, {"pipit.sh/pipit/internal/fault", "pipit.sh/pipit/internal/isa", "piko.sh/safeconv"}}, body: sliceBody},
+		{path: fastPathOutputPath, imports: [][]string{{"pipit.sh/pipit/internal/engine/program", "piko.sh/safeconv"}}, body: fastBody},
 		{path: flatWrapperOutputPath, imports: [][]string{{"pipit.sh/pipit/internal/isa"}}, body: flatBody},
 		{path: appendAdapterOutputPath, imports: [][]string{{"pipit.sh/pipit/internal/isa"}}, body: appendBody},
 	}

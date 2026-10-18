@@ -22,8 +22,8 @@ import (
 	"context"
 	"sync/atomic"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
-	"pipit.sh/pipit/internal/safeconv"
 	"pipit.sh/pipit/internal/symtab"
 )
 

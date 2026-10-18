@@ -23,7 +23,7 @@ import (
 	"strings"
 	"unsafe"
 
-	"pipit.sh/pipit/internal/safeconv"
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/symtab/typemodel"
 )
 

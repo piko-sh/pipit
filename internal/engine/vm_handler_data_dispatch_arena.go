@@ -24,8 +24,8 @@ import (
 	"strings"
 	"unsafe"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 const (

@@ -18,7 +18,7 @@
 
 package program
 
-import "pipit.sh/pipit/internal/safeconv"
+import "piko.sh/safeconv"
 
 // SourcePosition records the source file location for a single bytecode instruction. The
 // debugger uses it to map program counters back to source lines.

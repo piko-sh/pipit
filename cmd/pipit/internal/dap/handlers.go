@@ -25,9 +25,9 @@ import (
 
 	"github.com/google/go-dap"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit"
 	"pipit.sh/pipit/internal/debug"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // handleInitialize replies with the server's capabilities and emits the `initialized`

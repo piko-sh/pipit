@@ -22,9 +22,9 @@ import (
 	"errors"
 	"reflect"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // handleGetMethod resolves a method by name on a receiver value and stores the bound

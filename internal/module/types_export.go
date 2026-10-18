@@ -25,7 +25,7 @@ import (
 	"slices"
 	"strings"
 
-	"pipit.sh/pipit/internal/safeconv"
+	"piko.sh/safeconv"
 )
 
 const (

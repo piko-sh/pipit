@@ -24,9 +24,9 @@ import (
 	"fmt"
 	"unsafe"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 func handleSubOpMakeSliceInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {

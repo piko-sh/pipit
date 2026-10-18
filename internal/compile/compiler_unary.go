@@ -29,10 +29,10 @@ import (
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/engine/program"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/policy"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // compileUnaryExpression compiles a unary expression.

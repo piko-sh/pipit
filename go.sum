@@ -18,5 +18,7 @@ golang.org/x/tools v0.50.0 h1:c2ifzfcuY7L90lZ2aKd8S4K2NpASF08SZx9ZuJkHmSU=
 golang.org/x/tools v0.50.0/go.mod h1:7ulVMw3831Mwi5EZD6RomGyffr4VFjuNYXf2BbCEAV0=
 piko.sh/asmgen v0.2.0 h1:2e8PYmyEnVZaUWE0FOsf3ZFfu5OBe7H8FB/7OenGySU=
 piko.sh/asmgen v0.2.0/go.mod h1:h7RiEB1cHZVOKf+NKK/R+qyJHwSfgc2IFj8Qm2AUOF0=
+piko.sh/safeconv v0.1.0 h1:BsPGkT4mhXeR5WTk7HYuVIlBcAOulGzASfrSrESwl7o=
+piko.sh/safeconv v0.1.0/go.mod h1:GKGH9YV6ArewC9CkOcLKcbkBr+o3FodkaGsmlNkNjdw=
 piko.sh/vectormaths v0.2.0 h1:Nz1egFYwfFxYY6VvL+hjBpFvx1Vu0mldgtWi9R1JH8g=
 piko.sh/vectormaths v0.2.0/go.mod h1:wViOFV+X5fo2r0s5RkO9QTXtTdAgUdl46tzm3mWv+qY=

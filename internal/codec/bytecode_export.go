@@ -25,8 +25,8 @@ import (
 	"pipit.sh/pipit/internal/symtab"
 	"pipit.sh/pipit/internal/symtab/descriptor"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // Type aliases expose internal types to the adapter layer for bytecode serialisation

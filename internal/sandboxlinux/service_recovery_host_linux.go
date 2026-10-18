@@ -31,7 +31,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"pipit.sh/pipit/internal/safeconv"
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/sandboxbroker"
 	"pipit.sh/pipit/internal/sandboxwire"
 )

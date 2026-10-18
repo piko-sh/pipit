@@ -21,7 +21,7 @@ package isa
 import (
 	"fmt"
 
-	"pipit.sh/pipit/internal/safeconv"
+	"piko.sh/safeconv"
 )
 
 // Instruction is a compact 4-byte bytecode instruction in Op[A][B][C] format.

@@ -28,9 +28,9 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/fault"
-	"pipit.sh/pipit/internal/safeconv"
 	"pipit.sh/pipit/internal/symtab"
 
 	"pipit.sh/pipit/internal/isa"

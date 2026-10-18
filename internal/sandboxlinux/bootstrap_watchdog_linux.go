@@ -29,7 +29,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"pipit.sh/pipit/internal/safeconv"
+	"piko.sh/safeconv"
 )
 
 const (

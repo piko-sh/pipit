@@ -31,7 +31,7 @@ import (
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/symtab"
 
-	"pipit.sh/pipit/internal/safeconv"
+	"piko.sh/safeconv"
 
 	"pipit.sh/pipit/internal/mem"
 	"pipit.sh/pipit/internal/schema"

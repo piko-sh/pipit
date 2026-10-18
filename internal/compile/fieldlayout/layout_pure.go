@@ -27,8 +27,8 @@ import (
 	"reflect"
 	"strconv"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // StructFieldLayoutKey is the dedupe key used by the Compiler to share a single

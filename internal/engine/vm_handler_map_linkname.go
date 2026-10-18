@@ -24,7 +24,7 @@ import (
 	"reflect"
 	"unsafe"
 
-	"pipit.sh/pipit/internal/safeconv"
+	"piko.sh/safeconv"
 )
 
 // runtimeMapaccess2Fast64 is a direct linkname to runtime.mapaccess2_fast64, bypassing

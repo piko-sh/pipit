@@ -30,8 +30,8 @@ import (
 	"pipit.sh/pipit/internal/compile/typemap"
 	"pipit.sh/pipit/internal/engine/program"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // compoundSliceAccessArgs bundles the per-call inputs to emitCompoundSliceAccess so the

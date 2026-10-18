@@ -28,7 +28,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"pipit.sh/pipit/internal/safeconv"
+	"piko.sh/safeconv"
 )
 
 // watchdogAuthority holds adopted host observation and cgroup termination handles after

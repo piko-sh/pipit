@@ -32,11 +32,11 @@ import (
 
 	pipitmodules "pipit.sh/pipit/sdk/module"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit"
 	"pipit.sh/pipit/cmd/pipit/internal/modloader"
 	"pipit.sh/pipit/cmd/pipit/internal/output"
 	"pipit.sh/pipit/cmd/pipit/internal/runner"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // defaultRunCallDepth is the call-depth limit pipit run applies unless -max-call-depth

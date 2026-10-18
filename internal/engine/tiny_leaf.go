@@ -29,9 +29,9 @@ import (
 	"reflect"
 	"unsafe"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // tinyLeafScalarArgument carries a scalar read for a set-from-argument leaf.

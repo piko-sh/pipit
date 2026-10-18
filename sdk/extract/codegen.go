@@ -29,6 +29,7 @@ import (
 	"encoding/json"
 
 	"piko.sh/goastutil"
+	"piko.sh/goastutil/goimports"
 )
 
 const (
@@ -185,7 +186,7 @@ func (g Generator) GenerateFile(extractedPackage ExtractedPackage, outputPackage
 		link:     len(linkedEntries) > 0,
 	})
 
-	formatted, err := goastutil.FormatAST(fset, file)
+	formatted, err := goimports.FormatAST(fset, file)
 	if err != nil {
 		return nil, fmt.Errorf("formatting generated code for %s: %w", extractedPackage.ImportPath, err)
 	}
@@ -310,7 +311,7 @@ func (g Generator) GenerateRegisterFile(outputPackage string) ([]byte, error) {
 
 	goastutil.AddImport(fset, file, reflectPackage)
 
-	formatted, err := goastutil.FormatAST(fset, file)
+	formatted, err := goimports.FormatAST(fset, file)
 	if err != nil {
 		return nil, fmt.Errorf("formatting register file: %w", err)
 	}

@@ -28,11 +28,11 @@ import (
 	"time"
 	"unsafe"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/link"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // setFinalizerPointer identifies runtime.SetFinalizer among native callees.

@@ -32,9 +32,9 @@ import (
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/fault"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/policy"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 var (

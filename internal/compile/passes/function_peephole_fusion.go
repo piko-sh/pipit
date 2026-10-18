@@ -22,9 +22,9 @@ import (
 	"math"
 	"slices"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // rangeCheckShape carries the per-bound immediate and destination register decoded from

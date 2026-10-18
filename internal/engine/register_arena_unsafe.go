@@ -32,8 +32,8 @@ import (
 	"unicode/utf8"
 	"unsafe"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/mem"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 const (

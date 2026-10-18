@@ -30,7 +30,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"pipit.sh/pipit/internal/safeconv"
+	"piko.sh/safeconv"
 )
 
 // maximumHostWatchdogLifetime is the longest acceptable watchdog lifetime.

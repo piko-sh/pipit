@@ -8,7 +8,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/mod v0.41.0
 	golang.org/x/tools v0.50.0
-	piko.sh/goastutil v0.1.0
+	piko.sh/goastutil v0.2.0
 )
 
 require (

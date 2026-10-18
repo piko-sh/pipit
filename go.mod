@@ -9,6 +9,7 @@ require (
 	golang.org/x/sys v0.48.0
 	golang.org/x/tools v0.50.0
 	piko.sh/asmgen v0.2.0
+	piko.sh/safeconv v0.1.0
 	piko.sh/vectormaths v0.2.0
 )
 

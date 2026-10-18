@@ -29,6 +29,7 @@ import (
 	"strconv"
 	"strings"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/compile/escape"
 	"pipit.sh/pipit/internal/compile/fieldlayout"
 	"pipit.sh/pipit/internal/compile/isaselect"
@@ -40,7 +41,6 @@ import (
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/logging"
 	"pipit.sh/pipit/internal/policy"
-	"pipit.sh/pipit/internal/safeconv"
 	"pipit.sh/pipit/internal/symtab/descriptor"
 )
 

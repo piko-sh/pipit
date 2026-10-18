@@ -28,8 +28,8 @@ import (
 
 	"pipit.sh/pipit/internal/engine"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // compileMethodReceiverWithPath emits the receiver for a method-call site, applying Go's

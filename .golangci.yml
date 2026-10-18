@@ -136,7 +136,6 @@ linters:
           list-mode: lax
           files:
             - "**/internal/fault/**"
-            - "**/internal/safeconv/**"
             - "!$test"
           deny:
             - pkg: pipit.sh/pipit/internal

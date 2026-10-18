@@ -18,7 +18,7 @@
 
 package engine
 
-import "pipit.sh/pipit/internal/safeconv"
+import "piko.sh/safeconv"
 
 // AttachBudgetTracker joins the arena to an execution's shared byte accounting. The
 // arena's current working set is charged immediately because pooled arenas keep their

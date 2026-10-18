@@ -27,7 +27,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"pipit.sh/pipit/internal/safeconv"
+	"piko.sh/safeconv"
 )
 
 const (

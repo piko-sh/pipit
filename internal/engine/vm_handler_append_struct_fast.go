@@ -22,8 +22,8 @@ import (
 	"reflect"
 	"unsafe"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // structAppendResult describes the slice produced by a struct-fast append.

@@ -35,9 +35,9 @@ import (
 
 	"pipit.sh/pipit/internal/engine"
 
+	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/policy"
-	"pipit.sh/pipit/internal/safeconv"
 )
 
 // yieldBodyParams bundles the parameters for compileYieldBody to stay within the
