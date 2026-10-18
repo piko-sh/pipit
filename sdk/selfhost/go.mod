@@ -5,8 +5,8 @@ go 1.27.0
 require (
 	golang.org/x/tools v0.50.0
 	piko.sh/safeconv v0.1.0
-	pipit.sh/pipit v0.0.0
-	pipit.sh/pipit/sdk/stdlib v0.0.0
+	pipit.sh/pipit v0.0.0-alpha.7
+	pipit.sh/pipit/sdk/stdlib v0.0.0-alpha.7
 )
 
 require (
