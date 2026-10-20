@@ -21,20 +21,19 @@
 package bytecode_test
 
 import (
-	"context"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/debug"
-
-	"github.com/stretchr/testify/require"
 )
 
 func compileForDestructure(t *testing.T, source string) string {
 	t.Helper()
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoErrorf(t, err, "compile failed: %v", err)
 	return debug.DisassembleAssembly(compiled)
 }

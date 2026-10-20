@@ -22,9 +22,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 
+	"pipit.sh/pipit"
 	"pipit.sh/pipit/cmd/pipit/internal/output"
 	"pipit.sh/pipit/cmd/pipit/internal/styles"
 )
@@ -81,6 +83,9 @@ func runSymbolsList(ctx context.Context, args []string, streams output.IO) int {
 	fmt.Fprintf(streams.Stdout, "%s %d package(s) registered\n", theme.Title.Render("symbols:"), len(packages))
 	for _, path := range packages {
 		count := len(exports[path])
+		if _, named := exports[path][pipit.PackageNameSymbol]; named {
+			count--
+		}
 		fmt.Fprintf(streams.Stdout, "  %s  %s\n",
 			theme.Subtle.Render(fmt.Sprintf("%4d", count)),
 			theme.Strong.Render(path),
@@ -89,12 +94,13 @@ func runSymbolsList(ctx context.Context, args []string, streams output.IO) int {
 	return 0
 }
 
-// runSymbolsShow prints the exported symbols for one registered package.
+// runSymbolsShow prints the exported symbols for one registered package, and the name
+// the package declares when its table records one.
 //
 // Takes args ([]string) which holds the show subcommand arguments.
 // Takes streams (output.IO) which carries the standard I/O streams.
 //
-// Returns int which is the exit code: 0 on success, 1 on any failure.
+// Returns int which is 0 on success or 1 on failure.
 func runSymbolsShow(ctx context.Context, args []string, streams output.IO) int {
 	if len(args) < 1 {
 		fmt.Fprintln(streams.Stderr, "Usage: pipit symbols show <package>")
@@ -111,7 +117,9 @@ func runSymbolsShow(ctx context.Context, args []string, streams output.IO) int {
 	theme := styles.For(streams.ShouldColour())
 	names := make([]string, 0, len(symbols))
 	for name := range symbols {
-		names = append(names, name)
+		if name != pipit.PackageNameSymbol {
+			names = append(names, name)
+		}
 	}
 	slices.Sort(names)
 	fmt.Fprintf(streams.Stdout, "%s %s (%d symbols)\n",
@@ -119,6 +127,9 @@ func runSymbolsShow(ctx context.Context, args []string, streams output.IO) int {
 		theme.Strong.Render(target),
 		len(names),
 	)
+	if declared, ok := symbols[pipit.PackageNameSymbol]; ok && declared.Kind() == reflect.String {
+		fmt.Fprintf(streams.Stdout, "  %s %s\n", theme.Subtle.Render("declared name"), theme.Strong.Render(declared.String()))
+	}
 	for _, name := range names {
 		value := symbols[name]
 		fmt.Fprintf(streams.Stdout, "  %s %s\n",

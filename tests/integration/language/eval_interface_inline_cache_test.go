@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestInterfaceInlineCacheCorrectness(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "monomorphic_value_receiver_loop",
@@ -47,7 +47,7 @@ for i := 0; i < 10; i++ {
 	s += g.Greet()
 }
 s`,
-			expect: 70,
+			want: 70,
 		},
 		{
 			name: "monomorphic_pointer_receiver_loop",
@@ -64,7 +64,7 @@ func run() int {
 	return ci.Value()
 }
 run()`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "polymorphic_two_types_alternating",
@@ -79,7 +79,7 @@ for i := 0; i < 10; i++ {
 	s += shapes[i&1].Area()
 }
 s`,
-			expect: int(5*9 + 5*20),
+			want: int(5*9 + 5*20),
 		},
 		{
 			name: "polymorphic_three_types_round_robin",
@@ -96,7 +96,7 @@ for i := 0; i < 9; i++ {
 	s += items[i%3].V()
 }
 s`,
-			expect: int(3*1 + 3*20 + 3*300),
+			want: int(3*1 + 3*20 + 3*300),
 		},
 		{
 			name: "embedded_promoted_method",
@@ -106,7 +106,7 @@ func (i Inner) Speak() int { return i.value }
 type Outer struct{ Inner }
 var s Speaker = Outer{Inner: Inner{value: 42}}
 s.Speak()`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "monomorphic_then_polymorphic_arrives",
@@ -122,7 +122,7 @@ g = De{n: 5}
 s += g.Greet()
 s += g.Greet()
 s`,
-			expect: int(5 + 5 + 10 + 10),
+			want: int(5 + 5 + 10 + 10),
 		},
 		{
 			name: "interface_method_returning_string",
@@ -131,7 +131,7 @@ type Person struct{ name string }
 func (p Person) Name() string { return p.name }
 var n Namer = Person{name: "alice"}
 n.Name() + "-" + n.Name()`,
-			expect: "alice-alice",
+			want: "alice-alice",
 		},
 		{
 			name: "interface_method_with_args",
@@ -140,7 +140,7 @@ type N struct{ base int }
 func (n N) Plus(x int) int { return n.base + x }
 var a Adder = N{base: 100}
 a.Plus(1) + a.Plus(2) + a.Plus(3)`,
-			expect: int(303 + 3),
+			want: int(303 + 3),
 		},
 		{
 			name: "interface_pointer_in_struct",
@@ -150,7 +150,7 @@ func (d *Dat) Resolve() int { return d.x }
 type Wrap struct{ r Resolver }
 w := Wrap{r: &Dat{x: 99}}
 w.r.Resolve() + w.r.Resolve()`,
-			expect: 198,
+			want: 198,
 		},
 		{
 			name: "interface_after_assignment_swap",
@@ -165,7 +165,7 @@ a := g.Greet()
 g = Y{v: 7}
 b := g.Greet()
 a + b`,
-			expect: 0,
+			want: 0,
 		},
 	}
 
@@ -173,9 +173,9 @@ a + b`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -200,7 +200,7 @@ v5 := g.Greet()
 g = A{n: 0}
 v6 := g.Greet()
 v1*1000000 + v2*100000 + v3*10000 + v4*1000 + v5*100 + v6`
-	result, err := service.Eval(context.Background(), code)
+	result, err := service.Eval(t.Context(), code)
 	require.NoError(t, err)
 	require.Equal(t, int(1*1000000+1*100000+1*10000+100*1000+100*100+1), result)
 }
@@ -222,7 +222,7 @@ for i := 0; i < 100; i++ {
 	total += g.Greet()
 }
 total`
-	result, err := service.Eval(context.Background(), code)
+	result, err := service.Eval(t.Context(), code)
 	require.NoError(t, err)
 	require.Equal(t, 4200, result,
 		"interface-stored En must survive slab-growth pressure")

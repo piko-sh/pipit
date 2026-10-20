@@ -21,73 +21,74 @@ package pipit
 import (
 	"runtime/debug"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestModuleVersion(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct {
+	tests := []struct {
 		name string
 		info *debug.BuildInfo
 		ok   bool
 		want string
 	}{
-		{"no build info", nil, false, "devel"},
+		{name: "no build info", info: nil, ok: false, want: "devel"},
 		{
-			"dependency",
-			&debug.BuildInfo{
+			name: "dependency",
+			info: &debug.BuildInfo{
 				Main: debug.Module{Path: "example.com/host", Version: "v1.0.0"},
 				Deps: []*debug.Module{{Path: "pipit.sh/pipit", Version: "v0.1.0-alpha.2"}},
 			},
-			true,
-			"0.1.0-alpha.2",
+			ok:   true,
+			want: "0.1.0-alpha.2",
 		},
 		{
-			"main module",
-			&debug.BuildInfo{Main: debug.Module{Path: "pipit.sh/pipit", Version: "v0.2.0"}},
-			true,
-			"0.2.0",
+			name: "main module",
+			info: &debug.BuildInfo{Main: debug.Module{Path: "pipit.sh/pipit", Version: "v0.2.0"}},
+			ok:   true,
+			want: "0.2.0",
 		},
 		{
-			"workspace build",
-			&debug.BuildInfo{
+			name: "workspace build",
+			info: &debug.BuildInfo{
 				Main: debug.Module{Path: "pipit.sh/pipit/cmd/pipit", Version: "(devel)"},
 				Deps: []*debug.Module{{Path: "pipit.sh/pipit", Version: "(devel)"}},
 			},
-			true,
-			"devel",
+			ok:   true,
+			want: "devel",
 		},
 		{
-			"replaced by a directory",
-			&debug.BuildInfo{Deps: []*debug.Module{{
+			name: "replaced by a directory",
+			info: &debug.BuildInfo{Deps: []*debug.Module{{
 				Path:    "pipit.sh/pipit",
 				Version: "v0.1.0",
 				Replace: &debug.Module{Path: "../pipit"},
 			}}},
-			true,
-			"devel",
+			ok:   true,
+			want: "devel",
 		},
 		{
-			"replaced by another version",
-			&debug.BuildInfo{Deps: []*debug.Module{{
+			name: "replaced by another version",
+			info: &debug.BuildInfo{Deps: []*debug.Module{{
 				Path:    "pipit.sh/pipit",
 				Version: "v0.1.0",
 				Replace: &debug.Module{Path: "example.com/fork", Version: "v0.1.1"},
 			}}},
-			true,
-			"0.1.1",
+			ok:   true,
+			want: "0.1.1",
 		},
 		{
-			"not linked",
-			&debug.BuildInfo{Main: debug.Module{Path: "example.com/host", Version: "v1.0.0"}},
-			true,
-			"devel",
+			name: "not linked",
+			info: &debug.BuildInfo{Main: debug.Module{Path: "example.com/host", Version: "v1.0.0"}},
+			ok:   true,
+			want: "devel",
 		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := moduleVersion(test.info, test.ok); got != test.want {
-				t.Fatalf("moduleVersion = %q, want %q", got, test.want)
-			}
+			require.Equal(t, tt.want, moduleVersion(tt.info, tt.ok))
 		})
 	}
 }

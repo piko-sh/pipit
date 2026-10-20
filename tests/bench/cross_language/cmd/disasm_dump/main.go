@@ -34,7 +34,7 @@ import (
 )
 
 func main() {
-	source, err := os.ReadFile(os.Args[1])
+	source, err := os.ReadFile(os.Args[1]) //nolint:gosec // path is a command-line argument
 	if err != nil {
 		panic(err)
 	}

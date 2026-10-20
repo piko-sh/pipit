@@ -27,22 +27,21 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestRecoveryClaimProcessDeath(t *testing.T) {
 	if journal := os.Getenv("PIPIT_TEST_CLAIM_JOURNAL"); journal != "" {
 		claim, err := OpenLinuxRecoveryClaim(journal, os.Getenv("PIPIT_TEST_CLAIM_CHECKPOINT"),
 			os.Getenv("PIPIT_TEST_CLAIM_APPROVAL"), [sha256.Size]byte{1})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		defer claim.Close()
-		if err := claim.RecordServiceReleaseReady(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, claim.RecordServiceReleaseReady())
 		fmt.Println("ready")
 		var signal [1]byte
 		_, _ = io.ReadFull(os.Stdin, signal[:])
@@ -51,49 +50,30 @@ func TestRecoveryClaimProcessDeath(t *testing.T) {
 	directories, binding := recoveryClaimFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestRecoveryClaimProcessDeath$")
-	command.Env = append(os.Environ(), "PIPIT_TEST_CLAIM_JOURNAL="+directories[0],
+	command := sandboxtest.Command(ctx, "TestRecoveryClaimProcessDeath", "PIPIT_TEST_CLAIM_JOURNAL="+directories[0],
 		"PIPIT_TEST_CLAIM_CHECKPOINT="+directories[1], "PIPIT_TEST_CLAIM_APPROVAL="+directories[2])
 	command.Stderr = os.Stderr
 	input, err := command.StdinPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer input.Close()
 	output, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer output.Close()
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, command.Start())
 	defer func() { _ = command.Process.Kill(); _ = command.Wait() }()
-	ready, err := bufio.NewReader(output).ReadString('\n')
-	if err != nil || ready != "ready\n" {
-		t.Fatal("claim owner did not become ready:", ready, err)
-	}
+	sandboxtest.WaitForLine(t, bufio.NewReader(output), "ready", "the claim owner becomes ready")
 	claim, err := OpenLinuxRecoveryClaim(directories[0], directories[1], directories[2], binding)
 	if claim != nil {
 		_ = claim.Close()
 	}
-	if err == nil || claim != nil {
-		t.Fatal("another process bypassed the live claim:", err)
-	}
-	if err := command.Process.Kill(); err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Wait(); err == nil {
-		t.Fatal("killed claimant exited successfully")
-	}
+	require.Error(t, err, "another process bypassed the live claim")
+	require.Nil(t, claim)
+	require.NoError(t, command.Process.Kill())
+	require.Error(t, command.Wait(), "killed claimant exited successfully")
 	claim, err = OpenLinuxRecoveryClaim(directories[0], directories[1], directories[2], binding)
-	if err != nil {
-		t.Fatal("terminated claimant retained leases:", err)
-	}
-	if ready, err := claim.ServiceReleaseReady(); err != nil || !ready {
-		t.Fatal("claimant death lost durable release readiness:", err)
-	}
-	if err := claim.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "a terminated claimant keeps no leases")
+	released, err := claim.ServiceReleaseReady()
+	require.NoError(t, err, "claimant death keeps durable release readiness")
+	require.True(t, released)
+	require.NoError(t, claim.Close())
 }

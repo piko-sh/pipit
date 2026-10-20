@@ -19,9 +19,10 @@
 package sandboxhost
 
 import (
-	"context"
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCleanupErrorContract(t *testing.T) {
@@ -38,18 +39,11 @@ func TestCleanupErrorContract(t *testing.T) {
 	}))
 	err := error(wrapped)
 
-	if !errors.Is(err, launch) || !errors.Is(err, cleanup) {
-		t.Fatalf("cleanup error does not wrap both causes: %v", err)
-	}
+	require.ErrorIs(t, err, launch, "cleanup error does not wrap both causes")
+	require.ErrorIs(t, err, cleanup)
 	var target *IsolatedCleanupError
-	if !errors.As(err, &target) {
-		t.Fatal("not an *IsolatedCleanupError")
-	}
+	require.ErrorAs(t, err, &target, "not an *IsolatedCleanupError")
 
-	if retryErr := target.Retry(context.Background()); retryErr == nil {
-		t.Fatal("first retry unexpectedly succeeded")
-	}
-	if retryErr := target.Retry(context.Background()); retryErr != nil {
-		t.Fatal("second retry did not release:", retryErr)
-	}
+	require.Error(t, target.Retry(t.Context()), "the first retry fails")
+	require.NoError(t, target.Retry(t.Context()), "the second retry releases")
 }

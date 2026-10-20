@@ -26,6 +26,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -49,6 +50,16 @@ const (
 	// errDiscoverWrap is the format string used to wrap errors surfaced from the discovery
 	// pipeline so callers see a consistent prefix.
 	errDiscoverWrap = "discover: %w"
+
+	// cgoPseudoPackage is the import path of cgo's pseudo-package, which is not a package
+	// and never needs a symbol table.
+	cgoPseudoPackage = "C"
+
+	// goModFileName is the name of the module file at the project root.
+	goModFileName = "go.mod"
+
+	// maxGoModSizeBytes caps how much of go.mod discovery reads to find the module path.
+	maxGoModSizeBytes = 1024 * 1024
 )
 
 var (
@@ -60,6 +71,17 @@ var (
 	// errSourceFileTooLarge is returned when a scanned file exceeds maxSourceFileSizeBytes
 	// during discovery.
 	errSourceFileTooLarge = errors.New("source file exceeds size limit")
+
+	// errNotRegularFile is returned for a source path that names a device, pipe or other
+	// non-regular file, which discovery never reads.
+	errNotRegularFile = errors.New("not a regular file")
+
+	// errNotProjectDirectory is returned when an import path inside the project module does
+	// not name a directory below the project root.
+	errNotProjectDirectory = errors.New("not a directory inside the project")
+
+	// errNoModulePath is returned when go.mod declares no module path.
+	errNoModulePath = errors.New("go.mod declares no module path")
 )
 
 // SourceScanner finds the Go imports in one kind of project source file. Discover walks
@@ -74,7 +96,6 @@ type SourceScanner interface {
 
 	// Imports returns the import paths referenced by one file.
 	//
-	// Takes ctx (context.Context) which carries cancellation.
 	// Takes path (string) which is the root-relative file path, for error messages.
 	// Takes data ([]byte) which is the file content.
 	//
@@ -96,9 +117,7 @@ func (GoFileScanner) Match(name string) bool {
 	return strings.HasSuffix(name, ".go")
 }
 
-// Imports parses only the import declarations of a Go source file. A generated file, such
-// as an existing symbol table, is not a source the project wrote, so it contributes
-// nothing.
+// Imports reads a Go file's import declarations, ignoring generated files.
 //
 // Takes path (string) which names the file in error messages.
 // Takes data ([]byte) which is the file content.
@@ -178,10 +197,16 @@ type DiscoverOptions struct {
 	// AlreadyProvided and IgnoredPrefixes.
 	ExtraIgnored []string
 
-	// BuildTags are forwarded to the downstream packages.Load call so build-constrained
-	// files in the discovered packages are resolved consistently with the caller's
-	// environment. Discovery itself does not consult build tags.
+	// FileFilter decides which Go files the interpreter compiles.
+	FileFilter FileFilter
+
+	// BuildTags selects matching files during project traversal and downstream package
+	// loading.
 	BuildTags []string
+
+	// FollowProjectImports discovers dependencies by following imports of the project's own
+	// packages.
+	FollowProjectImports bool
 }
 
 // DiscoverResult captures the output of a Discover run. Values are deterministic: slices
@@ -199,13 +224,114 @@ type DiscoverResult struct {
 	// GenericCandidates lists discovered packages that export generic types. These need a
 	// manual generic: block in the manifest and are flagged so the user can address them.
 	GenericCandidates []string
+
+	// Unresolved lists imports that could not be loaded and their errors, excluding
+	// them from RequiredImports.
+	Unresolved []UnresolvedImport
+
+	// Warnings lists non-fatal discovery problems that may leave results incomplete.
+	Warnings []string
+}
+
+// UnresolvedImport is an import that discovery found but could not load, so it cannot be
+// extracted.
+type UnresolvedImport struct {
+	// ImportPath is the import path the sources reference.
+	ImportPath string
+
+	// Reason says why the package could not be loaded.
+	Reason string
+}
+
+// directInspection is what loading the candidate imports found.
+type directInspection struct {
+	// resolved lists the candidates that loaded as Go packages.
+	resolved []string
+
+	// cgo lists the resolved candidates that use cgo.
+	cgo []string
+
+	// generic lists the resolved candidates that export generic types.
+	generic []string
+
+	// unresolved lists the candidates that did not load, with the reason.
+	unresolved []UnresolvedImport
+
+	// warnings lists problems with the load as a whole.
+	warnings []string
+}
+
+// discoverRun holds the settings of one Discover run with their defaults applied.
+type discoverRun struct {
+	// filter decides which Go files count.
+	filter FileFilter
+
+	// root is the absolute project root.
+	root string
+
+	// sourceDirs are the root-relative directories scanned.
+	sourceDirs []string
+
+	// scanners read the files they match.
+	scanners []SourceScanner
+}
+
+// newDiscoverRun applies the defaults of DiscoverOptions.
+//
+// Takes opts (DiscoverOptions) which configures the run.
+//
+// Returns discoverRun which holds the settings.
+// Returns error when the root cannot be made absolute.
+func newDiscoverRun(opts DiscoverOptions) (discoverRun, error) {
+	root := opts.Root
+	if root == "" {
+		root = "."
+	}
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return discoverRun{}, fmt.Errorf("resolving root %q: %w", opts.Root, err)
+	}
+	run := discoverRun{filter: opts.FileFilter, root: root, sourceDirs: opts.SourceDirs, scanners: opts.Scanners}
+	if len(run.sourceDirs) == 0 {
+		run.sourceDirs = []string{"."}
+	}
+	if len(run.scanners) == 0 {
+		run.scanners = []SourceScanner{GoFileScanner{}}
+	}
+	if run.filter == nil {
+		run.filter = DefaultFileFilter(opts.BuildTags)
+	}
+	return run, nil
+}
+
+// follow follows the project's own packages that the scanned sources import, adding their
+// imports to sourceImports.
+//
+// Takes ignored (map[string]struct{}) which holds the provided and ignored packages,
+// which are not followed.
+// Takes ignoredPrefixes ([]string) which are the prefixes left out of the result.
+// Takes sourceImports (map[string]struct{}) which receives the followed imports.
+//
+// Returns prefixes ([]string) which are the prefixes to leave out, now including the
+// project module.
+// Returns warnings ([]string) which are the warnings.
+// Returns err (error) when following fails.
+func (run discoverRun) follow(ctx context.Context, ignored map[string]struct{}, ignoredPrefixes []string, sourceImports map[string]struct{}) (prefixes, warnings []string, err error) {
+	modulePath, err := projectModulePath(run.root)
+	if err != nil {
+		return ignoredPrefixes, []string{fmt.Sprintf("cannot follow project imports: %v", err)}, nil
+	}
+	warnings, err = followProjectImports(ctx, run.root, modulePath, run.filter, ignored, sourceImports)
+	if err != nil {
+		return nil, nil, err
+	}
+	return append(slices.Clone(ignoredPrefixes), modulePath), warnings, nil
 }
 
 // Discover walks a project, collects every Go import its scanned sources reference,
 // filters out the packages the host already provides, and returns the remaining set as
 // DiscoverResult.
 //
-// Takes ctx (context.Context) which carries cancellation and logging.
 // Takes opts (DiscoverOptions) which configures the run.
 //
 // Returns DiscoverResult which holds the deduplicated, sorted lists of discovered
@@ -215,59 +341,51 @@ func Discover(ctx context.Context, opts DiscoverOptions) (DiscoverResult, error)
 	if err := ctx.Err(); err != nil {
 		return DiscoverResult{}, fmt.Errorf(errDiscoverWrap, err)
 	}
-
-	root := opts.Root
-	if root == "" {
-		root = "."
-	}
-	root, err := filepath.Abs(root)
+	run, err := newDiscoverRun(opts)
 	if err != nil {
-		return DiscoverResult{}, fmt.Errorf("resolving root %q: %w", opts.Root, err)
+		return DiscoverResult{}, err
 	}
 
-	sourceDirs := opts.SourceDirs
-	if len(sourceDirs) == 0 {
-		sourceDirs = []string{"."}
-	}
-	scanners := opts.Scanners
-	if len(scanners) == 0 {
-		scanners = []SourceScanner{GoFileScanner{}}
-	}
-
-	sourceImports, err := collectSourceImports(ctx, root, sourceDirs, scanners)
+	sourceImports, err := collectSourceImports(ctx, run.root, run.sourceDirs, run.scanners, run.filter)
 	if err != nil {
 		return DiscoverResult{}, err
 	}
 
 	ignored := buildIgnoreSet(opts.AlreadyProvided, opts.ExtraIgnored)
+	ignoredPrefixes := opts.IgnoredPrefixes
+	var warnings []string
+	if opts.FollowProjectImports {
+		ignoredPrefixes, warnings, err = run.follow(ctx, ignored, ignoredPrefixes, sourceImports)
+		if err != nil {
+			return DiscoverResult{}, err
+		}
+	}
 
-	candidates := filterImports(sourceImports, ignored, opts.IgnoredPrefixes)
+	candidates := filterImports(sourceImports, ignored, ignoredPrefixes)
 	if len(candidates) == 0 {
-		return DiscoverResult{}, nil
+		return DiscoverResult{RequiredImports: nil, SkippedCgo: nil, GenericCandidates: nil, Unresolved: nil, Warnings: warnings}, nil
 	}
 
 	if err := ctx.Err(); err != nil {
 		return DiscoverResult{}, fmt.Errorf(errDiscoverWrap, err)
 	}
 
-	resolved, cgo, generic, err := inspectDirectPackages(ctx, root, opts.BuildTags, candidates)
+	inspection, err := inspectDirectPackages(ctx, run.root, opts.BuildTags, candidates)
 	if err != nil {
 		return DiscoverResult{}, err
 	}
 
 	return DiscoverResult{
-		RequiredImports:   resolved,
-		SkippedCgo:        cgo,
-		GenericCandidates: generic,
+		RequiredImports:   inspection.resolved,
+		SkippedCgo:        inspection.cgo,
+		GenericCandidates: inspection.generic,
+		Unresolved:        inspection.unresolved,
+		Warnings:          slices.Concat(warnings, inspection.warnings),
 	}, nil
 }
 
-// filterImports removes the ignored paths and prefixes from the raw import set.
-//
-// Discover only filters paths the host already provides symbols for. Unregistered stdlib
-// packages (for example os/exec, net/http) intentionally surface so the user can add them
-// to the manifest; silently assuming "stdlib means registered" would hide real gaps that
-// only show up when the script runs.
+// filterImports removes ignored paths, ignored prefixes and cgo's pseudo-package.
+// Standard-library packages remain candidates unless the host explicitly provides them.
 //
 // Takes sourceImports (map[string]struct{}) which is the raw import set.
 // Takes ignored (map[string]struct{}) which holds the already-provided paths and
@@ -279,7 +397,7 @@ func Discover(ctx context.Context, opts DiscoverOptions) (DiscoverResult, error)
 func filterImports(sourceImports, ignored map[string]struct{}, ignoredPrefixes []string) []string {
 	result := make(map[string]struct{}, len(sourceImports))
 	for path := range sourceImports {
-		if _, skip := ignored[path]; skip {
+		if _, skip := ignored[path]; skip || path == cgoPseudoPackage {
 			continue
 		}
 		if hasPathPrefix(path, ignoredPrefixes) {
@@ -306,52 +424,40 @@ func hasPathPrefix(path string, prefixes []string) bool {
 	return false
 }
 
-// inspectDirectPackages runs packages.Load on exactly the direct imports collected from
-// the scanned sources and classifies each result. It does not walk dependencies.
+// inspectDirectPackages loads and classifies direct imports without traversing
+// dependencies. Packages with load errors are unresolved, and cgo or generic exports
+// are flagged for callers.
 //
-// Candidates that resolve to a real Go package with at least one .go file are kept.
-// Candidates that don't resolve (virtual paths, missing modules) are silently dropped. A
-// package that loads with type errors is treated as unresolved so a populated-but-broken
-// type scope cannot nil-deref downstream. Cgo and generic-exporting packages are surfaced
-// alongside the resolved set so callers can warn users.
-//
-// Takes ctx (context.Context) which carries cancellation; it is forwarded to
-// packages.Load and checked before classification.
 // Takes root (string) which is the absolute project root for package resolution.
 // Takes buildTags ([]string) which is forwarded to packages.Load.
 // Takes candidates ([]string) which is the filtered candidate list.
 //
-// Returns three sorted slices (resolved, cgo, generic) or an error on cancellation. When
-// packages.Load fails, candidates are returned as-is.
-func inspectDirectPackages(ctx context.Context, root string, buildTags, candidates []string) (resolved, cgo, generic []string, err error) {
+// Returns directInspection whose slices are sorted. When packages.Load fails, the
+// candidates are returned as resolved with a warning.
+// Returns error on cancellation.
+func inspectDirectPackages(ctx context.Context, root string, buildTags, candidates []string) (directInspection, error) {
 	if len(candidates) == 0 {
-		return nil, nil, nil, nil
+		return directInspection{}, nil
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, nil, nil, fmt.Errorf(errDiscoverWrap, err)
+		return directInspection{}, fmt.Errorf(errDiscoverWrap, err)
 	}
 
-	config := &packages.Config{
-		Context: ctx,
-		Mode: packages.NeedName |
-			packages.NeedFiles |
-			packages.NeedImports |
-			packages.NeedTypes,
-		Dir: root,
-	}
-	if len(buildTags) > 0 {
-		config.BuildFlags = []string{"-tags=" + strings.Join(buildTags, ",")}
-	}
-
-	loaded, loadErr := packages.Load(config, candidates...)
+	loaded, loadErr := packages.Load(discoverLoadConfig(ctx, root, buildTags), candidates...)
 	if loadErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, nil, nil, fmt.Errorf(errDiscoverWrap, ctxErr)
+			return directInspection{}, fmt.Errorf(errDiscoverWrap, ctxErr)
 		}
-		return candidates, nil, nil, nil
+		return directInspection{
+			resolved:   candidates,
+			cgo:        nil,
+			generic:    nil,
+			unresolved: nil,
+			warnings:   []string{fmt.Sprintf("could not load the discovered packages, so they are reported unverified: %v", loadErr)},
+		}, nil
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, nil, nil, fmt.Errorf(errDiscoverWrap, err)
+		return directInspection{}, fmt.Errorf(errDiscoverWrap, err)
 	}
 
 	loadedByPath := indexPackagesByPath(loaded)
@@ -359,10 +465,12 @@ func inspectDirectPackages(ctx context.Context, root string, buildTags, candidat
 	resolvedSet := make(map[string]struct{})
 	cgoSet := make(map[string]struct{})
 	genericSet := make(map[string]struct{})
+	var unresolved []UnresolvedImport
 
 	for _, path := range candidates {
 		pkg, ok := loadedByPath[path]
-		if !ok || !packageHasGoSource(pkg) || len(pkg.Errors) > 0 {
+		if reason := unresolvedReason(pkg, ok); reason != "" {
+			unresolved = append(unresolved, UnresolvedImport{ImportPath: path, Reason: reason})
 			continue
 		}
 		resolvedSet[path] = struct{}{}
@@ -374,7 +482,56 @@ func inspectDirectPackages(ctx context.Context, root string, buildTags, candidat
 			genericSet[path] = struct{}{}
 		}
 	}
-	return sortedKeys(resolvedSet), sortedKeys(cgoSet), sortedKeys(genericSet), nil
+	return directInspection{
+		resolved:   sortedKeys(resolvedSet),
+		cgo:        sortedKeys(cgoSet),
+		generic:    sortedKeys(genericSet),
+		unresolved: unresolved,
+		warnings:   nil,
+	}, nil
+}
+
+// discoverLoadConfig returns the packages.Load configuration that inspects the candidate
+// imports.
+//
+// Takes root (string) which is the project root the go command runs in.
+// Takes buildTags ([]string) which are passed through -tags.
+//
+// Returns *packages.Config which loads names, files, imports and types.
+func discoverLoadConfig(ctx context.Context, root string, buildTags []string) *packages.Config {
+	config := &packages.Config{
+		Context: ctx,
+		Mode: packages.NeedName |
+			packages.NeedFiles |
+			packages.NeedImports |
+			packages.NeedTypes,
+		Dir: root,
+	}
+	if len(buildTags) > 0 {
+		config.BuildFlags = []string{"-tags=" + strings.Join(buildTags, ",")}
+	}
+	return config
+}
+
+// unresolvedReason says why a candidate cannot be extracted.
+//
+// Takes pkg (*packages.Package) which is the loaded package, nil when not loaded.
+// Takes loaded (bool) which reports whether the loader returned the package.
+//
+// Returns string which is the reason, or empty when the package is usable.
+func unresolvedReason(pkg *packages.Package, loaded bool) string {
+	switch {
+	case !loaded || pkg == nil:
+		return "the package loader did not return it"
+	case len(pkg.Errors) > 1:
+		return fmt.Sprintf("%s (and %d more errors)", pkg.Errors[0].Msg, len(pkg.Errors)-1)
+	case len(pkg.Errors) == 1:
+		return pkg.Errors[0].Msg
+	case !packageHasGoSource(pkg):
+		return "it has no Go source files"
+	default:
+		return ""
+	}
 }
 
 // indexPackagesByPath returns a lookup table of loaded packages keyed by PkgPath so
@@ -412,14 +569,14 @@ func packageHasGoSource(pkg *packages.Package) bool {
 // collectSourceImports walks the source directories through an os.Root opened on the
 // project root and returns every import the scanners report.
 //
-// Takes ctx (context.Context) which carries cancellation.
 // Takes root (string) which is the absolute project root.
 // Takes sourceDirs ([]string) which are root-relative directories to scan.
 // Takes scanners ([]SourceScanner) which read the files they match.
+// Takes filter (FileFilter) which decides which Go files count.
 //
 // Returns map[string]struct{} which is a set keyed by import path.
 // Returns error when the root cannot be opened, or file I/O or parsing fails.
-func collectSourceImports(ctx context.Context, root string, sourceDirs []string, scanners []SourceScanner) (map[string]struct{}, error) {
+func collectSourceImports(ctx context.Context, root string, sourceDirs []string, scanners []SourceScanner, filter FileFilter) (map[string]struct{}, error) {
 	projectRoot, err := os.OpenRoot(root)
 	if err != nil {
 		return nil, fmt.Errorf("opening project root %s: %w", root, err)
@@ -428,7 +585,7 @@ func collectSourceImports(ctx context.Context, root string, sourceDirs []string,
 
 	imports := make(map[string]struct{})
 	for _, directoryName := range sourceDirs {
-		if err := walkSourceDirectory(ctx, projectRoot, directoryName, scanners, imports); err != nil {
+		if err := walkSourceDirectory(ctx, projectRoot, directoryName, scanners, filter, imports); err != nil {
 			return nil, err
 		}
 	}
@@ -438,14 +595,14 @@ func collectSourceImports(ctx context.Context, root string, sourceDirs []string,
 // walkSourceDirectory walks one source directory and adds the imports of every file a
 // scanner matches, skipping hidden, underscore-prefixed, vendor and testdata directories.
 //
-// Takes ctx (context.Context) which carries cancellation.
 // Takes projectRoot (*os.Root) which confines reads to the project root.
 // Takes directoryName (string) which is the root-relative directory to walk.
 // Takes scanners ([]SourceScanner) which read the files they match.
+// Takes filter (FileFilter) which decides which Go files count.
 // Takes imports (map[string]struct{}) which accumulates the results.
 //
 // Returns error when I/O or parsing fails, or when discovery limits are exceeded.
-func walkSourceDirectory(ctx context.Context, projectRoot *os.Root, directoryName string, scanners []SourceScanner, imports map[string]struct{}) error {
+func walkSourceDirectory(ctx context.Context, projectRoot *os.Root, directoryName string, scanners []SourceScanner, filter FileFilter, imports map[string]struct{}) error {
 	info, err := projectRoot.Stat(directoryName)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -457,7 +614,7 @@ func walkSourceDirectory(ctx context.Context, projectRoot *os.Root, directoryNam
 		return nil
 	}
 
-	walker := sourceWalker{ctx: ctx, projectRoot: projectRoot, directoryName: directoryName, scanners: scanners, imports: imports}
+	walker := sourceWalker{ctx: ctx, projectRoot: projectRoot, directoryName: directoryName, scanners: scanners, filter: filter, imports: imports}
 	walkErr := fs.WalkDir(projectRoot.FS(), directoryName, walker.visit)
 	if walkErr != nil {
 		return fmt.Errorf("walking %s: %w", directoryName, walkErr)
@@ -475,6 +632,9 @@ type sourceWalker struct {
 
 	// imports accumulates the discovered import paths.
 	imports map[string]struct{}
+
+	// filter decides which Go files count.
+	filter FileFilter
 
 	// directoryName is the root-relative directory being walked.
 	directoryName string
@@ -511,7 +671,7 @@ func (walker *sourceWalker) visit(path string, entry fs.DirEntry, walkErr error)
 	if len(walker.imports) >= maxDiscoveredImports {
 		return fmt.Errorf("%w: %d", errTooManyImports, len(walker.imports))
 	}
-	return appendFileImports(walker.ctx, walker.projectRoot, path, scanner, walker.imports)
+	return appendFileImports(walker.ctx, walker.projectRoot, path, scanner, walker.filter, walker.imports)
 }
 
 // isSkippedDirectory reports whether the walk should not descend into a directory.
@@ -543,19 +703,22 @@ func matchingScanner(name string, scanners []SourceScanner) SourceScanner {
 }
 
 // appendFileImports reads one file within the size limit and adds the imports its scanner
-// reports to the set.
+// reports to the set. A Go file the interpreter does not compile adds nothing.
 //
-// Takes ctx (context.Context) which is passed to the scanner.
 // Takes projectRoot (*os.Root) which confines the read to the project root.
 // Takes path (string) which is the root-relative file path.
 // Takes scanner (SourceScanner) which reads the file's imports.
+// Takes filter (FileFilter) which decides which Go files count.
 // Takes imports (map[string]struct{}) which receives the discovered paths.
 //
 // Returns error when the file cannot be read or scanned, or the import limit is reached.
-func appendFileImports(ctx context.Context, projectRoot *os.Root, path string, scanner SourceScanner, imports map[string]struct{}) error {
+func appendFileImports(ctx context.Context, projectRoot *os.Root, path string, scanner SourceScanner, filter FileFilter, imports map[string]struct{}) error {
 	data, err := readBoundedFile(projectRoot, path, maxSourceFileSizeBytes)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", path, err)
+	}
+	if strings.HasSuffix(path, ".go") && !keepsFile(filter, path, data) {
+		return nil
 	}
 	found, err := scanner.Imports(ctx, path, data)
 	if err != nil {
@@ -573,27 +736,65 @@ func appendFileImports(ctx context.Context, projectRoot *os.Root, path string, s
 	return nil
 }
 
-// readBoundedFile reads a file within the root up to limit bytes.
-//
-// The size is checked before reading, so an oversized file is rejected without being
-// loaded into memory.
+// readBoundedFile reads a regular file within the root up to limit bytes, rejecting
+// non-regular files and files that exceed the limit before or during reading.
 //
 // Takes projectRoot (*os.Root) which confines the read to its root.
 // Takes name (string) which is the root-relative path to read.
 // Takes limit (int64) which is the maximum acceptable byte count.
 //
 // Returns []byte which is the file content.
-// Returns error which wraps errSourceFileTooLarge when the file exceeds the cap, or any
-// underlying I/O failure.
-func readBoundedFile(projectRoot *os.Root, name string, limit int64) ([]byte, error) {
+// Returns error which wraps errSourceFileTooLarge when the file exceeds the cap,
+// errNotRegularFile for a non-regular file, or any underlying I/O failure.
+func readBoundedFile(projectRoot *os.Root, name string, limit int64) (data []byte, err error) {
 	info, err := projectRoot.Stat(name)
 	if err != nil {
 		return nil, err
 	}
-	if info.Size() > limit {
+	if err := checkReadable(name, info, limit); err != nil {
+		return nil, err
+	}
+	file, err := projectRoot.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
+	opened, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if err := checkReadable(name, opened, limit); err != nil {
+		return nil, err
+	}
+	data, err = io.ReadAll(io.LimitReader(file, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
 		return nil, fmt.Errorf("%w: %s (>%d bytes)", errSourceFileTooLarge, name, limit)
 	}
-	return projectRoot.ReadFile(name)
+	return data, nil
+}
+
+// checkReadable reports why a file cannot be read within limit.
+//
+// Takes name (string) which names the file in errors.
+// Takes info (fs.FileInfo) which describes it.
+// Takes limit (int64) which is the maximum acceptable byte count.
+//
+// Returns error which wraps errNotRegularFile or errSourceFileTooLarge, or nil.
+func checkReadable(name string, info fs.FileInfo, limit int64) error {
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%w: %s", errNotRegularFile, name)
+	}
+	if info.Size() > limit {
+		return fmt.Errorf("%w: %s (>%d bytes)", errSourceFileTooLarge, name, limit)
+	}
+	return nil
 }
 
 // buildIgnoreSet assembles the complete set of import paths excluded from the discovered

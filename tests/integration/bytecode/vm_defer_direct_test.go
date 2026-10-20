@@ -21,15 +21,14 @@
 package bytecode_test
 
 import (
-	"context"
 	"fmt"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/engine/program"
-
-	"github.com/stretchr/testify/require"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -58,11 +57,11 @@ func entrypoint() int {
 func executeEntrypointAllocs(t *testing.T, source string) (float64, any) {
 	t.Helper()
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
 	var result any
 	allocs := testing.AllocsPerRun(5, func() {
-		result, err = service.ExecuteEntrypoint(context.Background(), compiled, "entrypoint")
+		result, err = service.ExecuteEntrypoint(t.Context(), compiled, "entrypoint")
 		require.NoError(t, err)
 	})
 	return allocs, result
@@ -81,7 +80,7 @@ func TestDeferTrivialScalarArgsZeroAlloc(t *testing.T) {
 
 func TestDeferTrivialStringArgSeesRegistrationValue(t *testing.T) {
 	t.Parallel()
-	result, err := app.NewService().Eval(context.Background(), `var seen string
+	result, err := app.NewService().Eval(t.Context(), `var seen string
 func record(v string) { seen = v }
 func work(prefix string) string {
 	s := prefix + "-x"
@@ -104,7 +103,7 @@ seen`)
 
 func TestDeferTrivialArgsCrossBankPlacement(t *testing.T) {
 	t.Parallel()
-	result, err := app.NewService().Eval(context.Background(), `var first, second any
+	result, err := app.NewService().Eval(t.Context(), `var first, second any
 var ints []int
 func takeAny(v any, w any) { first = v; second = w }
 func takeInt(v int, b bool) { ints = append(ints, v); if b { ints = append(ints, 1) } }

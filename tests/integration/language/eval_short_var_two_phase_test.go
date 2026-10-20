@@ -21,47 +21,49 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
 func TestShortVarTwoPhaseEvaluation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name   string
-		code   string
-		expect int64
+		name string
+		code string
+		want int64
 	}{
 		{
-			name:   "redeclared_var_read_on_rhs",
-			code:   `x := 10; x, y := 2, x; y`,
-			expect: 10,
+			name: "redeclared_var_read_on_rhs",
+			code: `x := 10; x, y := 2, x; y`,
+			want: 10,
 		},
 		{
-			name:   "earlier_lhs_read_by_later_rhs",
-			code:   `a := 1; a, c := 5, a; c`,
-			expect: 1,
+			name: "earlier_lhs_read_by_later_rhs",
+			code: `a := 1; a, c := 5, a; c`,
+			want: 1,
 		},
 		{
-			name:   "swap_like_with_new_var",
-			code:   `a := 1; b := 2; a, b, c := b, a, a+b; a*100 + b*10 + c`,
-			expect: 213,
+			name: "swap_like_with_new_var",
+			code: `a := 1; b := 2; a, b, c := b, a, a+b; a*100 + b*10 + c`,
+			want: 213,
 		},
 		{
-			name:   "independent_still_correct",
-			code:   `x, y := 3, 4; x*10 + y`,
-			expect: 34,
+			name: "independent_still_correct",
+			code: `x, y := 3, 4; x*10 + y`,
+			want: 34,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.EqualValues(t, tt.expect, result)
+			require.EqualValues(t, tt.want, result)
 		})
 	}
 }

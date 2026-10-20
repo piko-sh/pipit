@@ -30,9 +30,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/symtab"
-
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
@@ -40,9 +41,7 @@ func xlangCorpusRoot(t *testing.T) string {
 	t.Helper()
 
 	moduleRoot, err := repoRootFromHere()
-	if err != nil {
-		t.Fatalf("locate bench module root: %v", err)
-	}
+	require.NoError(t, err, "locate bench module root")
 
 	return filepath.Join(moduleRoot, "cross_language")
 }
@@ -57,9 +56,7 @@ func profileXLangBenchWithRoot(t *testing.T, corpusRoot string, benchDirName str
 
 	sourcePath := filepath.Join(corpusRoot, "benchmarks", benchDirName, "go", "pipit_source.go")
 	sourceBytes, err := os.ReadFile(sourcePath)
-	if err != nil {
-		t.Fatalf("read %s: %v", sourcePath, err)
-	}
+	require.NoError(t, err, "read %s", sourcePath)
 
 	wrapperSource := fmt.Sprintf(`package main
 
@@ -76,32 +73,26 @@ func EntrypointRun() (string, int64) {
 		"main.go":       string(sourceBytes),
 		"entrypoint.go": wrapperSource,
 	})
-	if err != nil {
-		t.Fatalf("compile %s: %v", benchDirName, err)
-	}
+	require.NoError(t, err, "compile %s", benchDirName)
 
-	if _, err := service.ExecuteEntrypoint(context.Background(), compiledFileSet, "EntrypointRun"); err != nil {
-		t.Fatalf("warmup %s: %v", benchDirName, err)
-	}
+	_, err = service.ExecuteEntrypoint(context.Background(), compiledFileSet, "EntrypointRun")
+	require.NoError(t, err, "warmup %s", benchDirName)
 
 	cpuPath := fmt.Sprintf("/tmp/pipit_xlang_%s.prof", benchDirName)
 	cpuFile, err := os.Create(cpuPath)
-	if err != nil {
-		t.Fatalf("create %s: %v", cpuPath, err)
-	}
+	require.NoError(t, err, "create %s", cpuPath)
 	defer cpuFile.Close()
 
 	memBefore := readAllocs()
 
-	if err := pprof.StartCPUProfile(cpuFile); err != nil {
-		t.Fatalf("start cpu profile: %v", err)
-	}
+	require.NoError(t, pprof.StartCPUProfile(cpuFile), "start cpu profile")
 
 	wallStart := time.Now()
 	for range iterations {
-		if _, err := service.ExecuteEntrypoint(context.Background(), compiledFileSet, "EntrypointRun"); err != nil {
+		_, err = service.ExecuteEntrypoint(context.Background(), compiledFileSet, "EntrypointRun")
+		if err != nil {
 			pprof.StopCPUProfile()
-			t.Fatalf("execute %s: %v", benchDirName, err)
+			require.NoError(t, err, "execute %s", benchDirName)
 		}
 	}
 	wallElapsed := time.Since(wallStart)
@@ -116,15 +107,11 @@ func EntrypointRun() (string, int64) {
 
 	memPath := cpuPath + ".mem"
 	memFile, err := os.Create(memPath)
-	if err != nil {
-		t.Fatalf("create %s: %v", memPath, err)
-	}
+	require.NoError(t, err, "create %s", memPath)
 	defer memFile.Close()
 
 	runtime.GC()
-	if err := pprof.WriteHeapProfile(memFile); err != nil {
-		t.Fatalf("write heap profile: %v", err)
-	}
+	require.NoError(t, pprof.WriteHeapProfile(memFile), "write heap profile")
 
 	t.Logf("%s: wrote %s and %s", benchDirName, cpuPath, memPath)
 }
@@ -192,16 +179,7 @@ func TestProfileXLangParallelWordCount(t *testing.T) {
 	}
 
 	corpus := xlangCorpusRoot(t)
-	prevWd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-
-	benchDir := filepath.Join(corpus, "benchmarks", "16_parallel_word_count_montecristo")
-	if err := os.Chdir(benchDir); err != nil {
-		t.Fatalf("chdir bench dir: %v", err)
-	}
-	defer func() { _ = os.Chdir(prevWd) }()
+	t.Chdir(filepath.Join(corpus, "benchmarks", "16_parallel_word_count_montecristo"))
 
 	profileXLangBenchWithRoot(t, corpus, "16_parallel_word_count_montecristo", 3, 5)
 }

@@ -38,8 +38,11 @@ func putRegisterArenaAbandoningEscapes(a *RegisterArena) {
 // abandonEscapedSlabs replaces every slab that may be referenced by an escaped value with
 // a fresh one, so Reset never touches memory a live value still reads.
 func (a *RegisterArena) abandonEscapedSlabs() {
-	a.byteSlab = make([]byte, InitialByteSlabSize)
+	for _, slab := range a.oldByteSlabs {
+		forgetArenaSlab(slab)
+	}
 	a.oldByteSlabs = nil
+	a.replaceByteSlab(make([]byte, InitialByteSlabSize), false)
 	a.byteIndex = 0
 	a.genericBytesSlab = nil
 	a.oldGenericByteSlabs = nil

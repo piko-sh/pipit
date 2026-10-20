@@ -127,27 +127,42 @@ func TestUnwrapErrorInterfaceValuePeelsOneLayer(t *testing.T) {
 		{
 			name:  "an interface is peeled to its concrete error",
 			value: interfaceValue,
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, reflect.Struct, got.Kind()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, reflect.Struct, got.Kind())
+			},
 		},
 		{
 			name:  "a nil interface becomes the invalid value",
 			value: nilInterface,
-			check: func(t *testing.T, got reflect.Value) { require.False(t, got.IsValid()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.False(t, got.IsValid())
+			},
 		},
 		{
 			name:  "a concrete value passes through",
 			value: reflect.ValueOf(comparableError{code: 2}),
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, reflect.Struct, got.Kind()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, reflect.Struct, got.Kind())
+			},
 		},
 		{
 			name:  "an invalid value stays invalid",
 			value: reflect.Value{},
-			check: func(t *testing.T, got reflect.Value) { require.False(t, got.IsValid()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.False(t, got.IsValid())
+			},
 		},
 		{
 			name:  "an ordinary pointer passes through",
 			value: reflect.ValueOf(&comparableError{}),
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, reflect.Pointer, got.Kind()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, reflect.Pointer, got.Kind())
+			},
 		},
 	}
 

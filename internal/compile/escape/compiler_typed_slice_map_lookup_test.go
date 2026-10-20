@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 )
@@ -49,7 +50,7 @@ func classifyBody(t *testing.T, source string) map[string]isa.RegisterKind {
 		}
 		return ClassifyTypedSliceLocals(&Context{Info: info, Function: &program.CompiledFunction{}}, function.Body)
 	}
-	t.Fatal("no func f in source")
+	require.FailNow(t, "the fixture source must declare a function named f")
 	return nil
 }
 

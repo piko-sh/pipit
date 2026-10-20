@@ -21,14 +21,14 @@
 package bytecode_test
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/compile/scope"
-
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -49,13 +49,9 @@ func TestRegisterWatermarkManyFieldAssignments(t *testing.T) {
 	source.WriteString("}\n\nfunc main() {}\n")
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source.String(), "run")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != "v0v299" {
-		t.Fatalf("expected \"v0v299\", got %v", result)
-	}
+	result, err := service.EvalFile(t.Context(), source.String(), "run")
+	require.NoError(t, err)
+	require.Equal(t, "v0v299", result)
 }
 
 func TestRegisterWatermarkManyExpressionStatements(t *testing.T) {
@@ -75,20 +71,16 @@ func TestRegisterWatermarkManyExpressionStatements(t *testing.T) {
 	source.WriteString("}\n\nfunc main() {}\n")
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source.String(), "run")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != int(callCount) {
-		t.Fatalf("expected %d, got %v", callCount, result)
-	}
+	result, err := service.EvalFile(t.Context(), source.String(), "run")
+	require.NoError(t, err)
+	require.Equal(t, int(callCount), result)
 }
 
 func TestRegisterWatermarkPreservesLocalVariables(t *testing.T) {
 	t.Parallel()
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), `package main
+	result, err := service.EvalFile(t.Context(), `package main
 
 func noop(x int) {}
 
@@ -104,19 +96,15 @@ func run() int {
 
 func main() {}
 `, "run")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != 9 {
-		t.Fatalf("expected 9, got %v", result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 9, result)
 }
 
 func TestRegisterWatermarkPreservesVarDecl(t *testing.T) {
 	t.Parallel()
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), `package main
+	result, err := service.EvalFile(t.Context(), `package main
 
 func noop(x int) {}
 
@@ -130,12 +118,8 @@ func run() int {
 
 func main() {}
 `, "run")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != 30 {
-		t.Fatalf("expected 30, got %v", result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 30, result)
 }
 
 func TestRegisterWatermarkMultiReturnDefine(t *testing.T) {
@@ -157,13 +141,9 @@ func TestRegisterWatermarkMultiReturnDefine(t *testing.T) {
 	source.WriteString("}\n\nfunc main() {}\n")
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source.String(), "run")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != 30 {
-		t.Fatalf("expected 30, got %v", result)
-	}
+	result, err := service.EvalFile(t.Context(), source.String(), "run")
+	require.NoError(t, err)
+	require.Equal(t, 30, result)
 }
 
 func TestRegisterWatermarkForLoopWithDefine(t *testing.T) {
@@ -190,13 +170,9 @@ func TestRegisterWatermarkForLoopWithDefine(t *testing.T) {
 	source.WriteString("}\n\nfunc main() {}\n")
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source.String(), "run")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != 10 {
-		t.Fatalf("expected 10, got %v", result)
-	}
+	result, err := service.EvalFile(t.Context(), source.String(), "run")
+	require.NoError(t, err)
+	require.Equal(t, 10, result)
 }
 
 func TestRegisterWatermarkIfWithInit(t *testing.T) {
@@ -224,13 +200,9 @@ func TestRegisterWatermarkIfWithInit(t *testing.T) {
 	source.WriteString("}\n\nfunc main() {}\n")
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source.String(), "run")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != 42 {
-		t.Fatalf("expected 42, got %v", result)
-	}
+	result, err := service.EvalFile(t.Context(), source.String(), "run")
+	require.NoError(t, err)
+	require.Equal(t, 42, result)
 }
 
 func TestVarInitFunctionRegisterOverflow(t *testing.T) {
@@ -248,13 +220,9 @@ func TestVarInitFunctionRegisterOverflow(t *testing.T) {
 	source.WriteString("func main() {}\n")
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source.String(), "run")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != 598 {
-		t.Fatalf("expected 598, got %v", result)
-	}
+	result, err := service.EvalFile(t.Context(), source.String(), "run")
+	require.NoError(t, err)
+	require.Equal(t, 598, result)
 }
 
 func TestRegisterWatermarkShortVarDeclDoesNotLeak(t *testing.T) {
@@ -280,13 +248,9 @@ func TestRegisterWatermarkShortVarDeclDoesNotLeak(t *testing.T) {
 	}
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source.String(), "run")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != expectedSum {
-		t.Fatalf("expected %d, got %v", expectedSum, result)
-	}
+	result, err := service.EvalFile(t.Context(), source.String(), "run")
+	require.NoError(t, err)
+	require.Equal(t, expectedSum, result)
 }
 
 func TestRegisterWatermarkShortVarRedeclDoesNotLeak(t *testing.T) {
@@ -315,20 +279,16 @@ func TestRegisterWatermarkShortVarRedeclDoesNotLeak(t *testing.T) {
 	expectedSum += (reassignCount - 1) * 2
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source.String(), "run")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != expectedSum {
-		t.Fatalf("expected %d, got %v", expectedSum, result)
-	}
+	result, err := service.EvalFile(t.Context(), source.String(), "run")
+	require.NoError(t, err)
+	require.Equal(t, expectedSum, result)
 }
 
 func TestRegisterWatermarkShortVarDeclPreservesValues(t *testing.T) {
 	t.Parallel()
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), `package main
+	result, err := service.EvalFile(t.Context(), `package main
 
 func compute(n int) int { return n * 10 }
 
@@ -343,12 +303,8 @@ func run() int {
 
 func main() {}
 `, "run")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != 150 {
-		t.Fatalf("expected 150, got %v", result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 150, result)
 }
 
 func TestRegisterRecyclingPreventsOverflow(t *testing.T) {
@@ -374,13 +330,9 @@ func TestRegisterRecyclingPreventsOverflow(t *testing.T) {
 	}
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source.String(), "run")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != expectedSum {
-		t.Fatalf("expected %d, got %v", expectedSum, result)
-	}
+	result, err := service.EvalFile(t.Context(), source.String(), "run")
+	require.NoError(t, err)
+	require.Equal(t, expectedSum, result)
 }
 
 func TestRegisterRecyclingWithGeneralBank(t *testing.T) {
@@ -407,20 +359,16 @@ func TestRegisterRecyclingWithGeneralBank(t *testing.T) {
 	}
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source.String(), "run")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != expectedSum {
-		t.Fatalf("expected %d, got %v", expectedSum, result)
-	}
+	result, err := service.EvalFile(t.Context(), source.String(), "run")
+	require.NoError(t, err)
+	require.Equal(t, expectedSum, result)
 }
 
 func TestRegisterRecyclingClosureSafety(t *testing.T) {
 	t.Parallel()
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), `package main
+	result, err := service.EvalFile(t.Context(), `package main
 
 func run() int {
 	x := 10
@@ -432,12 +380,8 @@ func run() int {
 
 func main() {}
 `, "run")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != 10 {
-		t.Fatalf("expected 10, got %v", result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 10, result)
 }
 
 func TestRegisterOverflowErrorIncludesFunctionName(t *testing.T) {
@@ -448,15 +392,8 @@ func TestRegisterOverflowErrorIncludesFunctionName(t *testing.T) {
 		allocator.Alloc(isa.RegisterGeneral)
 	}
 
-	if allocator.OverflowErr == nil {
-		t.Fatal("expected overflow error after 257 allocations")
-	}
-	if !strings.Contains(allocator.OverflowErr.Error(), "heavyFunction") {
-		t.Fatalf("expected error to contain function name, got: %v", allocator.OverflowErr)
-	}
-	if !strings.Contains(allocator.OverflowErr.Error(), "general") {
-		t.Fatalf("expected error to contain register bank name, got: %v", allocator.OverflowErr)
-	}
+	require.ErrorContains(t, allocator.OverflowErr, "heavyFunction", "the overflow error names the function")
+	require.ErrorContains(t, allocator.OverflowErr, "general", "the overflow error names the register bank")
 }
 
 func TestRegisterAllocatorRestorePanicsOnInvalidSnapshot(t *testing.T) {
@@ -472,17 +409,269 @@ func TestRegisterAllocatorRestorePanicsOnInvalidSnapshot(t *testing.T) {
 
 	defer func() {
 		recovered := recover()
-		if recovered == nil {
-			t.Fatal("expected panic from restore with invalid snapshot")
-		}
+		require.NotNil(t, recovered, "restoring an invalid snapshot panics")
 		message, ok := recovered.(string)
-		if !ok {
-			t.Fatalf("expected string panic, got %T: %v", recovered, recovered)
-		}
-		if !strings.Contains(message, "exceeds") {
-			t.Fatalf("expected panic message about exceeding, got: %s", message)
-		}
+		require.True(t, ok, "the panic value is a string: %T %v", recovered, recovered)
+		require.Contains(t, message, "exceeds", "the panic message says the snapshot exceeds the allocator")
 	}()
 
 	allocator.Restore(invalidSnapshot)
+}
+
+func TestRegisterBlankMultiReturnResultsDoNotAliasLaterDeclarations(t *testing.T) {
+	t.Parallel()
+
+	service := app.NewService()
+	result, err := service.EvalFile(t.Context(), `package main
+
+func triple() (int, int, int) { return 1, 2, 3 }
+
+func run() int {
+	a := 1
+	_, _, _ = triple()
+	b, a := a, 5
+	return a*10 + b
+}
+`, "run")
+	require.NoError(t, err)
+	require.Equal(t, 51, result)
+}
+
+func TestRegisterWatermarkManyBlankMultiReturnAssignments(t *testing.T) {
+	t.Parallel()
+
+	const statements = 450
+
+	var source strings.Builder
+	source.WriteString("package main\n\nfunc pair(n int) (int, int) { return n * 2, n + 1 }\n\n")
+	source.WriteString("func run() int {\n\tx := 0\n\ttotal := 0\n")
+	for i := range statements {
+		fmt.Fprintf(&source, "\t_, x = pair(%d)\n\ttotal += x\n", i)
+	}
+	source.WriteString("\tsteps := 0\n\tfor i := 0; i < 5; _, i = pair(i) {\n\t\tsteps++\n\t}\n")
+	source.WriteString("\treturn total*10 + steps\n}\n\nfunc main() {}\n")
+
+	expected := 0
+	for i := range statements {
+		expected += i + 1
+	}
+	expected = expected*10 + 5
+
+	service := app.NewService()
+	result, err := service.EvalFile(t.Context(), source.String(), "run")
+	require.NoError(t, err)
+	require.Equal(t, expected, result)
+}
+
+func TestRegisterWatermarkCaseBodiesKeepControlFlow(t *testing.T) {
+	t.Parallel()
+
+	service := app.NewService()
+	result, err := service.EvalFile(t.Context(), `package main
+
+func f(n int) int { return n }
+
+func run() int {
+	trace := 0
+	switch x := f(1); x {
+	case 1:
+		a := f(x) + 1
+		trace = trace*10 + a
+		fallthrough
+	case 2:
+		b := f(trace) + 1
+		trace = trace*10 + b%10
+		fallthrough
+	default:
+		trace = trace*10 + 9
+	}
+	count := 0
+outer:
+	for i := range 4 {
+		switch {
+		case i%2 == 0:
+			doubled := f(i) * 2
+			if doubled >= 0 {
+				continue outer
+			}
+		default:
+			count += f(i)
+		}
+	}
+	return trace*100 + count
+}
+`, "run")
+	require.NoError(t, err)
+	require.Equal(t, 239*100+4, result)
+}
+
+func TestRegisterWatermarkAppendOfManyValues(t *testing.T) {
+	t.Parallel()
+
+	const values = 300
+
+	join := func(element func(int) string) string {
+		parts := make([]string, values)
+		for i := range parts {
+			parts[i] = element(i)
+		}
+		return strings.Join(parts, ", ")
+	}
+	cases := map[string]struct {
+		source string
+		want   any
+	}{
+		"int slice": {
+			source: "func run() int {\n\tx := 1\n\tvar s []int\n\ts = append(s, " + join(func(i int) string { return fmt.Sprintf("x+%d", i) }) +
+				")\n\treturn len(s)*100000 + s[0]*1000 + s[299]\n}\n",
+			want: 300*100000 + 1*1000 + 300,
+		},
+		"typed int local": {
+			source: "func run() int {\n\tx := 1\n\ts := make([]int, 0, 4)\n\ts = append(s, " + join(func(i int) string { return fmt.Sprintf("x+%d", i) }) +
+				")\n\treturn len(s)*100000 + s[0]*1000 + s[299]\n}\n",
+			want: 300*100000 + 1*1000 + 300,
+		},
+		"string slice": {
+			source: "func run() string {\n\tx := \"v\"\n\tvar s []string\n\ts = append(s, " + join(func(i int) string { return fmt.Sprintf("x+\"%d\"", i) }) +
+				")\n\treturn s[0] + s[299] + string(rune('0'+len(s)/100))\n}\n",
+			want: "v0v2993",
+		},
+		"struct slice": {
+			source: "type item struct{ N int }\n\nfunc run() int {\n\tx := 1\n\tvar s []item\n\ts = append(s, " + join(func(i int) string { return fmt.Sprintf("item{N: x+%d}", i) }) +
+				")\n\treturn len(s)*100000 + s[0].N*1000 + s[299].N\n}\n",
+			want: 300*100000 + 1*1000 + 300,
+		},
+		"byte slice": {
+			source: "func run() int {\n\tx := byte(1)\n\tvar s []byte\n\ts = append(s, " + join(func(i int) string { return fmt.Sprintf("x+%d", i%200) }) +
+				")\n\treturn len(s)*100000 + int(s[0])*1000 + int(s[299])\n}\n",
+			want: 300*100000 + 1*1000 + 100,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			service := app.NewService()
+			result, err := service.EvalFile(t.Context(), "package main\n\n"+tc.source+"\nfunc main() {}\n", "run")
+			require.NoError(t, err)
+			require.Equal(t, tc.want, result)
+		})
+	}
+}
+
+func TestRegisterWatermarkLongOperatorChains(t *testing.T) {
+	t.Parallel()
+
+	const terms = 300
+
+	join := func(separator string, element func(int) string) string {
+		parts := make([]string, terms)
+		for i := range parts {
+			parts[i] = element(i)
+		}
+		return strings.Join(parts, separator)
+	}
+	sum, shifted := 0, 0
+	for i := range terms {
+		sum += 1 + i
+		shifted |= (1 + i) << (i % 60)
+	}
+	cases := map[string]struct {
+		source string
+		want   any
+	}{
+		"arithmetic chain": {
+			source: "func f(n int) int { return n }\n\nfunc run() int {\n\tx := 1\n\treturn " + join(" + ", func(i int) string { return fmt.Sprintf("f(x+%d)", i) }) + "\n}\n",
+			want:   sum,
+		},
+		"string concatenation": {
+			source: "func s(n int) string { return string(rune('a' + n%26)) }\n\nfunc run() int {\n\tx := 0\n\treturn len(" + join(" + ", func(i int) string { return fmt.Sprintf("s(x+%d)", i) }) + ")\n}\n",
+			want:   terms,
+		},
+		"bitwise chain of shifts": {
+			source: "func run() int {\n\tx := 1\n\treturn " + join(" | ", func(i int) string { return fmt.Sprintf("(x+%d)<<%d", i, i%60) }) + "\n}\n",
+			want:   shifted,
+		},
+		"mixed int and uint shifts": {
+			source: "func run() uint {\n\tvar u uint = 3\n\tn := 2\n\treturn (u << n) | (u >> 1) ^ (u << uint(n+1)) &^ 1\n}\n",
+			want:   uint(3<<2) | (3 >> 1) ^ (3<<3)&^1,
+		},
+		"chain with a captured local": {
+			source: "func f(n int) int { return n }\n\nfunc run() int {\n\tx := 1\n\tg := func() int { return x }\n\treturn f(x) + g()*10 + f(x+1)*100 + g()\n}\n",
+			want:   1 + 10 + 200 + 1,
+		},
+		"short-circuit keeps skipping side effects": {
+			source: "var calls int\n\nfunc f(n int) bool { calls++; return n > 0 }\n\nfunc run() int {\n\tx := 1\n\ta := f(x) && f(x-1) && f(x+5) && f(x+6)\n\tb := f(-x) || f(x) || f(x+7)\n\tr := calls * 100\n\tif a {\n\t\tr++\n\t}\n\tif b {\n\t\tr += 10\n\t}\n\treturn r\n}\n",
+			want:   4*100 + 10,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			service := app.NewService()
+			result, err := service.EvalFile(t.Context(), "package main\n\n"+tc.source+"\nfunc main() {}\n", "run")
+			require.NoError(t, err)
+			require.Equal(t, tc.want, result)
+		})
+	}
+}
+
+func TestRegisterWatermarkMultiValueReturnsAndTuples(t *testing.T) {
+	t.Parallel()
+
+	const results = 100
+
+	join := func(separator string, element func(int) string) string {
+		parts := make([]string, results)
+		for i := range parts {
+			parts[i] = element(i)
+		}
+		return strings.Join(parts, separator)
+	}
+	cases := map[string]struct {
+		source string
+		want   any
+	}{
+		"many results": {
+			source: "func f(n int) int { return n }\n\nfunc many(x int) (" + join(", ", func(int) string { return "int" }) + ") {\n\treturn " +
+				join(", ", func(i int) string { return fmt.Sprintf("f(x+%d)", i) }) + "\n}\n\nfunc run() int {\n\t" +
+				join(", ", func(i int) string { return fmt.Sprintf("r%d", i) }) + " := many(1)\n\treturn " +
+				join(" + ", func(i int) string { return fmt.Sprintf("r%d", i) }) + " + r0*100000 + r99*1000\n}\n",
+			want: 100*101/2 + 1*100000 + 100*1000,
+		},
+		"swapped parameters": {
+			source: "func swap(a, b int) (int, int) { return b, a }\n\nfunc run() int {\n\tx, y := swap(1, 2)\n\treturn x*10 + y\n}\n",
+			want:   21,
+		},
+		"results in different banks": {
+			source: "func mixed(v any, x int) (int, string, int) { return v.(int), \"s\", x + 1 }\n\nfunc run() int {\n\ta, s, b := mixed(5, 7)\n\treturn a*100 + len(s)*10 + b\n}\n",
+			want:   5*100 + 10 + 8,
+		},
+		"tuple of many targets": {
+			source: "func f(n int) int { return n }\n\nfunc run() int {\n\tx := 1\n\tvar " + join(", ", func(i int) string { return fmt.Sprintf("t%d", i) }) + " int\n\t" +
+				join(", ", func(i int) string { return fmt.Sprintf("t%d", i) }) + " = " +
+				join(", ", func(i int) string { return fmt.Sprintf("f(x+%d)", i) }) + "\n\treturn " +
+				join(" + ", func(i int) string { return fmt.Sprintf("t%d", i) }) + "\n}\n",
+			want: 100 * 101 / 2,
+		},
+		"tuple swap": {
+			source: "func run() int {\n\ta, b := 1, 2\n\ta, b = b, a\n\ts := []int{3, 4}\n\ts[0], s[1] = s[1], s[0]\n\treturn a*1000 + b*100 + s[0]*10 + s[1]\n}\n",
+			want:   2*1000 + 1*100 + 4*10 + 3,
+		},
+		"two-phase define": {
+			source: "func f(n int) int { return n }\n\nfunc run() int {\n\ta := 1\n\ta, b := f(a+1), f(a+2)\n\treturn a*10 + b\n}\n",
+			want:   2*10 + 3,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			service := app.NewService()
+			result, err := service.EvalFile(t.Context(), "package main\n\n"+tc.source+"\nfunc main() {}\n", "run")
+			require.NoError(t, err)
+			require.Equal(t, tc.want, result)
+		})
+	}
 }

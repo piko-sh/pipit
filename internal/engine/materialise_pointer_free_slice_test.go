@@ -50,7 +50,7 @@ func TestMaterialisePointerFreeSliceCopiesInOneAllocation(t *testing.T) {
 			allocations := testing.AllocsPerRun(20, func() {
 				copied = materialisePointerFreeSlice(source, source.Type(), n, capacity)
 			})
-			require.Equal(t, 1.0, allocations, "one block must hold the header and the elements")
+			require.InDelta(t, 1.0, allocations, 0, "one block must hold the header and the elements")
 			require.Equal(t, source.Type(), copied.Type())
 			require.Equal(t, n, copied.Len())
 			require.Equal(t, capacity, copied.Cap())

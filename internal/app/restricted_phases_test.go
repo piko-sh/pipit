@@ -23,37 +23,38 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRestrictedPhases(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct {
-		name       string
-		source     string
-		entrypoint string
-		value      string
-		file       bool
+	tests := []struct {
+		name            string
+		source          string
+		entrypoint      string
+		file            bool
+		wantValue       string
+		wantInitialised int
 	}{
-		{name: "expression", source: "6 * 7", value: "42"},
+		{name: "expression", source: "6 * 7", wantValue: "42"},
 		{name: "void expression", source: "println(\"hello\")"},
-		{name: "compiled helper", source: "import \"math\"\nmath.Sqrt(49)", value: "7"},
-		{name: "mixed initialiser", source: "func unused() {}\nvar value = func() int { println(\"initialised\"); return 7 }()\nvalue", value: "7"},
-		{name: "complete file", source: "package main\nvar value = 42\nfunc answer() int { return value }", entrypoint: "answer", value: "42", file: true},
-	} {
-		t.Run(test.name, func(t *testing.T) {
+		{name: "compiled helper", source: "import \"math\"\nmath.Sqrt(49)", wantValue: "7"},
+		{name: "mixed initialiser", source: "func unused() {}\nvar value = func() int { println(\"initialised\"); return 7 }()\nvalue", wantValue: "7", wantInitialised: 1},
+		{name: "complete file", source: "package main\nvar value = 42\nfunc answer() int { return value }", entrypoint: "answer", file: true, wantValue: "42"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			interpreter, err := NewRestrictedInterpreter(RestrictedConfig{Imports: []string{"math"}})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			boundaries := 0
-			result, err := EvaluateRestrictedPhased(context.Background(), interpreter, test.source, test.entrypoint, test.file,
+			result, err := EvaluateRestrictedPhased(t.Context(), interpreter, tt.source, tt.entrypoint, tt.file,
 				func() error { boundaries++; return nil })
-			if err != nil || string(result.Value) != test.value || boundaries != 1 {
-				t.Fatalf("result=%+v boundaries=%d error=%v", result, boundaries, err)
-			}
-			if test.name == "mixed initialiser" && strings.Count(result.Output, "initialised") != 1 {
-				t.Fatalf("initialiser did not run exactly once: %q", result.Output)
-			}
+			require.NoError(t, err)
+			require.Equal(t, tt.wantValue, string(result.Value))
+			require.Equal(t, 1, boundaries, "execution crosses the boundary once")
+			require.Equal(t, tt.wantInitialised, strings.Count(result.Output, "initialised"), "the initialiser runs exactly once")
 		})
 	}
 }
@@ -61,69 +62,64 @@ func TestRestrictedPhases(t *testing.T) {
 func TestRestrictedPhaseRefusal(t *testing.T) {
 	t.Parallel()
 	interpreter, err := NewRestrictedInterpreter(RestrictedConfig{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	refused := errors.New("host refused execution")
-	result, err := EvaluateRestrictedPhased(context.Background(), interpreter, "println(\"executed\")\n1", "", false,
+	result, err := EvaluateRestrictedPhased(t.Context(), interpreter, "println(\"executed\")\n1", "", false,
 		func() error { return refused })
-	if !errors.Is(err, refused) || result.Output != "" || result.Value != nil {
-		t.Fatalf("refused execution produced a result: %+v %v", result, err)
-	}
+	require.ErrorIs(t, err, refused, "a refused execution produces no result")
+	require.Empty(t, result.Output)
+	require.Nil(t, result.Value)
 	called := false
-	_, err = EvaluateRestrictedPhased(context.Background(), interpreter, "this is not Go", "", false,
+	_, err = EvaluateRestrictedPhased(t.Context(), interpreter, "this is not Go", "", false,
 		func() error { called = true; return nil })
-	if err == nil || called {
-		t.Fatalf("invalid source entered execution: called=%v error=%v", called, err)
-	}
-	if _, err := interpreter.Eval(context.Background(), "1"); err != nil {
-		t.Fatalf("failed phases leaked admission: %v", err)
-	}
+	require.Error(t, err, "invalid source never reaches execution")
+	require.False(t, called)
+	_, err = interpreter.Eval(t.Context(), "1")
+	require.NoError(t, err, "failed phases release admission")
 }
 
 func TestRestrictedPhasesRejectAuthority(t *testing.T) {
 	t.Parallel()
-	interpreter, err := NewRestrictedInterpreter(RestrictedConfig{})
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name   string
+		source string
+	}{
+		{name: "os import", source: "import \"os\"\nos.Getpid()"},
+		{name: "goroutine", source: "go func() {}()"},
+		{name: "channel", source: "make(chan int)"},
 	}
-	for _, source := range []string{
-		"import \"os\"\nos.Getpid()",
-		"go func() {}()",
-		"make(chan int)",
-	} {
-		called := false
-		_, err := EvaluateRestrictedPhased(context.Background(), interpreter, source, "", false,
-			func() error { called = true; return nil })
-		if err == nil || called {
-			t.Fatalf("restricted source reached execution: %q called=%v error=%v", source, called, err)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			interpreter, err := NewRestrictedInterpreter(RestrictedConfig{})
+			require.NoError(t, err)
+			called := false
+			_, err = EvaluateRestrictedPhased(t.Context(), interpreter, tt.source, "", false,
+				func() error { called = true; return nil })
+			require.Error(t, err)
+			require.False(t, called, "restricted source never reaches execution")
+		})
 	}
 }
 
 func TestRestrictedPhaseCancellationBeforeInitialisers(t *testing.T) {
 	t.Parallel()
 	interpreter, err := NewRestrictedInterpreter(RestrictedConfig{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	result, err := EvaluateRestrictedPhased(ctx, interpreter,
 		"func unused() {}\nvar value = func() int { println(\"executed\"); return 7 }()\nvalue", "", false,
 		func() error { cancel(); return nil })
-	if !errors.Is(err, context.Canceled) || result.Output != "" {
-		t.Fatalf("cancelled phase ran an initialiser: %+v %v", result, err)
-	}
+	require.ErrorIs(t, err, context.Canceled, "a cancelled phase runs no initialiser")
+	require.Empty(t, result.Output)
 }
 
 func TestRestrictedPhasesRetainAdmissionAtBoundary(t *testing.T) {
 	t.Parallel()
 	interpreter, err := NewRestrictedInterpreter(RestrictedConfig{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	entered := make(chan struct{})
 	done := make(chan error, 1)
@@ -136,15 +132,10 @@ func TestRestrictedPhasesRetainAdmissionAtBoundary(t *testing.T) {
 		done <- err
 	}()
 	<-entered
-	if _, err := interpreter.Eval(context.Background(), "2"); !errors.Is(err, ErrRestrictedBusy) {
-		t.Fatalf("concurrent evaluation admitted: %v", err)
-	}
-	_, err = EvaluateRestrictedPhased(context.Background(), interpreter, "2", "", false, func() error { return nil })
-	if !errors.Is(err, ErrRestrictedBusy) {
-		t.Fatalf("concurrent compilation admitted: %v", err)
-	}
+	_, err = interpreter.Eval(t.Context(), "2")
+	require.ErrorIs(t, err, ErrRestrictedBusy, "a concurrent evaluation is refused")
+	_, err = EvaluateRestrictedPhased(t.Context(), interpreter, "2", "", false, func() error { return nil })
+	require.ErrorIs(t, err, ErrRestrictedBusy, "a concurrent compilation is refused")
 	cancel()
-	if err := <-done; !errors.Is(err, context.Canceled) {
-		t.Fatal(err)
-	}
+	require.ErrorIs(t, <-done, context.Canceled)
 }

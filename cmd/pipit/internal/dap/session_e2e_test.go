@@ -23,7 +23,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -32,6 +31,7 @@ import (
 	"time"
 
 	"github.com/google/go-dap"
+	"github.com/stretchr/testify/require"
 )
 
 const e2eProgram = `package main
@@ -98,9 +98,7 @@ func (c *dapClient) send(t *testing.T, request dap.RequestMessage) int {
 	c.seq++
 	request.GetRequest().Seq = c.seq
 	request.GetRequest().Type = "request"
-	if err := dap.WriteProtocolMessage(c.toServer, request); err != nil {
-		t.Fatalf("write %s: %v", request.GetRequest().Command, err)
-	}
+	require.NoError(t, dap.WriteProtocolMessage(c.toServer, request), "write %s", request.GetRequest().Command)
 	return c.seq
 }
 
@@ -110,34 +108,31 @@ func expect[T dap.Message](t *testing.T, c *dapClient, what string) T {
 	for {
 		select {
 		case message, ok := <-c.incoming:
-			if !ok {
-				t.Fatalf("connection closed while waiting for %s", what)
-			}
+			require.True(t, ok, "the connection stays open while waiting for %s", what)
 			if typed, isWanted := message.(T); isWanted {
 				return typed
 			}
 			if errResponse, isErr := message.(*dap.ErrorResponse); isErr {
-				t.Fatalf("error response while waiting for %s: %s", what, errResponse.Message)
+				require.Failf(t, "error response", "while waiting for %s: %s", what, errResponse.Message)
 			}
 		case <-deadline:
-			t.Fatalf("timed out waiting for %s", what)
+			require.Failf(t, "timed out", "waiting for %s", what)
 		}
 	}
 }
 
 func TestSessionDebugsGoroutinesCallbacksAndEvaluation(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(path, []byte(e2eProgram), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(e2eProgram), 0o600))
 	c := startDAPClient(t)
 
 	c.send(t, &dap.InitializeRequest{Request: dap.Request{Command: "initialize"}})
 	initialised := expect[*dap.InitializeResponse](t, c, "initialize response")
-	if !initialised.Body.SupportsConditionalBreakpoints || !initialised.Body.SupportsFunctionBreakpoints || len(initialised.Body.ExceptionBreakpointFilters) != 1 {
-		t.Fatalf("capabilities: %+v", initialised.Body)
-	}
+	require.True(t, initialised.Body.SupportsConditionalBreakpoints, "conditional breakpoints are supported")
+	require.True(t, initialised.Body.SupportsFunctionBreakpoints, "function breakpoints are supported")
+	require.Len(t, initialised.Body.ExceptionBreakpointFilters, 1)
 	expect[*dap.InitializedEvent](t, c, "initialized event")
 
 	launchArgs, _ := json.Marshal(map[string]any{"program": path})
@@ -149,52 +144,41 @@ func TestSessionDebugsGoroutinesCallbacksAndEvaluation(t *testing.T) {
 		Breakpoints: []dap.SourceBreakpoint{{Line: 10}, {Line: 19, Condition: "i == 1"}},
 	}})
 	breakpoints := expect[*dap.SetBreakpointsResponse](t, c, "setBreakpoints response")
-	if len(breakpoints.Body.Breakpoints) != 2 || !breakpoints.Body.Breakpoints[0].Verified {
-		t.Fatalf("breakpoints: %+v", breakpoints.Body.Breakpoints)
-	}
+	require.Len(t, breakpoints.Body.Breakpoints, 2)
+	require.True(t, breakpoints.Body.Breakpoints[0].Verified)
 
 	c.send(t, &dap.ConfigurationDoneRequest{Request: dap.Request{Command: "configurationDone"}})
 	expect[*dap.ConfigurationDoneResponse](t, c, "configurationDone response")
 
 	stopped := expect[*dap.StoppedEvent](t, c, "first stopped event")
-	if stopped.Body.Reason != "breakpoint" || !stopped.Body.AllThreadsStopped {
-		t.Fatalf("first stop: %+v", stopped.Body)
-	}
+	require.Equal(t, "breakpoint", stopped.Body.Reason)
+	require.True(t, stopped.Body.AllThreadsStopped, "a stop pauses every thread")
 	c.send(t, &dap.ThreadsRequest{Request: dap.Request{Command: "threads"}})
 	threads := expect[*dap.ThreadsResponse](t, c, "threads response")
-	if len(threads.Body.Threads) < 2 {
-		t.Fatalf("threads: got %d, want the main goroutine and the worker", len(threads.Body.Threads))
-	}
+	require.GreaterOrEqual(t, len(threads.Body.Threads), 2)
 	c.send(t, &dap.StackTraceRequest{Request: dap.Request{Command: "stackTrace"}, Arguments: dap.StackTraceArguments{ThreadId: stopped.Body.ThreadId}})
 	stack := expect[*dap.StackTraceResponse](t, c, "stackTrace response")
-	if len(stack.Body.StackFrames) == 0 || stack.Body.StackFrames[0].Name != "main.worker" || stack.Body.StackFrames[0].Line != 10 {
-		t.Fatalf("worker stack: %+v", stack.Body.StackFrames)
-	}
+	require.NotEmpty(t, stack.Body.StackFrames)
+	require.Equal(t, "main.worker", stack.Body.StackFrames[0].Name)
+	require.Equal(t, 10, stack.Body.StackFrames[0].Line)
 	frameID := stack.Body.StackFrames[0].Id
 	c.send(t, &dap.ScopesRequest{Request: dap.Request{Command: "scopes"}, Arguments: dap.ScopesArguments{FrameId: frameID}})
 	scopes := expect[*dap.ScopesResponse](t, c, "scopes response")
-	if len(scopes.Body.Scopes) == 0 || scopes.Body.Scopes[0].Name != "Locals" {
-		t.Fatalf("scopes: %+v", scopes.Body.Scopes)
-	}
+	require.NotEmpty(t, scopes.Body.Scopes)
+	require.Equal(t, "Locals", scopes.Body.Scopes[0].Name)
 	c.send(t, &dap.VariablesRequest{Request: dap.Request{Command: "variables"}, Arguments: dap.VariablesArguments{VariablesReference: scopes.Body.Scopes[0].VariablesReference}})
 	variables := expect[*dap.VariablesResponse](t, c, "variables response")
-	if variableValue(variables.Body.Variables, "v") != "40" {
-		t.Fatalf("worker locals: %+v", variables.Body.Variables)
-	}
+	require.Equal(t, "40", variableValue(variables.Body.Variables, "v"), "worker locals: %+v", variables.Body.Variables)
 	c.send(t, &dap.EvaluateRequest{Request: dap.Request{Command: "evaluate"}, Arguments: dap.EvaluateArguments{Expression: "v + 2", FrameId: frameID, Context: "watch"}})
 	evaluated := expect[*dap.EvaluateResponse](t, c, "evaluate response")
-	if evaluated.Body.Result != "42" || evaluated.Body.Type != "int" {
-		t.Fatalf("evaluate: %+v", evaluated.Body)
-	}
+	require.Equal(t, "42", evaluated.Body.Result)
+	require.Equal(t, "int", evaluated.Body.Type)
 	c.send(t, &dap.SetVariableRequest{Request: dap.Request{Command: "setVariable"}, Arguments: dap.SetVariableArguments{VariablesReference: scopes.Body.Scopes[0].VariablesReference, Name: "v", Value: "50"}})
 	updated := expect[*dap.SetVariableResponse](t, c, "setVariable response")
-	if updated.Body.Value != "50" {
-		t.Fatalf("setVariable: %+v", updated.Body)
-	}
+	require.Equal(t, "50", updated.Body.Value)
 	c.send(t, &dap.EvaluateRequest{Request: dap.Request{Command: "evaluate"}, Arguments: dap.EvaluateArguments{Expression: "v", FrameId: frameID, Context: "repl"}})
-	if written := expect[*dap.EvaluateResponse](t, c, "evaluate after setVariable"); written.Body.Result != "50" {
-		t.Fatalf("evaluate after setVariable: %+v", written.Body)
-	}
+	written := expect[*dap.EvaluateResponse](t, c, "evaluate after setVariable")
+	require.Equal(t, "50", written.Body.Result, "the evaluator sees the new value")
 
 	c.send(t, &dap.ContinueRequest{Request: dap.Request{Command: "continue"}, Arguments: dap.ContinueArguments{ThreadId: stopped.Body.ThreadId}})
 	expect[*dap.ContinueResponse](t, c, "continue response")
@@ -202,25 +186,21 @@ func TestSessionDebugsGoroutinesCallbacksAndEvaluation(t *testing.T) {
 	callback := expect[*dap.StoppedEvent](t, c, "callback stopped event")
 	c.send(t, &dap.StackTraceRequest{Request: dap.Request{Command: "stackTrace"}, Arguments: dap.StackTraceArguments{ThreadId: callback.Body.ThreadId}})
 	callbackStack := expect[*dap.StackTraceResponse](t, c, "callback stackTrace response")
-	if len(callbackStack.Body.StackFrames) == 0 || callbackStack.Body.StackFrames[0].Name != "main.main.func1" || callbackStack.Body.StackFrames[0].Line != 19 {
-		t.Fatalf("callback stack: %+v", callbackStack.Body.StackFrames)
-	}
+	require.NotEmpty(t, callbackStack.Body.StackFrames)
+	require.Equal(t, "main.main.func1", callbackStack.Body.StackFrames[0].Name)
+	require.Equal(t, 19, callbackStack.Body.StackFrames[0].Line)
 	c.send(t, &dap.ContinueRequest{Request: dap.Request{Command: "continue"}, Arguments: dap.ContinueArguments{ThreadId: callback.Body.ThreadId}})
 	expect[*dap.ContinueResponse](t, c, "second continue response")
 
 	for {
 		message, ok := <-c.incoming
-		if !ok {
-			t.Fatal("connection closed before the program exited")
-		}
+		require.True(t, ok, "the connection stays open until the program exits")
 		if stop, isStop := message.(*dap.StoppedEvent); isStop && stop.Body.Reason == "breakpoint" {
 			c.send(t, &dap.ContinueRequest{Request: dap.Request{Command: "continue"}, Arguments: dap.ContinueArguments{ThreadId: stop.Body.ThreadId}})
 			continue
 		}
 		if exited, isExit := message.(*dap.ExitedEvent); isExit {
-			if exited.Body.ExitCode != 0 {
-				t.Fatalf("exit code %d", exited.Body.ExitCode)
-			}
+			require.Equal(t, 0, exited.Body.ExitCode)
 			break
 		}
 	}
@@ -230,11 +210,11 @@ func TestSessionDebugsGoroutinesCallbacksAndEvaluation(t *testing.T) {
 	expect[*dap.DisconnectResponse](t, c, "disconnect response")
 	select {
 	case err := <-c.loopDone:
-		if err != nil && !errors.Is(err, io.EOF) {
-			t.Fatalf("serve: %v", err)
+		if err != nil {
+			require.ErrorIs(t, err, io.EOF, "serve stops cleanly")
 		}
 	case <-time.After(30 * time.Second):
-		t.Fatal("serve did not return after disconnect")
+		require.FailNow(t, "serve returns after disconnect")
 	}
 }
 

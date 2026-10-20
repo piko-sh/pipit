@@ -140,6 +140,7 @@ func TestPrepareWorkerImageRejectsUnsupportedELF(t *testing.T) {
 	t.Parallel()
 	for _, variant := range []string{"malformed", "foreign", "interpreter", "writable-code", "missing-entry", "big-endian", "core"} {
 		t.Run(variant, func(t *testing.T) {
+			t.Parallel()
 			data := workerELFFixture()
 			switch variant {
 			case "malformed":

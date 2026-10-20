@@ -21,82 +21,117 @@ package app
 import (
 	"fmt"
 	"go/ast"
+	"go/scanner"
 	"go/token"
 	"strings"
 
 	"pipit.sh/pipit/internal/fault"
 )
 
-// goEmbedDirective is the comment prefix that requests build-time file embedding.
-const goEmbedDirective = "//go:embed"
+const (
+	// goEmbedDirective is the comment prefix that requests build-time file embedding.
+	goEmbedDirective = "//go:embed"
 
-// rejectGoEmbed reports the first //go:embed directive among files as a compile error.
+	// goDirectiveTool is the tool part of the go toolchain's //go:name directives.
+	goDirectiveTool = "go"
+
+	// embedDirectiveName is the name part of the //go:embed directive.
+	embedDirectiveName = "embed"
+
+	// embedBuildTagHint describes the build-constraint pattern that keeps an embedding file
+	// out of the interpreter while the compiled binary still embeds.
+	embedBuildTagHint = "hint: move the //go:embed variable into a file guarded by " +
+		"//go:build !interp, and declare it again in a //go:build interp file that reads the " +
+		"files at run time, for example var content fs.FS = os.DirFS(\"content\"). The " +
+		"interpreter sets the interp build tag, and resolves a relative os.DirFS path against " +
+		"the working directory."
+)
+
+// rejectGoEmbed reports every //go:embed directive in the filtered files as one compile
+// error.
 //
 // Takes fileSet (*token.FileSet) which positions the diagnostic.
-// Takes files ([]*ast.File) which are the parsed sources.
+// Takes packagePath (string) which names the package in the message; empty for a file
+// set.
+// Takes files ([]*ast.File) which are the parsed, filtered sources, with comments.
 //
 // Returns error which is nil when no file embeds anything.
-func rejectGoEmbed(fileSet *token.FileSet, files []*ast.File) error {
+func rejectGoEmbed(fileSet *token.FileSet, packagePath string, files []*ast.File) error {
+	var positions []token.Pos
 	for _, file := range files {
-		for _, declaration := range file.Decls {
-			if position, found := declEmbedDirective(declaration); found {
-				return embedError(fileSet, position)
+		for _, group := range file.Comments {
+			for _, comment := range group.List {
+				if isEmbedDirective(comment.Slash, comment.Text) {
+					positions = append(positions, comment.Slash)
+				}
 			}
 		}
 	}
-	return nil
+	if len(positions) == 0 {
+		return nil
+	}
+	return embedError(fileSet, packagePath, positions)
 }
 
-// declEmbedDirective returns the position of the first //go:embed line on a var
-// declaration group or on any of its specs.
+// rejectGoEmbedSource checks for //go:embed directives by tokenising source, including
+// incomplete snippets parsed without comments.
 //
-// Takes declaration (ast.Decl) which is inspected when it is a var group.
+// Takes name (string) which names the source in positions.
+// Takes source (string) which is the source text.
 //
-// Returns the directive's position and true, or false when the declaration has none.
-func declEmbedDirective(declaration ast.Decl) (token.Pos, bool) {
-	genDecl, ok := declaration.(*ast.GenDecl)
-	if !ok || genDecl.Tok != token.VAR {
-		return token.NoPos, false
+// Returns error which is nil when nothing embeds.
+func rejectGoEmbedSource(name, source string) error {
+	if !strings.Contains(source, goEmbedDirective) {
+		return nil
 	}
-	if position, found := embedDirectivePosition(genDecl.Doc); found {
-		return position, true
-	}
-	for _, spec := range genDecl.Specs {
-		valueSpec, ok := spec.(*ast.ValueSpec)
-		if !ok {
-			continue
+	fileSet := token.NewFileSet()
+	file := fileSet.AddFile(name, -1, len(source))
+	var tokens scanner.Scanner
+	tokens.Init(file, []byte(source), nil, scanner.ScanComments)
+	var positions []token.Pos
+	for {
+		position, kind, literal := tokens.Scan()
+		if kind == token.EOF {
+			break
 		}
-		if position, found := embedDirectivePosition(valueSpec.Doc); found {
-			return position, true
+		if kind == token.COMMENT && isEmbedDirective(position, literal) {
+			positions = append(positions, position)
 		}
 	}
-	return token.NoPos, false
+	if len(positions) == 0 {
+		return nil
+	}
+	return embedError(fileSet, "", positions)
 }
 
-// embedDirectivePosition returns the position of the first //go:embed line in group.
+// isEmbedDirective reports whether a comment is a //go:embed directive.
 //
-// Takes group (*ast.CommentGroup) which may be nil.
+// Takes position (token.Pos) which is where the comment starts.
+// Takes text (string) which is the comment's text, including its marker.
 //
-// Returns the directive's position and true, or false when the group has none.
-func embedDirectivePosition(group *ast.CommentGroup) (token.Pos, bool) {
-	if group == nil {
-		return token.NoPos, false
-	}
-	for _, comment := range group.List {
-		text := comment.Text
-		if text == goEmbedDirective || strings.HasPrefix(text, goEmbedDirective+" ") || strings.HasPrefix(text, goEmbedDirective+"\t") {
-			return comment.Pos(), true
-		}
-	}
-	return token.NoPos, false
+// Returns bool which is true for the directive, with or without arguments.
+func isEmbedDirective(position token.Pos, text string) bool {
+	directive, ok := ast.ParseDirective(position, text)
+	return ok && directive.Tool == goDirectiveTool && directive.Name == embedDirectiveName
 }
 
-// embedError builds the diagnostic for a directive at position.
+// embedError formats the package name, directive positions and build-tag hint as a
+// compile error.
 //
-// Takes fileSet (*token.FileSet) which resolves the position.
-// Takes position (token.Pos) which is the directive's position.
+// Takes fileSet (*token.FileSet) which resolves the positions.
+// Takes packagePath (string) which names the package; empty for a file set.
+// Takes positions ([]token.Pos) which are the directives' positions, at least one.
 //
 // Returns error which wraps fault.ErrCompilation and fault.ErrCompileEmbedUnsupported.
-func embedError(fileSet *token.FileSet, position token.Pos) error {
-	return fmt.Errorf("%w: %w at %s", fault.ErrCompilation, fault.ErrCompileEmbedUnsupported, fileSet.Position(position))
+func embedError(fileSet *token.FileSet, packagePath string, positions []token.Pos) error {
+	locations := make([]string, len(positions))
+	for index, position := range positions {
+		locations[index] = fileSet.Position(position).String()
+	}
+	where := strings.Join(locations, ", ")
+	if packagePath == "" {
+		return fmt.Errorf("%w: %w at %s\n\n%s", fault.ErrCompilation, fault.ErrCompileEmbedUnsupported, where, embedBuildTagHint)
+	}
+	return fmt.Errorf("%w: %s: %w at %s\n\n%s",
+		fault.ErrCompilation, packagePath, fault.ErrCompileEmbedUnsupported, where, embedBuildTagHint)
 }

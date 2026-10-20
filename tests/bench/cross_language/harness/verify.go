@@ -23,11 +23,15 @@ package harness
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+// decimalBase is the radix of the timing markers.
+const decimalBase = 10
 
 // NormaliseStdout produces the canonical byte form used for hash comparison. Line endings
 // collapse to LF, trailing whitespace on each line is dropped, and one trailing LF is
@@ -41,11 +45,7 @@ func NormaliseStdout(raw []byte) []byte {
 	for i := range lines {
 		lines[i] = strings.TrimRight(lines[i], " \t")
 	}
-	joined := strings.Join(lines, "\n")
-	if strings.HasSuffix(joined, "\n") {
-		joined = joined[:len(joined)-1]
-	}
-	return []byte(joined)
+	return []byte(strings.TrimSuffix(strings.Join(lines, "\n"), "\n"))
 }
 
 // SHA256Hex returns the lower-case hex digest of the given bytes.
@@ -60,7 +60,7 @@ func SHA256Hex(data []byte) string {
 func VerifySourceSHAs(spec BenchSpec, benchmarkDir string) error {
 	for relativePath, expected := range spec.SourceSHAs {
 		absolutePath := filepath.Join(benchmarkDir, relativePath)
-		data, err := os.ReadFile(absolutePath)
+		data, err := os.ReadFile(filepath.Clean(absolutePath))
 		if err != nil {
 			return fmt.Errorf("source %s: %w", relativePath, err)
 		}
@@ -75,7 +75,7 @@ func VerifySourceSHAs(spec BenchSpec, benchmarkDir string) error {
 // HashSourceFile computes the SHA-256 of a source file, used by the regenerate-hashes
 // flow to refresh spec.json after intentional edits.
 func HashSourceFile(absolutePath string) (string, error) {
-	data, err := os.ReadFile(absolutePath)
+	data, err := os.ReadFile(filepath.Clean(absolutePath))
 	if err != nil {
 		return "", err
 	}
@@ -95,18 +95,14 @@ func ParseInnerElapsedNanos(stderr []byte) (int64, string) {
 // lines, returning each as a parsed nanosecond value (0 when absent) plus the remaining
 // stderr with marker lines removed. Multiple markers of the same kind keep the
 // last-one-wins.
-func ParseTimingMarkers(stderr []byte) (int64, int64, string) {
+func ParseTimingMarkers(stderr []byte) (innerNanos int64, compileNanos int64, remaining string) {
 	if len(stderr) == 0 {
 		return 0, 0, ""
 	}
 	const innerMarker = "INNER_ELAPSED_NS="
 	const compileMarker = "COMPILE_NANOS="
-	var (
-		innerNanos   int64
-		compileNanos int64
-		remainder    strings.Builder
-	)
-	for _, line := range strings.Split(string(stderr), "\n") {
+	var remainder strings.Builder
+	for line := range strings.SplitSeq(string(stderr), "\n") {
 		if rest, ok := stripPrefix(line, innerMarker); ok {
 			parsed, err := parsePositiveInt64(rest)
 			if err != nil {
@@ -133,6 +129,13 @@ func ParseTimingMarkers(stderr []byte) (int64, int64, string) {
 	return innerNanos, compileNanos, strings.TrimRight(remainder.String(), "\n")
 }
 
+// stripPrefix trims line and cuts prefix from its start.
+//
+// Takes line (string) which is the stderr line.
+// Takes prefix (string) which is the marker.
+//
+// Returns string which is the trimmed text after the marker.
+// Returns bool which is false when the line does not start with the marker.
 func stripPrefix(line, prefix string) (string, bool) {
 	trimmed := strings.TrimSpace(line)
 	if !strings.HasPrefix(trimmed, prefix) {
@@ -141,16 +144,22 @@ func stripPrefix(line, prefix string) (string, bool) {
 	return strings.TrimSpace(trimmed[len(prefix):]), true
 }
 
+// parsePositiveInt64 parses a run of decimal digits, with no sign.
+//
+// Takes raw (string) which is the digits.
+//
+// Returns int64 which is the value.
+// Returns error when raw is empty or holds anything but digits.
 func parsePositiveInt64(raw string) (int64, error) {
 	if raw == "" {
-		return 0, fmt.Errorf("empty integer")
+		return 0, errors.New("empty integer")
 	}
 	var value int64
 	for _, character := range raw {
 		if character < '0' || character > '9' {
 			return 0, fmt.Errorf("non-digit in %q", raw)
 		}
-		value = value*10 + int64(character-'0')
+		value = value*decimalBase + int64(character-'0')
 	}
 	return value, nil
 }

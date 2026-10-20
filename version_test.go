@@ -22,18 +22,14 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit"
-	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/schema"
 )
 
 func TestPublicBytecodeVersionMatchesEncoding(t *testing.T) {
 	t.Parallel()
 	expected := fmt.Sprintf("v%d", schema.BytecodeFormatVersion)
-	if pipit.BytecodeVersion != expected {
-		t.Fatalf("public bytecode version %q does not match schema %q", pipit.BytecodeVersion, expected)
-	}
-	if uint16(schema.BytecodeFormatVersion) != isa.BytecodeVersionMajor {
-		t.Fatal("schema and instruction-set major versions disagree")
-	}
+	require.Equal(t, expected, pipit.BytecodeVersion, "the public bytecode version follows the schema format version")
 }

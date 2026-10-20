@@ -28,12 +28,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"pipit.sh/pipit/internal/sandboxbroker"
+	"pipit.sh/pipit/internal/sandboxtest"
 	"pipit.sh/pipit/internal/sandboxwire"
 )
 
@@ -72,8 +72,7 @@ func exerciseRecoveryHelperCrash(t *testing.T, ctx context.Context, original *Se
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestNativeServiceRecoveryHelperCrashChild$")
-	command.Env = append(os.Environ(), "PIPIT_TEST_RECOVERY_HELPER_STORAGE="+string(encoded),
+	command := sandboxtest.Command(ctx, "TestNativeServiceRecoveryHelperCrashChild", "PIPIT_TEST_RECOVERY_HELPER_STORAGE="+string(encoded),
 		"PIPIT_TEST_RECOVERY_HELPER_PARENT="+parent, "PIPIT_TEST_RECOVERY_FILESYSTEM_ROOT="+root,
 		"PIPIT_TEST_RECOVERY_IMAGES="+images)
 	command.Stderr = os.Stderr
@@ -91,10 +90,7 @@ func exerciseRecoveryHelperCrash(t *testing.T, ctx context.Context, original *Se
 		t.Fatal(err)
 	}
 	defer func() { _ = command.Process.Kill(); _ = command.Wait() }()
-	ready, err := bufio.NewReader(output).ReadString('\n')
-	if err != nil || ready != "ready\n" {
-		t.Fatal("replacement recovery helper did not reach confined readiness:", ready, err)
-	}
+	sandboxtest.WaitForLine(t, bufio.NewReader(output), "ready", "the replacement recovery helper reaches confined readiness")
 	competing, err := ClaimServiceRecovery(ctx, storage)
 	if competing != nil {
 		_ = competing.Close()

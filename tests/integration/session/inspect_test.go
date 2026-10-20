@@ -23,9 +23,9 @@ package session_test
 import (
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/app"
 )
 
 func TestSession_Inspect_EmptyOnFresh(t *testing.T) {

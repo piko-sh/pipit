@@ -21,14 +21,16 @@ package modloader
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestApprovalConcurrentCreationHasOneWinner(t *testing.T) {
@@ -55,9 +57,7 @@ func TestApprovalConcurrentCreationHasOneWinner(t *testing.T) {
 			successes++
 		}
 	}
-	if successes != 1 {
-		t.Fatalf("concurrent stores published %d revisions instead of one", successes)
-	}
+	require.Equal(t, 1, successes, "concurrent stores published revisions instead of one")
 }
 
 func TestApprovalSaveRefusesStaleRevision(t *testing.T) {
@@ -65,91 +65,54 @@ func TestApprovalSaveRefusesStaleRevision(t *testing.T) {
 	path := filepath.Join(t.TempDir(), LockfileName)
 	original := NewStore(path)
 	original.SetScript("script.go", "first")
-	if err := original.Save(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, original.Save())
 	stale := NewStore(path)
-	if err := stale.Load(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, stale.Load())
 	original.SetScript("script.go", "second")
-	if err := original.Save(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, original.Save())
 	stale.SetScript("script.go", "stale")
-	if err := stale.Save(); !errors.Is(err, errApprovalChanged) {
-		t.Fatalf("stale overwrite accepted: %v", err)
-	}
+	err := stale.Save()
+	require.ErrorIs(t, err, errApprovalChanged, "a stale overwrite is refused")
 	fresh := NewStore(path)
 	fresh.SetScript("script.go", "not loaded")
-	if err := fresh.Save(); !errors.Is(err, errApprovalChanged) {
-		t.Fatalf("unobserved existing file replaced: %v", err)
-	}
-	if err := stale.Load(); err != nil {
-		t.Fatal(err)
-	}
-	if stale.lockfile.ScriptHash != "second" {
-		t.Fatal("stale save changed the approved identity")
-	}
+	err = fresh.Save()
+	require.ErrorIs(t, err, errApprovalChanged, "an existing file that was not observed is kept")
+	require.NoError(t, stale.Load())
+	require.Equal(t, "second", stale.lockfile.ScriptHash, "a stale save keeps the approved identity")
 	stale.SetScript("script.go", "third")
-	if err := stale.Save(); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(path); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, stale.Save())
+	require.NoError(t, os.Remove(path))
 	stale.SetScript("script.go", "resurrected")
-	if err := stale.Save(); !errors.Is(err, errApprovalChanged) {
-		t.Fatalf("deleted approval was resurrected: %v", err)
-	}
+	err = stale.Save()
+	require.ErrorIs(t, err, errApprovalChanged, "a deleted approval stays deleted")
 }
 
 func TestApprovalGuardCoordinatesProcessesAndReleasesAfterExit(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), LockfileName)
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, executable, "-test.run=^TestApprovalGuardChild$")
-	command.Env = append(os.Environ(), "PIPIT_APPROVAL_GUARD_CHILD="+path)
+	command := sandboxtest.Command(ctx, "TestApprovalGuardChild", "PIPIT_APPROVAL_GUARD_CHILD="+path)
 	stdout, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, command.Start())
 	defer func() {
 		_ = command.Process.Kill()
 		_ = command.Wait()
 	}()
 	reader := bufio.NewScanner(stdout)
-	if !reader.Scan() || reader.Text() != "locked" {
-		t.Fatalf("guard helper did not acquire lock: %q %v", reader.Text(), reader.Err())
-	}
+	require.True(t, reader.Scan(), "the guard helper reports its state: %v", reader.Err())
+	require.Equal(t, "locked", reader.Text(), "the guard helper acquires the lock")
 	guard, err := acquireApprovalGuard(path)
 	if guard != nil {
 		_ = guard.Close()
 	}
-	if err == nil {
-		t.Fatal("another process's lock was bypassed")
-	}
-	if err := command.Process.Kill(); err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Wait(); err == nil {
-		t.Fatal("killed helper unexpectedly succeeded")
-	}
+	require.Error(t, err, "another process's lock holds")
+	require.NoError(t, command.Process.Kill())
+	require.Error(t, command.Wait(), "the killed helper fails")
 	guard, err = acquireApprovalGuard(path)
-	if err != nil {
-		t.Fatalf("exited process retained the lock: %v", err)
-	}
-	if err := guard.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "an exited process releases the lock")
+	require.NoError(t, guard.Close())
 }
 
 func TestApprovalGuardChild(t *testing.T) {
@@ -158,9 +121,7 @@ func TestApprovalGuardChild(t *testing.T) {
 		t.Skip("subprocess fixture")
 	}
 	guard, err := acquireApprovalGuard(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer guard.Close()
 	fmt.Println("locked")
 	time.Sleep(time.Minute)

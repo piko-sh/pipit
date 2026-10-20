@@ -133,7 +133,7 @@ func TestInterpFeatureSetsAreConsistent(t *testing.T) {
 	}
 	require.Equal(t, policy.InterpFeaturesAll, union)
 	require.Equal(t, policy.InterpFeaturesNone, policy.InterpFeaturesMinimal)
-	require.Equal(t, policy.InterpFeature(0), policy.InterpFeaturesNone)
+	require.Equal(t, policy.InterpFeaturesNone, policy.InterpFeature(0))
 	require.True(t, policy.InterpFeaturesAll.Has(policy.InterpFeaturesRestricted))
 	require.False(t, policy.InterpFeaturesRestricted.Has(policy.InterpFeaturesAll))
 }
@@ -392,7 +392,7 @@ func TestWrapNativeFunctionDenialZeroesLeadingResults(t *testing.T) {
 
 	out := wrapped.Call(nil)
 	require.Len(t, out, 3)
-	require.Equal(t, "", out[0].Interface())
+	require.Empty(t, out[0].Interface())
 	require.True(t, out[1].IsNil())
 	gotErr, ok := reflect.TypeAssert[error](out[2])
 	require.True(t, ok)

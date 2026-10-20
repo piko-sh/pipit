@@ -21,26 +21,23 @@
 package adapters
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/schema"
-
 	"pipit.sh/pipit/internal/symtab"
 )
 
 func FuzzLoadCompiledFromBytes(f *testing.F) {
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": "package main\n\nfunc helper(n int) int {\n\treturn n + 1\n}\n\nfunc main() {\n\tx := helper(1)\n\t_ = x\n}\n"})
-	if err != nil {
-		f.Fatalf("compiling seed program: %v", err)
-	}
-	seed := PackCompiledFileSetToBytes(compiled)
+	compiled, err := service.CompileFileSet(f.Context(), map[string]string{"main.go": "package main\n\nfunc helper(n int) int {\n\treturn n + 1\n}\n\nfunc main() {\n\tx := helper(1)\n\t_ = x\n}\n"})
+	require.NoError(f, err, "the seed program compiles")
+	seed, err := PackCompiledFileSetToBytes(compiled)
+	require.NoError(f, err, "the seed program packs")
 	raw, err := schema.Unpack(seed)
-	if err != nil {
-		f.Fatalf("unpacking seed program: %v", err)
-	}
+	require.NoError(f, err, "the seed program unpacks")
 	f.Add([]byte{})
 	addBytecodeFuzzSeed(f, seed)
 	addBytecodeFuzzSeed(f, raw)
@@ -50,34 +47,28 @@ func FuzzLoadCompiledFromBytes(f *testing.F) {
 		"package main; func main() { values := map[string]int{\"key\": 2}; println(values[\"key\"]) }",
 		"package main; func main() { count := 2; next := func() int { count++; return count }; println(next()) }",
 	} {
-		compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
-		if err != nil {
-			f.Fatalf("compiling descriptor seed: %v", err)
-		}
-		encoded := PackCompiledFileSetToBytes(compiled)
+		compiled, err := service.CompileFileSet(f.Context(), map[string]string{"main.go": source})
+		require.NoError(f, err, "the descriptor seed compiles")
+		encoded, err := PackCompiledFileSetToBytes(compiled)
+		require.NoError(f, err, "the descriptor seed packs")
 		payload, err := schema.Unpack(encoded)
-		if err != nil {
-			f.Fatalf("unpacking descriptor seed: %v", err)
-		}
+		require.NoError(f, err, "the descriptor seed unpacks")
 		f.Add(encoded)
 		f.Add(payload)
 	}
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				t.Fatalf("bytecode decode panicked: %v", recovered)
+		require.NotPanics(t, func() {
+			registry := symtab.NewSymbolRegistry(nil)
+			loaded, err := LoadCompiledFromBytes(data, registry)
+			if err != nil {
+				require.Nil(t, loaded, "a failed versioned decode returns no partial bytecode")
 			}
-		}()
-		registry := symtab.NewSymbolRegistry(nil)
-		loaded, err := LoadCompiledFromBytes(data, registry)
-		if err != nil && loaded != nil {
-			t.Fatal("versioned decode returned partial bytecode on failure")
-		}
-		loaded, err = decodeCompiledFileSet(context.Background(), data, registry)
-		if err != nil && loaded != nil {
-			t.Fatal("raw decode returned partial bytecode on failure")
-		}
+			loaded, err = decodeCompiledFileSet(t.Context(), data, registry)
+			if err != nil {
+				require.Nil(t, loaded, "a failed raw decode returns no partial bytecode")
+			}
+		})
 	})
 }
 

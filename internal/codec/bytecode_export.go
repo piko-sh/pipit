@@ -19,6 +19,8 @@
 package codec
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
 
 	"pipit.sh/pipit/internal/engine/program"
@@ -28,6 +30,10 @@ import (
 	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
 )
+
+// errInconsistentGeneralConstants reports a general constant pool whose descriptors do
+// not describe its constants.
+var errInconsistentGeneralConstants = errors.New("general constants disagree with their descriptors")
 
 // Type aliases expose internal types to the adapter layer for bytecode serialisation
 // without duplicating struct definitions.
@@ -544,12 +550,46 @@ func StringConstants(compiledFunction *program.CompiledFunction) []string {
 //
 // Returns []GeneralConstantDescriptorData which describes how to reconstruct each general
 // constant from its serialised form.
-func GeneralConstantDescriptors(compiledFunction *program.CompiledFunction) []GeneralConstantDescriptorData {
-	result := make([]GeneralConstantDescriptorData, len(compiledFunction.GeneralConstantDescriptors))
-	for i := range compiledFunction.GeneralConstantDescriptors {
-		result[i] = exportGeneralConstantDescriptor(compiledFunction.GeneralConstantDescriptors[i])
+// Returns error when the descriptors and the constants differ in number, or a composite
+// zero holds no value, either of which would serialise a pool that cannot load.
+func GeneralConstantDescriptors(compiledFunction *program.CompiledFunction) ([]GeneralConstantDescriptorData, error) {
+	descriptors := compiledFunction.GeneralConstantDescriptors
+	if len(descriptors) != len(compiledFunction.GeneralConstants) {
+		return nil, fmt.Errorf("%w: %d descriptors for %d general constants", errInconsistentGeneralConstants, len(descriptors), len(compiledFunction.GeneralConstants))
 	}
-	return result
+	result := make([]GeneralConstantDescriptorData, len(descriptors))
+	built := map[reflect.Type]descriptor.TypeDescriptor{}
+	for i := range descriptors {
+		constantDescriptor := descriptors[i]
+		if constantDescriptor.Kind == descriptor.GeneralConstantCompositeZero {
+			if !compiledFunction.GeneralConstants[i].IsValid() {
+				return nil, fmt.Errorf("%w: composite zero %d holds no value", errInconsistentGeneralConstants, i)
+			}
+			constantDescriptor.TypeDescriptor = compositeZeroDescriptor(compiledFunction.GeneralConstants[i], built)
+		}
+		result[i] = exportGeneralConstantDescriptor(constantDescriptor)
+	}
+	return result, nil
+}
+
+// compositeZeroDescriptor returns the type descriptor of a composite-zero constant,
+// building each type's descriptor once per export.
+//
+// Takes constant (reflect.Value) which is the zero value the constant holds.
+// Takes built (map[reflect.Type]descriptor.TypeDescriptor) which caches descriptors.
+//
+// Returns the descriptor of the constant's type.
+func compositeZeroDescriptor(constant reflect.Value, built map[reflect.Type]descriptor.TypeDescriptor) descriptor.TypeDescriptor {
+	if !constant.IsValid() {
+		return descriptor.TypeDescriptor{}
+	}
+	constantType := constant.Type()
+	if cached, ok := built[constantType]; ok {
+		return cached
+	}
+	typeDescriptor := descriptor.ReflectTypeToDescriptor(constantType)
+	built[constantType] = typeDescriptor
+	return typeDescriptor
 }
 
 // TypeTableDescriptors returns the type table descriptors as serialisation-safe data.

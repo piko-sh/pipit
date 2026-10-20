@@ -25,11 +25,12 @@ import (
 	"errors"
 	"io"
 	"os"
-	"os/exec"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestWorkerOutputBound(t *testing.T) {
@@ -150,8 +151,7 @@ func TestWorkerProcessHostile(t *testing.T) {
 				cancel: cancel, data: nil, limit: 1024, used: 0,
 				mutex: sync.Mutex{}, exceeded: false,
 			}
-			command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestWorkerProcessHostile$")
-			command.Env = append(os.Environ(), "PIPIT_TEST_PROCESS_HOSTILE="+mode)
+			command := sandboxtest.Command(ctx, "TestWorkerProcessHostile", "PIPIT_TEST_PROCESS_HOSTILE="+mode)
 			command.Stdout = process.output
 			command.Stderr = process.output
 			command.WaitDelay = workerPipeTimeout

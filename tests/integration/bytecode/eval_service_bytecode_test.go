@@ -26,11 +26,11 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/symtab"
-
-	"github.com/stretchr/testify/require"
 )
 
 type mockBytecodeStore struct {
@@ -67,7 +67,7 @@ func TestServiceBytecode(t *testing.T) {
 			cfs := compileFileSource(t, `package main
 func main() {}`)
 
-			err := service.SaveCompiled(context.Background(), "test-key", cfs)
+			err := service.SaveCompiled(t.Context(), "test-key", cfs)
 			require.Error(t, err)
 			require.ErrorContains(t, err, "no bytecode store configured")
 		})
@@ -80,7 +80,7 @@ func main() {}`)
 			cfs := compileFileSource(t, `package main
 func main() {}`)
 
-			err := service.SaveCompiled(context.Background(), "my-key", cfs)
+			err := service.SaveCompiled(t.Context(), "my-key", cfs)
 			require.NoError(t, err)
 			require.Equal(t, "my-key", store.savedKey)
 			require.Same(t, cfs, store.savedCFS)
@@ -95,7 +95,7 @@ func main() {}`)
 			cfs := compileFileSource(t, `package main
 func main() {}`)
 
-			err := service.SaveCompiled(context.Background(), "key", cfs)
+			err := service.SaveCompiled(t.Context(), "key", cfs)
 			require.ErrorIs(t, err, storeErr)
 		})
 	})
@@ -108,7 +108,7 @@ func main() {}`)
 
 			service := newTestService(t)
 
-			cfs, err := service.LoadCompiled(context.Background(), "test-key")
+			cfs, err := service.LoadCompiled(t.Context(), "test-key")
 			require.Error(t, err)
 			require.Nil(t, cfs)
 			require.ErrorContains(t, err, "no bytecode store configured")
@@ -122,7 +122,7 @@ func main() {}`)
 			store := &mockBytecodeStore{loadCFS: expected}
 			service := newTestService(t, app.WithBytecodeStore(store))
 
-			cfs, err := service.LoadCompiled(context.Background(), "my-key")
+			cfs, err := service.LoadCompiled(t.Context(), "my-key")
 			require.NoError(t, err)
 			require.Same(t, expected, cfs)
 		})
@@ -134,7 +134,7 @@ func main() {}`)
 			store := &mockBytecodeStore{loadErr: underlying}
 			service := newTestService(t, app.WithBytecodeStore(store))
 
-			cfs, err := service.LoadCompiled(context.Background(), "bad-key")
+			cfs, err := service.LoadCompiled(t.Context(), "bad-key")
 			require.Error(t, err)
 			require.Nil(t, cfs)
 			require.ErrorIs(t, err, underlying)
@@ -164,7 +164,7 @@ func run() string {
 
 func main() {}
 `
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "world", result)
 }
@@ -173,7 +173,7 @@ func TestWithDebugInfoOption(t *testing.T) {
 	t.Parallel()
 
 	service := newTestService(t, app.WithDebugInfo())
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{
 		"main.go": `package main
 func main() { x := 1; _ = x }`,
 	})

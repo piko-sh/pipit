@@ -32,11 +32,10 @@ import (
 	"testing"
 	"time"
 
-	"pipit.sh/pipit/internal/app"
-	"pipit.sh/pipit/internal/engine/program"
-
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/app"
+	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
@@ -56,15 +55,15 @@ func TestApps(t *testing.T) {
 	}
 
 	testdataDir := "testdata"
-	entries, err := os.ReadDir(testdataDir)
+	tests, err := os.ReadDir(testdataDir)
 	require.NoError(t, err, "reading testdata directory")
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
+	for _, tt := range tests {
+		if !tt.IsDir() {
 			continue
 		}
 
-		name := entry.Name()
+		name := tt.Name()
 		directory := filepath.Join(testdataDir, name)
 
 		t.Run(name, func(t *testing.T) {
@@ -86,10 +85,10 @@ func TestApps(t *testing.T) {
 			var compileErr error
 			if spec.ModulePath != "" {
 				sources := loadProgramSources(t, srcDir)
-				cfs, compileErr = service.CompileProgram(context.Background(), spec.ModulePath, sources)
+				cfs, compileErr = service.CompileProgram(t.Context(), spec.ModulePath, sources)
 			} else {
 				sources := loadGoSources(t, srcDir)
-				cfs, compileErr = service.CompileFileSet(context.Background(), sources)
+				cfs, compileErr = service.CompileFileSet(t.Context(), sources)
 			}
 
 			if spec.ShouldError {
@@ -106,7 +105,7 @@ func TestApps(t *testing.T) {
 					"CompileFileSet failed for %s", name)
 			}
 
-			result, execErr := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
+			result, execErr := service.ExecuteEntrypoint(t.Context(), cfs, "entrypoint")
 
 			if spec.ShouldError {
 				require.Error(t, execErr, "expected error for %s", name)
@@ -246,7 +245,7 @@ func runGoDir(t *testing.T, directory string) string {
 	require.NoError(t, os.MkdirAll(goTmpDir, 0o755))
 
 	ctx, cancel := context.WithTimeoutCause(
-		context.Background(),
+		t.Context(),
 		30*time.Second,
 		fmt.Errorf("parity: go run timed out"),
 	)
@@ -308,7 +307,7 @@ func runGoProgramDir(t *testing.T, srcDir string, modulePath string) string {
 	require.NoError(t, os.WriteFile(filepath.Join(workDir, "go.mod"), []byte(goMod), 0o644))
 
 	ctx, cancel := context.WithTimeoutCause(
-		context.Background(),
+		t.Context(),
 		30*time.Second,
 		fmt.Errorf("parity: go run timed out"),
 	)

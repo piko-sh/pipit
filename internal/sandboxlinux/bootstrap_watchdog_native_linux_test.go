@@ -34,6 +34,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestNativeHostWatchdogBootstrap(t *testing.T) {
@@ -41,10 +43,7 @@ func TestNativeHostWatchdogBootstrap(t *testing.T) {
 		exerciseWatchdogBootstrapChild(t)
 		return
 	}
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	for _, mode := range []string{"valid", "executable", "wrong-control", "expired"} {
 		t.Run(mode, func(t *testing.T) { exerciseWatchdogBootstrap(t, parent, mode) })
 	}
@@ -194,6 +193,7 @@ func configureWatchdogBootstrap(t *testing.T, command *exec.Cmd, handoff *watchd
 }
 
 func exerciseWatchdogBootstrapChild(t *testing.T) {
+	t.Helper()
 	watchdog, err := BootstrapHostWatchdog()
 	mode := os.Getenv("PIPIT_WATCHDOG_BOOTSTRAP_CHILD")
 	if mode != "valid" {

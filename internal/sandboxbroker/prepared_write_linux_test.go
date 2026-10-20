@@ -21,78 +21,63 @@
 package sandboxbroker
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 )
 
 func TestPreparedWriteDoesNotPublish(t *testing.T) {
+	t.Parallel()
 	for _, commit := range []bool{false, true} {
 		root := t.TempDir()
-		if err := os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0600); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0600))
 		backend := openTestFilesystem(t, root, Write, FilesystemLimits{})
 		prepared, err := prepareLinuxWrite(backend.roots["data"], "file", []byte("new"), 1)
 		if prepared != nil {
 			t.Cleanup(func() { _ = prepared.Close() })
 		}
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		entries, err := os.ReadDir(root)
-		if err != nil || len(entries) != 1 || entries[0].Name() != "file" {
-			t.Fatal("preparation exposed a name:", entries, err)
-		}
+		require.NoError(t, err, "preparation exposed a name")
+		require.Len(t, entries, 1)
+		require.Equal(t, "file", entries[0].Name())
 		data, err := os.ReadFile(filepath.Join(root, "file"))
-		if err != nil || string(data) != "original" {
-			t.Fatal("preparation changed target:", string(data), err)
-		}
-		if prepared.identity.Size != 3 || prepared.identity.Inode == 0 || prepared.identity.ParentInode == 0 {
-			t.Fatal("missing prepared identity:", prepared.identity)
-		}
+		require.NoError(t, err, "preparation changed target")
+		require.Equal(t, "original", string(data))
+		require.EqualValues(t, 3, prepared.identity.Size, "the prepared identity is complete")
+		require.NotZero(t, prepared.identity.Inode)
+		require.NotZero(t, prepared.identity.ParentInode)
 		expected := "original"
 		if commit {
-			if err := prepared.commit(backend); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, prepared.commit(backend))
 			expected = "new"
 		}
-		if err := prepared.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if err := prepared.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if err := prepared.commit(backend); !errors.Is(err, ErrClosed) {
-			t.Fatal("closed prepared write reused:", err)
-		}
+		require.NoError(t, prepared.Close())
+		require.NoError(t, prepared.Close())
+		require.ErrorIs(t, prepared.commit(backend), ErrClosed, "closed prepared write reused")
 		data, err = os.ReadFile(filepath.Join(root, "file"))
-		if err != nil || string(data) != expected {
-			t.Fatal("unexpected final target:", string(data), err)
-		}
+		require.NoError(t, err, "unexpected final target")
+		require.Equal(t, expected, string(data))
 	}
 }
 
 func TestPreparedWriteRejectsChangedInode(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"size", "mode", "link", "target"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			root := t.TempDir()
-			if err := os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0600); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0600))
 			backend := openTestFilesystem(t, root, Write, FilesystemLimits{})
 			prepared, err := prepareLinuxWrite(backend.roots["data"], "file", []byte("new"), 1)
 			if prepared != nil {
 				defer prepared.Close()
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			switch mode {
 			case "size":
 				_, err = prepared.temporary.WriteAt([]byte("larger"), 0)
@@ -104,42 +89,30 @@ func TestPreparedWriteRejectsChangedInode(t *testing.T) {
 			case "target":
 				err = os.Link(filepath.Join(root, "file"), filepath.Join(root, "target-link"))
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := prepared.commit(backend); !errors.Is(err, ErrDenied) {
-				t.Fatal("changed prepared state accepted:", err)
-			}
-			if !prepared.closed {
-				t.Fatal("failed commit retained handles")
-			}
+			require.NoError(t, err)
+			require.ErrorIs(t, prepared.commit(backend), ErrDenied, "changed prepared state accepted")
+			require.True(t, prepared.closed, "a failed commit keeps no handles")
 			data, err := os.ReadFile(filepath.Join(root, "file"))
-			if err != nil || string(data) != "original" {
-				t.Fatal("failed commit changed target:", string(data), err)
-			}
+			require.NoError(t, err, "failed commit changed target")
+			require.Equal(t, "original", string(data))
 		})
 	}
 }
 
 func TestPreparedWritePartialOwnership(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
-	if err := os.Mkdir(filepath.Join(root, "directory"), 0700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(filepath.Join(root, "directory"), 0700))
 	backend := openTestFilesystem(t, root, Write, FilesystemLimits{})
 	prepared, err := prepareLinuxWrite(backend.roots["data"], "directory", nil, 1)
-	if err == nil || prepared == nil {
-		t.Fatal("partial failure lost cleanup ownership:", prepared, err)
-	}
-	if err := prepared.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := prepared.parent.Stat(); !errors.Is(err, os.ErrClosed) {
-		t.Fatal("partial owner leaked parent:", err)
-	}
+	require.Error(t, err, "partial failure lost cleanup ownership")
+	require.NotNil(t, prepared)
+	require.NoError(t, prepared.Close())
+	_, err = prepared.parent.Stat()
+	require.ErrorIs(t, err, os.ErrClosed, "partial owner leaked parent")
 	for _, name := range []string{"../escape", ".pipit-stage-private", ""} {
-		if prepared, err := prepareLinuxWrite(backend.roots["data"], name, nil, 1); err == nil || prepared != nil {
-			t.Fatal("invalid path admitted:", name, prepared, err)
-		}
+		prepared, err := prepareLinuxWrite(backend.roots["data"], name, nil, 1)
+		require.Error(t, err, "invalid path admitted: %v", name)
+		require.Nil(t, prepared)
 	}
 }

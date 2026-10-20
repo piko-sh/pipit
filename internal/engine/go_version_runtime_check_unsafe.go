@@ -39,6 +39,13 @@ const (
 	// wantReflectValueSize is the size of reflect.Value the punning code relies on: three
 	// machine words on a 64-bit target.
 	wantReflectValueSize = 24
+
+	// mapLayoutProbeTableEntries makes probes exercise a map backed by a table.
+	mapLayoutProbeTableEntries = 64
+
+	// mapLayoutProbeAssignKey is absent from the probe maps and exceeds 32 bits to
+	// detect key truncation.
+	mapLayoutProbeAssignKey = 1 << 40
 )
 
 var (
@@ -68,7 +75,16 @@ func verifyUnsafeRuntimeLayout() error {
 	if err := verifyUnsafeNewAtRoundTrip(); err != nil {
 		return err
 	}
-	return verifyMapAccessFastStr()
+	if err := verifyMapAccessFastStr(); err != nil {
+		return err
+	}
+	if err := verifyMapAssignFastStr(); err != nil {
+		return err
+	}
+	if err := verifyMapInlineElemBoundary(); err != nil {
+		return err
+	}
+	return verifyMapFast64()
 }
 
 // verifyReflectValueSize checks reflect.Value is still three machine words.
@@ -135,22 +151,107 @@ func verifyUnsafeNewAtRoundTrip() error {
 }
 
 // verifyMapAccessFastStr checks the linknamed runtime.mapaccess2_faststr hits and misses
-// correctly on a two-entry map, which pins both the symbol and the map header shape.
+// correctly on a two-entry map and on a table-sized map, which pins the symbol and both
+// map shapes.
 //
 // Returns an error when a present key misses, a missing key hits, or the hit reads the
 // wrong slot.
 func verifyMapAccessFastStr() error {
-	probe := map[string]int64{"alpha": 1, "beta": layoutProbeSentinel}
+	for _, entries := range []int{2, mapLayoutProbeTableEntries} {
+		probe := make(map[string]int64, entries)
+		for i := range entries {
+			probe[fmt.Sprintf("key-%d", i)] = int64(i)
+		}
+		probe["beta"] = layoutProbeSentinel
+		mapValue := reflect.ValueOf(probe)
+		slot, found := mapAccessFastStrToGeneral(mapValue, "beta")
+		if !found || slot == nil {
+			return fmt.Errorf("%w: mapaccess2_faststr missed a present key in a %d-entry map", errUnsafeRuntimeLayout, len(probe))
+		}
+		if got := *(*int64)(slot); got != layoutProbeSentinel {
+			return fmt.Errorf("%w: mapaccess2_faststr returned slot value %d, want %d", errUnsafeRuntimeLayout, got, layoutProbeSentinel)
+		}
+		if _, found := mapAccessFastStrToGeneral(mapValue, "gamma"); found {
+			return fmt.Errorf("%w: mapaccess2_faststr reported a missing key as present", errUnsafeRuntimeLayout)
+		}
+	}
+	return nil
+}
+
+// verifyMapAssignFastStr checks that slots returned by the linknamed
+// runtime.mapassign_faststr hold the values written through them, as seen by native map
+// reads, while the map grows from one group into a table.
+//
+// Returns an error when a native read misses a written value or the length is wrong.
+func verifyMapAssignFastStr() error {
+	probe := map[string]int64{}
 	mapValue := reflect.ValueOf(probe)
-	slot, found := mapAccessFastStrToGeneral(mapValue, "beta")
+	for i := range mapLayoutProbeTableEntries {
+		slot := mapAssignFastStr(mapValue, fmt.Sprintf("key-%d", i))
+		if slot == nil {
+			return fmt.Errorf("%w: mapassign_faststr returned no slot", errUnsafeRuntimeLayout)
+		}
+		*(*int64)(slot) = layoutProbeSentinel + int64(i)
+	}
+	if len(probe) != mapLayoutProbeTableEntries {
+		return fmt.Errorf("%w: mapassign_faststr left %d entries, want %d", errUnsafeRuntimeLayout, len(probe), mapLayoutProbeTableEntries)
+	}
+	for i := range mapLayoutProbeTableEntries {
+		if got := probe[fmt.Sprintf("key-%d", i)]; got != layoutProbeSentinel+int64(i) {
+			return fmt.Errorf("%w: a value written through a mapassign_faststr slot read back natively as %d", errUnsafeRuntimeLayout, got)
+		}
+	}
+	return nil
+}
+
+// verifyMapInlineElemBoundary checks that elements of mapFastPathMaxElemBytes remain
+// inline, as the map fast paths require.
+//
+// Returns an error when the slot does not hold the element's first and last words.
+func verifyMapInlineElemBoundary() error {
+	const words = mapFastPathMaxElemBytes / 8
+	var element [words]int64
+	element[0], element[words-1] = layoutProbeSentinel, layoutProbeReplacement
+	probe := map[string][words]int64{"edge": element}
+	slot, found := mapAccessFastStrToGeneral(reflect.ValueOf(probe), "edge")
 	if !found || slot == nil {
-		return fmt.Errorf("%w: mapaccess2_faststr missed a present key", errUnsafeRuntimeLayout)
+		return fmt.Errorf("%w: mapaccess2_faststr missed the %d-byte element", errUnsafeRuntimeLayout, mapFastPathMaxElemBytes)
 	}
-	if got := *(*int64)(slot); got != layoutProbeSentinel {
-		return fmt.Errorf("%w: mapaccess2_faststr returned slot value %d, want %d", errUnsafeRuntimeLayout, got, layoutProbeSentinel)
+
+	if *(*int64)(slot) != layoutProbeSentinel || *(*int64)(unsafe.Add(slot, (words-1)*8)) != layoutProbeReplacement {
+		return fmt.Errorf("%w: a %d-byte map element is not stored inline", errUnsafeRuntimeLayout, mapFastPathMaxElemBytes)
 	}
-	if _, found := mapAccessFastStrToGeneral(mapValue, "gamma"); found {
-		return fmt.Errorf("%w: mapaccess2_faststr reported a missing key as present", errUnsafeRuntimeLayout)
+	return nil
+}
+
+// verifyMapFast64 checks the linknamed runtime.mapaccess2_fast64 and mapassign_fast64 on
+// a two-entry map and a table-sized map.
+//
+// Returns an error when a read or a write through a slot disagrees with native access.
+func verifyMapFast64() error {
+	for _, entries := range []int{2, mapLayoutProbeTableEntries} {
+		probe := make(map[int64]int64, entries)
+		for i := range entries {
+			probe[int64(i)] = int64(i)
+		}
+		probe[-1] = layoutProbeSentinel
+		mapValue := reflect.ValueOf(probe)
+		slot, found := mapAccessFast64ToGeneral(mapValue, -1)
+		if !found || slot == nil || *(*int64)(slot) != layoutProbeSentinel {
+			return fmt.Errorf("%w: mapaccess2_fast64 did not read a present key in a %d-entry map", errUnsafeRuntimeLayout, len(probe))
+		}
+		if _, found := mapAccessFast64ToGeneral(mapValue, -2); found {
+			return fmt.Errorf("%w: mapaccess2_fast64 reported a missing key as present", errUnsafeRuntimeLayout)
+		}
+		mapPtr := dereferenceIndirectPointer((*unsafeReflectValue)(unsafe.Pointer(&mapValue)))
+		assigned := runtimeMapassignFast64(reflectValueABIType(mapValue.Type()), mapPtr, mapLayoutProbeAssignKey)
+		if assigned == nil {
+			return fmt.Errorf("%w: mapassign_fast64 returned no slot", errUnsafeRuntimeLayout)
+		}
+		*(*int64)(assigned) = layoutProbeReplacement
+		if probe[mapLayoutProbeAssignKey] != layoutProbeReplacement {
+			return fmt.Errorf("%w: a value written through a mapassign_fast64 slot did not read back natively", errUnsafeRuntimeLayout)
+		}
 	}
 	return nil
 }

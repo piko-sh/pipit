@@ -138,6 +138,6 @@ func TestLicmRefusesHoistWhenTier2MakeMapWritesReceiver(t *testing.T) {
 
 	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
 
-	require.Equal(t, originalLen, len(compiledFunction.Body),
+	require.Len(t, compiledFunction.Body, originalLen,
 		"the receiver is rewritten inside the loop, so the read is not invariant")
 }

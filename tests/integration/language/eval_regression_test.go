@@ -21,7 +21,6 @@
 package language_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"go/importer"
@@ -31,11 +30,10 @@ import (
 	"testing"
 	"time"
 
-	"pipit.sh/pipit/internal/app"
-
-	"pipit.sh/pipit/internal/symtab"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/app"
+	"pipit.sh/pipit/internal/symtab"
 )
 
 type testArenaNode struct {
@@ -94,36 +92,36 @@ func (w *testWriter) Result() string {
 func TestShiftWithUintAmount(t *testing.T) {
 	t.Parallel()
 	runEvalTable(t, nil, []evalTestCase{
-		{expect: 8, name: "shift_left_uint_amount", code: `a := 1; b := uint(3); a << b`},
-		{expect: 4, name: "shift_right_uint_amount", code: `a := 16; b := uint(2); a >> b`},
-		{expect: 16, name: "shift_left_uint_var", code: `x := 1; var n uint = 4; x << n`},
+		{want: 8, name: "shift_left_uint_amount", code: `a := 1; b := uint(3); a << b`},
+		{want: 4, name: "shift_right_uint_amount", code: `a := 16; b := uint(2); a >> b`},
+		{want: 16, name: "shift_left_uint_var", code: `x := 1; var n uint = 4; x << n`},
 
-		{expect: 8, name: "shift_left_const", code: `a := 1; a << 3`},
-		{expect: 4, name: "shift_right_const", code: `a := 16; a >> 2`},
+		{want: 8, name: "shift_left_const", code: `a := 1; a << 3`},
+		{want: 4, name: "shift_right_const", code: `a := 16; a >> 2`},
 	})
 }
 
 func TestStringSliceCompoundAssign(t *testing.T) {
 	t.Parallel()
 	runEvalTable(t, nil, []evalTestCase{
-		{expect: "hello world", name: "string_slice_concat", code: `s := []string{"hello"}; s[0] += " world"; s[0]`},
-		{expect: "abc", name: "string_slice_concat_multi", code: `s := []string{"a", "b"}; s[0] += "bc"; s[0]`},
+		{want: "hello world", name: "string_slice_concat", code: `s := []string{"hello"}; s[0] += " world"; s[0]`},
+		{want: "abc", name: "string_slice_concat_multi", code: `s := []string{"a", "b"}; s[0] += "bc"; s[0]`},
 	})
 }
 
 func TestUintSliceCompoundAssign(t *testing.T) {
 	t.Parallel()
 	runEvalTable(t, nil, []evalTestCase{
-		{expect: uint(15), name: "uint_slice_add", code: `s := []uint{10}; s[0] += 5; s[0]`},
-		{expect: uint(6), name: "uint_slice_mul", code: `s := []uint{3}; s[0] *= 2; s[0]`},
+		{want: uint(15), name: "uint_slice_add", code: `s := []uint{10}; s[0] += 5; s[0]`},
+		{want: uint(6), name: "uint_slice_mul", code: `s := []uint{3}; s[0] *= 2; s[0]`},
 	})
 }
 
 func TestIntSliceCompoundAssignRegression(t *testing.T) {
 	t.Parallel()
 	runEvalTable(t, nil, []evalTestCase{
-		{expect: 15, name: "int_slice_add", code: `s := []int{10}; s[0] += 5; s[0]`},
-		{expect: float64(4.0), name: "float_slice_add", code: `s := []float64{1.5}; s[0] += 2.5; s[0]`},
+		{want: 15, name: "int_slice_add", code: `s := []int{10}; s[0] += 5; s[0]`},
+		{want: float64(4.0), name: "float_slice_add", code: `s := []float64{1.5}; s[0] += 2.5; s[0]`},
 	})
 }
 
@@ -131,22 +129,22 @@ func TestUnexportedIntFieldAccess(t *testing.T) {
 	t.Parallel()
 
 	runEvalTable(t, nil, []evalTestCase{
-		{expect: 5, name: "exported_field_set_get", code: `type S struct { X int }; s := S{}; s.X = 5; s.X`},
-		{expect: 15, name: "exported_field_compound", code: `type S struct { X int }; s := S{X: 10}; s.X += 5; s.X`},
+		{want: 5, name: "exported_field_set_get", code: `type S struct { X int }; s := S{}; s.X = 5; s.X`},
+		{want: 15, name: "exported_field_compound", code: `type S struct { X int }; s := S{X: 10}; s.X += 5; s.X`},
 	})
 }
 
 func TestStructFieldReadAndWrite(t *testing.T) {
 	t.Parallel()
 	runEvalTable(t, nil, []evalTestCase{
-		{expect: 42, name: "field_literal_init", code: `type S struct { X int }; s := S{X: 42}; s.X`},
-		{expect: 10, name: "field_assign", code: `type S struct { X int }; s := S{}; s.X = 10; s.X`},
-		{expect: 3, name: "field_add_assign", code: `type S struct { X int }; s := S{X: 1}; s.X += 2; s.X`},
-		{expect: 7, name: "field_arithmetic", code: `type S struct { A int; B int }; s := S{A: 3, B: 4}; s.A + s.B`},
-		{expect: 20, name: "pointer_field_set", code: `type S struct { X int }; s := &S{}; s.X = 20; s.X`},
-		{expect: "hello", name: "string_field", code: `type S struct { Name string }; s := S{Name: "hello"}; s.Name`},
-		{expect: true, name: "bool_field", code: `type S struct { Active bool }; s := S{Active: true}; s.Active`},
-		{expect: float64(3.14), name: "float_field", code: `type S struct { Value float64 }; s := S{Value: 3.14}; s.Value`},
+		{want: 42, name: "field_literal_init", code: `type S struct { X int }; s := S{X: 42}; s.X`},
+		{want: 10, name: "field_assign", code: `type S struct { X int }; s := S{}; s.X = 10; s.X`},
+		{want: 3, name: "field_add_assign", code: `type S struct { X int }; s := S{X: 1}; s.X += 2; s.X`},
+		{want: 7, name: "field_arithmetic", code: `type S struct { A int; B int }; s := S{A: 3, B: 4}; s.A + s.B`},
+		{want: 20, name: "pointer_field_set", code: `type S struct { X int }; s := &S{}; s.X = 20; s.X`},
+		{want: "hello", name: "string_field", code: `type S struct { Name string }; s := S{Name: "hello"}; s.Name`},
+		{want: true, name: "bool_field", code: `type S struct { Active bool }; s := S{Active: true}; s.Active`},
+		{want: float64(3.14), name: "float_field", code: `type S struct { Value float64 }; s := S{Value: 3.14}; s.Value`},
 	})
 }
 
@@ -169,7 +167,7 @@ func TestSortSliceWithTimeAfter(t *testing.T) {
 	symbols.SynthesiseAll()
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -211,7 +209,7 @@ func run() bool {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     true,
+			want:       true,
 		},
 		{
 			name: "sort.Slice using time.Time.Before",
@@ -250,7 +248,7 @@ func run() bool {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     true,
+			want:       true,
 		},
 	}
 
@@ -259,9 +257,9 @@ func main() {}
 			t.Parallel()
 			service := app.NewService()
 			service.UseSymbols(symbols)
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -324,7 +322,7 @@ func TestSortSliceWithNativeStructTimeAfter(t *testing.T) {
 	symbols.SynthesiseAll()
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -351,7 +349,7 @@ func run() string {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "second,third,first",
+			want:       "second,third,first",
 		},
 		{
 			name: "sort native struct slice by VersionCreatedAt.Before",
@@ -375,7 +373,7 @@ func run() string {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "first,third,second",
+			want:       "first,third,second",
 		},
 	}
 
@@ -384,9 +382,9 @@ func main() {}
 			t.Parallel()
 			service := app.NewService()
 			service.UseSymbols(symbols)
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -436,7 +434,7 @@ func TestSortSliceWithRealTypesPackage(t *testing.T) {
 	symbols.SynthesiseAll()
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -463,7 +461,7 @@ func run() string {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "second,third,first",
+			want:       "second,third,first",
 		},
 		{
 			name: "sort native struct slice by VersionCreatedAt.Before with real types",
@@ -487,7 +485,7 @@ func run() string {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "first,third,second",
+			want:       "first,third,second",
 		},
 	}
 
@@ -496,9 +494,9 @@ func main() {}
 			t.Parallel()
 			service := app.NewService()
 			service.UseSymbols(symbols)
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -558,7 +556,7 @@ func main() {}
 
 	service := app.NewService()
 	service.UseSymbols(symbols)
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, `{"key": "value"}`, result)
 }
@@ -617,7 +615,7 @@ func TestSortSliceProductionLayout(t *testing.T) {
 	symbols.SynthesiseAll()
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -644,7 +642,7 @@ func run() string {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "second,third,first",
+			want:       "second,third,first",
 		},
 		{
 			name: "sort by CreatedAt.Before (field index 3)",
@@ -668,7 +666,7 @@ func run() string {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "first,third,second",
+			want:       "first,third,second",
 		},
 		{
 			name: "switch with multiple sort.Slice closures (production pattern)",
@@ -701,7 +699,7 @@ func run() string {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "second,third,first",
+			want:       "second,third,first",
 		},
 	}
 
@@ -710,9 +708,9 @@ func main() {}
 			t.Parallel()
 			service := app.NewService()
 			service.UseSymbols(symbols)
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -750,7 +748,7 @@ func run() bool {
 `
 	service := app.NewService()
 	service.UseSymbols(symbols)
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, true, result)
 }
@@ -841,7 +839,7 @@ func run() string {
 }
 `
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "ok", result)
 }
@@ -944,7 +942,7 @@ func run() string {
 }
 `
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "ok", result)
 }
@@ -1139,7 +1137,7 @@ func run() string {
 `
 	service := app.NewService()
 	service.UseSymbols(symbols)
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "ok", result)
 }
@@ -1254,7 +1252,7 @@ func run() string {
 `
 	service := app.NewService()
 	service.UseSymbols(symbols)
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "ok", result)
 }
@@ -1338,7 +1336,7 @@ func run() string {
 `
 	service := app.NewService()
 	service.UseSymbols(symbols)
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "ok", result)
 }
@@ -1473,7 +1471,7 @@ func run() string {
 `
 	service := app.NewService()
 	service.UseSymbols(symbols)
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "ok", result)
 }
@@ -1602,7 +1600,7 @@ func run() string {
 `
 	service := app.NewService()
 	service.UseSymbols(symbols)
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "ok", result)
 }
@@ -1644,7 +1642,7 @@ func run() string {
 `
 	service := app.NewService()
 	service.UseSymbols(symbols)
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "ok", result)
 }
@@ -1679,7 +1677,7 @@ func run() string {
 `
 	service := app.NewService()
 	service.UseSymbols(symbols)
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "cap:abc", result)
 }
@@ -1727,7 +1725,7 @@ func run() string {
 `
 	service := app.NewService()
 	service.UseSymbols(symbols)
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "cap:def", result)
 }

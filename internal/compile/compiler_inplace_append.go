@@ -23,6 +23,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 	"strings"
 
 	"pipit.sh/pipit/internal/engine/program"
@@ -35,6 +36,62 @@ const (
 	// interface element types whose method set is spelt out.
 	interfacePrefix = "interface{"
 )
+
+// byteElementKinds are the underlying type names of a byte element, which has its own
+// in-place opcodes.
+var byteElementKinds = []string{"byte", "uint8"}
+
+// inPlaceAppendForm is the typed in-place append for one element kind.
+type inPlaceAppendForm struct {
+	// emit appends the element in register value to the slice in register slice.
+	emit func(c *Compiler, slice, value uint8)
+
+	// bank is the register bank the element is read from.
+	bank isa.RegisterKind
+}
+
+// inPlaceAppendForms maps an element's underlying type name to its typed in-place form.
+// An element kind missing here is boxed and appended through the general-bank opcode.
+var inPlaceAppendForms = func() map[string]inPlaceAppendForm {
+	byteForm := inPlaceAppendForm{bank: isa.RegisterUint, emit: func(c *Compiler, slice, value uint8) {
+		program.Emit(c.Function, isa.OpAppendByteFastInPlace, slice, slice, value)
+	}}
+	uintForm := inPlaceAppendForm{bank: isa.RegisterUint, emit: func(c *Compiler, slice, value uint8) {
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpAppendUintInPlace), slice, slice)
+		program.Emit(c.Function, isa.OpExt, value, 0, 0)
+	}}
+	intForm := inPlaceAppendForm{bank: isa.RegisterInt, emit: func(c *Compiler, slice, value uint8) {
+		program.Emit(c.Function, isa.OpAppendIntFast, slice, slice, value)
+	}}
+	floatForm := inPlaceAppendForm{bank: isa.RegisterFloat, emit: func(c *Compiler, slice, value uint8) {
+		program.Emit(c.Function, isa.OpAppendFloatFast, slice, slice, value)
+	}}
+	forms := map[string]inPlaceAppendForm{
+		"uint16":  uintForm,
+		"uint32":  uintForm,
+		"uint64":  uintForm,
+		"uint":    uintForm,
+		"uintptr": uintForm,
+		"int":     intForm,
+		"int8":    intForm,
+		"int16":   intForm,
+		"int32":   intForm,
+		"int64":   intForm,
+		"float32": floatForm,
+		"float64": floatForm,
+		"string": {bank: isa.RegisterString, emit: func(c *Compiler, slice, value uint8) {
+			program.Emit(c.Function, isa.OpAppendStringFast, slice, slice, value)
+		}},
+		"bool": {bank: isa.RegisterBool, emit: func(c *Compiler, slice, value uint8) {
+			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpAppendBool), slice, slice)
+			program.Emit(c.Function, isa.OpExt, value, 0, 0)
+		}},
+	}
+	for _, name := range byteElementKinds {
+		forms[name] = byteForm
+	}
+	return forms
+}()
 
 // tryCompileInPlaceAppend emits an in-place append for `x = append(x, e)` or `x =
 // append(x, source...)` when the local is alias-free and satisfies the in-place safety
@@ -61,7 +118,8 @@ func (c *Compiler) tryCompileInPlaceAppend(ctx context.Context, leftHandSide ast
 
 // emitInPlaceAppendSingle emits the `x = append(x, e)` in-place form.
 //
-// Picks the right in-place opcode for the element kind.
+// All fallback decisions precede element compilation because the ordinary append path
+// compiles the element again. Refusing afterwards would evaluate the element twice.
 //
 // Takes location (VarLocation) which is the destination slot.
 // Takes callRHS (*ast.CallExpr) which is the append call expression.
@@ -71,62 +129,29 @@ func (c *Compiler) tryCompileInPlaceAppend(ctx context.Context, leftHandSide ast
 // Returns bool which reports whether the fast path emitted code.
 // Returns error when sub-expression compilation of the element fails.
 func (c *Compiler) emitInPlaceAppendSingle(ctx context.Context, location program.VarLocation, callRHS *ast.CallExpr, elementKind string) (program.VarLocation, bool, error) {
+	if isInterfaceElementKind(elementKind) {
+		c.noteLoweringRefused(ctx, loweringTableAssign, loweringInPlaceAppend, "interface-element")
+		return program.VarLocation{}, false, nil
+	}
+	form, typed := inPlaceAppendForms[elementKind]
+	if typed {
+		if got := c.kindFor(c.Info.TypeOf(callRHS.Args[1])); got != form.bank {
+			c.noteLoweringRefused(ctx, loweringTableAssign, loweringInPlaceAppend, reasonValueKind, attrWant, form.bank.String(), attrGot, got.String())
+			return program.VarLocation{}, false, nil
+		}
+	}
+
 	valueLocation, err := c.compileExpression(ctx, callRHS.Args[1])
 	if err != nil {
 		return program.VarLocation{}, true, err
 	}
-
-	switch elementKind {
-	case "byte", "uint8":
-		if valueLocation.Kind != isa.RegisterUint {
-			c.noteLoweringRefused(ctx, loweringTableAssign, loweringInPlaceAppend, reasonValueKind, attrWant, "Uint", attrGot, valueLocation.Kind.String())
-			return program.VarLocation{}, false, nil
+	if typed {
+		valueLocation = c.coerceToKind(ctx, valueLocation, form.bank)
+		if valueLocation.Kind == form.bank {
+			form.emit(c, location.Register, valueLocation.Register)
+			return location, true, nil
 		}
-		program.Emit(c.Function, isa.OpAppendByteFastInPlace, location.Register, location.Register, valueLocation.Register)
-		return location, true, nil
-	case "uint16", "uint32", "uint64", "uint", "uintptr":
-		if valueLocation.Kind != isa.RegisterUint {
-			c.noteLoweringRefused(ctx, loweringTableAssign, loweringInPlaceAppend, reasonValueKind, attrWant, "Uint", attrGot, valueLocation.Kind.String())
-			return program.VarLocation{}, false, nil
-		}
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpAppendUintInPlace), location.Register, location.Register)
-		program.Emit(c.Function, isa.OpExt, valueLocation.Register, 0, 0)
-		return location, true, nil
-	case "int", "int8", "int16", "int32", "int64":
-		if valueLocation.Kind != isa.RegisterInt {
-			c.noteLoweringRefused(ctx, loweringTableAssign, loweringInPlaceAppend, reasonValueKind, attrWant, "Int", attrGot, valueLocation.Kind.String())
-			return program.VarLocation{}, false, nil
-		}
-		program.Emit(c.Function, isa.OpAppendIntFast, location.Register, location.Register, valueLocation.Register)
-		return location, true, nil
-	case "string":
-		if valueLocation.Kind != isa.RegisterString {
-			c.noteLoweringRefused(ctx, loweringTableAssign, loweringInPlaceAppend, reasonValueKind, attrWant, "String", attrGot, valueLocation.Kind.String())
-			return program.VarLocation{}, false, nil
-		}
-		program.Emit(c.Function, isa.OpAppendStringFast, location.Register, location.Register, valueLocation.Register)
-		return location, true, nil
-	case "float32", "float64":
-		if valueLocation.Kind != isa.RegisterFloat {
-			c.noteLoweringRefused(ctx, loweringTableAssign, loweringInPlaceAppend, reasonValueKind, attrWant, "Float", attrGot, valueLocation.Kind.String())
-			return program.VarLocation{}, false, nil
-		}
-		program.Emit(c.Function, isa.OpAppendFloatFast, location.Register, location.Register, valueLocation.Register)
-		return location, true, nil
-	case "bool":
-		if valueLocation.Kind != isa.RegisterBool {
-			c.noteLoweringRefused(ctx, loweringTableAssign, loweringInPlaceAppend, reasonValueKind, attrWant, "Bool", attrGot, valueLocation.Kind.String())
-			return program.VarLocation{}, false, nil
-		}
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpAppendBool), location.Register, location.Register)
-		program.Emit(c.Function, isa.OpExt, valueLocation.Register, 0, 0)
-		return location, true, nil
 	}
-
-	if isInterfaceElementKind(elementKind) {
-		return program.VarLocation{}, false, nil
-	}
-
 	c.boxToGeneralTemp(ctx, &valueLocation)
 	c.emitInPlaceGeneralAppend(ctx, location, valueLocation, callRHS)
 	return location, true, nil
@@ -167,7 +192,7 @@ func (c *Compiler) emitInPlaceAppendSpread(ctx context.Context, location program
 	if callRHS.Ellipsis == token.NoPos {
 		return program.VarLocation{}, false, nil
 	}
-	if elementKind != "byte" && elementKind != "uint8" {
+	if !slices.Contains(byteElementKinds, elementKind) {
 		return program.VarLocation{}, false, nil
 	}
 	sourceTypeInfo, ok := c.Info.Types[callRHS.Args[1]]
@@ -178,8 +203,7 @@ func (c *Compiler) emitInPlaceAppendSpread(ctx context.Context, location program
 	if !ok {
 		return program.VarLocation{}, false, nil
 	}
-	elementName := sourceSlice.Elem().Underlying().String()
-	if elementName != "byte" && elementName != "uint8" {
+	if !slices.Contains(byteElementKinds, sourceSlice.Elem().Underlying().String()) {
 		return program.VarLocation{}, false, nil
 	}
 

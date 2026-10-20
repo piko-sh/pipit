@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalFallthrough(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "basic_fallthrough",
@@ -48,7 +48,7 @@ case 2:
 	r += 20
 }
 r`,
-			expect: 30,
+			want: 30,
 		},
 		{
 			name: "no_fallthrough",
@@ -61,7 +61,7 @@ case 2:
 	r = 20
 }
 r`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "fallthrough_chain",
@@ -78,7 +78,7 @@ case 3:
 	r += 4
 }
 r`,
-			expect: 7,
+			want: 7,
 		},
 		{
 			name: "fallthrough_to_default",
@@ -92,7 +92,7 @@ default:
 	r += 5
 }
 r`,
-			expect: 15,
+			want: 15,
 		},
 		{
 			name: "fallthrough_skips_condition",
@@ -106,7 +106,7 @@ case 99:
 	r += 1
 }
 r`,
-			expect: 101,
+			want: 101,
 		},
 	}
 
@@ -114,9 +114,9 @@ r`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

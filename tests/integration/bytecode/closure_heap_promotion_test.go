@@ -21,16 +21,15 @@
 package bytecode_test
 
 import (
-	"context"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/compile/escape"
 	"pipit.sh/pipit/internal/engine/program"
-
-	"github.com/stretchr/testify/require"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -44,7 +43,7 @@ func parseRunBody(t *testing.T, source string, functionName string) *ast.BlockSt
 			return function.Body
 		}
 	}
-	t.Fatalf("function %s not found in source", functionName)
+	require.Failf(t, "function not found", "%s is not in the source", functionName)
 	return nil
 }
 
@@ -203,11 +202,11 @@ func TestEmitIndirectReadGeneralReturnsLiveView(t *testing.T) {
 		OriginalKind: isa.RegisterGeneral,
 	}
 	bodyLenBefore := len(c.Function.Body)
-	out, err := c.EmitIndirectRead(context.Background(), location)
+	out, err := c.EmitIndirectRead(t.Context(), location)
 	require.NoError(t, err)
 	require.Equal(t, isa.RegisterGeneral, out.Kind,
 		"indirect read of a registerGeneral local must materialise into the general bank")
-	require.Equal(t, bodyLenBefore+1, len(c.Function.Body),
+	require.Len(t, c.Function.Body, bodyLenBefore+1,
 		"the read must emit exactly one opDeref instruction (no unpack-interface follow-up needed for general-kind values)")
 	last := c.Function.Body[len(c.Function.Body)-1]
 	require.Equal(t, isa.OpDeref, last.Op)
@@ -227,9 +226,9 @@ func TestEmitIndirectReadIntEmitsDerefAndUnpack(t *testing.T) {
 		OriginalKind: isa.RegisterInt,
 	}
 	bodyLenBefore := len(c.Function.Body)
-	_, err := c.EmitIndirectRead(context.Background(), location)
+	_, err := c.EmitIndirectRead(t.Context(), location)
 	require.NoError(t, err)
-	require.Equal(t, bodyLenBefore+2, len(c.Function.Body),
+	require.Len(t, c.Function.Body, bodyLenBefore+2,
 		"int-kind reads emit opDeref + opUnpackInterface so the value lands in the typed int bank")
 	derefInstruction := c.Function.Body[bodyLenBefore]
 	require.Equal(t, isa.OpDeref, derefInstruction.Op)

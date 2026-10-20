@@ -19,13 +19,11 @@
 package adapters
 
 import (
-	"context"
-	"errors"
 	"reflect"
-	"strings"
 	"testing"
 
 	flatbuffers "github.com/google/flatbuffers/go"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/codec"
 	"pipit.sh/pipit/internal/schema/schemagen"
@@ -35,29 +33,42 @@ import (
 
 func TestBytecodeZeroValueBudgetBeforeAllocation(t *testing.T) {
 	t.Parallel()
-	budget := bytecodeValueBudget{remaining: 16}
-	first, err := budget.zero(reflect.TypeFor[uint64]())
-	if err != nil || !first.CanSet() || !first.IsZero() {
-		t.Fatal(first, err)
-	}
-	second, err := budget.zero(reflect.TypeFor[uint64]())
-	if err != nil || budget.remaining != 0 {
-		t.Fatal(second, err)
-	}
-	first.SetUint(9)
-	if !second.IsZero() {
-		t.Fatal("zero values share mutable storage")
-	}
-	if value, err := budget.zero(reflect.TypeFor[uint64]()); value.IsValid() || !errors.Is(err, errCorruptBytecodePayload) || budget.remaining != 0 {
-		t.Fatal("exhausted budget allocated or wrapped:", err)
-	}
-	budget.remaining = 1
-	if _, err := budget.zero(reflect.TypeFor[struct{}]()); err != nil || budget.remaining != 0 {
-		t.Fatal(err)
-	}
-	if value, err := budget.zero(reflect.TypeFor[struct{}]()); value.IsValid() || !errors.Is(err, errCorruptBytecodePayload) {
-		t.Fatal(err)
-	}
+	t.Run("array zero values are charged before allocation", func(t *testing.T) {
+		t.Parallel()
+		budget := bytecodeValueBudget{remaining: 16}
+		first, err := budget.zero(reflect.TypeFor[[1]uint64]())
+		require.NoError(t, err)
+		require.True(t, first.CanSet())
+		require.True(t, first.IsZero())
+		second, err := budget.zero(reflect.TypeFor[[1]uint64]())
+		require.NoError(t, err)
+		require.Equal(t, uintptr(0), budget.remaining)
+		first.Index(0).SetUint(9)
+		require.True(t, second.IsZero(), "zero values do not share mutable storage")
+		value, err := budget.zero(reflect.TypeFor[[1]uint64]())
+		require.False(t, value.IsValid(), "an exhausted budget neither allocates nor wraps")
+		require.ErrorIs(t, err, errCorruptBytecodePayload)
+		require.Equal(t, uintptr(0), budget.remaining)
+	})
+	t.Run("a slice zero value is the non-addressable nil", func(t *testing.T) {
+		t.Parallel()
+		budget := bytecodeValueBudget{remaining: 24}
+		slice, err := budget.zero(reflect.TypeFor[[]int]())
+		require.NoError(t, err)
+		require.False(t, slice.CanSet(), "no in-place append can grow a shared slice zero value")
+		require.True(t, slice.IsNil())
+		require.Equal(t, uintptr(0), budget.remaining)
+	})
+	t.Run("an empty struct still costs one unit", func(t *testing.T) {
+		t.Parallel()
+		budget := bytecodeValueBudget{remaining: 1}
+		_, err := budget.zero(reflect.TypeFor[struct{}]())
+		require.NoError(t, err)
+		require.Equal(t, uintptr(0), budget.remaining)
+		value, err := budget.zero(reflect.TypeFor[struct{}]())
+		require.False(t, value.IsValid())
+		require.ErrorIs(t, err, errCorruptBytecodePayload)
+	})
 }
 
 func TestBytecodeNamedZeroCannotBypassBudget(t *testing.T) {
@@ -68,15 +79,18 @@ func TestBytecodeNamedZeroCannotBypassBudget(t *testing.T) {
 		"NotType": reflect.ValueOf(1),
 		"NonNil":  reflect.ValueOf(new(int)),
 	}})
-	budget := bytecodeValueBudget{remaining: maximumDecodedValueBytes}
 	for _, name := range []string{"Large", "NotType", "NonNil", "Missing"} {
-		data := codec.GeneralConstantDescriptorData{
-			Kind: uint8(descriptor.GeneralConstantNamedTypeZero), PackagePath: "host", SymbolName: name,
-		}
-		value, err := budget.reconstruct(data, registry)
-		if err == nil || value.IsValid() || budget.remaining != maximumDecodedValueBytes {
-			t.Fatal("named type allocated without valid authority and budget:", name, err)
-		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			budget := bytecodeValueBudget{remaining: maximumDecodedValueBytes}
+			data := codec.GeneralConstantDescriptorData{
+				Kind: uint8(descriptor.GeneralConstantNamedTypeZero), PackagePath: "host", SymbolName: name,
+			}
+			value, err := budget.reconstruct(data, registry)
+			require.Error(t, err, "a named zero value needs valid authority and budget")
+			require.False(t, value.IsValid())
+			require.Equal(t, uintptr(maximumDecodedValueBytes), budget.remaining)
+		})
 	}
 }
 
@@ -89,13 +103,13 @@ func TestBytecodeBorrowedSymbolsDoNotAllocateZeros(t *testing.T) {
 		Kind: uint8(descriptor.GeneralConstantPackageSymbol), PackagePath: "host", SymbolName: "Value",
 	}
 	value, err := budget.reconstruct(data, registry)
-	if err != nil || value != original || budget.remaining != 0 {
-		t.Fatal("borrowed symbol changed:", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, original, value, "a borrowed symbol is returned as it is")
+	require.Zero(t, budget.remaining, "borrowing a symbol costs no budget")
 	data.Kind = 255
-	if value, err := budget.reconstruct(data, registry); err == nil || value.IsValid() {
-		t.Fatal("unknown constant kind accepted")
-	}
+	value, err = budget.reconstruct(data, registry)
+	require.Error(t, err, "an unknown constant kind is rejected")
+	require.False(t, value.IsValid())
 }
 
 func TestBytecodeNamedAndCompositeZerosShareBudget(t *testing.T) {
@@ -114,19 +128,18 @@ func TestBytecodeNamedAndCompositeZerosShareBudget(t *testing.T) {
 	}
 	for _, data := range []codec.GeneralConstantDescriptorData{named, composite} {
 		value, err := budget.reconstruct(data, registry)
-		if err != nil || !value.CanSet() || !value.IsZero() {
-			t.Fatal("valid zero reconstruction changed:", err)
-		}
+		require.NoError(t, err, "a valid zero value is reconstructed")
+		require.True(t, value.CanSet())
+		require.True(t, value.IsZero())
 	}
-	if budget.remaining != 0 {
-		t.Fatal("constant kinds received separate budgets")
-	}
-	if value, err := budget.reconstruct(named, registry); value.IsValid() || !errors.Is(err, errCorruptBytecodePayload) {
-		t.Fatal("named zero bypassed exhausted shared budget:", err)
-	}
+	require.Equal(t, uintptr(0), budget.remaining, "constant kinds share one budget")
+	value, err := budget.reconstruct(named, registry)
+	require.False(t, value.IsValid(), "a named zero value respects the exhausted shared budget")
+	require.ErrorIs(t, err, errCorruptBytecodePayload)
 }
 
 func TestBytecodeZeroValueBudgetSharedAcrossFunctionEdges(t *testing.T) {
+	t.Parallel()
 	builder := flatbuffers.NewBuilder(2048)
 	data := codec.GeneralConstantDescriptorData{
 		Kind: uint8(descriptor.GeneralConstantCompositeZero),
@@ -159,11 +172,9 @@ func TestBytecodeZeroValueBudgetSharedAcrossFunctionEdges(t *testing.T) {
 	schemagen.CompiledFileSetAddVariableInitFunction(builder, initialiser)
 	fileSet := schemagen.CompiledFileSetEnd(builder)
 	builder.Finish(fileSet)
-	if len(builder.FinishedBytes()) > 2048 {
-		t.Fatal("fixture is no longer compact")
-	}
-	loaded, err := decodeCompiledFileSet(context.Background(), builder.FinishedBytes(), symtab.NewSymbolRegistry(nil))
-	if loaded != nil || !errors.Is(err, errCorruptBytecodePayload) || !strings.Contains(err.Error(), "zero-value storage exceeds") {
-		t.Fatal("function edges reset value allocation budget:", err)
-	}
+	require.LessOrEqual(t, len(builder.FinishedBytes()), 2048, "the fixture stays compact")
+	loaded, err := decodeCompiledFileSet(t.Context(), builder.FinishedBytes(), symtab.NewSymbolRegistry(nil))
+	require.Nil(t, loaded, "function edges do not reset the value allocation budget")
+	require.ErrorIs(t, err, errCorruptBytecodePayload)
+	require.Contains(t, err.Error(), "zero-value storage exceeds")
 }

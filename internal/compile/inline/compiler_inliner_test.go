@@ -331,7 +331,7 @@ func TestRunBytecodeInliner_SingleFunctionNoOp(t *testing.T) {
 	root := &program.CompiledFunction{Body: []isa.Instruction{isa.NewInstruction(isa.OpNop, 0, 0, 0)}}
 	origLen := len(root.Body)
 	require.NoError(t, RunBytecodeInliner(context.Background(), root, passes.DefaultOptions()), "runBytecodeInliner unexpected error")
-	require.Equalf(t, origLen, len(root.Body), "body length must not change")
+	require.Lenf(t, root.Body, origLen, "body length must not change")
 }
 
 func TestRunBytecodeInliner_NilRoot(t *testing.T) {

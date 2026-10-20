@@ -21,7 +21,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=6 uint=12
+;   registers: int=4 uint=9
 ;   dispatch:  asm=8 shim=8 exit=0 go=4
 ;   params:    (none)
 ;   returns:   (int)
@@ -40,10 +40,10 @@
 0010 S 0:GET_GLOBAL                 7   1   5
 0011 A 0:BIT_XOR_UINT               8   6   7
 0012 G 1:UINT_TO_INT               56   3   8
-0013 A 0:ADD_INT                    4   2   3
-0014 S 0:GET_GLOBAL                 9   0   5
-0015 S 0:GET_GLOBAL                10   1   5
-0016 A 0:BIT_AND_NOT_UINT          11   9  10
-0017 G 1:UINT_TO_INT               56   5  11
-0018 A 0:ADD_INT                    0   4   5
+0013 A 0:ADD_INT                    2   2   3
+0014 S 0:GET_GLOBAL                 6   0   5
+0015 S 0:GET_GLOBAL                 7   1   5
+0016 A 0:BIT_AND_NOT_UINT           8   6   7
+0017 G 1:UINT_TO_INT               56   3   8
+0018 A 0:ADD_INT                    0   2   3
 0019 A 2:TIER2_RETURN               0  10   1    ; 1 values

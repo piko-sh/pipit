@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 )
 
@@ -32,25 +33,17 @@ func TestApprovalGuardCloseReleasesDuplicatedDescription(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), LockfileName)
 	guard, err := acquireApprovalGuard(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	duplicate, err := unix.Dup(int(guard.file.Fd()))
 	if err != nil {
 		_ = guard.Close()
-		t.Fatal(err)
 	}
+	require.NoError(t, err)
 	defer unix.Close(duplicate)
-	if err := guard.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, guard.Close())
 	next, err := acquireApprovalGuard(path)
-	if err != nil {
-		t.Fatalf("duplicate descriptor retained a released lock: %v", err)
-	}
-	if err := next.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "a duplicate descriptor does not keep a released lock")
+	require.NoError(t, next.Close())
 }
 
 func TestApprovalGuardRejectsUnsafeNodes(t *testing.T) {
@@ -62,9 +55,7 @@ func TestApprovalGuardRejectsUnsafeNodes(t *testing.T) {
 			path := filepath.Join(directory, LockfileName)
 			guardPath := path + ".guard"
 			target := filepath.Join(directory, "target")
-			if err := os.WriteFile(target, nil, 0o600); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.WriteFile(target, nil, 0o600))
 			var err error
 			switch kind {
 			case "symlink":
@@ -85,16 +76,12 @@ func TestApprovalGuardRejectsUnsafeNodes(t *testing.T) {
 			case "content":
 				err = os.WriteFile(guardPath, []byte("occupied"), 0o600)
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			guard, err := acquireApprovalGuard(path)
 			if guard != nil {
 				_ = guard.Close()
 			}
-			if err == nil {
-				t.Fatal("unsafe guard accepted")
-			}
+			require.Error(t, err, "an unsafe guard is refused")
 		})
 	}
 }

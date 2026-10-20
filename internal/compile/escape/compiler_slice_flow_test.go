@@ -119,6 +119,7 @@ func TestCollectFlowingSliceNamesFollowsEveryStore(t *testing.T) {
 		{name: "a conversion to an array pointer", body: `s := []byte{1}; _ = [1]*[1]byte{(*[1]byte)(s)}`, wantFlowing: true},
 		{name: "a returned string conversion", body: `_ = func() string { s := []byte{1}; return string(s) }()`, wantFlowing: false},
 		{name: "a stored array conversion", body: `s := []byte{1}; _ = [1][1]byte{[1]byte(s)}`, wantFlowing: false},
+		{name: "a stored byte slice conversion of a string", body: `s := "x"; _ = box{buf: []byte(s)}`, wantFlowing: false},
 		{name: "an appended element", body: `s := []byte{1}; var rows [][]byte; rows = append(rows, s); _ = rows`, wantFlowing: true},
 		{name: "a sent value", body: `s := []byte{1}; ch := make(chan []byte, 1); ch <- s`, wantFlowing: true},
 		{name: "a returned value", body: `_ = func() []byte { s := []byte{1}; return s }()`, wantFlowing: true},

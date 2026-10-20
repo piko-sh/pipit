@@ -24,7 +24,6 @@ import (
 	"context"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -33,6 +32,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"pipit.sh/pipit/internal/rootfs"
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestBoundedReadRejectsFIFOWithoutWriter(t *testing.T) {
@@ -40,12 +40,9 @@ func TestBoundedReadRejectsFIFOWithoutWriter(t *testing.T) {
 	directory := t.TempDir()
 	require.NoError(t, unix.Mkfifo(filepath.Join(directory, "pipe"), 0o600))
 	require.NoError(t, os.Symlink("pipe", filepath.Join(directory, "alias")))
-	executable, err := os.Executable()
-	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, executable, "-test.run=^TestBoundedReadFIFOChild$")
-	command.Env = append(os.Environ(), "PIPIT_ROOTFS_FIFO_TEST_ROOT="+directory)
+	command := sandboxtest.Command(ctx, "TestBoundedReadFIFOChild", "PIPIT_ROOTFS_FIFO_TEST_ROOT="+directory)
 	command.WaitDelay = time.Second
 	output, err := command.CombinedOutput()
 	require.NoError(t, ctx.Err(), "FIFO read waited for a writer: %s", output)

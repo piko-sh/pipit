@@ -4,7 +4,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function pair
-;   registers: string=1 general=4 sliceByte=2
+;   registers: string=1 general=3 sliceByte=2
 ;   dispatch:  asm=4 shim=0 exit=0 go=3
 ;   params:    (general)
 ;   returns:   (sliceByte, sliceByte)
@@ -16,15 +16,15 @@
 0000 A 0:MOVE_GENERAL               1   0   1
 0001 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "xyz"
 0002 G 1:STRING_TO_BYTES           71   2   0
-0003 A 0:MOVE_GENERAL               3   2   1
+0003 A 0:MOVE_GENERAL               2   2   1
 0004 G 1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   1
-0005 G 1:ADOPT_GENERAL_TO_SLICES_BYTE 160   1   3
+0005 G 1:ADOPT_GENERAL_TO_SLICES_BYTE 160   1   2
 0006 A 2:TIER2_RETURN               0  10   2    ; 2 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function mixed
 ;   registers: string=2 general=2 sliceByte=1
-;   dispatch:  asm=5 shim=0 exit=0 go=1
+;   dispatch:  asm=4 shim=0 exit=0 go=1
 ;   params:    (general)
 ;   returns:   (sliceByte, string)
 ; ═════════════════════════════════════════════════════════════
@@ -33,16 +33,15 @@
 ;   strings: [0]="hello"
 
 0000 A 0:MOVE_GENERAL               1   0   1
-0001 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "hello"
-0002 A 1:MOVE_STRING               37   1   0
-0003 G 1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   1
-0004 A 1:MOVE_STRING               37   0   1
-0005 A 2:TIER2_RETURN               0  10   2    ; 2 values
+0001 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "hello"
+0002 G 1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   1
+0003 A 1:MOVE_STRING               37   0   1
+0004 A 2:TIER2_RETURN               0  10   2    ; 2 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function entry
 ;   registers: int=2 general=2
-;   dispatch:  asm=6 shim=0 exit=0 go=0
+;   dispatch:  asm=5 shim=0 exit=0 go=0
 ;   params:    (general)
 ;   returns:   (general, int)
 ; ═════════════════════════════════════════════════════════════
@@ -51,16 +50,15 @@
 ;   ints:    [0]=1
 
 0000 A 0:MOVE_GENERAL               1   0   1
-0001 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0002 A 1:MOVE_INT                  35   1   0
-0003 A 0:MOVE_GENERAL               0   1   0
-0004 A 1:MOVE_INT                  35   0   1
-0005 A 2:TIER2_RETURN               0  10   2    ; 2 values
+0001 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0002 A 0:MOVE_GENERAL               0   1   0
+0003 A 1:MOVE_INT                  35   0   1
+0004 A 2:TIER2_RETURN               0  10   2    ; 2 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function parts
 ;   registers: float=4
-;   dispatch:  asm=6 shim=0 exit=0 go=0
+;   dispatch:  asm=5 shim=0 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (float, float)
 ; ═════════════════════════════════════════════════════════════
@@ -68,12 +66,11 @@
 ; constants:
 ;   floats:  [0]=1.5  [1]=-2
 
-0000 A 0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 1.5
-0001 A 1:MOVE_FLOAT                36   1   0
-0002 A 0:LOAD_FLOAT_CONST           3   1   0    ; floats[3] = -2
-0003 A 1:MOVE_FLOAT                36   0   1
-0004 A 1:MOVE_FLOAT                36   1   3
-0005 A 2:TIER2_RETURN               0  10   2    ; 2 values
+0000 A 0:LOAD_FLOAT_CONST           2   0   0    ; floats[2] = 1.5
+0001 A 0:LOAD_FLOAT_CONST           3   1   0    ; floats[3] = -2
+0002 A 1:MOVE_FLOAT                36   0   2
+0003 A 1:MOVE_FLOAT                36   1   3
+0004 A 2:TIER2_RETURN               0  10   2    ; 2 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function run

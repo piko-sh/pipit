@@ -29,6 +29,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/sandboxwire"
 )
 
@@ -37,9 +40,7 @@ const validHello = `{"version":1,"kind":"hello","id":0,"payload":{}}`
 func newCodec(t *testing.T, reader io.Reader, writer io.Writer, limits sandboxwire.Limits) *sandboxwire.Codec {
 	t.Helper()
 	codec, err := sandboxwire.New(reader, writer, limits)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return codec
 }
 
@@ -54,99 +55,110 @@ func TestCodecRoundTrip(t *testing.T) {
 	var transport bytes.Buffer
 	codec := newCodec(t, &transport, &transport, sandboxwire.Limits{})
 	message := sandboxwire.Message{Kind: sandboxwire.Run, ID: 7, Payload: json.RawMessage(`{"source":"println(42)"}`)}
-	if err := codec.Write(message); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, codec.Write(message))
 	decoded, err := codec.Read()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if decoded.Kind != message.Kind || decoded.ID != message.ID || !bytes.Equal(decoded.Payload, message.Payload) {
-		t.Fatalf("round trip changed message: %+v", decoded)
-	}
+	require.NoError(t, err)
+	require.Equal(t, message.Kind, decoded.Kind)
+	require.Equal(t, message.ID, decoded.ID)
+	require.Equal(t, message.Payload, decoded.Payload)
 	var payload struct {
 		Source string `json:"source"`
 	}
-	if err := decoded.DecodePayload(&payload); err != nil || payload.Source != "println(42)" {
-		t.Fatalf("payload=%+v err=%v", payload, err)
-	}
+	require.NoError(t, decoded.DecodePayload(&payload))
+	require.Equal(t, "println(42)", payload.Source)
 }
 
 func TestCodecRejectsMalformedEnvelope(t *testing.T) {
 	t.Parallel()
-	for _, data := range []string{
-		`{}`,
-		`{"version":2,"kind":"hello","id":0,"payload":{}}`,
-		`{"version":1.0,"kind":"hello","id":0,"payload":{}}`,
-		`{"Version":1,"kind":"hello","id":0,"payload":{}}`,
-		`{"version":1,"kind":"hello","id":0,"payload":{},"extra":true}`,
-		`{"version":1,"version":1,"kind":"hello","id":0,"payload":{}}`,
-		`{"version":1,"\u0076ersion":1,"kind":"hello","id":0,"payload":{}}`,
-		`{"version":1,"kind":"hello","payload":{}}`,
-		`{"version":1,"kind":"hello","id":null,"payload":{}}`,
-		`{"version":1,"kind":"hello","id":1,"payload":{}}`,
-		`{"version":1,"kind":"hello","id":-1,"payload":{}}`,
-		`{"version":1,"kind":"run","id":1.5,"payload":{}}`,
-		`{"version":1,"kind":"run","id":18446744073709551616,"payload":{}}`,
-		`{"version":1,"kind":"run","id":0,"payload":{}}`,
-		`{"version":1,"kind":"unknown","id":0,"payload":{}}`,
-		`{"version":1,"kind":"hello","id":0,"payload":[]}`,
-		`{"version":1,"kind":"hello","id":0,"payload":null}`,
-		`{"version":1,"kind":"hello","id":0,"payload":{"nested":{"same":1,"same":2}}}`,
-		validHello + "{}",
-		validHello + "garbage",
-		"\xff",
-		`{"version":`,
-	} {
-		t.Run(data, func(t *testing.T) {
-			input := bytes.NewReader(frame([]byte(data)))
-			codec := newCodec(t, input, io.Discard, sandboxwire.Limits{})
-			if _, err := codec.Read(); !errors.Is(err, sandboxwire.ErrProtocol) {
-				t.Fatalf("expected protocol failure: %v", err)
-			}
-			if _, err := codec.Read(); !errors.Is(err, sandboxwire.ErrClosed) {
-				t.Fatalf("poisoned read allowed: %v", err)
-			}
-			if err := codec.Write(sandboxwire.Message{Kind: sandboxwire.Hello, Payload: json.RawMessage("{}")}); !errors.Is(err, sandboxwire.ErrClosed) {
-				t.Fatalf("poisoned write allowed: %v", err)
-			}
+	tests := []struct {
+		name string
+		data string
+	}{
+		{name: "empty object", data: `{}`},
+		{name: "unsupported version", data: `{"version":2,"kind":"hello","id":0,"payload":{}}`},
+		{name: "version written as a float", data: `{"version":1.0,"kind":"hello","id":0,"payload":{}}`},
+		{name: "field name in another case", data: `{"Version":1,"kind":"hello","id":0,"payload":{}}`},
+		{name: "unknown field", data: `{"version":1,"kind":"hello","id":0,"payload":{},"extra":true}`},
+		{name: "duplicate field", data: `{"version":1,"version":1,"kind":"hello","id":0,"payload":{}}`},
+		{name: "duplicate field through an escape", data: `{"version":1,"version":1,"kind":"hello","id":0,"payload":{}}`},
+		{name: "missing id", data: `{"version":1,"kind":"hello","payload":{}}`},
+		{name: "null id", data: `{"version":1,"kind":"hello","id":null,"payload":{}}`},
+		{name: "hello with a non-zero id", data: `{"version":1,"kind":"hello","id":1,"payload":{}}`},
+		{name: "negative id", data: `{"version":1,"kind":"hello","id":-1,"payload":{}}`},
+		{name: "fractional id", data: `{"version":1,"kind":"run","id":1.5,"payload":{}}`},
+		{name: "id beyond uint64", data: `{"version":1,"kind":"run","id":18446744073709551616,"payload":{}}`},
+		{name: "run with id zero", data: `{"version":1,"kind":"run","id":0,"payload":{}}`},
+		{name: "unknown kind", data: `{"version":1,"kind":"unknown","id":0,"payload":{}}`},
+		{name: "array payload", data: `{"version":1,"kind":"hello","id":0,"payload":[]}`},
+		{name: "null payload", data: `{"version":1,"kind":"hello","id":0,"payload":null}`},
+		{name: "duplicate key inside the payload", data: `{"version":1,"kind":"hello","id":0,"payload":{"nested":{"same":1,"same":2}}}`},
+		{name: "trailing value", data: validHello + "{}"},
+		{name: "trailing garbage", data: validHello + "garbage"},
+		{name: "invalid UTF-8", data: "\xff"},
+		{name: "truncated JSON", data: `{"version":`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			codec := newCodec(t, bytes.NewReader(frame([]byte(tt.data))), io.Discard, sandboxwire.Limits{})
+			_, err := codec.Read()
+			require.ErrorIs(t, err, sandboxwire.ErrProtocol)
+			_, err = codec.Read()
+			require.ErrorIs(t, err, sandboxwire.ErrClosed, "a codec that failed a read refuses further reads")
+			hello := sandboxwire.Message{Kind: sandboxwire.Hello, Payload: json.RawMessage("{}")}
+			require.ErrorIs(t, codec.Write(hello), sandboxwire.ErrClosed, "a codec that failed a read refuses writes")
 		})
 	}
 }
 
 func TestCodecRejectsOversizedHeaderBeforeBody(t *testing.T) {
 	t.Parallel()
-	for _, length := range []uint32{0, 65, ^uint32(0)} {
-		var header [4]byte
-		binary.BigEndian.PutUint32(header[:], length)
-		input := bytes.NewBuffer(append(header[:], []byte("body must remain unread")...))
-		codec := newCodec(t, input, io.Discard, sandboxwire.Limits{MaxFrameBytes: 64})
-		if _, err := codec.Read(); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatalf("length=%d err=%v", length, err)
-		}
-		if input.String() != "body must remain unread" {
-			t.Fatal("read the body before validating its length")
-		}
+	tests := []struct {
+		name   string
+		length uint32
+	}{
+		{name: "zero length", length: 0},
+		{name: "one byte over the limit", length: 65},
+		{name: "largest length", length: ^uint32(0)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var header [4]byte
+			binary.BigEndian.PutUint32(header[:], tt.length)
+			input := bytes.NewBuffer(append(header[:], []byte("body must remain unread")...))
+			codec := newCodec(t, input, io.Discard, sandboxwire.Limits{MaxFrameBytes: 64})
+			_, err := codec.Read()
+			require.ErrorIs(t, err, sandboxwire.ErrProtocol)
+			require.Equal(t, "body must remain unread", input.String(), "the length is checked before the body is read")
+		})
 	}
 }
 
 func TestCodecRejectsTruncation(t *testing.T) {
 	t.Parallel()
-	for _, data := range [][]byte{nil, {0, 1}, {0, 0, 0, 10, '{', '}'}} {
-		codec := newCodec(t, bytes.NewReader(data), io.Discard, sandboxwire.Limits{})
-		_, err := codec.Read()
-		if !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatalf("truncation accepted: %v", err)
-		}
-		if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-			t.Fatalf("underlying I/O error lost: %v", err)
-		}
+	tests := []struct {
+		name string
+		data []byte
+	}{
+		{name: "empty input", data: nil},
+		{name: "partial header", data: []byte{0, 1}},
+		{name: "partial body", data: []byte{0, 0, 0, 10, '{', '}'}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			codec := newCodec(t, bytes.NewReader(tt.data), io.Discard, sandboxwire.Limits{})
+			_, err := codec.Read()
+			require.ErrorIs(t, err, sandboxwire.ErrProtocol)
+			require.True(t, errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF), "the underlying I/O error is kept: %v", err)
+		})
 	}
 }
 
 func TestCodecJSONBudgets(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct {
+	tests := []struct {
 		name    string
 		limits  sandboxwire.Limits
 		payload string
@@ -154,14 +166,15 @@ func TestCodecJSONBudgets(t *testing.T) {
 		{name: "depth", limits: sandboxwire.Limits{MaxJSONDepth: 2}, payload: `{"nested":[]}`},
 		{name: "tokens", limits: sandboxwire.Limits{MaxJSONValues: 5}, payload: "{}"},
 		{name: "frame", limits: sandboxwire.Limits{MaxFrameBytes: 20}, payload: "{}"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var output bytes.Buffer
-			codec := newCodec(t, bytes.NewReader(nil), &output, test.limits)
-			err := codec.Write(sandboxwire.Message{Kind: sandboxwire.Hello, Payload: json.RawMessage(test.payload)})
-			if !errors.Is(err, sandboxwire.ErrProtocol) || output.Len() != 0 {
-				t.Fatalf("invalid message reached transport: bytes=%d err=%v", output.Len(), err)
-			}
+			codec := newCodec(t, bytes.NewReader(nil), &output, tt.limits)
+			err := codec.Write(sandboxwire.Message{Kind: sandboxwire.Hello, Payload: json.RawMessage(tt.payload)})
+			require.ErrorIs(t, err, sandboxwire.ErrProtocol, "an invalid message is rejected")
+			require.Zero(t, output.Len(), "an invalid message never reaches the transport")
 		})
 	}
 }
@@ -179,13 +192,10 @@ func TestCodecHandlesPartialWrites(t *testing.T) {
 	t.Parallel()
 	writer := &partialWriter{chunk: 2}
 	codec := newCodec(t, bytes.NewReader(nil), writer, sandboxwire.Limits{})
-	if err := codec.Write(sandboxwire.Message{Kind: sandboxwire.Hello, Payload: json.RawMessage("{}")}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, codec.Write(sandboxwire.Message{Kind: sandboxwire.Hello, Payload: json.RawMessage("{}")}))
 	reader := newCodec(t, &writer.output, io.Discard, sandboxwire.Limits{})
-	if _, err := reader.Read(); err != nil {
-		t.Fatal(err)
-	}
+	_, err := reader.Read()
+	require.NoError(t, err)
 }
 
 type brokenWriter struct {
@@ -199,20 +209,23 @@ func (writer brokenWriter) Write(_ []byte) (int, error) {
 
 func TestCodecPoisonsFailedWrites(t *testing.T) {
 	t.Parallel()
-	for _, writer := range []brokenWriter{
-		{count: 0, err: nil},
-		{count: -1, err: nil},
-		{count: 1000, err: nil},
-		{count: 1, err: io.ErrClosedPipe},
-	} {
-		codec := newCodec(t, bytes.NewReader(nil), writer, sandboxwire.Limits{})
-		message := sandboxwire.Message{Kind: sandboxwire.Hello, Payload: json.RawMessage("{}")}
-		if err := codec.Write(message); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatalf("write accepted: %v", err)
-		}
-		if err := codec.Write(message); !errors.Is(err, sandboxwire.ErrClosed) {
-			t.Fatalf("poisoned codec reused: %v", err)
-		}
+	tests := []struct {
+		name   string
+		writer brokenWriter
+	}{
+		{name: "nothing written and no error", writer: brokenWriter{count: 0, err: nil}},
+		{name: "negative count", writer: brokenWriter{count: -1, err: nil}},
+		{name: "count beyond the buffer", writer: brokenWriter{count: 1000, err: nil}},
+		{name: "error after a partial write", writer: brokenWriter{count: 1, err: io.ErrClosedPipe}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			codec := newCodec(t, bytes.NewReader(nil), tt.writer, sandboxwire.Limits{})
+			message := sandboxwire.Message{Kind: sandboxwire.Hello, Payload: json.RawMessage("{}")}
+			require.ErrorIs(t, codec.Write(message), sandboxwire.ErrProtocol, "an invalid write fails the codec")
+			require.ErrorIs(t, codec.Write(message), sandboxwire.ErrClosed, "a failed codec refuses further writes")
+		})
 	}
 }
 
@@ -224,9 +237,7 @@ func TestCodecSerialisesConcurrentWrites(t *testing.T) {
 	for identifier := range uint64(100) {
 		workers.Go(func() {
 			err := codec.Write(sandboxwire.Message{Kind: sandboxwire.Run, ID: identifier + 1, Payload: json.RawMessage("{}")})
-			if err != nil {
-				t.Error(err)
-			}
+			assert.NoError(t, err)
 		})
 	}
 	workers.Wait()
@@ -234,50 +245,63 @@ func TestCodecSerialisesConcurrentWrites(t *testing.T) {
 	seen := make(map[uint64]bool)
 	for range 100 {
 		message, err := reader.Read()
-		if err != nil || seen[message.ID] {
-			t.Fatalf("interleaved frame: %+v err=%v", message, err)
-		}
+		require.NoError(t, err, "frames from concurrent writers never interleave")
+		require.False(t, seen[message.ID], "frame %+v arrives once", message)
 		seen[message.ID] = true
 	}
 }
 
 func TestCodecRejectsInvalidConfiguration(t *testing.T) {
 	t.Parallel()
-	for _, limits := range []sandboxwire.Limits{
-		{MaxFrameBytes: -1}, {MaxJSONDepth: -1}, {MaxJSONValues: -1},
-		{MaxFrameBytes: 8<<20 + 1}, {MaxJSONDepth: 65}, {MaxJSONValues: 65537},
-	} {
-		if _, err := sandboxwire.New(bytes.NewReader(nil), io.Discard, limits); !errors.Is(err, sandboxwire.ErrInvalidLimits) {
-			t.Fatalf("invalid limits accepted: %+v err=%v", limits, err)
-		}
+	_, err := sandboxwire.New(nil, io.Discard, sandboxwire.Limits{})
+	require.ErrorIs(t, err, sandboxwire.ErrInvalidLimits, "a codec needs a reader")
+	tests := []struct {
+		name   string
+		limits sandboxwire.Limits
+	}{
+		{name: "negative frame size", limits: sandboxwire.Limits{MaxFrameBytes: -1}},
+		{name: "negative JSON depth", limits: sandboxwire.Limits{MaxJSONDepth: -1}},
+		{name: "negative JSON value count", limits: sandboxwire.Limits{MaxJSONValues: -1}},
+		{name: "frame size above the ceiling", limits: sandboxwire.Limits{MaxFrameBytes: 8<<20 + 1}},
+		{name: "JSON depth above the ceiling", limits: sandboxwire.Limits{MaxJSONDepth: 65}},
+		{name: "JSON value count above the ceiling", limits: sandboxwire.Limits{MaxJSONValues: 65537}},
 	}
-	if _, err := sandboxwire.New(nil, io.Discard, sandboxwire.Limits{}); !errors.Is(err, sandboxwire.ErrInvalidLimits) {
-		t.Fatal(err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := sandboxwire.New(bytes.NewReader(nil), io.Discard, tt.limits)
+			require.ErrorIs(t, err, sandboxwire.ErrInvalidLimits)
+		})
 	}
 }
 
 func TestDecodePayloadRejectsUnknownAndAliasedFields(t *testing.T) {
 	t.Parallel()
-	for _, payload := range []string{
-		`{"Enabled":true}`,
-		`{"enabled":true,"enabled":false}`,
-		`{"items":[{"Enabled":true}]}`,
-		`{"named":{"entry":{"Enabled":true}}}`,
-		`{"extra":true}`,
-	} {
-		message := sandboxwire.Message{Payload: json.RawMessage(payload)}
-		var target struct {
-			Enabled bool `json:"enabled"`
-			Items   []struct {
+	tests := []struct {
+		name    string
+		payload string
+	}{
+		{name: "field name in another case", payload: `{"Enabled":true}`},
+		{name: "duplicate field", payload: `{"enabled":true,"enabled":false}`},
+		{name: "field name in another case inside a slice", payload: `{"items":[{"Enabled":true}]}`},
+		{name: "field name in another case inside a map", payload: `{"named":{"entry":{"Enabled":true}}}`},
+		{name: "unknown field", payload: `{"extra":true}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			message := sandboxwire.Message{Payload: json.RawMessage(tt.payload)}
+			var target struct {
 				Enabled bool `json:"enabled"`
-			} `json:"items"`
-			Named map[string]struct {
-				Enabled bool `json:"enabled"`
-			} `json:"named"`
-		}
-		if err := message.DecodePayload(&target); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatalf("ambiguous payload accepted: %s: %v", payload, err)
-		}
+				Items   []struct {
+					Enabled bool `json:"enabled"`
+				} `json:"items"`
+				Named map[string]struct {
+					Enabled bool `json:"enabled"`
+				} `json:"named"`
+			}
+			require.ErrorIs(t, message.DecodePayload(&target), sandboxwire.ErrProtocol)
+		})
 	}
 }
 
@@ -290,12 +314,10 @@ func TestDecodePayloadAcceptsExplicitBinaryAndNestedSchema(t *testing.T) {
 			Enabled bool `json:"enabled"`
 		} `json:"nested"`
 	}
-	if err := message.DecodePayload(&target); err != nil {
-		t.Fatal(err)
-	}
-	if string(target.Data) != "pipit" || target.Nested == nil || !target.Nested.Enabled {
-		t.Fatalf("payload changed: %+v", target)
-	}
+	require.NoError(t, message.DecodePayload(&target))
+	require.Equal(t, "pipit", string(target.Data))
+	require.NotNil(t, target.Nested)
+	require.True(t, target.Nested.Enabled)
 }
 
 type signallingReader struct {
@@ -323,18 +345,14 @@ func TestClosingTransportUnblocksRead(t *testing.T) {
 	select {
 	case <-reader.started:
 	case <-time.After(5 * time.Second):
-		t.Fatal("reader did not start")
+		require.FailNow(t, "the reader starts within five seconds")
 	}
-	if err := local.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, local.Close())
 	select {
 	case err := <-finished:
-		if !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatalf("closed transport did not fail: %v", err)
-		}
+		require.ErrorIs(t, err, sandboxwire.ErrProtocol, "closing the transport fails a blocked read")
 	case <-time.After(5 * time.Second):
-		t.Fatal("transport closure did not wake blocked reader")
+		require.FailNow(t, "closing the transport wakes a blocked reader")
 	}
 }
 
@@ -349,20 +367,17 @@ func FuzzCodecRead(fuzzer *testing.F) {
 		codec := newCodec(t, bytes.NewReader(data), io.Discard, sandboxwire.Limits{MaxFrameBytes: 4096, MaxJSONDepth: 16, MaxJSONValues: 1024})
 		message, err := codec.Read()
 		if err != nil {
-			if _, nextErr := codec.Read(); !errors.Is(nextErr, sandboxwire.ErrClosed) {
-				t.Fatalf("failed codec reusable: %v", nextErr)
-			}
+			_, nextErr := codec.Read()
+			require.ErrorIs(t, nextErr, sandboxwire.ErrClosed, "a failed codec stays closed")
 			return
 		}
 		var encoded bytes.Buffer
 		writer := newCodec(t, bytes.NewReader(nil), &encoded, sandboxwire.Limits{})
-		if err := writer.Write(message); err != nil {
-			t.Fatalf("accepted message cannot be re-encoded: %v", err)
-		}
+		require.NoError(t, writer.Write(message), "an accepted message can be encoded again")
 		reader := newCodec(t, &encoded, io.Discard, sandboxwire.Limits{})
 		roundTrip, err := reader.Read()
-		if err != nil || roundTrip.ID != message.ID || roundTrip.Kind != message.Kind {
-			t.Fatalf("accepted envelope changed: %+v err=%v", roundTrip, err)
-		}
+		require.NoError(t, err, "a re-encoded message decodes again")
+		require.Equal(t, message.ID, roundTrip.ID, "the round trip keeps the envelope")
+		require.Equal(t, message.Kind, roundTrip.Kind, "the round trip keeps the envelope")
 	})
 }

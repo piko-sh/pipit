@@ -19,32 +19,32 @@
 package pipit_test
 
 import (
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit"
 )
 
 func TestTierSentinelsWrapTheBases(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct {
+	tests := []struct {
 		name string
 		tier error
 		base error
 	}{
-		{"isolated unavailable", pipit.ErrIsolatedUnavailable, pipit.ErrUnavailable},
-		{"invalid isolated config", pipit.ErrInvalidIsolatedConfig, pipit.ErrInvalidConfig},
-		{"isolated closed", pipit.ErrIsolatedClosed, pipit.ErrClosed},
-		{"isolated used alias", pipit.ErrIsolatedUsed, pipit.ErrClosed},
-		{"invalid restricted config", pipit.ErrInvalidRestrictedConfig, pipit.ErrInvalidConfig},
-		{"restricted busy", pipit.ErrRestrictedBusy, pipit.ErrBusy},
-		{"restricted limit", pipit.ErrRestrictedLimit, pipit.ErrLimit},
-	} {
-		t.Run(test.name, func(t *testing.T) {
+		{name: "isolated unavailable", tier: pipit.ErrIsolatedUnavailable, base: pipit.ErrUnavailable},
+		{name: "invalid isolated config", tier: pipit.ErrInvalidIsolatedConfig, base: pipit.ErrInvalidConfig},
+		{name: "isolated closed", tier: pipit.ErrIsolatedClosed, base: pipit.ErrClosed},
+		{name: "isolated used alias", tier: pipit.ErrIsolatedUsed, base: pipit.ErrClosed},
+		{name: "invalid restricted config", tier: pipit.ErrInvalidRestrictedConfig, base: pipit.ErrInvalidConfig},
+		{name: "restricted busy", tier: pipit.ErrRestrictedBusy, base: pipit.ErrBusy},
+		{name: "restricted limit", tier: pipit.ErrRestrictedLimit, base: pipit.ErrLimit},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if !errors.Is(test.tier, test.base) {
-				t.Fatalf("%v does not wrap the base sentinel", test.tier)
-			}
+			require.ErrorIs(t, tt.tier, tt.base, "the tier sentinel wraps its base sentinel")
 		})
 	}
 }
@@ -53,7 +53,7 @@ func TestEvaluationErrorAsMatches(t *testing.T) {
 	t.Parallel()
 	err := error(&pipit.EvaluationError{Tier: "isolated", Message: "boom"})
 	var target *pipit.EvaluationError
-	if !errors.As(err, &target) || target.Tier != "isolated" || target.Message != "boom" {
-		t.Fatalf("EvaluationError not matched by errors.As: %+v", target)
-	}
+	require.ErrorAs(t, err, &target)
+	require.Equal(t, "isolated", target.Tier)
+	require.Equal(t, "boom", target.Message)
 }

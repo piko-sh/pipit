@@ -132,7 +132,7 @@ func TestUnsafeStringDataCopiesAwayFromTheStringBacking(t *testing.T) {
 		pointer := registers.General[0]
 		require.Equal(t, reflect.Pointer, pointer.Kind())
 		require.False(t, pointer.IsNil())
-		require.Equal(t, byte('p'), *(*byte)(pointer.UnsafePointer()))
+		require.Equal(t, *(*byte)(pointer.UnsafePointer()), byte('p'))
 	})
 
 	t.Run("an empty string yields a typed nil pointer", func(t *testing.T) {
@@ -160,7 +160,7 @@ func TestUnsafeAddRefusesOperandsItCannotTrust(t *testing.T) {
 		registers.Ints[2] = 2
 
 		require.Equal(t, opContinue, handleUnsafeAdd(vm, nil, registers, op(0, 1, 2)))
-		require.Equal(t, byte('c'), *(*byte)(registers.General[0].UnsafePointer()))
+		require.Equal(t, *(*byte)(registers.General[0].UnsafePointer()), byte('c'))
 	})
 
 	t.Run("a zero offset leaves the pointer where it was", func(t *testing.T) {
@@ -170,7 +170,7 @@ func TestUnsafeAddRefusesOperandsItCannotTrust(t *testing.T) {
 		registers.Ints[2] = 0
 
 		require.Equal(t, opContinue, handleUnsafeAdd(vm, nil, registers, op(0, 1, 2)))
-		require.Equal(t, byte('a'), *(*byte)(registers.General[0].UnsafePointer()))
+		require.Equal(t, *(*byte)(registers.General[0].UnsafePointer()), byte('a'))
 	})
 
 	t.Run("a nil pointer yields a nil pointer without arithmetic", func(t *testing.T) {

@@ -102,7 +102,7 @@ func (snapshot *SourceSnapshot) PackageSources(dir string) (map[string]string, e
 			continue
 		}
 		base := filepath.Base(name)
-		if compilableForHost(dir, base, source) {
+		if compilableForHost(base, source) {
 			sources[base] = source
 		}
 	}

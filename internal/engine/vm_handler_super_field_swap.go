@@ -20,7 +20,6 @@ package engine
 
 import (
 	"reflect"
-	"unsafe"
 
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
@@ -63,37 +62,7 @@ func handleSwapStructFieldsGeneralT0(vm *VM, frame *CallFrame, registers *Regist
 	if fieldTypeA == nil || fieldTypeB == nil || fieldTypeA != fieldTypeB {
 		return swapStructFieldsGeneralReflectFallback(vm, frame, registers, instruction, layoutA, layoutB)
 	}
-	recvRaw := (*unsafeReflectValue)(unsafe.Pointer(new(registers.General[instruction.A])))
-	if recvRaw.typ == nil || reflect.Kind(recvRaw.flag&flagKindMask) != reflect.Pointer {
-		return swapStructFieldsGeneralReflectFallback(vm, frame, registers, instruction, layoutA, layoutB)
-	}
-	var base unsafe.Pointer
-	if recvRaw.flag&flagIndir != 0 {
-		base = *(*unsafe.Pointer)(recvRaw.ptr)
-	} else {
-		base = recvRaw.ptr
-	}
-	if base == nil {
-		return swapStructFieldsGeneralReflectFallback(vm, frame, registers, instruction, layoutA, layoutB)
-	}
-	fieldPtrA := unsafe.Add(base, uintptr(layoutA.Offset))
-	fieldPtrB := unsafe.Add(base, uintptr(layoutB.Offset))
-	typeABI := reflectValueABIType(fieldTypeA)
-	switch reflect.Kind(layoutA.Kind) {
-	case reflect.Interface:
-		var temp [2]unsafe.Pointer
-		temp = *(*[2]unsafe.Pointer)(fieldPtrA)
-		runtimeTypedmemmove(typeABI, fieldPtrA, fieldPtrB)
-		runtimeTypedmemmove(typeABI, fieldPtrB, unsafe.Pointer(&temp[0]))
-	case reflect.Pointer, reflect.Map, reflect.Chan, reflect.Func, reflect.UnsafePointer:
-		var temp unsafe.Pointer
-		temp = *(*unsafe.Pointer)(fieldPtrA)
-		runtimeTypedmemmove(typeABI, fieldPtrA, fieldPtrB)
-		runtimeTypedmemmove(typeABI, fieldPtrB, unsafe.Pointer(&temp))
-	default:
-		return swapStructFieldsGeneralReflectFallback(vm, frame, registers, instruction, layoutA, layoutB)
-	}
-	return opContinue
+	return swapStructFieldsGeneralUnsafe(vm, frame, registers, instruction, layoutA, layoutB, fieldTypeA)
 }
 
 // swapStructFieldsGeneralReflectFallback handles edge cases the unsafe path refuses

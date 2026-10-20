@@ -67,6 +67,9 @@ TEXT ·handlerSubOpMoveUint(SB), NOSPLIT|NOFRAME, $0
 
 // handlerSubOpMoveString copies strings[C] to strings[B] for the tier-1 register-move sub-op.
 TEXT ·handlerSubOpMoveString(SB), NOSPLIT|NOFRAME, $0
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, wb_fallback
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -80,3 +83,5 @@ TEXT ·handlerSubOpMoveString(SB), NOSPLIT|NOFRAME, $0
 	MOVD R8, (R6)
 	MOVD R9, 8(R6)
 	DISPATCH_NEXT()
+wb_fallback:
+	B    ·pathBFallback(SB)

@@ -95,6 +95,7 @@ func compactOldByteSlabs(slabs *[][]byte, live []bool) int64 {
 			continue
 		}
 		reclaimed += int64(cap(slab))
+		forgetArenaSlab(slab)
 		source[i] = nil
 	}
 	for i := writeIndex; i < len(source); i++ {

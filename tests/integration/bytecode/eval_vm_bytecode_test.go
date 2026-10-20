@@ -21,25 +21,18 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine/program"
-
-	"github.com/stretchr/testify/require"
 	"pipit.sh/pipit/internal/isa"
 )
 
-func TestVMSyntheticBytecode(t *testing.T) {
+func TestVMSyntheticConstants(t *testing.T) {
 	t.Parallel()
-
-	tests := []struct {
-		expect    any
-		build     func() *program.CompiledFunction
-		name      string
-		expectErr bool
-	}{
+	runSyntheticBytecode(t, []syntheticBytecodeCase{
 		{
 			name: "load_int_constant_and_return",
 			build: func() *program.CompiledFunction {
@@ -50,7 +43,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "load_small_int_and_return",
@@ -61,8 +54,58 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 99,
+			want: 99,
 		},
+		{
+			name: "boolean_load_true",
+			build: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.intRegisters(1).returnInt()
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBool), 0, 1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				return b.build()
+			},
+			want: 1,
+		},
+		{
+			name: "boolean_load_false",
+			build: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.intRegisters(1).returnInt()
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBool), 0, 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				return b.build()
+			},
+			want: 0,
+		},
+		{
+			name: "return_void",
+			build: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DrillTier3), uint8(isa.SubOpTier3ReturnVoid))
+				return b.build()
+			},
+			want: nil,
+		},
+		{
+			name: "nop_has_no_effect",
+			build: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.addIntConst(42)
+				b.intRegisters(1).returnInt()
+				b.Emit(isa.OpLoadIntConst, 0, 0, 0)
+				b.Emit(isa.OpNop, 0, 0, 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				return b.build()
+			},
+			want: 42,
+		},
+	})
+}
+
+func TestVMSyntheticIntegerArithmetic(t *testing.T) {
+	t.Parallel()
+	runSyntheticBytecode(t, []syntheticBytecodeCase{
 		{
 			name: "integer_addition",
 			build: func() *program.CompiledFunction {
@@ -76,7 +119,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "integer_subtraction",
@@ -91,7 +134,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "integer_multiplication",
@@ -106,7 +149,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "integer_division",
@@ -121,7 +164,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "integer_remainder",
@@ -136,7 +179,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "division_by_zero",
@@ -151,7 +194,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expectErr: true,
+			wantErr: true,
 		},
 		{
 			name: "remainder_by_zero",
@@ -166,7 +209,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expectErr: true,
+			wantErr: true,
 		},
 		{
 			name: "integer_negation",
@@ -179,8 +222,82 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: -42,
+			want: -42,
 		},
+		{
+			name: "inc_int",
+			build: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.addIntConst(41)
+				b.intRegisters(1).returnInt()
+				b.Emit(isa.OpLoadIntConst, 0, 0, 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2IncInt), 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				return b.build()
+			},
+			want: 42,
+		},
+		{
+			name: "dec_int",
+			build: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.addIntConst(43)
+				b.intRegisters(1).returnInt()
+				b.Emit(isa.OpLoadIntConst, 0, 0, 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DecInt), 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				return b.build()
+			},
+			want: 42,
+		},
+		{
+			name: "add_int_const_superinstruction",
+			build: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.addIntConst(40)
+				b.addIntConst(2)
+				b.intRegisters(2).returnInt()
+				b.Emit(isa.OpLoadIntConst, 1, 0, 0)
+				b.Emit(isa.OpAddIntConst, 0, 1, 1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				return b.build()
+			},
+			want: 42,
+		},
+		{
+			name: "sub_int_const_superinstruction",
+			build: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.addIntConst(44)
+				b.addIntConst(2)
+				b.intRegisters(2).returnInt()
+				b.Emit(isa.OpLoadIntConst, 1, 0, 0)
+				b.Emit(isa.OpSubIntConst, 0, 1, 1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				return b.build()
+			},
+			want: 42,
+		},
+		{
+			name: "mul_int_const_superinstruction",
+			build: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.addIntConst(21)
+				b.addIntConst(2)
+				b.intRegisters(2).returnInt()
+				b.Emit(isa.OpLoadIntConst, 1, 0, 0)
+				b.Emit(isa.OpMulIntConst, 0, 1, 1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				return b.build()
+			},
+			want: 42,
+		},
+	})
+}
+
+func TestVMSyntheticFloatArithmetic(t *testing.T) {
+	t.Parallel()
+	runSyntheticBytecode(t, []syntheticBytecodeCase{
 		{
 			name: "float_addition",
 			build: func() *program.CompiledFunction {
@@ -194,7 +311,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: float64(4.0),
+			want: float64(4.0),
 		},
 		{
 			name: "float_subtraction",
@@ -209,7 +326,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: float64(2.5),
+			want: float64(2.5),
 		},
 		{
 			name: "float_multiplication",
@@ -224,7 +341,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: float64(42.0),
+			want: float64(42.0),
 		},
 		{
 			name: "float_division",
@@ -239,7 +356,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: float64(42.0),
+			want: float64(42.0),
 		},
 		{
 			name: "float_negation",
@@ -252,30 +369,40 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: float64(-42.0),
+			want: float64(-42.0),
 		},
 		{
-			name: "boolean_load_true",
+			name: "int_to_float_conversion",
 			build: func() *program.CompiledFunction {
 				b := newBytecodeBuilder()
-				b.intRegisters(1).returnInt()
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBool), 0, 1)
+				b.addIntConst(42)
+				b.intRegisters(1).floatRegisters(1).returnFloat()
+				b.Emit(isa.OpLoadIntConst, 0, 0, 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpIntToFloat), 0, 0)
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 1,
+			want: float64(42.0),
 		},
 		{
-			name: "boolean_load_false",
+			name: "float_to_int_conversion",
 			build: func() *program.CompiledFunction {
 				b := newBytecodeBuilder()
-				b.intRegisters(1).returnInt()
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBool), 0, 0)
+				b.addFloatConst(42.7)
+				b.intRegisters(1).floatRegisters(1).returnInt()
+				b.Emit(isa.OpLoadFloatConst, 0, 0, 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpFloatToInt), 0, 0)
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 0,
+			want: 42,
 		},
+	})
+}
+
+func TestVMSyntheticComparisons(t *testing.T) {
+	t.Parallel()
+	runSyntheticBytecode(t, []syntheticBytecodeCase{
 		{
 			name: "not_true_gives_false",
 			build: func() *program.CompiledFunction {
@@ -286,7 +413,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "not_false_gives_true",
@@ -298,7 +425,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "int_comparison_equal",
@@ -312,7 +439,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "int_comparison_not_equal",
@@ -327,7 +454,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "int_not_equal",
@@ -342,7 +469,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "int_less_than",
@@ -357,7 +484,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "int_less_equal",
@@ -371,7 +498,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "int_greater_than",
@@ -386,7 +513,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "int_greater_equal",
@@ -400,8 +527,58 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 1,
+			want: 1,
 		},
+		{
+			name: "float_comparison_equal",
+			build: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.addFloatConst(3.14)
+				b.intRegisters(1).floatRegisters(2).returnInt()
+				b.Emit(isa.OpLoadFloatConst, 0, 0, 0)
+				b.Emit(isa.OpLoadFloatConst, 1, 0, 0)
+				b.Emit(isa.OpEqFloat, 0, 0, 1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				return b.build()
+			},
+			want: 1,
+		},
+		{
+			name: "float_comparison_not_equal",
+			build: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.addFloatConst(3.14)
+				b.addFloatConst(2.71)
+				b.intRegisters(1).floatRegisters(2).returnInt()
+				b.Emit(isa.OpLoadFloatConst, 0, 0, 0)
+				b.Emit(isa.OpLoadFloatConst, 1, 1, 0)
+				b.Emit(isa.OpNeFloat, 0, 0, 1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				return b.build()
+			},
+			want: 1,
+		},
+		{
+			name: "float_less_than",
+			build: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.addFloatConst(1.0)
+				b.addFloatConst(2.0)
+				b.intRegisters(1).floatRegisters(2).returnInt()
+				b.Emit(isa.OpLoadFloatConst, 0, 0, 0)
+				b.Emit(isa.OpLoadFloatConst, 1, 1, 0)
+				b.Emit(isa.OpLtFloat, 0, 0, 1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				return b.build()
+			},
+			want: 1,
+		},
+	})
+}
+
+func TestVMSyntheticMovesAndJumps(t *testing.T) {
+	t.Parallel()
+	runSyntheticBytecode(t, []syntheticBytecodeCase{
 		{
 			name: "move_int_copies_register",
 			build: func() *program.CompiledFunction {
@@ -413,7 +590,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "move_float",
@@ -426,29 +603,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: float64(42.0),
-		},
-		{
-			name: "nop_has_no_effect",
-			build: func() *program.CompiledFunction {
-				b := newBytecodeBuilder()
-				b.addIntConst(42)
-				b.intRegisters(1).returnInt()
-				b.Emit(isa.OpLoadIntConst, 0, 0, 0)
-				b.Emit(isa.OpNop, 0, 0, 0)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-				return b.build()
-			},
-			expect: 42,
-		},
-		{
-			name: "return_void",
-			build: func() *program.CompiledFunction {
-				b := newBytecodeBuilder()
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DrillTier3), uint8(isa.SubOpTier3ReturnVoid))
-				return b.build()
-			},
-			expect: nil,
+			want: float64(42.0),
 		},
 		{
 			name: "jump_forward_skips_instruction",
@@ -463,7 +618,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "jump_if_true_taken",
@@ -479,7 +634,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "jump_if_true_not_taken",
@@ -493,7 +648,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "jump_if_false_taken",
@@ -509,7 +664,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "jump_if_false_not_taken",
@@ -523,8 +678,14 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 42,
+			want: 42,
 		},
+	})
+}
+
+func TestVMSyntheticBitwise(t *testing.T) {
+	t.Parallel()
+	runSyntheticBytecode(t, []syntheticBytecodeCase{
 		{
 			name: "bitwise_and",
 			build: func() *program.CompiledFunction {
@@ -538,7 +699,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 0x0F,
+			want: 0x0F,
 		},
 		{
 			name: "bitwise_or",
@@ -553,7 +714,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 0xFF,
+			want: 0xFF,
 		},
 		{
 			name: "bitwise_xor",
@@ -568,7 +729,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 0xF0,
+			want: 0xF0,
 		},
 		{
 			name: "bitwise_and_not",
@@ -583,7 +744,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 0xF0,
+			want: 0xF0,
 		},
 		{
 			name: "bitwise_not",
@@ -595,7 +756,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: -1,
+			want: -1,
 		},
 		{
 			name: "shift_left",
@@ -610,7 +771,7 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 16,
+			want: 16,
 		},
 		{
 			name: "shift_right",
@@ -625,160 +786,30 @@ func TestVMSyntheticBytecode(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return b.build()
 			},
-			expect: 4,
+			want: 4,
 		},
-		{
-			name: "int_to_float_conversion",
-			build: func() *program.CompiledFunction {
-				b := newBytecodeBuilder()
-				b.addIntConst(42)
-				b.intRegisters(1).floatRegisters(1).returnFloat()
-				b.Emit(isa.OpLoadIntConst, 0, 0, 0)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpIntToFloat), 0, 0)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-				return b.build()
-			},
-			expect: float64(42.0),
-		},
-		{
-			name: "float_to_int_conversion",
-			build: func() *program.CompiledFunction {
-				b := newBytecodeBuilder()
-				b.addFloatConst(42.7)
-				b.intRegisters(1).floatRegisters(1).returnInt()
-				b.Emit(isa.OpLoadFloatConst, 0, 0, 0)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpFloatToInt), 0, 0)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-				return b.build()
-			},
-			expect: 42,
-		},
-		{
-			name: "inc_int",
-			build: func() *program.CompiledFunction {
-				b := newBytecodeBuilder()
-				b.addIntConst(41)
-				b.intRegisters(1).returnInt()
-				b.Emit(isa.OpLoadIntConst, 0, 0, 0)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2IncInt), 0)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-				return b.build()
-			},
-			expect: 42,
-		},
-		{
-			name: "dec_int",
-			build: func() *program.CompiledFunction {
-				b := newBytecodeBuilder()
-				b.addIntConst(43)
-				b.intRegisters(1).returnInt()
-				b.Emit(isa.OpLoadIntConst, 0, 0, 0)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DecInt), 0)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-				return b.build()
-			},
-			expect: 42,
-		},
-		{
-			name: "add_int_const_superinstruction",
-			build: func() *program.CompiledFunction {
-				b := newBytecodeBuilder()
-				b.addIntConst(40)
-				b.addIntConst(2)
-				b.intRegisters(2).returnInt()
-				b.Emit(isa.OpLoadIntConst, 1, 0, 0)
-				b.Emit(isa.OpAddIntConst, 0, 1, 1)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-				return b.build()
-			},
-			expect: 42,
-		},
-		{
-			name: "sub_int_const_superinstruction",
-			build: func() *program.CompiledFunction {
-				b := newBytecodeBuilder()
-				b.addIntConst(44)
-				b.addIntConst(2)
-				b.intRegisters(2).returnInt()
-				b.Emit(isa.OpLoadIntConst, 1, 0, 0)
-				b.Emit(isa.OpSubIntConst, 0, 1, 1)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-				return b.build()
-			},
-			expect: 42,
-		},
-		{
-			name: "mul_int_const_superinstruction",
-			build: func() *program.CompiledFunction {
-				b := newBytecodeBuilder()
-				b.addIntConst(21)
-				b.addIntConst(2)
-				b.intRegisters(2).returnInt()
-				b.Emit(isa.OpLoadIntConst, 1, 0, 0)
-				b.Emit(isa.OpMulIntConst, 0, 1, 1)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-				return b.build()
-			},
-			expect: 42,
-		},
-		{
-			name: "float_comparison_equal",
-			build: func() *program.CompiledFunction {
-				b := newBytecodeBuilder()
-				b.addFloatConst(3.14)
-				b.intRegisters(1).floatRegisters(2).returnInt()
-				b.Emit(isa.OpLoadFloatConst, 0, 0, 0)
-				b.Emit(isa.OpLoadFloatConst, 1, 0, 0)
-				b.Emit(isa.OpEqFloat, 0, 0, 1)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-				return b.build()
-			},
-			expect: 1,
-		},
-		{
-			name: "float_comparison_not_equal",
-			build: func() *program.CompiledFunction {
-				b := newBytecodeBuilder()
-				b.addFloatConst(3.14)
-				b.addFloatConst(2.71)
-				b.intRegisters(1).floatRegisters(2).returnInt()
-				b.Emit(isa.OpLoadFloatConst, 0, 0, 0)
-				b.Emit(isa.OpLoadFloatConst, 1, 1, 0)
-				b.Emit(isa.OpNeFloat, 0, 0, 1)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-				return b.build()
-			},
-			expect: 1,
-		},
-		{
-			name: "float_less_than",
-			build: func() *program.CompiledFunction {
-				b := newBytecodeBuilder()
-				b.addFloatConst(1.0)
-				b.addFloatConst(2.0)
-				b.intRegisters(1).floatRegisters(2).returnInt()
-				b.Emit(isa.OpLoadFloatConst, 0, 0, 0)
-				b.Emit(isa.OpLoadFloatConst, 1, 1, 0)
-				b.Emit(isa.OpLtFloat, 0, 0, 1)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-				return b.build()
-			},
-			expect: 1,
-		},
-	}
+	})
+}
 
+type syntheticBytecodeCase struct {
+	name    string
+	build   func() *program.CompiledFunction
+	want    any
+	wantErr bool
+}
+
+func runSyntheticBytecode(t *testing.T, tests []syntheticBytecodeCase) {
+	t.Helper()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			service := app.NewService()
-			compiledFunction := tt.build()
-			result, err := service.Execute(context.Background(), compiledFunction)
-			if tt.expectErr {
+			result, err := app.NewService().Execute(t.Context(), tt.build())
+			if tt.wantErr {
 				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.expect, result)
+				return
 			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function generateExpression
 ;   registers: int=2 string=2 general=3 uint=2
-;   dispatch:  asm=11 shim=3 exit=0 go=0
+;   dispatch:  asm=10 shim=3 exit=0 go=0
 ;   params:    (uint)
 ;   returns:   (string, uint)
 ; ═════════════════════════════════════════════════════════════
@@ -23,12 +23,11 @@
 0007 A 1:CALL                     128   0   0    ; call (site 0)
 0008 A 1:MOVE_UINT                 39   0   1
 0009 S 0:DEREF                      2   1   0
-0010 A 1:BYTES_TO_STRING           11   0   2
-0011 A 1:MOVE_STRING               37   1   0
-0012 A 1:MOVE_UINT                 39   1   0
-0013 A 1:MOVE_STRING               37   0   1
-0014 A 1:MOVE_UINT                 39   0   1
-0015 A 2:TIER2_RETURN               0  10   2    ; 2 values
+0010 A 1:BYTES_TO_STRING           11   1   2
+0011 A 1:MOVE_UINT                 39   1   0
+0012 A 1:MOVE_STRING               37   0   1
+0013 A 1:MOVE_UINT                 39   0   1
+0014 A 2:TIER2_RETURN               0  10   2    ; 2 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function nextState
@@ -118,8 +117,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function intToDecimalBytes
-;   registers: int=10 general=2 uint=1 sliceByte=1
-;   dispatch:  asm=18 shim=5 exit=0 go=4
+;   registers: int=9 general=2 uint=1 sliceByte=1
+;   dispatch:  asm=17 shim=5 exit=0 go=4
 ;   params:    (int)
 ;   returns:   (sliceByte)
 ; ═════════════════════════════════════════════════════════════
@@ -142,29 +141,28 @@
 0011 A 2:TIER2_RETURN               0  10   1    ; 1 values
 0012 S 0:LOAD_GENERAL_CONST         0   0   0
 0013 A 1:LOAD_INT_CONST_SMALL      75   1   4    ; ints[1] = 4
-0014 A 1:LOAD_INT_CONST_SMALL      75   8  48    ; LICM hoist of PC 19
-0015 A 1:LOAD_INT_CONST_SMALL      75   9  10    ; LICM hoist of PC 19
-0016 A 1:LOAD_INT_CONST_SMALL      75   4  10    ; LICM hoist of PC 24
-0017 A 1:GT_INT_CONST_JUMP_FALSE  127   0   0
-0018   0:EXT                        9   0   0
-0019 A 2:TIER2_DEC_INT              0   2   1
-0020 A 0:REM_INT                    6   0   9
-0021 A 0:ADD_INT                    7   8   6
-0022 G 1:INT_TO_UINT               55   0   7
+0014 A 1:LOAD_INT_CONST_SMALL      75   7  10    ; LICM hoist of PC 19
+0015 A 1:LOAD_INT_CONST_SMALL      75   8  10    ; LICM hoist of PC 24
+0016 A 1:GT_INT_CONST_JUMP_FALSE  127   0   0
+0017   0:EXT                        9   0   0
+0018 A 2:TIER2_DEC_INT              0   2   1
+0019 A 1:LOAD_INT_CONST_SMALL      75   4  48    ; ints[4] = 48
+0020 A 0:REM_INT                    6   0   7
+0021 A 0:ADD_INT                    4   4   6
+0022 G 1:INT_TO_UINT               55   0   4
 0023 A 0:TRUNCATE_NARROW            0   8   5
 0024 S 0:SLICE_SET_UINT             0   1   0
-0025 A 0:DIV_INT                    5   0   4
-0026 A 1:MOVE_INT                  35   0   5
-0027 A 1:JUMP                      74 245 255    ; goto -11
-0028 S 1:SLICE_OP                 141   1   0
-0029   0:EXT                        1   1   0
-0030 G 1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   1
-0031 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0025 A 0:DIV_INT                    0   0   8
+0026 A 1:JUMP                      74 245 255    ; goto -11
+0027 S 1:SLICE_OP                 141   1   0
+0028   0:EXT                        1   1   0
+0029 G 1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   1
+0030 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=6 string=4 uint=1
-;   dispatch:  asm=14 shim=2 exit=0 go=2
+;   dispatch:  asm=13 shim=2 exit=0 go=2
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -179,20 +177,19 @@
 0002 G 1:LOAD_ZERO                 79   0   2
 0003 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
 0004 A 1:LT_INT_CONST_JUMP_FALSE  123   1   1
-0005   0:EXT                        8   0   0
+0005   0:EXT                        7   0   0
 0006 G 1:LOAD_ZERO                 79   1   2
 0007 A 1:CALL                     128   0   0    ; call (site 0)
 0008 A 1:LEN_STRING                65   4   1
-0009 A 0:ADD_INT                    5   0   4
-0010 A 1:MOVE_INT                  35   0   5
-0011 A 1:MOVE_STRING               37   0   1
-0012 A 2:TIER2_INC_INT              0   1   1
-0013 A 1:JUMP                      74 246 255    ; goto -10
-0014 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = " "
-0015 S 0:CONCAT_STRING              2   0   1
-0016 A 1:CALL_SCALAR              134   1   0
-0017 S 0:CONCAT_STRING              0   2   3
-0018 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0009 A 0:ADD_INT                    0   0   4
+0010 A 1:MOVE_STRING               37   0   1
+0011 A 2:TIER2_INC_INT              0   1   1
+0012 A 1:JUMP                      74 247 255    ; goto -9
+0013 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = " "
+0014 S 0:CONCAT_STRING              2   0   1
+0015 A 1:CALL_SCALAR              134   1   0
+0016 S 0:CONCAT_STRING              0   2   3
+0017 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function intToString

@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalGoroutines(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "goroutine sends on channel",
@@ -44,7 +44,7 @@ go func() {
 }()
 v := <-ch
 v`,
-			expect: 100,
+			want: 100,
 		},
 		{
 			name: "multiple goroutines sum",
@@ -56,7 +56,7 @@ a := <-ch
 b := <-ch
 c := <-ch
 a + b + c`,
-			expect: 60,
+			want: 60,
 		},
 		{
 			name: "goroutine with string argument",
@@ -66,7 +66,7 @@ go func(message string) {
 }("hello")
 v := <-ch
 v`,
-			expect: "hello",
+			want: "hello",
 		},
 		{
 			name: "goroutine with float argument",
@@ -76,7 +76,7 @@ go func(x float64) {
 }(3.5)
 v := <-ch
 v`,
-			expect: 7,
+			want: 7,
 		},
 		{
 			name: "goroutine with bool argument",
@@ -90,7 +90,7 @@ go func(flag bool) {
 }(true)
 v := <-ch
 v`,
-			expect: 1,
+			want: 1,
 		},
 	}
 
@@ -98,9 +98,9 @@ v`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

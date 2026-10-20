@@ -28,24 +28,23 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestRecoveryCheckpointStoreProcessDeath(t *testing.T) {
 	if directory := os.Getenv("PIPIT_TEST_CHECKPOINT_CRASH_DIRECTORY"); directory != "" {
 		encoded, approved, binding := checkpointStoreFixture(t)
 		owner, err := OpenLinuxRecoveryCheckpointStore(directory)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		defer owner.Close()
-		if err := owner.store(encoded, approved, binding); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, owner.store(encoded, approved, binding))
 		fmt.Println(hex.EncodeToString(approved[:]))
 		var signal [1]byte
 		_, _ = io.ReadFull(os.Stdin, signal[:])
@@ -54,49 +53,32 @@ func TestRecoveryCheckpointStoreProcessDeath(t *testing.T) {
 	directory := testRecoveryDirectory(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestRecoveryCheckpointStoreProcessDeath$")
-	command.Env = append(os.Environ(), "PIPIT_TEST_CHECKPOINT_CRASH_DIRECTORY="+directory, "TMPDIR="+t.TempDir())
+	command := sandboxtest.Command(ctx, "TestRecoveryCheckpointStoreProcessDeath", "PIPIT_TEST_CHECKPOINT_CRASH_DIRECTORY="+directory, "TMPDIR="+t.TempDir())
 	command.Stderr = os.Stderr
 	input, err := command.StdinPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer input.Close()
 	output, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer output.Close()
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, command.Start())
 	defer func() { _ = command.Process.Kill(); _ = command.Wait() }()
 	ready, err := bufio.NewReader(output).ReadString('\n')
-	if err != nil {
-		t.Fatal("checkpoint host did not publish:", err)
-	}
+	require.NoError(t, err, "the checkpoint host publishes")
 	digest, err := hex.DecodeString(strings.TrimSpace(ready))
-	if err != nil || len(digest) != sha256.Size {
-		t.Fatal("missing independent fixture approval:", ready, err)
-	}
+	require.NoError(t, err, "missing independent fixture approval: %v", ready)
+	require.Len(t, digest, sha256.Size)
 	approved := [sha256.Size]byte(digest)
-	if err := command.Process.Kill(); err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Wait(); err == nil {
-		t.Fatal("checkpoint host survived SIGKILL")
-	}
+	require.NoError(t, command.Process.Kill())
+	require.Error(t, command.Wait(), "checkpoint host survived SIGKILL")
 	status, ok := command.ProcessState.Sys().(syscall.WaitStatus)
-	if !ok || !status.Signaled() || status.Signal() != syscall.SIGKILL {
-		t.Fatal("unexpected checkpoint host exit:", command.ProcessState)
-	}
+	require.True(t, ok, "the checkpoint host reports a wait status")
+	require.True(t, status.Signaled(), "the checkpoint host dies by SIGKILL")
+	require.Equal(t, syscall.SIGKILL, status.Signal())
 	owner, err := OpenLinuxRecoveryCheckpointStore(directory)
-	if err != nil {
-		t.Fatal("host death retained checkpoint lease:", err)
-	}
+	require.NoError(t, err, "host death keeps no checkpoint lease")
 	defer owner.Close()
 	data, err := owner.Load(approved, [sha256.Size]byte{1})
-	if err != nil || len(data) == 0 {
-		t.Fatal("host death lost approved checkpoint:", err)
-	}
+	require.NoError(t, err, "host death lost approved checkpoint")
+	require.NotEmpty(t, data)
 }

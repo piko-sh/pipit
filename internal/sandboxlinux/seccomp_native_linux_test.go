@@ -24,7 +24,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"runtime"
 	"runtime/debug"
 	"testing"
@@ -32,6 +31,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/unix"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestNativeSeccomp(t *testing.T) {
@@ -39,8 +40,7 @@ func TestNativeSeccomp(t *testing.T) {
 	if os.Getenv("PIPIT_SECCOMP_CHILD") != "1" {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestNativeSeccomp$")
-		command.Env = append(os.Environ(), "PIPIT_SECCOMP_CHILD=1")
+		command := sandboxtest.Command(ctx, "TestNativeSeccomp", "PIPIT_SECCOMP_CHILD=1")
 		output, err := command.CombinedOutput()
 		if err != nil {
 			t.Fatalf("native filter fixture failed: %v\n%s", err, output)
@@ -95,8 +95,7 @@ func TestNativeSeccompRejectsUnsynchronisedThread(t *testing.T) {
 	if os.Getenv("PIPIT_SECCOMP_DIVERGENT_CHILD") != "1" {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestNativeSeccompRejectsUnsynchronisedThread$")
-		command.Env = append(os.Environ(), "PIPIT_SECCOMP_DIVERGENT_CHILD=1")
+		command := sandboxtest.Command(ctx, "TestNativeSeccompRejectsUnsynchronisedThread", "PIPIT_SECCOMP_DIVERGENT_CHILD=1")
 		output, err := command.CombinedOutput()
 		if err != nil {
 			t.Fatalf("divergent filter fixture failed: %v\n%s", err, output)

@@ -21,23 +21,23 @@
 package bytecode_test
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestArenaEscapeStructStringFieldSurvivesReuse(t *testing.T) {
+	t.Parallel()
 	service := app.NewService()
 
 	code := `type Box struct{ S string }
 func build(prefix string) Box { return Box{S: prefix + "-world-" + prefix} }
 build("hello")`
-	result, err := service.Eval(context.Background(), code)
+	result, err := service.Eval(t.Context(), code)
 	require.NoError(t, err)
 
 	field := reflect.ValueOf(result).FieldByName("S")
@@ -49,7 +49,7 @@ for i := 0; i < 4096; i++ {
 	s = s + "0123456789abcdef"
 }
 len(s)`
-	_, err = service.Eval(context.Background(), churn)
+	_, err = service.Eval(t.Context(), churn)
 	require.NoError(t, err)
 
 	require.Equal(t, "hello-world-hello", field.String(),
@@ -57,13 +57,14 @@ len(s)`
 }
 
 func TestArenaEscapeNamedStringStructFieldSurvivesReuse(t *testing.T) {
+	t.Parallel()
 	service := app.NewService()
 
 	code := `type Name string
 type Person struct{ N Name; Age int }
 func build(prefix string) Person { return Person{N: Name(prefix + "-" + prefix), Age: 7} }
 build("hi")`
-	result, err := service.Eval(context.Background(), code)
+	result, err := service.Eval(t.Context(), code)
 	require.NoError(t, err)
 
 	value := reflect.ValueOf(result)
@@ -76,7 +77,7 @@ for i := 0; i < 4096; i++ {
 	s = s + "0123456789abcdef"
 }
 len(s)`
-	_, err = service.Eval(context.Background(), churn)
+	_, err = service.Eval(t.Context(), churn)
 	require.NoError(t, err)
 
 	require.Equal(t, "hi-hi", name.String(),
@@ -84,13 +85,14 @@ len(s)`
 }
 
 func TestArenaEscapeNestedStructStringFieldSurvivesReuse(t *testing.T) {
+	t.Parallel()
 	service := app.NewService()
 
 	code := `type Inner struct{ Name string }
 type Outer struct{ In Inner }
 func build(part string) Outer { return Outer{In: Inner{Name: "n-" + part + "-n"}} }
 build("deep")`
-	result, err := service.Eval(context.Background(), code)
+	result, err := service.Eval(t.Context(), code)
 	require.NoError(t, err)
 
 	name := reflect.ValueOf(result).FieldByName("In").FieldByName("Name")
@@ -102,7 +104,7 @@ for i := 0; i < 4096; i++ {
 	s = s + "ABCDEFGHIJKLMNOP"
 }
 len(s)`
-	_, err = service.Eval(context.Background(), churn)
+	_, err = service.Eval(t.Context(), churn)
 	require.NoError(t, err)
 
 	require.Equal(t, "n-deep-n", name.String(),
@@ -110,18 +112,18 @@ len(s)`
 }
 
 func TestArenaBackingAllocLimit(t *testing.T) {
-	alloc := []struct {
+	tests := []struct {
 		name string
 		call func(a *engine.RegisterArena, n int)
 	}{
-		{"byte", func(a *engine.RegisterArena, n int) { a.AllocByteBacking(n) }},
-		{"int", func(a *engine.RegisterArena, n int) { a.AllocIntBacking(n) }},
-		{"float", func(a *engine.RegisterArena, n int) { a.AllocFloatBacking(n) }},
-		{"string", func(a *engine.RegisterArena, n int) { a.AllocStringBacking(n) }},
-		{"bool", func(a *engine.RegisterArena, n int) { a.AllocBoolBacking(n) }},
-		{"uint", func(a *engine.RegisterArena, n int) { a.AllocUintBacking(n) }},
+		{name: "byte", call: func(a *engine.RegisterArena, n int) { a.AllocByteBacking(n) }},
+		{name: "int", call: func(a *engine.RegisterArena, n int) { a.AllocIntBacking(n) }},
+		{name: "float", call: func(a *engine.RegisterArena, n int) { a.AllocFloatBacking(n) }},
+		{name: "string", call: func(a *engine.RegisterArena, n int) { a.AllocStringBacking(n) }},
+		{name: "bool", call: func(a *engine.RegisterArena, n int) { a.AllocBoolBacking(n) }},
+		{name: "uint", call: func(a *engine.RegisterArena, n int) { a.AllocUintBacking(n) }},
 	}
-	for _, tt := range alloc {
+	for _, tt := range tests {
 		t.Run(tt.name+"_over_limit_panics", func(t *testing.T) {
 			arena := engine.GetRegisterArena()
 			defer engine.PutRegisterArena(arena)

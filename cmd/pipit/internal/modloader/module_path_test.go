@@ -26,22 +26,25 @@ import (
 
 func TestSplitModuleFromPackageKeepsMajorVersion(t *testing.T) {
 	t.Parallel()
-
-	cases := []struct {
+	tests := []struct {
+		name       string
 		importPath string
-		module     string
-		sub        string
+		wantModule string
+		wantSub    string
 	}{
-		{importPath: "github.com/tidwall/gjson", module: "github.com/tidwall/gjson", sub: ""},
-		{importPath: "github.com/alecthomas/chroma/v2/formatters", module: "github.com/alecthomas/chroma/v2", sub: "formatters"},
-		{importPath: "github.com/alecthomas/chroma/v2", module: "github.com/alecthomas/chroma/v2", sub: ""},
-		{importPath: "github.com/org/repo/v1/sub", module: "github.com/org/repo", sub: "v1/sub"},
-		{importPath: "github.com/org/repo/vendor/x", module: "github.com/org/repo", sub: "vendor/x"},
-		{importPath: "gopkg.in/yaml.v3", module: "gopkg.in/yaml.v3", sub: ""},
+		{name: "module root", importPath: "github.com/tidwall/gjson", wantModule: "github.com/tidwall/gjson"},
+		{name: "package under a major version", importPath: "github.com/alecthomas/chroma/v2/formatters", wantModule: "github.com/alecthomas/chroma/v2", wantSub: "formatters"},
+		{name: "major version root", importPath: "github.com/alecthomas/chroma/v2", wantModule: "github.com/alecthomas/chroma/v2"},
+		{name: "v1 is a directory", importPath: "github.com/org/repo/v1/sub", wantModule: "github.com/org/repo", wantSub: "v1/sub"},
+		{name: "vendor is a directory", importPath: "github.com/org/repo/vendor/x", wantModule: "github.com/org/repo", wantSub: "vendor/x"},
+		{name: "gopkg.in version", importPath: "gopkg.in/yaml.v3", wantModule: "gopkg.in/yaml.v3"},
 	}
-	for _, testCase := range cases {
-		module, sub := splitModuleFromPackage(testCase.importPath)
-		require.Equal(t, testCase.module, module, testCase.importPath)
-		require.Equal(t, testCase.sub, sub, testCase.importPath)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			module, sub := splitModuleFromPackage(tt.importPath)
+			require.Equal(t, tt.wantModule, module)
+			require.Equal(t, tt.wantSub, sub)
+		})
 	}
 }

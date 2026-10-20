@@ -19,17 +19,15 @@
 package app_test
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 	"testing"
 	"time"
 
-	"pipit.sh/pipit/internal/app"
-
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/adapters"
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/module"
 	"pipit.sh/pipit/internal/symtab"
 )
@@ -53,7 +51,7 @@ func Add(a, b int) int {
 		SchemaVersion: module.DescriptorVersion,
 		Ref:           module.Ref{Path: "example.com/lib", Version: "v0.0.0"},
 	}
-	bundle, err := builder.PackageModule(context.Background(),
+	bundle, err := builder.PackageModule(t.Context(),
 		descriptor,
 		"example.com/lib",
 		libSources,
@@ -69,7 +67,7 @@ func Add(a, b int) int {
 		Version: descriptor.Ref.Version,
 		Pin:     bundle.Descriptor.Ref.Pin,
 	}
-	loaded, err := consumer.LoadModule(context.Background(), bundle, reference, nil, adapters.LoadCompiledFromBytes)
+	loaded, err := consumer.LoadModule(t.Context(), bundle, reference, nil, adapters.LoadCompiledFromBytes)
 	require.NoError(t, err)
 	require.Equal(t, bundle.Descriptor.Ref.Pin, loaded.Fingerprint)
 
@@ -87,10 +85,10 @@ func main() {}
 `,
 		},
 	}
-	mainCfs, err := consumer.CompileProgram(context.Background(), "main", mainSources)
+	mainCfs, err := consumer.CompileProgram(t.Context(), "main", mainSources)
 	require.NoError(t, err, "main should compile against the bytecode-loaded lib")
 
-	result, err := consumer.ExecuteEntrypoint(context.Background(), mainCfs, "entrypoint")
+	result, err := consumer.ExecuteEntrypoint(t.Context(), mainCfs, "entrypoint")
 	require.NoError(t, err)
 	require.Equal(t, "7", fmt.Sprint(result))
 }
@@ -112,7 +110,7 @@ func Greet() string { return "hi" }
 		SchemaVersion: module.DescriptorVersion,
 		Ref:           module.Ref{Path: "example.com/lib2", Version: "v0.0.0"},
 	}
-	bundle, err := builder.PackageModule(context.Background(),
+	bundle, err := builder.PackageModule(t.Context(),
 		descriptor,
 		"example.com/lib2",
 		libSources,
@@ -131,7 +129,7 @@ func Greet() string { return "hi" }
 		Version: descriptor.Ref.Version,
 		Pin:     fingerprint,
 	}
-	_, err = consumer.LoadModule(context.Background(), bundle, reference, nil, adapters.LoadCompiledFromBytes)
+	_, err = consumer.LoadModule(t.Context(), bundle, reference, nil, adapters.LoadCompiledFromBytes)
 	require.NoError(t, err, "LoadModule should still succeed for legacy bundles (no TypesExport)")
 
 	mainSources := map[string]map[string]string{
@@ -146,7 +144,7 @@ func main() {}
 `,
 		},
 	}
-	_, err = consumer.CompileProgram(context.Background(), "main", mainSources)
+	_, err = consumer.CompileProgram(t.Context(), "main", mainSources)
 	require.Error(t, err, "CompileProgram should fail when importing a bundle without TypesExport")
 }
 
@@ -169,7 +167,7 @@ var Greeting = "hello"
 		SchemaVersion: module.DescriptorVersion,
 		Ref:           module.Ref{Path: "example.com/varlib", Version: "v0.0.0"},
 	}
-	bundle, err := builder.PackageModule(context.Background(),
+	bundle, err := builder.PackageModule(t.Context(),
 		descriptor,
 		"example.com/varlib",
 		libSources,
@@ -185,7 +183,7 @@ var Greeting = "hello"
 		Version: descriptor.Ref.Version,
 		Pin:     bundle.Descriptor.Ref.Pin,
 	}
-	_, err = consumer.LoadModule(context.Background(), bundle, reference, nil, adapters.LoadCompiledFromBytes)
+	_, err = consumer.LoadModule(t.Context(), bundle, reference, nil, adapters.LoadCompiledFromBytes)
 	require.NoError(t, err)
 
 	mainSources := map[string]map[string]string{
@@ -202,12 +200,12 @@ func main() {}
 `,
 		},
 	}
-	mainCfs, err := consumer.CompileProgram(context.Background(), "main", mainSources)
+	mainCfs, err := consumer.CompileProgram(t.Context(), "main", mainSources)
 	require.NoError(t, err)
 
-	require.NoError(t, consumer.ExecuteInits(context.Background(), mainCfs))
+	require.NoError(t, consumer.ExecuteInits(t.Context(), mainCfs))
 
-	result, err := consumer.ExecuteEntrypoint(context.Background(), mainCfs, "entrypoint")
+	result, err := consumer.ExecuteEntrypoint(t.Context(), mainCfs, "entrypoint")
 	require.NoError(t, err)
 
 	require.Equal(t, "47", fmt.Sprint(result))
@@ -231,7 +229,7 @@ var Counter = %d
 			SchemaVersion: module.DescriptorVersion,
 			Ref:           module.Ref{Path: path, Version: "v0.0.0"},
 		}
-		bundle, err := builder.PackageModule(context.Background(),
+		bundle, err := builder.PackageModule(t.Context(),
 			descriptor, path, libSources, adapters.PackCompiledFileSetToBytes,
 		)
 		require.NoError(t, err)
@@ -255,9 +253,9 @@ var Counter = %d
 	}
 	bundleB.Descriptor.Ref.Pin = pinB
 
-	_, err := consumer.LoadModule(context.Background(), bundleA, module.Ref{Path: pathA, Version: "v0.0.0", Pin: pinA}, nil, adapters.LoadCompiledFromBytes)
+	_, err := consumer.LoadModule(t.Context(), bundleA, module.Ref{Path: pathA, Version: "v0.0.0", Pin: pinA}, nil, adapters.LoadCompiledFromBytes)
 	require.NoError(t, err)
-	_, err = consumer.LoadModule(context.Background(), bundleB, module.Ref{Path: pathB, Version: "v0.0.0", Pin: pinB}, nil, adapters.LoadCompiledFromBytes)
+	_, err = consumer.LoadModule(t.Context(), bundleB, module.Ref{Path: pathB, Version: "v0.0.0", Pin: pinB}, nil, adapters.LoadCompiledFromBytes)
 	require.NoError(t, err)
 
 	mainSources := map[string]map[string]string{
@@ -277,12 +275,12 @@ func main() {}
 `, pathA, pathB),
 		},
 	}
-	mainCfs, err := consumer.CompileProgram(context.Background(), "main", mainSources)
+	mainCfs, err := consumer.CompileProgram(t.Context(), "main", mainSources)
 	require.NoError(t, err)
 
-	require.NoError(t, consumer.ExecuteInits(context.Background(), mainCfs))
+	require.NoError(t, consumer.ExecuteInits(t.Context(), mainCfs))
 
-	result, err := consumer.ExecuteEntrypoint(context.Background(), mainCfs, "entrypoint")
+	result, err := consumer.ExecuteEntrypoint(t.Context(), mainCfs, "entrypoint")
 	require.NoError(t, err)
 
 	require.Equal(t, "1020", fmt.Sprint(result))
@@ -316,7 +314,7 @@ func (hostNamedTypeProvider) Exports() symtab.SymbolExports {
 func TestLoadModule_HostNamedTypeMethodsSurviveBundle(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
+	tests := []struct {
 		name  string
 		lib   string
 		entry string
@@ -368,13 +366,14 @@ func TestLoadModule_HostNamedTypeMethodsSurviveBundle(t *testing.T) {
 			entry: "lib.Durations(3)",
 			want:  "[]time.Duration 1s",
 		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			modulePath := "example.com/named_" + tc.name
+			modulePath := "example.com/named_" + tt.name
 			libSources := map[string]map[string]string{
-				"": {"lib.go": "package lib\n\n" + tc.lib + "\n"},
+				"": {"lib.go": "package lib\n\n" + tt.lib + "\n"},
 			}
 
 			builder := app.NewService()
@@ -383,7 +382,7 @@ func TestLoadModule_HostNamedTypeMethodsSurviveBundle(t *testing.T) {
 				SchemaVersion: module.DescriptorVersion,
 				Ref:           module.Ref{Path: modulePath, Version: "v0.0.0"},
 			}
-			bundle, err := builder.PackageModule(context.Background(),
+			bundle, err := builder.PackageModule(t.Context(),
 				descriptor,
 				modulePath,
 				libSources,
@@ -394,21 +393,21 @@ func TestLoadModule_HostNamedTypeMethodsSurviveBundle(t *testing.T) {
 			consumer := app.NewService()
 			consumer.UseSymbolProviders(hostNamedTypeProvider{})
 			reference := module.Ref{Path: modulePath, Version: "v0.0.0", Pin: bundle.Descriptor.Ref.Pin}
-			_, err = consumer.LoadModule(context.Background(), bundle, reference, nil, adapters.LoadCompiledFromBytes)
+			_, err = consumer.LoadModule(t.Context(), bundle, reference, nil, adapters.LoadCompiledFromBytes)
 			require.NoError(t, err)
 
 			mainSources := map[string]map[string]string{
 				"": {
 					"main.go": "package main\n\nimport (\n\t\"time\"\n\n\t\"" + modulePath + "\"\n)\n\n" +
-						"var _ = time.Second\n\nfunc entrypoint() string { return " + tc.entry + " }\n\nfunc main() {}\n",
+						"var _ = time.Second\n\nfunc entrypoint() string { return " + tt.entry + " }\n\nfunc main() {}\n",
 				},
 			}
-			mainCfs, err := consumer.CompileProgram(context.Background(), "main", mainSources)
+			mainCfs, err := consumer.CompileProgram(t.Context(), "main", mainSources)
 			require.NoError(t, err)
 
-			result, err := consumer.ExecuteEntrypoint(context.Background(), mainCfs, "entrypoint")
+			result, err := consumer.ExecuteEntrypoint(t.Context(), mainCfs, "entrypoint")
 			require.NoError(t, err)
-			require.Equal(t, tc.want, fmt.Sprint(result))
+			require.Equal(t, tt.want, fmt.Sprint(result))
 		})
 	}
 }

@@ -38,6 +38,10 @@ type discoverFlags struct {
 	// ignore is the comma-separated list of additional import paths to exclude from the
 	// result.
 	ignore string
+
+	// includeProject reports the project's own packages as required instead of ignoring them
+	// and following their imports.
+	includeProject bool
 }
 
 // runDiscover walks the project, filters out the packages the host already provides, and
@@ -59,7 +63,15 @@ func runDiscover(ctx context.Context, arguments []string, stdout, stderr io.Writ
 		return 1
 	}
 
-	result, err := Discover(ctx, config.discoverOptions(flags.root, splitIgnoreList(flags.ignore)))
+	if flags.includeProject {
+		config = config.includingProject()
+	}
+	options, err := config.discoverOptions(flags.root, splitIgnoreList(flags.ignore))
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "Error: %s\n", err)
+		return 1
+	}
+	result, err := Discover(ctx, options)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "Error: %s\n", err)
 		return 1
@@ -81,9 +93,10 @@ func runDiscover(ctx context.Context, arguments []string, stdout, stderr io.Writ
 // Returns the parsed flags and a parseStatus describing the outcome.
 func parseDiscoverArgs(arguments []string, stderr io.Writer, config Config) (discoverFlags, parseStatus) {
 	flags := discoverFlags{
-		root:         ".",
-		outputFormat: "list",
-		ignore:       "",
+		root:           ".",
+		outputFormat:   "list",
+		ignore:         "",
+		includeProject: false,
 	}
 
 	for i := 0; i < len(arguments); i++ {
@@ -104,6 +117,9 @@ func parseDiscoverArgs(arguments []string, stderr io.Writer, config Config) (dis
 			flags.outputFormat, ok = flagValue(arguments, &i, stderr)
 		case "--ignore":
 			flags.ignore, ok = flagValue(arguments, &i, stderr)
+		case includeProjectFlag:
+			flags.includeProject = true
+			ok = true
 		default:
 			_, _ = fmt.Fprintf(stderr, "Unknown flag: %s\n\n", argument)
 			discoverUsage(stderr, config)
@@ -184,6 +200,7 @@ func renderDiscoverResult(stdout, stderr io.Writer, format string, result Discov
 	for _, path := range result.GenericCandidates {
 		_, _ = fmt.Fprintf(stderr, "warning: %s exports generic types; add a manual generic: block in %s\n", path, config.DefaultManifest)
 	}
+	reportDiscoverWarnings(stderr, result)
 	return nil
 }
 
@@ -204,7 +221,7 @@ Flags:
   --root <dir>         Project root directory (default: .)
   --output <format>    Output format: list, yaml, or json (default: list)
   --ignore <paths>     Comma-separated import paths to exclude
-  -h, --help           Show this help message
+%s  -h, --help           Show this help message
 
-`, config.ToolName)
+`, config.ToolName, includeProjectUsage(config))
 }

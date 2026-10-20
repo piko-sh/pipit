@@ -31,13 +31,11 @@ import (
 	"time"
 
 	"pipit.sh/pipit/internal/sandboxbroker"
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestNativeCheckpointImageStoreBinding(t *testing.T) {
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	group, err := newServiceGroup(parent, Limits{}, testTenant)

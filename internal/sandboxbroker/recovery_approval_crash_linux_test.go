@@ -27,10 +27,13 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestApprovedCheckpointProcessDeath(t *testing.T) {
@@ -40,89 +43,56 @@ func TestApprovedCheckpointProcessDeath(t *testing.T) {
 	}
 	base := t.TempDir()
 	for _, name := range []string{"root", "journal", "checkpoint", "approval"} {
-		if err := os.Mkdir(filepath.Join(base, name), 0700); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.Mkdir(filepath.Join(base, name), 0700))
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestApprovedCheckpointProcessDeath$")
-	command.Env = append(os.Environ(), "PIPIT_TEST_APPROVED_CHECKPOINT_DIRECTORY="+base)
+	command := sandboxtest.Command(ctx, "TestApprovedCheckpointProcessDeath", "PIPIT_TEST_APPROVED_CHECKPOINT_DIRECTORY="+base)
 	command.Stderr = os.Stderr
 	input, err := command.StdinPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer input.Close()
 	output, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer output.Close()
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, command.Start())
 	defer func() { _ = command.Process.Kill(); _ = command.Wait() }()
-	ready, err := bufio.NewReader(output).ReadString('\n')
-	if err != nil || ready != "ready\n" {
-		t.Fatal("publisher did not commit both stores:", ready, err)
-	}
-	if err := command.Process.Kill(); err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Wait(); err == nil {
-		t.Fatal("publisher survived forced termination")
-	}
+	sandboxtest.WaitForLine(t, bufio.NewReader(output), "ready", "the publisher commits both stores")
+	require.NoError(t, command.Process.Kill())
+	require.Error(t, command.Wait(), "publisher survived forced termination")
 	approval, err := OpenLinuxRecoveryApprovalStore(filepath.Join(base, "approval"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer approval.Close()
 	binding := [sha256.Size]byte{1}
 	digest, err := approval.Load(binding)
-	if err != nil {
-		t.Fatal("durable approval unavailable:", err)
-	}
+	require.NoError(t, err, "durable approval unavailable")
 	checkpoint, err := OpenLinuxRecoveryCheckpointStore(filepath.Join(base, "checkpoint"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer checkpoint.Close()
-	if data, err := checkpoint.Load(digest, binding); err != nil || len(data) == 0 {
-		t.Fatal("approved checkpoint did not survive host death:", err)
-	}
+	data, err := checkpoint.Load(digest, binding)
+	require.NoError(t, err, "approved checkpoint did not survive host death")
+	require.NotEmpty(t, data)
 }
 
 func publishApprovedCheckpointFixture(t *testing.T, base string) {
 	t.Helper()
 	bootstrap, err := PrepareLinuxBootstrap([]LinuxRootGrant{{Name: "data", Path: filepath.Join(base, "root"), Rights: Read | Write}}, FilesystemLimits{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer bootstrap.Close()
 	authority, err := bootstrap.RecoveryAuthority()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer authority.Close()
 	journal, err := OpenLinuxRecoveryJournal(filepath.Join(base, "journal"), authority.namespace)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer journal.Close()
 	checkpoint, err := OpenLinuxRecoveryCheckpointStore(filepath.Join(base, "checkpoint"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer checkpoint.Close()
 	approval, err := OpenLinuxRecoveryApprovalStore(filepath.Join(base, "approval"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer approval.Close()
-	if _, err := authority.PersistApprovedCheckpoint(journal, checkpoint, approval, [sha256.Size]byte{1}); err != nil {
-		t.Fatal(err)
-	}
+	_, err = authority.PersistApprovedCheckpoint(journal, checkpoint, approval, [sha256.Size]byte{1})
+	require.NoError(t, err)
 	fmt.Println("ready")
 	var signal [1]byte
 	_, _ = io.ReadFull(os.Stdin, signal[:])

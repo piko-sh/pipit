@@ -21,58 +21,51 @@
 package sandboxbroker
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 )
 
 func TestRecoveryCleanupRemnantAndCompletedPublication(t *testing.T) {
+	t.Parallel()
 	for _, state := range []string{"linked", "absent", "published"} {
 		t.Run(state, func(t *testing.T) {
+			t.Parallel()
 			root, namespace, record, directory := recoveryCleanupFixture(t)
 			name, err := StagingName(namespace, record.Operation)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			staging := filepath.Join(directory, "parent", name)
 			expected := "original"
 			switch state {
 			case "absent":
-				if err := os.Remove(staging); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Remove(staging))
 			case "published":
-				if err := os.Rename(staging, filepath.Join(directory, "parent", "file")); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Rename(staging, filepath.Join(directory, "parent", "file")))
 				expected = "new"
 			}
 			for range 2 {
-				if err := recoverLinuxStaging(root, namespace, record); err != nil {
-					t.Fatal("recovery or repeat failed:", err)
-				}
+				require.NoError(t, recoverLinuxStaging(root, namespace, record), "recovery and its repeat succeed")
 			}
 			assertJournalledTarget(t, filepath.Join(directory, "parent"), expected)
-			if _, err := os.Lstat(staging); !errors.Is(err, os.ErrNotExist) {
-				t.Fatal("staging entry remains:", err)
-			}
+			_, err = os.Lstat(staging)
+			require.ErrorIs(t, err, os.ErrNotExist, "staging entry remains")
 		})
 	}
 }
 
 func TestRecoveryCleanupPreservesCollisions(t *testing.T) {
+	t.Parallel()
 	for _, variant := range []string{"inode", "mode", "size", "hard-link", "symlink", "fifo", "directory"} {
 		t.Run(variant, func(t *testing.T) {
+			t.Parallel()
 			root, namespace, record, directory := recoveryCleanupFixture(t)
 			name, err := StagingName(namespace, record.Operation)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			staging := filepath.Join(directory, "parent", name)
 			switch variant {
 			case "inode":
@@ -88,9 +81,8 @@ func TestRecoveryCleanupPreservesCollisions(t *testing.T) {
 			case "hard-link":
 				err = os.Link(staging, filepath.Join(directory, "extra"))
 			default:
-				if err = os.Remove(staging); err != nil {
-					t.Fatal(err)
-				}
+				err = os.Remove(staging)
+				require.NoError(t, err)
 				switch variant {
 				case "symlink":
 					err = os.Symlink("file", staging)
@@ -100,26 +92,20 @@ func TestRecoveryCleanupPreservesCollisions(t *testing.T) {
 					err = os.Mkdir(staging, 0700)
 				}
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			before, err := os.Lstat(staging)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := recoverLinuxStaging(root, namespace, record); err == nil {
-				t.Fatal("mismatched entry removed")
-			}
+			require.NoError(t, err)
+			require.Error(t, recoverLinuxStaging(root, namespace, record), "mismatched entry removed")
 			after, err := os.Lstat(staging)
-			if err != nil || !os.SameFile(before, after) {
-				t.Fatal("collision altered:", err)
-			}
+			require.NoError(t, err, "collision altered")
+			require.True(t, os.SameFile(before, after))
 			assertJournalledTarget(t, filepath.Join(directory, "parent"), "original")
 		})
 	}
 }
 
 func TestRecoveryCleanupRejectsForgedAuthority(t *testing.T) {
+	t.Parallel()
 	root, namespace, record, directory := recoveryCleanupFixture(t)
 	mutations := []func(*RecoveryRecord){
 		func(record *RecoveryRecord) { record.Namespace = strings.Repeat("f", 32) },
@@ -137,54 +123,39 @@ func TestRecoveryCleanupRejectsForgedAuthority(t *testing.T) {
 	for _, mutate := range mutations {
 		changed := record
 		mutate(&changed)
-		if err := recoverLinuxStaging(root, namespace, changed); err == nil {
-			t.Fatal("forged authority accepted:", changed)
-		}
+		require.Error(t, recoverLinuxStaging(root, namespace, changed), "forged authority accepted: %v", changed)
 	}
 	readOnly := root
 	readOnly.identity.Rights = Read
-	if err := recoverLinuxStaging(readOnly, namespace, record); !errors.Is(err, ErrDenied) {
-		t.Fatal("read-only root used for cleanup:", err)
-	}
+	require.ErrorIs(t, recoverLinuxStaging(readOnly, namespace, record), ErrDenied, "read-only root used for cleanup")
 	other, err := openLinuxDirectory(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer other.Close()
 	substituted := root
 	substituted.file = other
-	if err := recoverLinuxStaging(substituted, namespace, record); !errors.Is(err, ErrDenied) {
-		t.Fatal("substituted root used:", err)
-	}
+	require.ErrorIs(t, recoverLinuxStaging(substituted, namespace, record), ErrDenied, "substituted root used")
 	assertJournalledTarget(t, filepath.Join(directory, "parent"), "original")
 	entries, err := os.ReadDir(filepath.Join(directory, "parent"))
-	if err != nil || len(entries) != 2 {
-		t.Fatal("rejected metadata removed a remnant:", entries, err)
-	}
+	require.NoError(t, err, "rejected metadata removed a remnant")
+	require.Len(t, entries, 2)
 }
 
 func TestRecoveryCleanupRejectsChangedParent(t *testing.T) {
+	t.Parallel()
 	for _, symlink := range []bool{false, true} {
 		root, namespace, record, directory := recoveryCleanupFixture(t)
 		parent := filepath.Join(directory, "parent")
 		moved := filepath.Join(directory, "moved")
-		if err := os.Rename(parent, moved); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.Rename(parent, moved))
 		if symlink {
-			if err := os.Symlink("moved", parent); err != nil {
-				t.Fatal(err)
-			}
-		} else if err := os.Mkdir(parent, 0700); err != nil {
-			t.Fatal(err)
+			require.NoError(t, os.Symlink("moved", parent))
+		} else {
+			require.NoError(t, os.Mkdir(parent, 0700))
 		}
-		if err := recoverLinuxStaging(root, namespace, record); err == nil {
-			t.Fatal("replacement parent accepted")
-		}
+		require.Error(t, recoverLinuxStaging(root, namespace, record), "replacement parent accepted")
 		entries, err := os.ReadDir(moved)
-		if err != nil || len(entries) != 2 {
-			t.Fatal("original parent altered:", entries, err)
-		}
+		require.NoError(t, err, "original parent altered")
+		require.Len(t, entries, 2)
 		assertJournalledTarget(t, moved, "original")
 	}
 }
@@ -192,12 +163,8 @@ func TestRecoveryCleanupRejectsChangedParent(t *testing.T) {
 func recoveryCleanupFixture(t *testing.T) (linuxRecoveryRoot, string, RecoveryRecord, string) {
 	t.Helper()
 	directory := t.TempDir()
-	if err := os.Mkdir(filepath.Join(directory, "parent"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(directory, "parent", "file"), []byte("original"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(filepath.Join(directory, "parent"), 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(directory, "parent", "file"), []byte("original"), 0600))
 	backend := openTestFilesystem(t, directory, Write, FilesystemLimits{})
 	root, record := stageRecoveryRemnant(t, backend, "data", "parent/file")
 	return root, backend.namespace, record, directory
@@ -210,9 +177,7 @@ func stageRecoveryRemnant(t *testing.T, backend *LinuxFilesystem, rootName, targ
 	if prepared != nil {
 		t.Cleanup(func() { _ = prepared.Close() })
 	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	record := RecoveryRecord{
 		Profile: recoveryRecordProfile, Namespace: backend.namespace, Root: rootName, Path: target, Operation: 1,
 		RootDevice: root.identity.Device, RootInode: root.identity.Inode, RootMountID: root.identity.MountID,
@@ -220,18 +185,10 @@ func stageRecoveryRemnant(t *testing.T, backend *LinuxFilesystem, rootName, targ
 		Device: prepared.identity.Device, Inode: prepared.identity.Inode, Size: prepared.identity.Size,
 	}
 	name, err := StagingName(backend.namespace, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := unix.Linkat(int(backend.proc.Fd()), strconv.FormatUint(uint64(prepared.temporary.Fd()), 10),
-		int(prepared.parent.Fd()), name, unix.AT_SYMLINK_FOLLOW); err != nil {
-		t.Fatal(err)
-	}
-	if err := prepared.parent.Sync(); err != nil {
-		t.Fatal(err)
-	}
-	if err := prepared.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, unix.Linkat(int(backend.proc.Fd()), strconv.FormatUint(uint64(prepared.temporary.Fd()), 10),
+		int(prepared.parent.Fd()), name, unix.AT_SYMLINK_FOLLOW))
+	require.NoError(t, prepared.parent.Sync())
+	require.NoError(t, prepared.Close())
 	return root, record
 }

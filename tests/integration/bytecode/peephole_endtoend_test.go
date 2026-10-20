@@ -25,6 +25,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 )
@@ -32,7 +33,7 @@ import (
 func TestPeepholeFiresOnCompiledOutput(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	tests := []struct {
 		name        string
 		code        string
 		wantFusedOp isa.Opcode
@@ -62,18 +63,18 @@ func TestPeepholeFiresOnCompiledOutput(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			compiledFunction := compileExpression(t, tc.code)
+			compiledFunction := compileExpression(t, tt.code)
 			require.NotNil(t, compiledFunction)
-			found := walkBodyForOpcode(compiledFunction, tc.wantFusedOp, tc.wantSubOp)
+			found := walkBodyForOpcode(compiledFunction, tt.wantFusedOp, tt.wantSubOp)
 			assert.True(t, found,
 				"expected fused %s/%d in compiled bytecode (or any nested function); "+
 					"if missing, the peephole pass is silently disabled - "+
 					"check the corresponding fuse* function in function.go.\n"+
 					"Top-level disassembly:\n%s",
-				tc.wantFusedOp, tc.wantSubOp, compiledFunction.Disassemble())
+				tt.wantFusedOp, tt.wantSubOp, compiledFunction.Disassemble())
 		})
 	}
 }

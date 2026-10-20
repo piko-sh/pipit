@@ -44,13 +44,7 @@ func TestNativeFilesystemBrokerBootstrap(t *testing.T) {
 		exerciseNativeBrokerBootstrap(t)
 		return
 	}
-	version, _, errno := unix.Syscall(unix.SYS_LANDLOCK_CREATE_RULESET, 0, 0, unix.LANDLOCK_CREATE_RULESET_VERSION)
-	if errno != 0 || version < 8 {
-		if os.Getenv("PIPIT_REQUIRE_BROKER_LANDLOCK") == "1" {
-			t.Fatalf("Landlock TSYNC unavailable: %d: %v", version, errno)
-		}
-		t.Skipf("Landlock TSYNC unavailable: %d: %v", version, errno)
-	}
+	requireLandlockTSYNC(t)
 	for _, mode := range []string{"valid", "wrong-root", "unsealed-policy"} {
 		t.Run(mode, func(t *testing.T) { runNativeBrokerBootstrap(t, mode) })
 	}
@@ -147,6 +141,7 @@ func substituteBrokerBootstrap(t *testing.T, mode string, files []*os.File) {
 }
 
 func exerciseNativeBrokerBootstrap(t *testing.T) {
+	t.Helper()
 	high, err := strconv.Atoi(os.Getenv("PIPIT_INHERITED_HIGH_FD"))
 	if err != nil || high < 512 {
 		t.Fatal("missing high descriptor:", err)

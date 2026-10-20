@@ -24,9 +24,12 @@ import (
 	"context"
 	"testing"
 
-	"pipit.sh/pipit/internal/debug"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
+	"pipit.sh/pipit/internal/debug"
+	"pipit.sh/pipit/internal/debug/debugtest"
 )
 
 func TestStackTraceSingleFrame(t *testing.T) {
@@ -42,31 +45,22 @@ func run() int {
 	return x
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	dbg.SetBreakpoint("main.go", 4)
 
-	done := make(chan error, 1)
-	go func() {
-		_, execErr := svc.ExecuteEntrypoint(context.Background(), cfs, "run")
-		done <- execErr
-	}()
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+	})
 
-	snap := waitPause(t, dbg)
-	if len(stackOf(t, dbg, snap)) == 0 {
-		t.Fatal("expected non-empty stack trace")
-	}
-	if stackOf(t, dbg, snap)[0].Line == 0 {
-		t.Error("expected non-zero line in top stack frame")
-	}
+	snap := debugtest.WaitPause(t, dbg)
+	require.NotEmpty(t, debugtest.StackOf(t, dbg, snap), "the stack trace has frames")
+	assert.NotEqual(t, 0, debugtest.StackOf(t, dbg, snap)[0].Line, "the top stack frame has a line")
 
 	dbg.Continue()
-	if execErr := <-done; execErr != nil {
-		t.Fatalf("execute: %v", execErr)
-	}
+	_, execErr := execution.Wait(t)
+	require.NoError(t, execErr)
 }
 
 func TestStackTraceMultipleFrames(t *testing.T) {
@@ -91,26 +85,19 @@ func run() int {
 	return v
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	dbg.SetBreakpoint("main.go", 4)
 
-	done := make(chan error, 1)
-	go func() {
-		_, execErr := svc.ExecuteEntrypoint(context.Background(), cfs, "run")
-		done <- execErr
-	}()
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+	})
 
-	snap := waitPause(t, dbg)
-	if len(stackOf(t, dbg, snap)) < 3 {
-		t.Errorf("expected at least 3 stack frames, got %d", len(stackOf(t, dbg, snap)))
-	}
+	snap := debugtest.WaitPause(t, dbg)
+	assert.GreaterOrEqual(t, len(debugtest.StackOf(t, dbg, snap)), 3)
 
 	dbg.Continue()
-	if execErr := <-done; execErr != nil {
-		t.Fatalf("execute: %v", execErr)
-	}
+	_, execErr := execution.Wait(t)
+	require.NoError(t, execErr)
 }

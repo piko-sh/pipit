@@ -21,8 +21,10 @@
 package debug_test
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 )
@@ -40,33 +42,23 @@ func vars() {
 	_ = y
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	fn, findErr := cfs.FindFunction("vars")
-	if findErr != nil {
-		t.Fatalf("find function: %v", findErr)
-	}
+	require.NoError(t, findErr)
 
-	if !fn.HasDebugVarTable() {
-		t.Fatal("expected var table, got nil")
-	}
+	require.True(t, fn.HasDebugVarTable(), "a variable table is recorded")
 }
 
 func TestVarTableNilWhenDisabled(t *testing.T) {
 	t.Parallel()
 	svc := app.NewService(app.WithForceGoDispatch())
 
-	fn, err := svc.Compile(context.Background(), "x := 42; _ = x")
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	fn, err := svc.Compile(t.Context(), "x := 42; _ = x")
+	require.NoError(t, err)
 
-	if fn.HasDebugVarTable() {
-		t.Error("expected no var table when debug info disabled")
-	}
+	assert.False(t, fn.HasDebugVarTable(), "without debug info there is no variable table")
 }
 
 func TestVarTableFunctionParams(t *testing.T) {
@@ -79,19 +71,13 @@ func add(a int, b int) int {
 	return a + b
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	fn, findErr := cfs.FindFunction("add")
-	if findErr != nil {
-		t.Fatalf("find function: %v", findErr)
-	}
+	require.NoError(t, findErr)
 
-	if !fn.HasDebugVarTable() {
-		t.Fatal("expected var table, got nil")
-	}
+	require.True(t, fn.HasDebugVarTable(), "a variable table is recorded")
 }
 
 func TestVarTableClosures(t *testing.T) {
@@ -108,19 +94,13 @@ func outer() int {
 	return inc()
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	fn, findErr := cfs.FindFunction("outer")
-	if findErr != nil {
-		t.Fatalf("find function: %v", findErr)
-	}
+	require.NoError(t, findErr)
 
-	if !fn.HasDebugVarTable() {
-		t.Fatal("expected var table on outer function")
-	}
+	require.True(t, fn.HasDebugVarTable(), "the outer function has a variable table")
 
 	subFuncs := fn.SubFunctions()
 	if len(subFuncs) == 0 {
@@ -128,9 +108,7 @@ func outer() int {
 		t.Log("no sub-functions found on 'outer'; closure may reside on root function - skipping sub-function var table check")
 	} else {
 		for i, sub := range subFuncs {
-			if !sub.HasDebugVarTable() {
-				t.Errorf("expected var table on sub-function %d", i)
-			}
+			assert.True(t, sub.HasDebugVarTable(), "sub-function %d has a variable table", i)
 		}
 	}
 }

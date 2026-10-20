@@ -18,14 +18,14 @@
 
 package symtab
 
-import "pipit.sh/pipit/internal/policy"
+import (
+	"reflect"
 
-// ApplyRestrictedSurface filters the registry against the policy.
-//
-// For each package the policy mentions, FullyDenied packages have every symbol removed
-// and Allowed packages keep only symbols listed in the policy. Packages not mentioned in
-// either map are left untouched, which makes the policy additive: hosts opt in to
-// restriction on a per-package basis without having to list every safe stdlib package.
+	"pipit.sh/pipit/internal/policy"
+)
+
+// ApplyRestrictedSurface filters packages named in the policy, preserving package-name
+// metadata and leaving unmentioned packages untouched.
 //
 // Takes registry (*SymbolRegistry) which is the registry to filter in place.
 // Takes surface (policy.RestrictedPackageSet) which describes the allowed and denied
@@ -43,7 +43,7 @@ func ApplyRestrictedSurface(registry *SymbolRegistry, surface policy.RestrictedP
 	defer registry.mu.Unlock()
 	for packagePath := range surface.FullyDenied {
 		if pkg, ok := registry.symbols[packagePath]; ok {
-			removed += len(pkg)
+			removed += symbolCount(pkg)
 			delete(registry.symbols, packagePath)
 		}
 	}
@@ -53,11 +53,25 @@ func ApplyRestrictedSurface(registry *SymbolRegistry, surface policy.RestrictedP
 			continue
 		}
 		for name := range pkg {
-			if _, keep := allowed[name]; !keep {
+			if _, keep := allowed[name]; !keep && name != PackageNameSymbol {
 				delete(pkg, name)
 				removed++
 			}
 		}
 	}
 	return removed
+}
+
+// symbolCount returns how many symbols a package's table declares, leaving out the
+// PackageNameSymbol entry, which names the package rather than declaring a symbol.
+//
+// Takes symbols (map[string]reflect.Value) which is the package's table.
+//
+// Returns int which is the number of symbols.
+func symbolCount(symbols map[string]reflect.Value) int {
+	count := len(symbols)
+	if _, named := symbols[PackageNameSymbol]; named {
+		count--
+	}
+	return count
 }

@@ -21,7 +21,6 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -40,7 +39,7 @@ func TestVerifierRejectsBackwardTypeSwitchRow(t *testing.T) {
 	builder.returnInt()
 	compiledFunction := builder.build()
 	report := &verify.VerificationReport{}
-	require.NoError(t, verify.RunFunctionVerifier(context.Background(), compiledFunction, report))
+	require.NoError(t, verify.RunFunctionVerifier(t.Context(), compiledFunction, report))
 	require.True(t, report.HasErrors())
 	require.Contains(t, report.Format(), "type switch table row jumps backwards")
 }

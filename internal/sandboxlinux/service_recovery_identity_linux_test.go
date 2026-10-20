@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"pipit.sh/pipit/internal/sandboxbroker"
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestServiceRecoveryIdentityRejectsUnownedGroup(t *testing.T) {
@@ -42,10 +43,7 @@ func TestServiceRecoveryIdentityRejectsUnownedGroup(t *testing.T) {
 }
 
 func TestNativeServiceRecoveryIdentity(t *testing.T) {
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	group, err := newServiceGroup(parent, Limits{}, testTenant)
 	if err != nil {
 		t.Fatal(err)

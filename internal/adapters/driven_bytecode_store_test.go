@@ -21,17 +21,20 @@
 package adapters
 
 import (
-	"context"
 	"errors"
+	"reflect"
+	"strings"
 	"testing"
-
-	"pipit.sh/pipit/internal/codec"
-	"pipit.sh/pipit/internal/engine/program"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/codec"
+	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/rootfs"
+	"pipit.sh/pipit/internal/schema"
 	"pipit.sh/pipit/internal/symtab"
+	"pipit.sh/pipit/internal/symtab/descriptor"
 )
 
 func TestNewBytecodeStore_ReturnsStore(t *testing.T) {
@@ -53,53 +56,96 @@ func TestNewBytecodeStore_NilStore(t *testing.T) {
 	assert.Nil(t, store.store)
 }
 
-func TestBytecodeStore_SaveCompiledFileSet_NilStore_ReturnsError(t *testing.T) {
+func TestBytecodeStore_SaveCompiledFileSet_Failures(t *testing.T) {
 	t.Parallel()
 
-	store := NewBytecodeStore(nil)
-
-	err := store.SaveCompiledFileSet(context.Background(), "test-key", codec.NewCompiledFileSetFromData(nil, nil, nil, nil))
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "bytecode store requires a store and key")
+	tests := []struct {
+		name    string
+		backing func() rootfs.Store
+		key     string
+		wantErr string
+	}{
+		{name: "no backing store", backing: nil, key: "test-key", wantErr: "bytecode store requires a store and key"},
+		{name: "empty key", backing: memoryStore(nil), key: "", wantErr: "bytecode store requires a store and key"},
+		{
+			name: "directory creation fails",
+			backing: memoryStore(func(store *rootfs.MemoryStore) {
+				store.MkdirAllErr = errors.New("permission denied")
+			}),
+			key:     "test-key",
+			wantErr: "failed to create bytecode directory",
+		},
+		{
+			name: "atomic write fails",
+			backing: memoryStore(func(store *rootfs.MemoryStore) {
+				store.WriteFileAtomicErr = errors.New("disk full")
+			}),
+			key:     "test-key",
+			wantErr: "failed to write bytecode file atomically",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			store := NewBytecodeStore(backingStore(tt.backing))
+			err := store.SaveCompiledFileSet(t.Context(), tt.key, codec.NewCompiledFileSetFromData(nil, nil, nil, nil))
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
 }
 
-func TestBytecodeStore_SaveCompiledFileSet_EmptyKey_ReturnsError(t *testing.T) {
+func TestBytecodeStore_SaveCompiledFileSet_RefusesInconsistentGeneralConstants(t *testing.T) {
 	t.Parallel()
 
-	backing := rootfs.NewMemoryStore()
-	store := NewBytecodeStore(backing)
+	tests := []struct {
+		name     string
+		function *program.CompiledFunction
+	}{
+		{
+			name: "more descriptors than constants",
+			function: &program.CompiledFunction{
+				GeneralConstantDescriptors: []descriptor.GeneralConstantDescriptor{{Kind: descriptor.GeneralConstantCompositeZero}},
+			},
+		},
+		{
+			name: "a composite zero without a value",
+			function: &program.CompiledFunction{
+				GeneralConstants:           []reflect.Value{{}},
+				GeneralConstantDescriptors: []descriptor.GeneralConstantDescriptor{{Kind: descriptor.GeneralConstantCompositeZero}},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			backing := rootfs.NewMemoryStore()
+			store := NewBytecodeStore(backing)
 
-	err := store.SaveCompiledFileSet(context.Background(), "", codec.NewCompiledFileSetFromData(nil, nil, nil, nil))
+			err := store.SaveCompiledFileSet(t.Context(), "test-key", codec.NewCompiledFileSetFromData(tt.function, nil, nil, nil))
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "bytecode store requires a store and key")
+			require.ErrorContains(t, err, "general constants disagree with their descriptors",
+				"a pool that cannot load again must not be written")
+			_, readErr := backing.ReadFile("bytecode-test-key.bin")
+			require.Error(t, readErr, "nothing is written")
+		})
+	}
 }
 
-func TestBytecodeStore_SaveCompiledFileSet_MkdirAllFailure_ReturnsError(t *testing.T) {
-	t.Parallel()
-
-	backing := rootfs.NewMemoryStore()
-	backing.MkdirAllErr = errors.New("permission denied")
-	store := NewBytecodeStore(backing)
-
-	err := store.SaveCompiledFileSet(context.Background(), "test-key", codec.NewCompiledFileSetFromData(nil, nil, nil, nil))
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to create bytecode directory")
+func memoryStore(configure func(*rootfs.MemoryStore)) func() rootfs.Store {
+	return func() rootfs.Store {
+		store := rootfs.NewMemoryStore()
+		if configure != nil {
+			configure(store)
+		}
+		return store
+	}
 }
 
-func TestBytecodeStore_SaveCompiledFileSet_WriteFailure_ReturnsError(t *testing.T) {
-	t.Parallel()
-
-	backing := rootfs.NewMemoryStore()
-	backing.WriteFileAtomicErr = errors.New("disk full")
-	store := NewBytecodeStore(backing)
-
-	err := store.SaveCompiledFileSet(context.Background(), "test-key", codec.NewCompiledFileSetFromData(nil, nil, nil, nil))
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to write bytecode file atomically")
+func backingStore(build func() rootfs.Store) rootfs.Store {
+	if build == nil {
+		return nil
+	}
+	return build()
 }
 
 func TestBytecodeStore_SaveCompiledFileSet_Success(t *testing.T) {
@@ -109,7 +155,7 @@ func TestBytecodeStore_SaveCompiledFileSet_Success(t *testing.T) {
 	store := NewBytecodeStore(backing)
 
 	emptyFileSet := codec.NewCompiledFileSetFromData(nil, nil, nil, nil)
-	err := store.SaveCompiledFileSet(context.Background(), "test-key", emptyFileSet)
+	err := store.SaveCompiledFileSet(t.Context(), "test-key", emptyFileSet)
 
 	require.NoError(t, err)
 
@@ -117,54 +163,38 @@ func TestBytecodeStore_SaveCompiledFileSet_Success(t *testing.T) {
 	require.NotNil(t, file)
 }
 
-func TestBytecodeStore_LoadCompiledFileSet_NilStore_ReturnsError(t *testing.T) {
+func TestBytecodeStore_LoadCompiledFileSet_Failures(t *testing.T) {
 	t.Parallel()
 
-	store := NewBytecodeStore(nil)
-
-	result, err := store.LoadCompiledFileSet(context.Background(), "test-key", nil)
-
-	require.Error(t, err)
-	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "bytecode store requires a store and key")
-}
-
-func TestBytecodeStore_LoadCompiledFileSet_EmptyKey_ReturnsError(t *testing.T) {
-	t.Parallel()
-
-	backing := rootfs.NewMemoryStore()
-	store := NewBytecodeStore(backing)
-
-	result, err := store.LoadCompiledFileSet(context.Background(), "", nil)
-
-	assert.Error(t, err)
-	assert.Nil(t, result)
-}
-
-func TestBytecodeStore_LoadCompiledFileSet_MissingFile_ReturnsError(t *testing.T) {
-	t.Parallel()
-
-	backing := rootfs.NewMemoryStore()
-	store := NewBytecodeStore(backing)
-
-	result, err := store.LoadCompiledFileSet(context.Background(), "nonexistent", nil)
-
-	require.Error(t, err)
-	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "cache miss or read error")
-}
-
-func TestBytecodeStore_LoadCompiledFileSet_CorruptData_ReturnsError(t *testing.T) {
-	t.Parallel()
-
-	backing := rootfs.NewMemoryStore()
-	backing.AddFile("bytecode-corrupt.bin", []byte("not valid flatbuffer data"))
-	store := NewBytecodeStore(backing)
-
-	result, err := store.LoadCompiledFileSet(context.Background(), "corrupt", nil)
-
-	assert.Error(t, err)
-	assert.Nil(t, result)
+	tests := []struct {
+		name    string
+		backing func() rootfs.Store
+		key     string
+		wantErr string
+	}{
+		{name: "no backing store", backing: nil, key: "test-key", wantErr: "bytecode store requires a store and key"},
+		{name: "empty key", backing: memoryStore(nil), key: "", wantErr: ""},
+		{name: "missing file", backing: memoryStore(nil), key: "nonexistent", wantErr: "cache miss or read error"},
+		{
+			name: "corrupt data",
+			backing: memoryStore(func(store *rootfs.MemoryStore) {
+				store.AddFile("bytecode-corrupt.bin", []byte("not valid flatbuffer data"))
+			}),
+			key:     "corrupt",
+			wantErr: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := NewBytecodeStore(backingStore(tt.backing)).LoadCompiledFileSet(t.Context(), tt.key, nil)
+			require.Error(t, err)
+			require.Nil(t, result)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+			}
+		})
+	}
 }
 
 func TestBytecodeStore_SaveThenLoad_RoundTrip(t *testing.T) {
@@ -177,11 +207,11 @@ func TestBytecodeStore_SaveThenLoad_RoundTrip(t *testing.T) {
 	initFunctions := []uint16{0}
 	emptyFileSet := codec.NewCompiledFileSetFromData(nil, nil, entrypoints, initFunctions)
 
-	err := store.SaveCompiledFileSet(context.Background(), "roundtrip", emptyFileSet)
+	err := store.SaveCompiledFileSet(t.Context(), "roundtrip", emptyFileSet)
 	require.NoError(t, err)
 
 	registry := symtab.NewSymbolRegistry(nil)
-	loaded, err := store.LoadCompiledFileSet(context.Background(), "roundtrip", registry)
+	loaded, err := store.LoadCompiledFileSet(t.Context(), "roundtrip", registry)
 
 	require.NoError(t, err)
 	require.NotNil(t, loaded)
@@ -189,26 +219,28 @@ func TestBytecodeStore_SaveThenLoad_RoundTrip(t *testing.T) {
 	assert.Equal(t, initFunctions, loaded.InitFunctions())
 }
 
-func TestBytecodeStore_InvalidateCache_NilStore_ReturnsError(t *testing.T) {
+func TestBytecodeStore_InvalidateCache_Failures(t *testing.T) {
 	t.Parallel()
 
-	store := NewBytecodeStore(nil)
-
-	err := store.invalidateCache(context.Background(), "test-key")
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "bytecode store requires a store and key")
-}
-
-func TestBytecodeStore_InvalidateCache_EmptyKey_ReturnsError(t *testing.T) {
-	t.Parallel()
-
-	backing := rootfs.NewMemoryStore()
-	store := NewBytecodeStore(backing)
-
-	err := store.invalidateCache(context.Background(), "")
-
-	assert.Error(t, err)
+	tests := []struct {
+		name    string
+		backing func() rootfs.Store
+		key     string
+		wantErr string
+	}{
+		{name: "no backing store", backing: nil, key: "test-key", wantErr: "bytecode store requires a store and key"},
+		{name: "empty key", backing: memoryStore(nil), key: "", wantErr: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := NewBytecodeStore(backingStore(tt.backing)).invalidateCache(t.Context(), tt.key)
+			require.Error(t, err)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+			}
+		})
+	}
 }
 
 func TestBytecodeStore_InvalidateCache_NonExistentFile_NoError(t *testing.T) {
@@ -217,7 +249,7 @@ func TestBytecodeStore_InvalidateCache_NonExistentFile_NoError(t *testing.T) {
 	backing := rootfs.NewMemoryStore()
 	store := NewBytecodeStore(backing)
 
-	err := store.invalidateCache(context.Background(), "nonexistent")
+	err := store.invalidateCache(t.Context(), "nonexistent")
 
 	assert.NoError(t, err)
 }
@@ -229,14 +261,15 @@ func TestBytecodeStore_InvalidateCache_ExistingFile_RemovesIt(t *testing.T) {
 	store := NewBytecodeStore(backing)
 
 	emptyFileSet := codec.NewCompiledFileSetFromData(nil, nil, nil, nil)
-	err := store.SaveCompiledFileSet(context.Background(), "to-delete", emptyFileSet)
+	err := store.SaveCompiledFileSet(t.Context(), "to-delete", emptyFileSet)
 	require.NoError(t, err)
 
 	file := backing.GetFile("bytecode-to-delete.bin")
 	require.NotNil(t, file)
 
-	err = store.invalidateCache(context.Background(), "to-delete")
+	err = store.invalidateCache(t.Context(), "to-delete")
 	require.NoError(t, err)
+	require.Nil(t, backing.GetFile("bytecode-to-delete.bin"), "the cache file is removed")
 }
 
 func TestBytecodeStore_ImplementsPort(t *testing.T) {
@@ -245,21 +278,69 @@ func TestBytecodeStore_ImplementsPort(t *testing.T) {
 	var _ program.BytecodeStorePort = (*bytecodeStore)(nil)
 }
 
-func TestPackCompiledFileSetToBytes_EmptyFileSet(t *testing.T) {
+func TestPackCompiledFileSetToBytesPacksWhatALoaderAccepts(t *testing.T) {
 	t.Parallel()
 
-	emptyFileSet := codec.NewCompiledFileSetFromData(nil, nil, nil, nil)
-	data := PackCompiledFileSetToBytes(emptyFileSet)
+	tests := []struct {
+		name    string
+		fileSet *program.CompiledFileSet
+	}{
+		{name: "an empty file set", fileSet: codec.NewCompiledFileSetFromData(nil, nil, nil, nil)},
+		{
+			name:    "a file set with entrypoints",
+			fileSet: codec.NewCompiledFileSetFromData(nil, nil, map[string]uint16{"main": 0, "init": 1}, nil),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	assert.NotEmpty(t, data)
+			data, err := PackCompiledFileSetToBytes(tt.fileSet)
+
+			require.NoError(t, err)
+			assert.NotEmpty(t, data)
+		})
+	}
 }
 
-func TestPackCompiledFileSetToBytes_WithEntrypoints(t *testing.T) {
+func TestPackCompiledFileSetToBytesRefusesWhatALoaderWouldRefuse(t *testing.T) {
 	t.Parallel()
 
-	entrypoints := map[string]uint16{"main": 0, "init": 1}
-	fileSet := codec.NewCompiledFileSetFromData(nil, nil, entrypoints, nil)
-	data := PackCompiledFileSetToBytes(fileSet)
+	tests := []struct {
+		name     string
+		fileSet  *program.CompiledFileSet
+		wantErr  error
+		contains string
+	}{
+		{name: "no file set", fileSet: nil, contains: "requires a compiled file set"},
+		{
+			name: "general constants that disagree with their descriptors",
+			fileSet: codec.NewCompiledFileSetFromData(&program.CompiledFunction{
+				GeneralConstantDescriptors: []descriptor.GeneralConstantDescriptor{{Kind: descriptor.GeneralConstantCompositeZero}},
+			}, nil, nil, nil),
+			contains: "general constants disagree with their descriptors",
+		},
+		{
+			name: "a payload over the loader's limit",
+			fileSet: codec.NewCompiledFileSetFromData(nil, nil,
+				map[string]uint16{strings.Repeat("x", schema.MaximumBytecodePayloadBytes): 0}, nil),
+			wantErr: schema.ErrBytecodeTooLarge,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	assert.NotEmpty(t, data)
+			data, err := PackCompiledFileSetToBytes(tt.fileSet)
+
+			require.Error(t, err)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			}
+			if tt.contains != "" {
+				require.ErrorContains(t, err, tt.contains)
+			}
+			require.Nil(t, data, "no bytes are returned with the error")
+		})
+	}
 }

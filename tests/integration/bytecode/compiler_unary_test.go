@@ -21,10 +21,10 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
@@ -45,7 +45,7 @@ func EntrypointRun() int { return 0 }
 func TestAddressOfUpvalueDoesNotReadTheValue(t *testing.T) {
 	t.Parallel()
 
-	compiled, err := app.NewService().CompileFileSet(context.Background(),
+	compiled, err := app.NewService().CompileFileSet(t.Context(),
 		map[string]string{"main.go": addressOfUpvalueSource})
 	require.NoError(t, err)
 

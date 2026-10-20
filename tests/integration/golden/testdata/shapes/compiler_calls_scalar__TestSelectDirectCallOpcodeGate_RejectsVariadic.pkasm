@@ -28,7 +28,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun
-;   registers: int=6 general=6
+;   registers: int=2 general=2
 ;   dispatch:  asm=12 shim=6 exit=0 go=5
 ;   params:    (none)
 ;   returns:   (int)
@@ -44,20 +44,20 @@
 0004 G 1:MOVE_INT_TO_GENERAL       40   1   0
 0005 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
 0006 S 0:INDEX_SET                  0   1   1
-0007 A 1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
-0008 G 1:MOVE_INT_TO_GENERAL       40   2   1
-0009 A 1:LOAD_INT_CONST_SMALL      75   2   1    ; ints[2] = 1
-0010 S 0:INDEX_SET                  0   2   2
-0011 A 1:LOAD_INT_CONST_SMALL      75   2   3    ; ints[2] = 3
-0012 G 1:MOVE_INT_TO_GENERAL       40   3   2
-0013 A 1:LOAD_INT_CONST_SMALL      75   3   2    ; ints[3] = 2
-0014 S 0:INDEX_SET                  0   3   3
-0015 A 1:LOAD_INT_CONST_SMALL      75   3   4    ; ints[3] = 4
-0016 G 1:MOVE_INT_TO_GENERAL       40   4   3
-0017 A 1:LOAD_INT_CONST_SMALL      75   4   3    ; ints[4] = 3
-0018 S 0:INDEX_SET                  0   4   4
-0019 A 1:LOAD_INT_CONST_SMALL      75   4   5    ; ints[4] = 5
-0020 G 1:MOVE_INT_TO_GENERAL       40   5   4
-0021 A 1:LOAD_INT_CONST_SMALL      75   5   4    ; ints[5] = 4
-0022 S 0:INDEX_SET                  0   5   5
+0007 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
+0008 G 1:MOVE_INT_TO_GENERAL       40   1   0
+0009 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0010 S 0:INDEX_SET                  0   1   1
+0011 A 1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
+0012 G 1:MOVE_INT_TO_GENERAL       40   1   0
+0013 A 1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0014 S 0:INDEX_SET                  0   1   1
+0015 A 1:LOAD_INT_CONST_SMALL      75   0   4    ; ints[0] = 4
+0016 G 1:MOVE_INT_TO_GENERAL       40   1   0
+0017 A 1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
+0018 S 0:INDEX_SET                  0   1   1
+0019 A 1:LOAD_INT_CONST_SMALL      75   0   5    ; ints[0] = 5
+0020 G 1:MOVE_INT_TO_GENERAL       40   1   0
+0021 A 1:LOAD_INT_CONST_SMALL      75   1   4    ; ints[1] = 4
+0022 S 0:INDEX_SET                  0   1   1
 0023 A 1:TAIL_CALL                129   0   0    ; tail call (site 0)

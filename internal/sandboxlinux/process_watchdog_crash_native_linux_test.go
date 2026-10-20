@@ -30,7 +30,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -42,14 +41,12 @@ import (
 	"golang.org/x/sys/unix"
 
 	"pipit.sh/pipit/internal/sandboxbroker"
+	"pipit.sh/pipit/internal/sandboxtest"
 	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 func TestNativeAttachedWatchdogHostDeath(t *testing.T) {
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	for _, role := range []string{"source", "filesystem-broker"} {
 		t.Run(role, func(t *testing.T) { exerciseAttachedWatchdogHostDeath(t, parent, role) })
 	}
@@ -69,8 +66,7 @@ func exerciseAttachedWatchdogHostDeath(t *testing.T, parent, role string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestNativeAttachedWatchdogCrashChild$")
-	command.Env = append(os.Environ(), "PIPIT_WATCHDOG_CRASH_ROLE="+role,
+	command := sandboxtest.Command(ctx, "TestNativeAttachedWatchdogCrashChild", "PIPIT_WATCHDOG_CRASH_ROLE="+role,
 		"PIPIT_WATCHDOG_CRASH_PARENT="+root, "TMPDIR="+temporary)
 	var diagnostics bytes.Buffer
 	command.Stderr = &diagnostics

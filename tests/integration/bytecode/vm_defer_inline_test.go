@@ -21,13 +21,12 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine"
-
-	"github.com/stretchr/testify/require"
 )
 
 func runDeferScript(t *testing.T, source string) (any, *engine.VM) {
@@ -97,7 +96,7 @@ f()`)
 
 func TestPanicInInlineDeferUnwindsRemainingDefersInOrder(t *testing.T) {
 	t.Parallel()
-	result, err := app.NewService().Eval(context.Background(), `
+	result, err := app.NewService().Eval(t.Context(), `
 var log []string
 func f() {
 	defer func() { log = append(log, "a") }()
@@ -118,7 +117,7 @@ outer() + ":" + log[0] + log[1]`)
 
 func TestPanicInTrivialInlineDeferPropagates(t *testing.T) {
 	t.Parallel()
-	_, err := app.NewService().Eval(context.Background(), `
+	_, err := app.NewService().Eval(t.Context(), `
 func f() int {
 	defer func() { panic("deferred boom") }()
 	return 1
@@ -129,7 +128,7 @@ f()`)
 
 func TestInlineDeferNamedResultsObserveDeferredWrites(t *testing.T) {
 	t.Parallel()
-	result, err := app.NewService().Eval(context.Background(), `
+	result, err := app.NewService().Eval(t.Context(), `
 func f() (x int) {
 	defer func() { x *= 2 }()
 	x = 21

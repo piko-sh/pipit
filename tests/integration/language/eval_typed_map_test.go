@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestTypedMapFastPathCorrectness(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "map_string_int_set_then_get",
@@ -43,7 +43,7 @@ func TestTypedMapFastPathCorrectness(t *testing.T) {
 	return m["a"] + m["b"] + m["c"]
 }
 run()`,
-			expect: 6,
+			want: 6,
 		},
 		{
 			name: "map_string_int_make_and_populate",
@@ -55,7 +55,7 @@ run()`,
 	return m["one"]*100 + m["two"]*10 + m["three"]
 }
 run()`,
-			expect: 123,
+			want: 123,
 		},
 		{
 			name: "map_string_int_missing_key_returns_zero",
@@ -64,7 +64,7 @@ run()`,
 	return m["absent"]
 }
 run()`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "map_string_string_set_then_get",
@@ -74,7 +74,7 @@ run()`,
 	return m["hello"] + " " + m["foo"]
 }
 run()`,
-			expect: "world bar",
+			want: "world bar",
 		},
 		{
 			name: "map_int_string_set_then_get",
@@ -84,7 +84,7 @@ run()`,
 	return m[1] + "-" + m[2] + "-" + m[3]
 }
 run()`,
-			expect: "one-two-three",
+			want: "one-two-three",
 		},
 		{
 			name: "map_int_int_set_then_get",
@@ -96,7 +96,7 @@ run()`,
 	return m[10] + m[20] + m[30]
 }
 run()`,
-			expect: 600,
+			want: 600,
 		},
 		{
 			name: "map_string_int_loop_lookup",
@@ -110,7 +110,7 @@ run()`,
 	return s
 }
 run()`,
-			expect: int(20 * (1 + 2 + 3 + 4 + 5)),
+			want: int(20 * (1 + 2 + 3 + 4 + 5)),
 		},
 		{
 			name: "map_string_int_overwrite",
@@ -122,7 +122,7 @@ run()`,
 	return m["k"]
 }
 run()`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "named_map_string_int",
@@ -132,7 +132,7 @@ func run() int {
 	return c["version"] + c["build"]
 }
 run()`,
-			expect: 107,
+			want: 107,
 		},
 		{
 			name: "map_string_int_compound_assign",
@@ -144,7 +144,7 @@ run()`,
 	return m["counter"]
 }
 run()`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "map_int_string_lookup_in_loop",
@@ -157,7 +157,7 @@ run()`,
 	return result
 }
 run()`,
-			expect: "zeroonetwo",
+			want: "zeroonetwo",
 		},
 		{
 			name: "map_string_string_iteration_via_keys",
@@ -171,7 +171,7 @@ run()`,
 	return result
 }
 run()`,
-			expect: "XYZ",
+			want: "XYZ",
 		},
 		{
 			name: "map_string_int_comma_ok_present",
@@ -183,7 +183,7 @@ run()`,
 	return -1
 }
 run()`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "map_string_int_comma_ok_absent",
@@ -196,7 +196,7 @@ run()`,
 	}
 }
 run()`,
-			expect: -1,
+			want: -1,
 		},
 		{
 			name: "map_string_string_comma_ok_present",
@@ -208,7 +208,7 @@ run()`,
 	return "missing"
 }
 run()`,
-			expect: "world!",
+			want: "world!",
 		},
 		{
 			name: "map_string_string_comma_ok_absent",
@@ -221,7 +221,7 @@ run()`,
 	return "fallback"
 }
 run()`,
-			expect: "fallback",
+			want: "fallback",
 		},
 		{
 			name: "map_int_int_comma_ok",
@@ -235,7 +235,7 @@ run()`,
 	return v1 + v2
 }
 run()`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "map_int_string_comma_ok",
@@ -247,7 +247,7 @@ run()`,
 	return "miss"
 }
 run()`,
-			expect: "found-two",
+			want: "found-two",
 		},
 		{
 			name: "comma_ok_loop_count_present",
@@ -263,7 +263,7 @@ run()`,
 	return count
 }
 run()`,
-			expect: 3,
+			want: 3,
 		},
 	}
 
@@ -271,9 +271,9 @@ run()`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

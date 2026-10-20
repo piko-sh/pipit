@@ -1195,30 +1195,39 @@ func emitTypedSliceByteSliceExtractARM64(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationMove32BitsUnsigned, "(R22)(R20<<2), R0")
 }
 
-// emitTypedSliceByteSliceLoadAndBoundsARM64 decodes the ext1 fields, loads the source
-// slice header, and runs the three-step bounds check. Branches to labelBoundsFail on any
-// failure.
+// emitTypedSliceByteSliceLoadAndBoundsARM64 loads a sub-slice's source header and
+// checks its bounds. Three-index slices and failed checks branch to labelBoundsFail.
+//
+// Expects R3 = dstReg, R4 = srcReg and R0 = ext1 (emitTypedSliceByteSliceExtractARM64).
+// Leaves R5 = the source header, R6 = low, R7 = high and R8 = the source capacity.
 //
 // Takes e (*asmgen.Emitter) which receives the load and bounds sequence.
 // Takes contextOffset (string) which is the offset expression used to address the
 // dispatch context.
 func emitTypedSliceByteSliceLoadAndBoundsARM64(e *asmgen.Emitter, contextOffset string) {
-	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R0, R6")
-	inst5(e, asmarm64.OperationCompare, "$3, R6")
-	inst5(e, asmarm64.OperationBranchIfNotEqual, labelBoundsFail)
-
-	inst5(e, asmarm64.OperationLogicalShiftRight, "$16, R0, R6")
-	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R6, R6")
-	inst5(e, asmarm64.OperationLogicalShiftRight, "$24, R0, R7")
-	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R7, R7")
-
-	inst5(e, asmarm64.OperationMove64Bits, "(R23)(R6<<3), R6")
-	inst5(e, asmarm64.OperationMove64Bits, "(R23)(R7<<3), R7")
-
 	inst5(e, asmarm64.OperationMove64Bits, contextOffset+"(R19), R5")
 	inst5(e, asmarm64.OperationMove64Bits, "$24, R9")
 	inst5(e, asmarm64.OperationMultiply, "R9, R4, R10")
 	inst5(e, asmarm64.OperationAdd, "R10, R5, R5")
+
+	inst5(e, asmarm64.OperationLogicalShiftRight, "$8, R0, R4")
+	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R4, R4")
+	inst5(e, asmarm64.OperationTestBitAndBranchIfNotZero, "$"+sliceMaxFlagBit+", R4, "+labelBoundsFail)
+
+	inst5(e, asmarm64.OperationMove64Bits, "ZR, R6")
+	inst5(e, asmarm64.OperationTestBitAndBranchIfZero, "$"+sliceLowFlagBit+", R4, "+labelSubSliceLowDone)
+	inst5(e, asmarm64.OperationLogicalShiftRight, "$16, R0, R6")
+	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R6, R6")
+	inst5(e, asmarm64.OperationMove64Bits, "(R23)(R6<<3), R6")
+	e.Label(labelSubSliceLowDone)
+
+	inst5(e, asmarm64.OperationMove64Bits, "8(R5), R7")
+	inst5(e, asmarm64.OperationTestBitAndBranchIfZero, "$"+sliceHighFlagBit+", R4, "+labelSubSliceHighDone)
+	inst5(e, asmarm64.OperationLogicalShiftRight, "$24, R0, R7")
+	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R7, R7")
+	inst5(e, asmarm64.OperationMove64Bits, "(R23)(R7<<3), R7")
+	e.Label(labelSubSliceHighDone)
+
 	inst5(e, asmarm64.OperationMove64Bits, "16(R5), R8")
 
 	inst5(e, asmarm64.OperationCompare, "$0, R6")
@@ -1229,32 +1238,21 @@ func emitTypedSliceByteSliceLoadAndBoundsARM64(e *asmgen.Emitter, contextOffset 
 	inst5(e, asmarm64.OperationBranchIfGreaterSigned, labelBoundsFail)
 }
 
-// emitTypedSliceByteSliceWriteHeaderARM64 computes the destination slot pointer and
-// writes the adjusted Data/Len/Cap into the new 24-byte header. Assumes the bounds +
-// header values are already in R4 (Data), R6 (low), R7 (high), R8 (Cap), R9 (stride 24),
-// and the instruction's dstReg in R3.
+// emitTypedSliceByteSliceWriteHeaderARM64 writes the sub-slice header for the byte bank,
+// whose stride is one byte (emitTypedSliceSliceSliceWriteHeaderARM64).
 //
 // Takes e (*asmgen.Emitter) which receives the header-write sequence.
 // Takes contextOffset (string) which is the offset expression used to address the
 // dispatch context.
 func emitTypedSliceByteSliceWriteHeaderARM64(e *asmgen.Emitter, contextOffset string) {
-	inst5(e, asmarm64.OperationMove64Bits, "0(R5), R4")
-	inst5(e, asmarm64.OperationAdd, "R6, R4, R4")
-	inst5(e, asmarm64.OperationSubtract, "R6, R7, R7")
-	inst5(e, asmarm64.OperationSubtract, "R6, R8, R8")
-
-	inst5(e, asmarm64.OperationMove64Bits, contextOffset+"(R19), R5")
-	inst5(e, asmarm64.OperationMultiply, "R9, R3, R10")
-	inst5(e, asmarm64.OperationAdd, "R10, R5, R5")
-
-	inst5(e, asmarm64.OperationMove64Bits, "R4, 0(R5)")
-	inst5(e, asmarm64.OperationMove64Bits, "R7, 8(R5)")
-	inst5(e, asmarm64.OperationMove64Bits, "R8, 16(R5)")
+	emitTypedSliceSliceSliceWriteHeaderARM64(e, contextOffset, 0)
 }
 
-// emitTypedSliceSliceSliceWriteHeaderARM64 mirrors
-// emitTypedSliceByteSliceWriteHeaderARM64 but shifts the low bound by elementSizeShift
-// before adding to the source Data pointer for non- byte typed-slice banks.
+// emitTypedSliceSliceSliceWriteHeaderARM64 writes the header for source[low:high],
+// keeping Data within the backing array when the new capacity is zero.
+//
+// Expects R3 = dstReg, R5 = the source header, R6 = low, R7 = high and R8 = the source
+// capacity (emitTypedSliceByteSliceLoadAndBoundsARM64).
 //
 // Takes e (*asmgen.Emitter) which receives the header-write sequence.
 // Takes contextOffset (string) which is the offset expression used to address the
@@ -1262,14 +1260,16 @@ func emitTypedSliceByteSliceWriteHeaderARM64(e *asmgen.Emitter, contextOffset st
 // Takes elementSizeShift (uint8) which is the log2 of the element stride.
 func emitTypedSliceSliceSliceWriteHeaderARM64(e *asmgen.Emitter, contextOffset string, elementSizeShift uint8) {
 	inst5(e, asmarm64.OperationMove64Bits, "0(R5), R4")
-	if elementSizeShift != 0 {
-		inst5(e, asmarm64.OperationLogicalShiftLeft, "$"+shiftLiteralARM64(elementSizeShift)+", R6, R9")
-		inst5(e, asmarm64.OperationAdd, "R9, R4, R4")
-	} else {
-		inst5(e, asmarm64.OperationAdd, "R6, R4, R4")
-	}
 	inst5(e, asmarm64.OperationSubtract, "R6, R7, R7")
 	inst5(e, asmarm64.OperationSubtract, "R6, R8, R8")
+	if elementSizeShift != 0 {
+		inst5(e, asmarm64.OperationLogicalShiftLeft, "$"+shiftLiteralARM64(elementSizeShift)+", R6, R9")
+		inst5(e, asmarm64.OperationAdd, "R9, R4, R9")
+	} else {
+		inst5(e, asmarm64.OperationAdd, "R6, R4, R9")
+	}
+	inst5(e, asmarm64.OperationCompare, "$0, R8")
+	inst5(e, asmarm64.OperationConditionalSelect, conditionNE+", R9, R4, R4")
 
 	inst5(e, asmarm64.OperationMove64Bits, "$24, R9")
 	inst5(e, asmarm64.OperationMove64Bits, contextOffset+"(R19), R5")

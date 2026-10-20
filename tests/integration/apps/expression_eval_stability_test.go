@@ -21,16 +21,14 @@
 package apps_test
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-	"pipit.sh/pipit/internal/symtab"
-
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/app"
+	"pipit.sh/pipit/internal/symtab"
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
@@ -46,19 +44,19 @@ func TestExpressionEvalBenchmarkStableAcrossExecutions(t *testing.T) {
 	wrapper := "package main\nfunc EntrypointRun() string { return Run() }\n"
 	service := app.NewService()
 	service.UseSymbols(symtab.NewSymbolRegistry(stdlib.Exports()))
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": string(source), "entry.go": wrapper})
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": string(source), "entry.go": wrapper})
 	require.NoError(t, err)
 	for cycle := range expressionEvalBenchmarkCycles {
-		result, err := service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
+		result, err := service.ExecuteEntrypoint(t.Context(), compiled, "EntrypointRun")
 		require.NoError(t, err)
 		require.Equalf(t, expressionEvalBenchmarkExpected, result, "cycle %d on one Service diverged from the native result", cycle)
 	}
 	for cycle := range expressionEvalBenchmarkCycles {
 		fresh := app.NewService()
 		fresh.UseSymbols(symtab.NewSymbolRegistry(stdlib.Exports()))
-		freshCompiled, err := fresh.CompileFileSet(context.Background(), map[string]string{"main.go": string(source), "entry.go": wrapper})
+		freshCompiled, err := fresh.CompileFileSet(t.Context(), map[string]string{"main.go": string(source), "entry.go": wrapper})
 		require.NoError(t, err)
-		result, err := fresh.ExecuteEntrypoint(context.Background(), freshCompiled, "EntrypointRun")
+		result, err := fresh.ExecuteEntrypoint(t.Context(), freshCompiled, "EntrypointRun")
 		require.NoError(t, err)
 		require.Equalf(t, expressionEvalBenchmarkExpected, result, "cycle %d on a fresh Service diverged from the native result", cycle)
 	}

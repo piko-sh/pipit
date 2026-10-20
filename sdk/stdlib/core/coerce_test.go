@@ -29,8 +29,8 @@ func TestCoerceDirectMatch(t *testing.T) {
 
 	require.Equal(t, 42, coerce[int](42))
 	require.Equal(t, "hello", coerce[string]("hello"))
-	require.Equal(t, true, coerce[bool](true))
-	require.Equal(t, 3.14, coerce[float64](3.14))
+	require.True(t, coerce[bool](true))
+	require.InDelta(t, 3.14, coerce[float64](3.14), 0)
 }
 
 func TestCoerceInt64ToInt(t *testing.T) {
@@ -48,11 +48,11 @@ func TestCoerceUint64ToByte(t *testing.T) {
 func TestCoerceIntToFloat64(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, float64(3), coerce[float64](int(3)))
+	require.InDelta(t, 3, coerce[float64](int(3)), 0)
 }
 
 func TestCoerceInt64ToFloat64(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, float64(7), coerce[float64](int64(7)))
+	require.InDelta(t, 7, coerce[float64](int64(7)), 0)
 }

@@ -29,18 +29,19 @@ const (
 	appendArgCount = 2
 )
 
-// MatchShape reports whether `lhs = rhs` has the `x = append(y, v)` shape: an identifier
-// on the left and a two-argument call of the append builtin on the right.
+// MatchShape recognises an identifier assigned a two-argument call to the append
+// builtin. A function that shadows append does not match.
 //
+// Takes info (*types.Info) which resolves the callee; nil matches nothing.
 // Takes leftHandSide (ast.Expr) which is the assignment target.
 // Takes rightHandSide (ast.Expr) which is the assigned expression.
 //
 // Returns *ast.Ident which is the target.
 // Returns *ast.CallExpr which is the append call.
 // Returns bool which is false when the shape does not match.
-func MatchShape(leftHandSide, rightHandSide ast.Expr) (*ast.Ident, *ast.CallExpr, bool) {
+func MatchShape(info *types.Info, leftHandSide, rightHandSide ast.Expr) (*ast.Ident, *ast.CallExpr, bool) {
 	lhsIdent, ok := leftHandSide.(*ast.Ident)
-	if !ok {
+	if !ok || info == nil {
 		return nil, nil, false
 	}
 	callRHS, ok := rightHandSide.(*ast.CallExpr)
@@ -50,8 +51,11 @@ func MatchShape(leftHandSide, rightHandSide ast.Expr) (*ast.Ident, *ast.CallExpr
 	if len(callRHS.Args) != appendArgCount {
 		return nil, nil, false
 	}
-	funIdent, ok := callRHS.Fun.(*ast.Ident)
+	funIdent, ok := ast.Unparen(callRHS.Fun).(*ast.Ident)
 	if !ok || funIdent.Name != "append" {
+		return nil, nil, false
+	}
+	if _, builtin := info.Uses[funIdent].(*types.Builtin); !builtin {
 		return nil, nil, false
 	}
 	return lhsIdent, callRHS, true

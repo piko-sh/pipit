@@ -98,5 +98,5 @@ func TestCheckEscapeHatchSkipsOnlyPrefixAllowlist(t *testing.T) {
 func TestInterpretedGoVersionTracksSupportedRuntime(t *testing.T) {
 	require.Len(t, goversion.SupportedPrefixes, 1,
 		"InterpretedGoVersion names a single version, so the allowlist must too")
-	require.Equal(t, goversion.SupportedPrefixes[0], goversion.InterpretedGoVersion)
+	require.Equal(t, goversion.InterpretedGoVersion, goversion.SupportedPrefixes[0])
 }

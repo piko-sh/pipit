@@ -1,0 +1,82 @@
+// Copyright 2026 PolitePixels Limited
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This project stands against fascism, authoritarianism, and all forms of
+// oppression. We built this to empower people, not to enable those who would
+// strip others of their rights and dignity.
+
+package inline
+
+import (
+	"reflect"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/engine/program"
+)
+
+func TestMergeTypeTableIndexKeepsInterfaceMethods(t *testing.T) {
+	t.Parallel()
+
+	anyType := reflect.TypeFor[any]()
+	tests := []struct {
+		name          string
+		callerMethods [][]string
+		calleeMethods [][]string
+		wantMethods   []string
+	}{
+		{
+			name:          "an interface the program declares keeps its methods",
+			callerMethods: nil,
+			calleeMethods: [][]string{{"area"}},
+			wantMethods:   []string{"area"},
+		},
+		{
+			name:          "a caller entry for any without methods is not reused",
+			callerMethods: [][]string{nil},
+			calleeMethods: [][]string{{"area"}},
+			wantMethods:   []string{"area"},
+		},
+		{
+			name:          "a type without methods stays without",
+			callerMethods: nil,
+			calleeMethods: [][]string{nil},
+			wantMethods:   nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			caller := &program.CompiledFunction{}
+			for _, methods := range tt.callerMethods {
+				_, err := program.AddTypeRefWithMethods(caller, anyType, methods)
+				require.NoError(t, err)
+			}
+			callee := &program.CompiledFunction{}
+			for _, methods := range tt.calleeMethods {
+				_, err := program.AddTypeRefWithMethods(callee, anyType, methods)
+				require.NoError(t, err)
+			}
+
+			newIndex, fits := mergeTypeTableIndex(caller, callee, 0, true)
+
+			require.True(t, fits)
+			require.Equal(t, anyType, caller.TypeTable[newIndex])
+			require.Equal(t, tt.wantMethods, caller.TypeTableInterfaceMethods[newIndex],
+				"an inlined assertion or type switch checks the methods recorded at its index")
+		})
+	}
+}

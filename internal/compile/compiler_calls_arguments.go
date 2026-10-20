@@ -77,11 +77,12 @@ func (c *Compiler) compileFixedCallArguments(ctx context.Context, expression *as
 				continue
 			}
 		}
+		mark := c.Scopes.Alloc.Snapshot()
 		location, err := c.compileFixedCallArgument(ctx, callee, signature, sigErr, i, argument)
 		if err != nil {
 			return nil, err
 		}
-		argumentLocations[i] = location
+		argumentLocations[i] = c.compactArgument(ctx, mark, location, c.staticTypeOf(argument))
 	}
 	return argumentLocations, nil
 }
@@ -177,6 +178,7 @@ func (c *Compiler) compileFixedCallArgument(
 		}
 	}
 	location = c.coerceEvalBoolResult(ctx, c.Info, argument, location)
+	c.detachIndexedRead(argument, location)
 	return c.boxFixedArgumentForGeneralParam(callee, index, location), nil
 }
 
@@ -230,17 +232,15 @@ func (c *Compiler) signatureForCall(expression *ast.CallExpr) (*types.Signature,
 	return signature, nil
 }
 
-// compileVariadicPackedArgs compiles a call's arguments where the callee is variadic and
-// the source uses no ellipsis spread, packing the trailing arguments into a slice of the
-// variadic parameter's element type. The returned argumentLocations contains exactly one
-// entry per declared parameter, with the slice in the final position.
+// compileVariadicPackedArgs compiles arguments and packs trailing values into a slice.
+// The call must be variadic without an ellipsis spread.
 //
 // Takes expression (*ast.CallExpr) which is the call expression whose arguments need
 // packing.
 // Takes signature (*types.Signature) which is the callee's signature.
 //
-// Returns []VarLocation aligned 1:1 with the signature's parameters, and any compilation
-// error from sub-expressions.
+// Returns []VarLocation aligned 1:1 with the signature's parameters, and any
+// compilation error from sub-expressions.
 func (c *Compiler) compileVariadicPackedArgs(ctx context.Context, expression *ast.CallExpr, signature *types.Signature) ([]program.VarLocation, error) {
 	fixedCount := signature.Params().Len() - 1
 	if locations, ok, err := c.tryCompileVariadicFromMultiReturn(ctx, expression, signature); ok {
@@ -249,11 +249,13 @@ func (c *Compiler) compileVariadicPackedArgs(ctx context.Context, expression *as
 	argumentLocations := make([]program.VarLocation, signature.Params().Len())
 
 	for i := 0; i < fixedCount && i < len(expression.Args); i++ {
+		mark := c.Scopes.Alloc.Snapshot()
 		location, err := c.compileExpression(ctx, expression.Args[i])
 		if err != nil {
 			return nil, err
 		}
-		argumentLocations[i] = c.coerceEvalBoolResult(ctx, c.Info, expression.Args[i], location)
+		location = c.coerceEvalBoolResult(ctx, c.Info, expression.Args[i], location)
+		argumentLocations[i] = c.compactArgument(ctx, mark, location, c.staticTypeOf(expression.Args[i]))
 	}
 
 	lastParameter := signature.Params().At(signature.Params().Len() - 1)
@@ -278,6 +280,7 @@ func (c *Compiler) compileVariadicPackedArgs(ctx context.Context, expression *as
 	c.Scopes.Alloc.FreeTemp(isa.RegisterInt, lengthRegister)
 
 	for i := fixedCount; i < len(expression.Args); i++ {
+		watermark := c.Scopes.Alloc.Snapshot()
 		location, exprErr := c.compileExpression(ctx, expression.Args[i])
 		if exprErr != nil {
 			return nil, exprErr
@@ -292,6 +295,7 @@ func (c *Compiler) compileVariadicPackedArgs(ctx context.Context, expression *as
 		program.EmitWide(c.Function, isa.OpLoadIntConst, indexRegister, idxConst)
 		program.Emit(c.Function, isa.OpIndexSet, sliceDestination, indexRegister, location.Register)
 		c.Scopes.Alloc.FreeTemp(isa.RegisterInt, indexRegister)
+		c.Scopes.RestoreWatermark(watermark)
 	}
 
 	argumentLocations[fixedCount] = program.VarLocation{Register: sliceDestination, Kind: isa.RegisterGeneral}
@@ -387,6 +391,7 @@ func (c *Compiler) packLocationsIntoVariadicSlice(ctx context.Context, sliceType
 	program.EmitExtension(c.Function, typeIndex, 0)
 	c.Scopes.Alloc.FreeTemp(isa.RegisterInt, lengthRegister)
 	for i, location := range locations {
+		watermark := c.Scopes.Alloc.Snapshot()
 		valueLocation := location
 		c.boxToGeneralTemp(ctx, &valueLocation)
 		indexRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
@@ -397,6 +402,7 @@ func (c *Compiler) packLocationsIntoVariadicSlice(ctx context.Context, sliceType
 		program.EmitWide(c.Function, isa.OpLoadIntConst, indexRegister, idxConst)
 		program.Emit(c.Function, isa.OpIndexSet, sliceDestination, indexRegister, valueLocation.Register)
 		c.Scopes.Alloc.FreeTemp(isa.RegisterInt, indexRegister)
+		c.Scopes.RestoreWatermark(watermark)
 	}
 	return sliceDestination, nil
 }
@@ -556,12 +562,14 @@ func (c *Compiler) compileNativeArguments(ctx context.Context, expression *ast.C
 	nativeSignature := c.nativeCallSignature(expression)
 	argumentLocations := make([]program.VarLocation, len(expression.Args))
 	for i, argument := range expression.Args {
+		mark := c.Scopes.Alloc.Snapshot()
 		location, err := c.compileExpression(ctx, argument)
 		if err != nil {
 			return nil, err
 		}
 		location = c.coerceEvalBoolResult(ctx, c.Info, argument, location)
-		argumentLocations[i] = c.preboxNativeInterfaceArgument(ctx, nativeSignature, i, location)
+		location = c.preboxNativeInterfaceArgument(ctx, nativeSignature, i, location)
+		argumentLocations[i] = c.compactArgument(ctx, mark, location, c.staticTypeOf(argument))
 	}
 	return argumentLocations, nil
 }
@@ -628,9 +636,34 @@ func (c *Compiler) compileNativeCallFromLocation(ctx context.Context, expression
 		return program.VarLocation{}, err
 	}
 
-	signature := c.nativeCallSignature(expression)
-	returnLocations, resultLocation := c.allocateNativeReturns(signature)
+	returnLocations, resultLocation := c.allocateNativeReturns(c.nativeCallSignature(expression))
 
+	site := c.nativeCallSite(ctx, expression, functionLocation, argumentLocations, returnLocations)
+	if len(methodReceiverRegister) > 0 {
+		site.IsMethod = true
+		site.MethodReceiverRegister = methodReceiverRegister[0]
+	}
+	siteIndex, err := program.AddCallSite(c.Function, &site)
+	if err != nil {
+		return program.VarLocation{}, err
+	}
+	c.markCallPosition()
+	program.EmitTier1Wide(c.Function, isa.SubOpCallNative, siteIndex)
+
+	return resultLocation, nil
+}
+
+// nativeCallSite builds the packing, interface and blocking metadata for a call through
+// a function value.
+//
+// Takes expression (*ast.CallExpr) which is the call.
+// Takes functionLocation (VarLocation) which holds the callee value.
+// Takes argumentLocations ([]VarLocation) which hold the compiled arguments.
+// Takes returnLocations ([]VarLocation) which receive the results.
+//
+// Returns program.CallSite which is the site, not yet added to the function.
+func (c *Compiler) nativeCallSite(ctx context.Context, expression *ast.CallExpr, functionLocation program.VarLocation, argumentLocations, returnLocations []program.VarLocation) program.CallSite {
+	signature := c.nativeCallSignature(expression)
 	argumentTypeNames, argumentTypeStrings := c.resolveArgumentStaticTypes(expression)
 	site := program.CallSite{
 		IsNative:                  true,
@@ -648,18 +681,7 @@ func (c *Compiler) compileNativeCallFromLocation(ctx context.Context, expression
 		site.RuntimeVariadicSliceType = c.TypeToReflect(ctx, lastParameter.Type())
 		site.RuntimeVariadicNumFixed = safeconv.MustIntToUint8(signature.Params().Len() - 1)
 	}
-	if len(methodReceiverRegister) > 0 {
-		site.IsMethod = true
-		site.MethodReceiverRegister = methodReceiverRegister[0]
-	}
-	siteIndex, err := program.AddCallSite(c.Function, &site)
-	if err != nil {
-		return program.VarLocation{}, err
-	}
-	c.markCallPosition()
-	program.EmitTier1Wide(c.Function, isa.SubOpCallNative, siteIndex)
-
-	return resultLocation, nil
+	return site
 }
 
 // methodReceiverTypeName returns the "pkgpath.TypeName" of the type declaring the method.

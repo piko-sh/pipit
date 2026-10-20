@@ -102,37 +102,56 @@ func TestReadIndirectCellValueUnboxesIntoTheNamedBank(t *testing.T) {
 		{
 			name: "an integer cell", kind: isa.RegisterInt,
 			build: func() reflect.Value { value := int64(42); return reflect.ValueOf(&value) },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(42), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), registers.Ints[0])
+			},
 		},
 		{
 			name: "a float cell", kind: isa.RegisterFloat,
 			build: func() reflect.Value { value := 1.5; return reflect.ValueOf(&value) },
-			check: func(t *testing.T, registers *Registers) { require.InDelta(t, 1.5, registers.Floats[0], 0) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.InDelta(t, 1.5, registers.Floats[0], 0)
+			},
 		},
 		{
 			name: "a string cell", kind: isa.RegisterString,
 			build: func() reflect.Value { value := "pipit"; return reflect.ValueOf(&value) },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, "pipit", registers.Strings[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, "pipit", registers.Strings[0])
+			},
 		},
 		{
 			name: "a boolean cell", kind: isa.RegisterBool,
 			build: func() reflect.Value { value := true; return reflect.ValueOf(&value) },
-			check: func(t *testing.T, registers *Registers) { require.True(t, registers.Bools[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.True(t, registers.Bools[0])
+			},
 		},
 		{
 			name: "an unsigned cell", kind: isa.RegisterUint,
 			build: func() reflect.Value { value := uint64(42); return reflect.ValueOf(&value) },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, uint64(42), registers.Uints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(42), registers.Uints[0])
+			},
 		},
 		{
 			name: "a complex cell", kind: isa.RegisterComplex,
 			build: func() reflect.Value { value := 1 + 2i; return reflect.ValueOf(&value) },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, 1+2i, registers.Complex[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, 1+2i, registers.Complex[0])
+			},
 		},
 		{
 			name: "a general cell keeps the dereferenced value", kind: isa.RegisterGeneral,
 			build: func() reflect.Value { value := leafCounter{Signed: 1}; return reflect.ValueOf(&value) },
 			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
 				require.Equal(t, reflect.Struct, registers.General[0].Kind())
 			},
 		},

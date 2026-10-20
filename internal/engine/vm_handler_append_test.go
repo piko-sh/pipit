@@ -37,6 +37,7 @@ func TestAppendHandlerGrowsTheGeneralBankSlice(t *testing.T) {
 		{
 			name: "an integer slice", slice: []int{1, 2}, element: 3,
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, 3, got.Len())
 				require.Equal(t, int64(3), got.Index(2).Int())
 			},
@@ -44,29 +45,43 @@ func TestAppendHandlerGrowsTheGeneralBankSlice(t *testing.T) {
 		{
 			name: "a string slice", slice: []string{"a"}, element: "b",
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, 2, got.Len())
 				require.Equal(t, "b", got.Index(1).String())
 			},
 		},
 		{
 			name: "a slice of interfaces accepts any element", slice: []any{1}, element: "mixed",
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, 2, got.Len()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, 2, got.Len())
+			},
 		},
 		{
 			name: "a slice of structs", slice: []leafCounter{{Signed: 1}}, element: leafCounter{Signed: 2},
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, 2, got.Len()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, 2, got.Len())
+			},
 		},
 		{
 			name: "an empty slice grows to one", slice: []int{}, element: 1,
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, 1, got.Len()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, 1, got.Len())
+			},
 		},
 		{
 			name: "a nil slice grows to one", slice: []int(nil), element: 1,
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, 1, got.Len()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, 1, got.Len())
+			},
 		},
 		{
 			name: "a narrower element is converted to the element type", slice: []int64{1}, element: int32(2),
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, 2, got.Len())
 				require.Equal(t, int64(2), got.Index(1).Int())
 			},
@@ -127,19 +142,24 @@ func TestTypedAppendHandlersWriteThroughTheScalarBanks(t *testing.T) {
 			name: "an integer element", handler: handleAppendInt, slice: []int64{1},
 			seed: func(registers *Registers) { registers.Ints[2] = 2 },
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, 2, got.Len())
 				require.Equal(t, int64(2), got.Index(1).Int())
 			},
 		},
 		{
 			name: "an integer element onto a plain int slice", handler: handleAppendInt, slice: []int{1},
-			seed:  func(registers *Registers) { registers.Ints[2] = 2 },
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, 2, got.Len()) },
+			seed: func(registers *Registers) { registers.Ints[2] = 2 },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, 2, got.Len())
+			},
 		},
 		{
 			name: "a string element", handler: handleAppendString, slice: []string{"a"},
 			seed: func(registers *Registers) { registers.Strings[2] = "b" },
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, 2, got.Len())
 				require.Equal(t, "b", got.Index(1).String())
 			},
@@ -148,6 +168,7 @@ func TestTypedAppendHandlersWriteThroughTheScalarBanks(t *testing.T) {
 			name: "a float element", handler: handleAppendFloat, slice: []float64{1},
 			seed: func(registers *Registers) { registers.Floats[2] = 2.5 },
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, 2, got.Len())
 				require.InDelta(t, 2.5, got.Index(1).Float(), 0)
 			},
@@ -156,6 +177,7 @@ func TestTypedAppendHandlersWriteThroughTheScalarBanks(t *testing.T) {
 			name: "a boolean element", handler: handleAppendBool, slice: []bool{true},
 			seed: func(registers *Registers) { registers.Bools[2] = false },
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, 2, got.Len())
 				require.False(t, got.Index(1).Bool())
 			},
@@ -196,23 +218,38 @@ func TestAppendSpreadJoinsTwoSlices(t *testing.T) {
 	}{
 		{
 			name: "two integer slices", destination: []int{1}, source: []int{2, 3},
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, 3, got.Len()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, 3, got.Len())
+			},
 		},
 		{
 			name: "two string slices", destination: []string{"a"}, source: []string{"b"},
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, 2, got.Len()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, 2, got.Len())
+			},
 		},
 		{
 			name: "two byte slices", destination: []byte("ab"), source: []byte("cd"),
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, 4, got.Len()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, 4, got.Len())
+			},
 		},
 		{
 			name: "an empty source leaves the destination length alone", destination: []int{1, 2}, source: []int{},
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, 2, got.Len()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, 2, got.Len())
+			},
 		},
 		{
 			name: "an empty destination takes the source", destination: []int{}, source: []int{1, 2},
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, 2, got.Len()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, 2, got.Len())
+			},
 		},
 	}
 

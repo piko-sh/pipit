@@ -19,17 +19,34 @@
 package adapters
 
 import (
-	"context"
-	"errors"
 	"reflect"
 	"testing"
 
 	flatbuffers "github.com/google/flatbuffers/go"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/schema/schemagen"
 	"pipit.sh/pipit/internal/symtab"
 	"pipit.sh/pipit/internal/symtab/descriptor"
 )
+
+func singleTypeDescriptorFileSet(fill func(builder *flatbuffers.Builder)) []byte {
+	builder := flatbuffers.NewBuilder(128)
+	schemagen.TypeDescriptorStart(builder)
+	fill(builder)
+	typeDescriptor := schemagen.TypeDescriptorEnd(builder)
+	schemagen.CompiledFunctionStartTypeTableDescriptorsVector(builder, 1)
+	builder.PrependUOffsetT(typeDescriptor)
+	types := builder.EndVector(1)
+	schemagen.CompiledFunctionStart(builder)
+	schemagen.CompiledFunctionAddTypeTableDescriptors(builder, types)
+	function := schemagen.CompiledFunctionEnd(builder)
+	schemagen.CompiledFileSetStart(builder)
+	schemagen.CompiledFileSetAddRoot(builder, function)
+	root := schemagen.CompiledFileSetEnd(builder)
+	builder.Finish(root)
+	return builder.FinishedBytes()
+}
 
 func TestBytecodeBasicKindEncodings(t *testing.T) {
 	t.Parallel()
@@ -43,88 +60,66 @@ func TestBytecodeBasicKindEncodings(t *testing.T) {
 		reflect.UnsafePointer: true,
 	}
 	for encoding := range 256 {
-		builder := flatbuffers.NewBuilder(128)
-		schemagen.TypeDescriptorStart(builder)
-		schemagen.TypeDescriptorAddBasicKind(builder, byte(encoding))
-		typeDescriptor := schemagen.TypeDescriptorEnd(builder)
-		schemagen.CompiledFunctionStartTypeTableDescriptorsVector(builder, 1)
-		builder.PrependUOffsetT(typeDescriptor)
-		types := builder.EndVector(1)
-		schemagen.CompiledFunctionStart(builder)
-		schemagen.CompiledFunctionAddTypeTableDescriptors(builder, types)
-		function := schemagen.CompiledFunctionEnd(builder)
-		schemagen.CompiledFileSetStart(builder)
-		schemagen.CompiledFileSetAddRoot(builder, function)
-		root := schemagen.CompiledFileSetEnd(builder)
-		builder.Finish(root)
-		loaded, err := decodeCompiledFileSet(context.Background(), builder.FinishedBytes(), symtab.NewSymbolRegistry(nil))
+		payload := singleTypeDescriptorFileSet(func(builder *flatbuffers.Builder) {
+			schemagen.TypeDescriptorAddBasicKind(builder, byte(encoding))
+		})
+		loaded, err := decodeCompiledFileSet(t.Context(), payload, symtab.NewSymbolRegistry(nil))
 		if allowed[reflect.Kind(encoding)] {
-			if err != nil || loaded == nil {
-				t.Fatalf("valid basic encoding %d rejected: %v", encoding, err)
-			}
-		} else if loaded != nil || !errors.Is(err, errCorruptBytecodePayload) {
-			t.Fatalf("invalid basic encoding %d accepted: %v", encoding, err)
+			require.NoError(t, err, "basic encoding %d is accepted", encoding)
+			require.NotNil(t, loaded)
+		} else {
+			require.ErrorIs(t, err, errCorruptBytecodePayload, "basic encoding %d is rejected", encoding)
+			require.Nil(t, loaded)
 		}
 	}
 }
 
 func TestBytecodeDescriptorKindsMatchSchema(t *testing.T) {
 	t.Parallel()
-	kinds := []struct {
+	tests := []struct {
 		internal descriptor.TypeDescriptorKind
 		wire     schemagen.TypeDescKind
 	}{
-		{descriptor.KindBasic, schemagen.TypeDescKindBasic},
-		{descriptor.KindNamed, schemagen.TypeDescKindNamed},
-		{descriptor.KindPtr, schemagen.TypeDescKindPointer},
-		{descriptor.KindSlice, schemagen.TypeDescKindSlice},
-		{descriptor.KindArray, schemagen.TypeDescKindArray},
-		{descriptor.KindMap, schemagen.TypeDescKindMap},
-		{descriptor.KindChan, schemagen.TypeDescKindChannel},
-		{descriptor.KindFunc, schemagen.TypeDescKindFunction},
-		{descriptor.KindStruct, schemagen.TypeDescKindStruct},
-		{descriptor.KindInterface, schemagen.TypeDescKindInterface},
-		{descriptor.KindNil, schemagen.TypeDescKindNil},
+		{internal: descriptor.KindBasic, wire: schemagen.TypeDescKindBasic},
+		{internal: descriptor.KindNamed, wire: schemagen.TypeDescKindNamed},
+		{internal: descriptor.KindPtr, wire: schemagen.TypeDescKindPointer},
+		{internal: descriptor.KindSlice, wire: schemagen.TypeDescKindSlice},
+		{internal: descriptor.KindArray, wire: schemagen.TypeDescKindArray},
+		{internal: descriptor.KindMap, wire: schemagen.TypeDescKindMap},
+		{internal: descriptor.KindChan, wire: schemagen.TypeDescKindChannel},
+		{internal: descriptor.KindFunc, wire: schemagen.TypeDescKindFunction},
+		{internal: descriptor.KindStruct, wire: schemagen.TypeDescKindStruct},
+		{internal: descriptor.KindInterface, wire: schemagen.TypeDescKindInterface},
+		{internal: descriptor.KindNil, wire: schemagen.TypeDescKindNil},
 	}
-	for _, kind := range kinds {
-		if int(kind.internal) != int(kind.wire) {
-			t.Fatalf("descriptor kind %v has internal encoding %d", kind.wire, kind.internal)
-		}
-		builder := flatbuffers.NewBuilder(128)
-		root := packTypeDescriptor(builder, descriptor.TypeDescriptorData{Kind: uint8(kind.internal)})
-		builder.Finish(root)
-		payload := builder.FinishedBytes()
-		encoded := schemagen.GetRootAsTypeDescriptor(payload, 0)
-		if encoded.Kind() != kind.wire {
-			t.Fatalf("writer emitted %v for %v", encoded.Kind(), kind.wire)
-		}
-		decoded, err := unpackTypeDescriptor(encoded, 0, len(payload), newDescriptorDecodeCache())
-		if err != nil || decoded.Kind != uint8(kind.internal) {
-			t.Fatal("descriptor numbering did not round trip:", kind.wire, err)
-		}
+	for _, tt := range tests {
+		t.Run(tt.wire.String(), func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, int(tt.wire), int(tt.internal), "the internal encoding matches the schema")
+			builder := flatbuffers.NewBuilder(128)
+			root := packTypeDescriptor(builder, descriptor.TypeDescriptorData{Kind: uint8(tt.internal)})
+			builder.Finish(root)
+			payload := builder.FinishedBytes()
+			encoded := schemagen.GetRootAsTypeDescriptor(payload, 0)
+			require.Equal(t, tt.wire, encoded.Kind())
+			decoded, err := unpackTypeDescriptor(encoded, 0, len(payload), newDescriptorDecodeCache())
+			require.NoError(t, err)
+			require.Equal(t, uint8(tt.internal), decoded.Kind)
+		})
 	}
 }
 
 func TestBytecodeRejectsUnknownTypeKinds(t *testing.T) {
 	t.Parallel()
 	for _, kind := range []schemagen.TypeDescKind{-128, -1, 11, 12, 127} {
-		builder := flatbuffers.NewBuilder(128)
-		schemagen.TypeDescriptorStart(builder)
-		schemagen.TypeDescriptorAddKind(builder, kind)
-		typeDescriptor := schemagen.TypeDescriptorEnd(builder)
-		schemagen.CompiledFunctionStartTypeTableDescriptorsVector(builder, 1)
-		builder.PrependUOffsetT(typeDescriptor)
-		types := builder.EndVector(1)
-		schemagen.CompiledFunctionStart(builder)
-		schemagen.CompiledFunctionAddTypeTableDescriptors(builder, types)
-		function := schemagen.CompiledFunctionEnd(builder)
-		schemagen.CompiledFileSetStart(builder)
-		schemagen.CompiledFileSetAddRoot(builder, function)
-		root := schemagen.CompiledFileSetEnd(builder)
-		builder.Finish(root)
-		loaded, err := decodeCompiledFileSet(context.Background(), builder.FinishedBytes(), symtab.NewSymbolRegistry(nil))
-		if loaded != nil || !errors.Is(err, errCorruptBytecodePayload) {
-			t.Fatal("unknown type kind became runtime authority:", kind, err)
-		}
+		t.Run(kind.String(), func(t *testing.T) {
+			t.Parallel()
+			payload := singleTypeDescriptorFileSet(func(builder *flatbuffers.Builder) {
+				schemagen.TypeDescriptorAddKind(builder, kind)
+			})
+			loaded, err := decodeCompiledFileSet(t.Context(), payload, symtab.NewSymbolRegistry(nil))
+			require.Nil(t, loaded, "an unknown type kind is rejected")
+			require.ErrorIs(t, err, errCorruptBytecodePayload)
+		})
 	}
 }

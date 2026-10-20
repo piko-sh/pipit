@@ -46,14 +46,17 @@ func syncArenaIndicesFromASM(arena *RegisterArena, ctx *dispatchContext) {
 	}
 }
 
-// populateGenericBytesContext publishes the addresses of the arena's generic-bytes slab
-// header and cursor so the struct-literal allocation handler can bump-allocate in
-// assembly against the arena's own state. The arena is kept alive by vm.arena and never
-// moves.
+// publishCallInfoRoot republishes the current root and its call-info bases after a Go
+// handler may have changed them.
 //
-// Takes ctx (*dispatchContext) which receives the addresses.
-// Takes arena (*RegisterArena) which owns the slab.
-func populateGenericBytesContext(ctx *dispatchContext, arena *RegisterArena) {
-	ctx.arenaGenericBytesSlabHeader = uintptr(unsafe.Pointer(&arena.genericBytesSlab))
-	ctx.arenaGenericBytesIndexPointer = uintptr(unsafe.Pointer(&arena.genericBytesIndex))
+// Takes ctx (*dispatchContext) which is the live dispatch context.
+func (vm *VM) publishCallInfoRoot(ctx *dispatchContext) {
+	if len(vm.asmCallInfoBasesByFunction) > 0 {
+		ctx.callInfoBasesByFunction = uintptr(unsafe.Pointer(&vm.asmCallInfoBasesByFunction[0]))
+	}
+	if vm.rootFunction == vm.asmCallInfoRoot {
+		ctx.callInfoBasesRootMatch = 1
+	} else {
+		ctx.callInfoBasesRootMatch = 0
+	}
 }

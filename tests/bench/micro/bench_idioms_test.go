@@ -30,8 +30,8 @@ func BenchmarkNilJumpFusion(b *testing.B) {
 		source string
 	}{
 		{
-			"err_eq_nil_taken",
-			`package main
+			name: "err_eq_nil_taken",
+			source: `package main
 
 func run() int {
 	var err error
@@ -46,8 +46,8 @@ func run() int {
 `,
 		},
 		{
-			"err_ne_nil_not_taken",
-			`package main
+			name: "err_ne_nil_not_taken",
+			source: `package main
 
 func run() int {
 	var err error
@@ -62,8 +62,8 @@ func run() int {
 `,
 		},
 		{
-			"interface_eq_nil_alternating",
-			`package main
+			name: "interface_eq_nil_alternating",
+			source: `package main
 
 type Greeter interface{ Greet() int }
 
@@ -89,8 +89,8 @@ func run() int {
 `,
 		},
 		{
-			"pointer_ne_nil_taken",
-			`package main
+			name: "pointer_ne_nil_taken",
+			source: `package main
 
 type Node struct{ next *Node }
 
@@ -116,8 +116,8 @@ func BenchmarkUnaryOps(b *testing.B) {
 		source string
 	}{
 		{
-			"neg_int_loop",
-			`package main
+			name: "neg_int_loop",
+			source: `package main
 
 func run() int {
 	x := 0
@@ -129,8 +129,8 @@ func run() int {
 `,
 		},
 		{
-			"bit_not_int_loop",
-			`package main
+			name: "bit_not_int_loop",
+			source: `package main
 
 func run() int {
 	x := 0
@@ -142,8 +142,8 @@ func run() int {
 `,
 		},
 		{
-			"neg_float_loop",
-			`package main
+			name: "neg_float_loop",
+			source: `package main
 
 func run() float64 {
 	var x float64
@@ -155,8 +155,8 @@ func run() float64 {
 `,
 		},
 		{
-			"neg_int_accumulate",
-			`package main
+			name: "neg_int_accumulate",
+			source: `package main
 
 func run() int {
 	s := 0
@@ -177,8 +177,8 @@ func BenchmarkMathIntrinsics(b *testing.B) {
 		source string
 	}{
 		{
-			"sqrt_loop",
-			`package main
+			name: "sqrt_loop",
+			source: `package main
 
 import "math"
 
@@ -192,8 +192,8 @@ func run() float64 {
 `,
 		},
 		{
-			"abs_loop",
-			`package main
+			name: "abs_loop",
+			source: `package main
 
 import "math"
 
@@ -207,8 +207,8 @@ func run() float64 {
 `,
 		},
 		{
-			"floor_ceil_alternating",
-			`package main
+			name: "floor_ceil_alternating",
+			source: `package main
 
 import "math"
 
@@ -223,8 +223,8 @@ func run() float64 {
 `,
 		},
 		{
-			"trunc_round_alternating",
-			`package main
+			name: "trunc_round_alternating",
+			source: `package main
 
 import "math"
 
@@ -248,8 +248,8 @@ func BenchmarkStringLenLoop(b *testing.B) {
 		source string
 	}{
 		{
-			"len_short_string",
-			`package main
+			name: "len_short_string",
+			source: `package main
 
 func run() int {
 	s := "hello world"
@@ -262,8 +262,8 @@ func run() int {
 `,
 		},
 		{
-			"len_long_string",
-			`package main
+			name: "len_long_string",
+			source: `package main
 
 func run() int {
 	s := "the quick brown fox jumps over the lazy dog the quick brown fox jumps over the lazy dog"
@@ -276,8 +276,8 @@ func run() int {
 `,
 		},
 		{
-			"len_string_in_range_cond",
-			`package main
+			name: "len_string_in_range_cond",
+			source: `package main
 
 func run() int {
 	s := "abcdefghij"
@@ -301,8 +301,8 @@ func BenchmarkTypedSliceRouting(b *testing.B) {
 		source string
 	}{
 		{
-			"float_slice_sum",
-			`package main
+			name: "float_slice_sum",
+			source: `package main
 
 var s = func() []float64 {
 	r := make([]float64, 1000)
@@ -322,8 +322,8 @@ func run() float64 {
 `,
 		},
 		{
-			"string_slice_index",
-			`package main
+			name: "string_slice_index",
+			source: `package main
 
 var s = func() []string {
 	r := make([]string, 100)
@@ -343,8 +343,8 @@ func run() int {
 `,
 		},
 		{
-			"bool_slice_count",
-			`package main
+			name: "bool_slice_count",
+			source: `package main
 
 var flags = func() []bool {
 	r := make([]bool, 1000)
@@ -366,8 +366,8 @@ func run() int {
 `,
 		},
 		{
-			"uint_slice_bitmask_fold",
-			`package main
+			name: "uint_slice_bitmask_fold",
+			source: `package main
 
 var masks = func() []uint64 {
 	r := make([]uint64, 1000)
@@ -387,8 +387,8 @@ func run() uint64 {
 `,
 		},
 		{
-			"float_slice_dotproduct",
-			`package main
+			name: "float_slice_dotproduct",
+			source: `package main
 
 var a = func() []float64 {
 	r := make([]float64, 1000)
@@ -425,8 +425,8 @@ func BenchmarkMoveString(b *testing.B) {
 		source string
 	}{
 		{
-			"move_string_in_loop",
-			`package main
+			name: "move_string_in_loop",
+			source: `package main
 
 func run() string {
 	source := "hello"
@@ -439,8 +439,8 @@ func run() string {
 `,
 		},
 		{
-			"swap_strings_in_loop",
-			`package main
+			name: "swap_strings_in_loop",
+			source: `package main
 
 func run() string {
 	a := "alpha"
@@ -464,8 +464,8 @@ func BenchmarkDispatchOverhead(b *testing.B) {
 		source string
 	}{
 		{
-			"inc_int_chain",
-			`package main
+			name: "inc_int_chain",
+			source: `package main
 
 func run() int {
 	x := 0
@@ -479,8 +479,8 @@ func run() int {
 `,
 		},
 		{
-			"add_const_chain",
-			`package main
+			name: "add_const_chain",
+			source: `package main
 
 func run() int {
 	x := 0
@@ -493,8 +493,8 @@ func run() int {
 `,
 		},
 		{
-			"empty_call_chain",
-			`package main
+			name: "empty_call_chain",
+			source: `package main
 
 func noop() {}
 
@@ -514,8 +514,8 @@ func BenchmarkErrNilIdiom(b *testing.B) {
 		source string
 	}{
 		{
-			"never_returns_err",
-			`package main
+			name: "never_returns_err",
+			source: `package main
 
 func process(x int) (int, error) {
 	return x * 2, nil
@@ -535,8 +535,8 @@ func run() int {
 `,
 		},
 		{
-			"sometimes_returns_err",
-			`package main
+			name: "sometimes_returns_err",
+			source: `package main
 
 import "errors"
 
@@ -574,8 +574,8 @@ func BenchmarkSliceSort(b *testing.B) {
 		source string
 	}{
 		{
-			"insertion_sort_int_50",
-			`package main
+			name: "insertion_sort_int_50",
+			source: `package main
 
 func run() int {
 	xs := make([]int, 50)
@@ -596,8 +596,8 @@ func run() int {
 `,
 		},
 		{
-			"bubble_sort_string_20",
-			`package main
+			name: "bubble_sort_string_20",
+			source: `package main
 
 func run() string {
 	xs := []string{"j", "d", "g", "a", "e", "h", "c", "i", "f", "b", "t", "q", "k", "l", "m", "n", "o", "p", "r", "s"}
@@ -624,8 +624,8 @@ func BenchmarkParseFormat(b *testing.B) {
 		source string
 	}{
 		{
-			"itoa_round_trip_loop",
-			`package main
+			name: "itoa_round_trip_loop",
+			source: `package main
 
 import "strconv"
 
@@ -644,8 +644,8 @@ func run() int {
 `,
 		},
 		{
-			"format_int_base16_loop",
-			`package main
+			name: "format_int_base16_loop",
+			source: `package main
 
 import "strconv"
 

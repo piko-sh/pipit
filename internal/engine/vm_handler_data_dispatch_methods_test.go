@@ -334,3 +334,53 @@ func TestBindMethodRefusesBrokenOperands(t *testing.T) {
 		require.ErrorContains(t, vm.evalError, "no type info")
 	})
 }
+
+func TestBindableReceiverDetachesTheReceiverStorage(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a struct is copied whole", func(t *testing.T) {
+		t.Parallel()
+		carrier := methodCarrier{Count: 1}
+		receiver := reflect.ValueOf(&carrier).Elem()
+
+		bound := bindableReceiver(nil, receiver)
+		carrier.Count = 2
+
+		require.Equal(t, 1, bound.Interface().(methodCarrier).Count, "a later write to the variable must not reach the bound receiver")
+	})
+
+	t.Run("a slice keeps its header but shares its backing", func(t *testing.T) {
+		t.Parallel()
+		values := []int{1, 2, 3}
+		receiver := reflect.ValueOf(&values).Elem()
+
+		bound := bindableReceiver(nil, receiver)
+		values = values[:1]
+		values[0] = 7
+
+		require.Equal(t, 3, bound.Len(), "shrinking the variable must not reach the bound header")
+		require.Equal(t, int64(7), bound.Index(0).Int(), "the backing array stays shared, as in Go")
+	})
+
+	t.Run("a value that is not addressable is bound as it is", func(t *testing.T) {
+		t.Parallel()
+		receiver := reflect.ValueOf([]int{1, 2})
+
+		bound := bindableReceiver(nil, receiver)
+
+		require.False(t, bound.CanAddr())
+		require.Equal(t, receiver.Pointer(), bound.Pointer())
+		require.Equal(t, receiver.Len(), bound.Len())
+	})
+
+	t.Run("a pointer is bound as it is", func(t *testing.T) {
+		t.Parallel()
+		carrier := &methodCarrier{Count: 1}
+		receiver := reflect.ValueOf(carrier)
+
+		bound := bindableReceiver(nil, receiver)
+		carrier.Count = 2
+
+		require.Equal(t, 2, bound.Interface().(*methodCarrier).Count, "a pointer receiver sees writes through the pointer")
+	})
+}

@@ -21,14 +21,15 @@ package cli
 import (
 	"bytes"
 	"log/slog"
-	"slices"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSplitGlobalFlagsRecognisesEverySpelling(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	tests := []struct {
 		name  string
 		args  []string
 		level slog.Level
@@ -41,22 +42,17 @@ func TestSplitGlobalFlagsRecognisesEverySpelling(t *testing.T) {
 		{name: "mixed case", args: []string{"-log-level=WARN", "run"}, level: slog.LevelWarn, rest: []string{"run"}},
 		{name: "no command", args: []string{"-log-level=debug"}, level: slog.LevelDebug, rest: []string{}},
 		{name: "subcommand flag kept", args: []string{"test", "-v"}, level: defaultLogLevel, rest: []string{"test", "-v"}},
+		{name: "another flag first", args: []string{"-v", "-log-level=debug", "run"}, level: defaultLogLevel, rest: []string{"-v", "-log-level=debug", "run"}},
 	}
 
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			level, rest, err := splitGlobalFlags(testCase.args)
-			if err != nil {
-				t.Fatalf("splitGlobalFlags(%q): %v", testCase.args, err)
-			}
-			if level != testCase.level {
-				t.Fatalf("level: got %v, want %v", level, testCase.level)
-			}
-			if !slices.Equal(rest, testCase.rest) {
-				t.Fatalf("rest: got %q, want %q", rest, testCase.rest)
-			}
+			level, rest, err := splitGlobalFlags(tt.args)
+			require.NoError(t, err)
+			require.Equal(t, tt.level, level)
+			require.Equal(t, tt.rest, rest)
 		})
 	}
 }
@@ -65,9 +61,8 @@ func TestSplitGlobalFlagsRejectsBadValues(t *testing.T) {
 	t.Parallel()
 
 	for _, args := range [][]string{{"-log-level"}, {"-log-level=chatty", "run"}} {
-		if _, _, err := splitGlobalFlags(args); err == nil {
-			t.Fatalf("splitGlobalFlags(%q): got nil error, want one", args)
-		}
+		_, _, err := splitGlobalFlags(args)
+		require.Error(t, err, "splitGlobalFlags(%q) fails", args)
 	}
 }
 
@@ -75,22 +70,14 @@ func TestLoggerOptionsFollowTheConfiguredLogger(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	if got := loggerOptions(ctx); got != nil {
-		t.Fatalf("loggerOptions with no config: got %d options, want none", len(got))
-	}
+	require.Nil(t, loggerOptions(ctx))
 
 	buffer := &bytes.Buffer{}
 	logger := newStderrLogger(slog.LevelDebug, buffer)
 	ctx = withConfig(ctx, newConfig([]Option{WithLogger(logger)}))
-	if got := loggerFromContext(ctx); got != logger {
-		t.Fatalf("loggerFromContext: got %v, want the configured logger", got)
-	}
-	if got := len(loggerOptions(ctx)); got != 1 {
-		t.Fatalf("loggerOptions: got %d options, want 1", got)
-	}
+	require.Same(t, logger, loggerFromContext(ctx))
+	require.Len(t, loggerOptions(ctx), 1)
 
 	logger.Debug("hello")
-	if !bytes.Contains(buffer.Bytes(), []byte("hello")) {
-		t.Fatalf("logger output: got %q, want it to hold the record", buffer.String())
-	}
+	require.Contains(t, buffer.String(), "hello", "the logger writes the record")
 }

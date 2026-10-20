@@ -25,13 +25,14 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/debug"
+	"pipit.sh/pipit/internal/debug/debugtest"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestDebugInfo(t *testing.T) {
@@ -48,7 +49,7 @@ func main() {
 	_ = y
 }
 `
-		cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+		cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 		require.NoError(t, err)
 
 		fn, fnErr := cfs.FindFunction("main")
@@ -67,7 +68,7 @@ func main() {
 	_ = x
 }
 `
-		cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+		cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 		require.NoError(t, err)
 
 		fn, fnErr := cfs.FindFunction("main")
@@ -77,7 +78,7 @@ func main() {
 		file, line, col := fn.DebugSourcePosition(0)
 
 		require.NotEmpty(t, file)
-		require.Greater(t, line, 0)
+		require.Positive(t, line)
 		_ = col
 	})
 
@@ -91,7 +92,7 @@ func main() {
 	_ = x
 }
 `
-		cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+		cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 		require.NoError(t, err)
 
 		fn, fnErr := cfs.FindFunction("main")
@@ -115,7 +116,7 @@ func main() {
 	_ = y
 }
 `
-		cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+		cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 		require.NoError(t, err)
 
 		fn, fnErr := cfs.FindFunction("main")
@@ -135,7 +136,7 @@ func main() {
 	_ = y
 }
 `
-		cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+		cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 		require.NoError(t, err)
 
 		fn, fnErr := cfs.FindFunction("main")
@@ -167,7 +168,7 @@ func main() {
 	_ = x
 }
 `
-		cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+		cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 		require.NoError(t, err)
 
 		fn, fnErr := cfs.FindFunction("main")
@@ -191,7 +192,7 @@ func main() {
 	_ = x
 }
 `
-		cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+		cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 		require.NoError(t, err)
 
 		fn, fnErr := cfs.FindFunction("main")
@@ -222,21 +223,18 @@ func main() {
 
 		dbg.SetBreakpoint("main.go", 5)
 
-		var execErr error
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			_, execErr = service.EvalFile(context.Background(), source, "main")
-		}()
+		execution := debugtest.Run(t, dbg, func() (any, error) {
+			return service.EvalFile(context.Background(), source, "main")
+		})
 
-		snap := waitPause(t, dbg)
+		snap := debugtest.WaitPause(t, dbg)
 		require.Equal(t, "main.go", snap.Location.File)
 		require.Equal(t, 5, snap.Location.Line)
 		require.Equal(t, debug.StopReasonBreakpoint, snap.Reason)
-		require.NotEmpty(t, stackOf(t, dbg, snap))
+		require.NotEmpty(t, debugtest.StackOf(t, dbg, snap))
 
 		dbg.Continue()
-		<-done
+		_, execErr := execution.Wait(t)
 		require.NoError(t, execErr)
 	})
 
@@ -259,24 +257,21 @@ func main() {
 		dbg.SetBreakpoint("main.go", 4)
 		dbg.SetBreakpoint("main.go", 6)
 
-		var execErr error
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			_, execErr = service.EvalFile(context.Background(), source, "main")
-		}()
+		execution := debugtest.Run(t, dbg, func() (any, error) {
+			return service.EvalFile(context.Background(), source, "main")
+		})
 
-		snap1 := waitPause(t, dbg)
+		snap1 := debugtest.WaitPause(t, dbg)
 		require.Equal(t, 4, snap1.Location.Line)
 		require.Equal(t, debug.StopReasonBreakpoint, snap1.Reason)
 		dbg.Continue()
 
-		snap2 := waitPause(t, dbg)
+		snap2 := debugtest.WaitPause(t, dbg)
 		require.Equal(t, 6, snap2.Location.Line)
 		require.Equal(t, debug.StopReasonBreakpoint, snap2.Reason)
 		dbg.Continue()
 
-		<-done
+		_, execErr := execution.Wait(t)
 		require.NoError(t, execErr)
 	})
 
@@ -300,19 +295,16 @@ func main() {
 
 		dbg.ClearBreakpoint("main.go", 4)
 
-		var execErr error
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			_, execErr = service.EvalFile(context.Background(), source, "main")
-		}()
+		execution := debugtest.Run(t, dbg, func() (any, error) {
+			return service.EvalFile(context.Background(), source, "main")
+		})
 
-		snap := waitPause(t, dbg)
+		snap := debugtest.WaitPause(t, dbg)
 		require.Equal(t, 6, snap.Location.Line)
 		require.Equal(t, debug.StopReasonBreakpoint, snap.Reason)
 		dbg.Continue()
 
-		<-done
+		_, execErr := execution.Wait(t)
 		require.NoError(t, execErr)
 	})
 
@@ -336,25 +328,22 @@ func main() {
 
 		dbg.SetBreakpoint("main.go", 8)
 
-		var execErr error
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			_, execErr = service.EvalFile(context.Background(), source, "main")
-		}()
+		execution := debugtest.Run(t, dbg, func() (any, error) {
+			return service.EvalFile(context.Background(), source, "main")
+		})
 
-		snap := waitPause(t, dbg)
+		snap := debugtest.WaitPause(t, dbg)
 		require.Equal(t, 8, snap.Location.Line)
 
 		dbg.StepIn(snap.ThreadID)
 
-		snap2 := waitPause(t, dbg)
+		snap2 := debugtest.WaitPause(t, dbg)
 		require.Equal(t, debug.StopReasonStep, snap2.Reason)
 
 		require.NotEqual(t, 8, snap2.Location.Line)
 
 		dbg.Continue()
-		<-done
+		_, execErr := execution.Wait(t)
 		require.NoError(t, execErr)
 	})
 
@@ -379,25 +368,22 @@ func main() {
 
 		dbg.SetBreakpoint("main.go", 8)
 
-		var execErr error
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			_, execErr = service.EvalFile(context.Background(), source, "main")
-		}()
+		execution := debugtest.Run(t, dbg, func() (any, error) {
+			return service.EvalFile(context.Background(), source, "main")
+		})
 
-		snap := waitPause(t, dbg)
+		snap := debugtest.WaitPause(t, dbg)
 		require.Equal(t, 8, snap.Location.Line)
 
 		dbg.StepOver(snap.ThreadID)
 
-		snap2 := waitPause(t, dbg)
+		snap2 := debugtest.WaitPause(t, dbg)
 		require.Equal(t, debug.StopReasonStep, snap2.Reason)
 
 		require.Equal(t, "main.main", snap2.Location.Function)
 
 		dbg.Continue()
-		<-done
+		_, execErr := execution.Wait(t)
 		require.NoError(t, execErr)
 	})
 
@@ -423,25 +409,22 @@ func main() {
 
 		dbg.SetBreakpoint("main.go", 4)
 
-		var execErr error
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			_, execErr = service.EvalFile(context.Background(), source, "main")
-		}()
+		execution := debugtest.Run(t, dbg, func() (any, error) {
+			return service.EvalFile(context.Background(), source, "main")
+		})
 
-		snap := waitPause(t, dbg)
+		snap := debugtest.WaitPause(t, dbg)
 		require.Equal(t, 4, snap.Location.Line)
 		require.Equal(t, "main.inner", snap.Location.Function)
 
 		dbg.StepOut(snap.ThreadID)
 
-		snap2 := waitPause(t, dbg)
+		snap2 := debugtest.WaitPause(t, dbg)
 		require.Equal(t, debug.StopReasonStep, snap2.Reason)
 		require.Equal(t, "main.main", snap2.Location.Function)
 
 		dbg.Continue()
-		<-done
+		_, execErr := execution.Wait(t)
 		require.NoError(t, execErr)
 	})
 
@@ -461,18 +444,14 @@ func main() {
 `
 		dbg.SetBreakpoint("main.go", 4)
 
-		var execErr error
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			_, execErr = service.EvalFile(context.Background(), source, "main")
-		}()
+		execution := debugtest.Run(t, dbg, func() (any, error) {
+			return service.EvalFile(context.Background(), source, "main")
+		})
 
-		waitPause(t, dbg)
+		debugtest.WaitPause(t, dbg)
 		dbg.Stop()
-		<-done
-		require.Error(t, execErr)
-		require.True(t, errors.Is(execErr, fault.ErrDebuggerStop))
+		_, execErr := execution.Wait(t)
+		require.ErrorIs(t, execErr, fault.ErrDebuggerStop)
 	})
 
 	t.Run("variables at breakpoint", func(t *testing.T) {
@@ -492,17 +471,14 @@ func main() {
 
 		dbg.SetBreakpoint("main.go", 5)
 
-		var execErr error
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			_, execErr = service.EvalFile(context.Background(), source, "main")
-		}()
+		execution := debugtest.Run(t, dbg, func() (any, error) {
+			return service.EvalFile(context.Background(), source, "main")
+		})
 
-		snap := waitPause(t, dbg)
+		snap := debugtest.WaitPause(t, dbg)
 		require.Equal(t, 5, snap.Location.Line)
 
-		vars := localsOf(t, dbg, snap, 0)
+		vars := debugtest.LocalsOf(t, dbg, snap, 0)
 		require.NotEmpty(t, vars, "expected at least one variable visible at breakpoint")
 
 		found := false
@@ -515,7 +491,7 @@ func main() {
 		require.True(t, found, "expected variable 'x' to be visible at line 5")
 
 		dbg.Continue()
-		<-done
+		_, execErr := execution.Wait(t)
 		require.NoError(t, execErr)
 	})
 
@@ -534,21 +510,18 @@ func main() {
 `
 		dbg.SetBreakpoint("main.go", 4)
 
-		var execErr error
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			_, execErr = service.EvalFile(context.Background(), source, "main")
-		}()
+		execution := debugtest.Run(t, dbg, func() (any, error) {
+			return service.EvalFile(context.Background(), source, "main")
+		})
 
-		snap := waitPause(t, dbg)
+		snap := debugtest.WaitPause(t, dbg)
 		for _, frameIndex := range []int{1000000, 100, -1} {
 			_, err := dbg.Variables(snap.ThreadID, frameIndex, debug.ScopeLocals)
 			require.ErrorIs(t, err, fault.ErrDebugFrameOutOfRange, "frame index %d", frameIndex)
 		}
 
 		dbg.Continue()
-		<-done
+		_, execErr := execution.Wait(t)
 		require.NoError(t, execErr)
 	})
 
@@ -581,22 +554,19 @@ func main() {
 		dbg.SetBreakpoint("main.go", 10)
 
 		ctx, cancel := context.WithTimeoutCause(
-			context.Background(),
+			t.Context(),
 			5*1000*1000*1000,
 			errors.New("debugger test timed out"),
 		)
 		defer cancel()
 
-		var execErr error
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			_, execErr = service.EvalFile(ctx, source, "main")
-		}()
+		execution := debugtest.Run(t, dbg, func() (any, error) {
+			return service.EvalFile(ctx, source, "main")
+		})
 
 		{
-			snap := waitPause(t, dbg)
-			vars := localsOf(t, dbg, snap, 0)
+			snap := debugtest.WaitPause(t, dbg)
+			vars := debugtest.LocalsOf(t, dbg, snap, 0)
 			require.NotEmpty(t, vars)
 
 			varMap := make(map[string]any)
@@ -611,7 +581,7 @@ func main() {
 			dbg.Continue()
 		}
 
-		<-done
+		_, execErr := execution.Wait(t)
 		require.NoError(t, execErr)
 	})
 
@@ -637,27 +607,24 @@ func main() {
 		dbg.SetBreakpoint("main.go", 6)
 
 		ctx, cancel := context.WithTimeoutCause(
-			context.Background(),
+			t.Context(),
 			5*1000*1000*1000,
 			errors.New("debugger test timed out"),
 		)
 		defer cancel()
 
-		var execErr error
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			_, execErr = service.EvalFile(ctx, source, "main")
-		}()
+		execution := debugtest.Run(t, dbg, func() (any, error) {
+			return service.EvalFile(ctx, source, "main")
+		})
 
 		{
-			snap := waitPause(t, dbg)
-			vars := localsOf(t, dbg, snap, 0)
+			snap := debugtest.WaitPause(t, dbg)
+			vars := debugtest.LocalsOf(t, dbg, snap, 0)
 			_ = vars
 			dbg.Continue()
 		}
 
-		<-done
+		_, execErr := execution.Wait(t)
 		require.NoError(t, execErr)
 	})
 }

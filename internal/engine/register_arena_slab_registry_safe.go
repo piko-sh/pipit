@@ -1,0 +1,52 @@
+// Copyright 2026 PolitePixels Limited
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This project stands against fascism, authoritarianism, and all forms of
+// oppression. We built this to empower people, not to enable those who would
+// strip others of their rights and dignity.
+
+//go:build safe || (js && wasm)
+
+package engine
+
+import "sync/atomic"
+
+// The safe and WASM builds keep no unsafe slabs, so no string can point into another VM's
+// arena and the slab registry records nothing.
+
+// arenaSlabOwners numbers arenas, as in the unsafe build.
+var arenaSlabOwners atomic.Uint64
+
+// recordArenaSlab is a no-op without unsafe slabs.
+//
+// Takes owner (uint64) which identifies the arena; ignored in this build.
+// Takes slab ([]byte) which is the byte slab; ignored in this build.
+func recordArenaSlab(uint64, []byte) {}
+
+// forgetArenaSlab is a no-op without unsafe slabs.
+//
+// Takes slab ([]byte) which is the byte slab to forget; ignored in this build.
+func forgetArenaSlab([]byte) {}
+
+// forgetArenaSlabOwner is a no-op without unsafe slabs.
+//
+// Takes owner (uint64) which identifies the collected arena; ignored in this build.
+func forgetArenaSlabOwner(uint64) {}
+
+// arenaSlabContaining finds no slab in builds without unsafe arena storage.
+//
+// Takes pointer (uintptr) which is the address to look up; ignored in this build.
+//
+// Returns zero addresses and false.
+func arenaSlabContaining(uintptr) (start uintptr, end uintptr, found bool) { return 0, 0, false }

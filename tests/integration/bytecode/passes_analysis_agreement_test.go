@@ -21,7 +21,6 @@
 package bytecode_test
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -55,7 +54,7 @@ func compileGoldenShapes(t *testing.T) []shapeFunction {
 		}
 		source, readErr := os.ReadFile(filepath.Join(goldenShapesDir, entry.Name(), shapeSourceName))
 		require.NoError(t, readErr)
-		compiled, compileErr := app.NewService().CompileFileSet(context.Background(), map[string]string{shapeSourceName: string(source)})
+		compiled, compileErr := app.NewService().CompileFileSet(t.Context(), map[string]string{shapeSourceName: string(source)})
 		require.NoError(t, compileErr, "compiling shape %s", entry.Name())
 		out = appendFunctions(out, entry.Name(), compiled.Root())
 		out = appendFunctions(out, entry.Name(), compiled.VariableInitFunction())

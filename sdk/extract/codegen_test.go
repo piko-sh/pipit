@@ -278,3 +278,44 @@ func writeTestFile(path, content string) error {
 	content = strings.TrimSpace(content) + "\n"
 	return os.WriteFile(path, []byte(content), 0o644)
 }
+
+func TestGenerateFileRecordsDeclaredPackageName(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		importPath string
+		name       string
+		wantEntry  bool
+	}{
+		{importPath: "gopkg.in/yaml.v3", name: "yaml", wantEntry: false},
+		{importPath: "github.com/example/go-widgets", name: "widgets", wantEntry: false},
+		{importPath: "github.com/example/mod/v2", name: "mod", wantEntry: false},
+		{importPath: "github.com/example/go-yaml", name: "goyaml", wantEntry: true},
+		{importPath: "github.com/example/renamed", name: "other", wantEntry: true},
+		{importPath: "k8s.io/api/core/v1", name: "v1", wantEntry: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.importPath, func(t *testing.T) {
+			t.Parallel()
+			pkg := ExtractedPackage{
+				ImportPath: tc.importPath,
+				Name:       tc.name,
+				Symbols:    []ExtractedSymbol{{Name: "Marshal", Kind: SymbolFunc}},
+			}
+			source, err := GenerateFile(pkg, "symbols", PackageConfig{})
+			require.NoError(t, err)
+			src := string(source)
+
+			_, err = parser.ParseFile(token.NewFileSet(), "gen.go", src, 0)
+			require.NoError(t, err, "generated code should be valid Go:\n%s", src)
+			require.Contains(t, src, tc.name+".Marshal")
+
+			entry := `"` + PackageNameSymbol + `": reflect.ValueOf("` + tc.name + `")`
+			if tc.wantEntry {
+				require.Contains(t, src, entry)
+			} else {
+				require.NotContains(t, src, PackageNameSymbol)
+			}
+		})
+	}
+}

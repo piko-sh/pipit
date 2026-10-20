@@ -19,7 +19,6 @@
 package passes
 
 import (
-	"context"
 	"slices"
 	"testing"
 
@@ -30,7 +29,7 @@ import (
 
 func runCoalesce(t *testing.T, cf *program.CompiledFunction) {
 	t.Helper()
-	require.NoError(t, (coalesceMovesPass{}).Run(context.Background(), &PassContext{Analysis: newFunctionAnalysis(cf)}, cf))
+	require.NoError(t, (coalesceMovesPass{}).Run(t.Context(), &PassContext{Analysis: newFunctionAnalysis(cf)}, cf))
 }
 
 func TestCoalesceRenamesDefinitionThroughInPlaceUpdates(t *testing.T) {
@@ -49,6 +48,24 @@ func TestCoalesceRenamesDefinitionThroughInPlaceUpdates(t *testing.T) {
 		mk(isa.OpTruncateNarrow, 3, 32, uint8(isa.RegisterUint)),
 		nop(),
 		mk(isa.OpAddUint, 4, 3, 3),
+		isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
+	}, cf.Body)
+}
+
+func TestCoalesceRenamesDefinitionThatReadsTheDestination(t *testing.T) {
+	t.Parallel()
+	body := []isa.Instruction{
+		mk(isa.OpMulInt, 7, 3, 5),
+		mk(isa.OpAddInt, 7, 7, 6),
+		isa.NewTier1Instruction(isa.SubOpMoveInt, 3, 7),
+		isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
+	}
+	cf := &program.CompiledFunction{Body: body}
+	runCoalesce(t, cf)
+	require.Equal(t, []isa.Instruction{
+		mk(isa.OpMulInt, 3, 3, 5),
+		mk(isa.OpAddInt, 3, 3, 6),
+		nop(),
 		isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
 	}, cf.Body)
 }
@@ -82,7 +99,8 @@ func TestCoalesceRefusesUnsafeRewrites(t *testing.T) {
 	}{
 		"source read after move":        {body: []isa.Instruction{mk(isa.OpAddInt, 7, 5, 6), isa.NewTier1Instruction(isa.SubOpMoveInt, 3, 7), mk(isa.OpAddInt, 4, 7, 3), ret}},
 		"destination read between":      {body: []isa.Instruction{mk(isa.OpAddInt, 7, 5, 6), mk(isa.OpAddInt, 4, 3, 3), isa.NewTier1Instruction(isa.SubOpMoveInt, 3, 7), ret}},
-		"definition reads destination":  {body: []isa.Instruction{mk(isa.OpAddInt, 7, 3, 6), isa.NewTier1Instruction(isa.SubOpMoveInt, 3, 7), ret}},
+		"destination written between":   {body: []isa.Instruction{mk(isa.OpAddInt, 7, 5, 6), isa.NewTier1Instruction(isa.SubOpMoveInt, 3, 3), isa.NewTier1Instruction(isa.SubOpMoveInt, 3, 7), ret}},
+		"update reads destination":      {body: []isa.Instruction{mk(isa.OpAddInt, 7, 5, 6), mk(isa.OpAddInt, 7, 7, 3), isa.NewTier1Instruction(isa.SubOpMoveInt, 3, 7), ret}},
 		"increment is not a definition": {body: []isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2IncInt, 7), isa.NewTier1Instruction(isa.SubOpMoveInt, 3, 7), ret}},
 		"named variable": {
 			body: []isa.Instruction{mk(isa.OpAddInt, 7, 5, 6), isa.NewTier1Instruction(isa.SubOpMoveInt, 3, 7), ret},

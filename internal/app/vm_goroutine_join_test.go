@@ -19,16 +19,15 @@
 package app
 
 import (
-	"context"
 	"reflect"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/fault"
-
-	"github.com/stretchr/testify/require"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -83,9 +82,9 @@ func TestPutRegisterArenaReleasesSharedCharge(t *testing.T) {
 	arena.AttachBudgetTracker(tracker)
 	before := tracker.ArenaBytes.Load()
 	arena.ChargeArenaAllocation(1<<16, 0)
-	require.EqualValues(t, before+(1<<16), tracker.ArenaBytes.Load())
+	require.Equal(t, before+(1<<16), tracker.ArenaBytes.Load())
 	arena.ChargeArenaAllocation(1<<15, 1<<16)
-	require.EqualValues(t, before+(1<<15), tracker.ArenaBytes.Load())
+	require.Equal(t, before+(1<<15), tracker.ArenaBytes.Load())
 	engine.PutRegisterArena(arena)
 	require.EqualValues(t, 0, tracker.ArenaBytes.Load())
 }
@@ -111,7 +110,7 @@ func TestChargeArenaAllocationEnforcesSharedWorkingSet(t *testing.T) {
 func TestMainReturnJoinsGoroutines(t *testing.T) {
 	t.Parallel()
 	service := newTestService(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	_, err := service.Eval(ctx, `go func() { x := 0; for i := 0; ; i++ { x += i } }(); 1`)
 	require.NoError(t, err)
 	require.EqualValues(t, 0, service.LeakedGoroutines())
@@ -153,7 +152,7 @@ func run() int {
 }
 func main() {}
 `
-	_, err := service.EvalFile(context.Background(), source, "run")
+	_, err := service.EvalFile(t.Context(), source, "run")
 	require.ErrorIs(t, err, fault.ErrGoroutineJoinTimeout)
 	require.EqualValues(t, 1, service.LeakedGoroutines())
 }

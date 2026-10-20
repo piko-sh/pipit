@@ -159,11 +159,22 @@ func RegisterSpecialisation(compiledFunction *CompiledFunction, key *Specialisat
 // value because CallSite is large (~456 bytes); the receiver still gets a fresh copy in
 // the slice.
 //
-// Returns the index of the newly added call site, or errConstantPoolExhausted when the
-// call-site table has reached its configured ceiling.
+// Returns the index of the newly added call site, errConstantPoolExhausted when the
+// call-site table has reached its configured ceiling, or errSpilledCallOperand when an
+// argument or result is a spill slot.
 func AddCallSite(compiledFunction *CompiledFunction, site *CallSite) (uint16, error) {
 	if len(compiledFunction.CallSites) >= constantPoolCap(compiledFunction) {
 		return 0, fmt.Errorf("%w: callSites", errConstantPoolExhausted)
+	}
+	for index, argument := range site.Arguments {
+		if argument.IsSpilled {
+			return 0, fmt.Errorf("%w: argument %d in %s", errSpilledCallOperand, index, compiledFunction.Name)
+		}
+	}
+	for index, result := range site.Returns {
+		if result.IsSpilled {
+			return 0, fmt.Errorf("%w: result %d in %s", errSpilledCallOperand, index, compiledFunction.Name)
+		}
 	}
 	index := len(compiledFunction.CallSites)
 	compiledFunction.CallSites = append(compiledFunction.CallSites, *site)

@@ -21,10 +21,10 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/engine/program"
@@ -88,7 +88,7 @@ func EntrypointRun() int { return frameLocal(1) }
 func TestEscapePassDoesNotArenaPromotePointersHandedToOutlivingSinks(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": escapeSinkSource})
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": escapeSinkSource})
 	require.NoError(t, err)
 
 	byName := map[string]*program.CompiledFunction{}
@@ -96,7 +96,7 @@ func TestEscapePassDoesNotArenaPromotePointersHandedToOutlivingSinks(t *testing.
 		byName[fn.Name] = fn
 	}
 
-	for _, testCase := range []struct {
+	tests := []struct {
 		function string
 		sink     isa.Instruction
 	}{
@@ -104,21 +104,22 @@ func TestEscapePassDoesNotArenaPromotePointersHandedToOutlivingSinks(t *testing.
 		{function: "selectSend", sink: isa.NewTier1Instruction(isa.SubOpSelect, 0, 0)},
 		{function: "mapStoredIntKey", sink: isa.NewInstruction(isa.OpMapSetIntGeneral, 0, 0, 0)},
 		{function: "mapStoredStringKey", sink: isa.NewInstruction(isa.OpMapSetStringGeneral, 0, 0, 0)},
-	} {
-		t.Run(testCase.function, func(t *testing.T) {
+	}
+	for _, tt := range tests {
+		t.Run(tt.function, func(t *testing.T) {
 			t.Parallel()
-			fn := byName[testCase.function]
-			require.NotNilf(t, fn, "%s is compiled", testCase.function)
-			require.Truef(t, bodyContainsOperation(fn, testCase.sink),
+			fn := byName[tt.function]
+			require.NotNilf(t, fn, "%s is compiled", tt.function)
+			require.Truef(t, bodyContainsOperation(fn, tt.sink),
 				"%s must compile to %s, otherwise the escape assertion below proves nothing",
-				testCase.function, isa.InstructionDisplayName(testCase.sink))
+				tt.function, isa.InstructionDisplayName(tt.sink))
 
 			sites := arenaCandidateSites(fn)
-			require.NotEmptyf(t, sites, "%s has an allocation site", testCase.function)
+			require.NotEmptyf(t, sites, "%s has an allocation site", tt.function)
 			for _, pc := range sites {
 				require.Falsef(t, fn.ArenaSafeAllocPCs[pc],
 					"%s: a pointer handed to %s outlives the frame and must not be arena-promoted",
-					testCase.function, isa.InstructionDisplayName(testCase.sink))
+					tt.function, isa.InstructionDisplayName(tt.sink))
 			}
 		})
 	}

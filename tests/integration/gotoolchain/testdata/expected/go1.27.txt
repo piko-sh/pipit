@@ -195,6 +195,7 @@ fixedbugs/bug294.go
 fixedbugs/bug295.go
 fixedbugs/bug296.go
 fixedbugs/bug303.go
+fixedbugs/bug311.go
 fixedbugs/bug312.go
 fixedbugs/bug314.go
 fixedbugs/bug317.go
@@ -412,6 +413,7 @@ fixedbugs/issue30606.go
 fixedbugs/issue30606b.go
 fixedbugs/issue30956.go
 fixedbugs/issue30977.go
+fixedbugs/issue31419.go
 fixedbugs/issue31782.go
 fixedbugs/issue31987.go
 fixedbugs/issue32175.go
@@ -503,6 +505,7 @@ fixedbugs/issue53653.go
 fixedbugs/issue53702.go
 fixedbugs/issue5373.go
 fixedbugs/issue54343.go
+fixedbugs/issue54348.go
 fixedbugs/issue54467.go
 fixedbugs/issue54542.go
 fixedbugs/issue54632.go
@@ -654,6 +657,7 @@ initialize.go
 int_lit.go
 intcvt.go
 interface/bigdata.go
+interface/convert.go
 interface/convert1.go
 interface/convert2.go
 interface/embed.go

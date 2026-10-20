@@ -35,6 +35,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestNativeServiceRecoveryQuiesce(t *testing.T) {
@@ -47,10 +49,7 @@ func TestNativeServiceRecoveryQuiesce(t *testing.T) {
 
 func exerciseNativeServiceRecovery(t *testing.T, releaseStage string) {
 	t.Helper()
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	aggregate, err := newGroup(parent, Limits{})
 	if err != nil {
 		t.Fatal(err)
@@ -98,10 +97,7 @@ func exerciseNativeServiceRecovery(t *testing.T, releaseStage string) {
 		t.Fatal(err)
 	}
 	defer func() { _ = command.Process.Kill(); _ = command.Wait() }()
-	ready, err := bufio.NewReader(output).ReadString('\n')
-	if err != nil || ready != "ready\n" {
-		t.Fatal("original host did not become ready:", ready, err)
-	}
+	sandboxtest.WaitForLine(t, bufio.NewReader(output), "ready", "the original host becomes ready")
 	if err := command.Process.Kill(); err != nil {
 		t.Fatal(err)
 	}

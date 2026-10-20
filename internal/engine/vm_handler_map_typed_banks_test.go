@@ -39,49 +39,76 @@ func TestTypedMapReadsHitTheConcreteFastPath(t *testing.T) {
 	}{
 		{
 			name: "an int-keyed int map", handler: handleMapGetIntInt, source: map[int]int{1: 10},
-			load:    func(r *Registers) { r.Ints[2] = 1 },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(10), r.Ints[0]) },
+			load: func(r *Registers) { r.Ints[2] = 1 },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(10), r.Ints[0])
+			},
 		},
 		{
 			name: "an int64-keyed int64 map", handler: handleMapGetIntInt, source: map[int64]int64{1: 10},
-			load:    func(r *Registers) { r.Ints[2] = 1 },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(10), r.Ints[0]) },
+			load: func(r *Registers) { r.Ints[2] = 1 },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(10), r.Ints[0])
+			},
 		},
 		{
 			name: "a missing int key yields the zero value", handler: handleMapGetIntInt, source: map[int]int{},
-			load:    func(r *Registers) { r.Ints[2] = 9 },
-			inspect: func(t *testing.T, r *Registers) { require.Zero(t, r.Ints[0]) },
+			load: func(r *Registers) { r.Ints[2] = 9 },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Zero(t, r.Ints[0])
+			},
 		},
 		{
 			name: "a string-keyed int map", handler: handleMapGetStringInt, source: map[string]int{"a": 3},
-			load:    func(r *Registers) { r.Strings[2] = "a" },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(3), r.Ints[0]) },
+			load: func(r *Registers) { r.Strings[2] = "a" },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(3), r.Ints[0])
+			},
 		},
 		{
 			name: "a named string key falls to the reflect path", handler: handleMapGetStringInt,
-			source:  map[namedStringMapKey]int{"a": 4},
-			load:    func(r *Registers) { r.Strings[2] = "a" },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(4), r.Ints[0]) },
+			source: map[namedStringMapKey]int{"a": 4},
+			load:   func(r *Registers) { r.Strings[2] = "a" },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(4), r.Ints[0])
+			},
 		},
 		{
 			name: "a string-keyed string map", handler: handleMapGetStringString, source: map[string]string{"a": "v"},
-			load:    func(r *Registers) { r.Strings[2] = "a" },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "v", r.Strings[0]) },
+			load: func(r *Registers) { r.Strings[2] = "a" },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "v", r.Strings[0])
+			},
 		},
 		{
 			name: "an int-keyed string map", handler: handleMapGetIntString, source: map[int]string{2: "v"},
-			load:    func(r *Registers) { r.Ints[2] = 2 },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "v", r.Strings[0]) },
+			load: func(r *Registers) { r.Ints[2] = 2 },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "v", r.Strings[0])
+			},
 		},
 		{
 			name: "an int-keyed interface map", handler: handleMapGetIntGeneral, source: map[int]any{2: "boxed"},
-			load:    func(r *Registers) { r.Ints[2] = 2 },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "boxed", r.General[0].Interface()) },
+			load: func(r *Registers) { r.Ints[2] = 2 },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "boxed", r.General[0].Interface())
+			},
 		},
 		{
 			name: "a string-keyed interface map", handler: handleMapGetStringGeneral, source: map[string]any{"a": 5},
-			load:    func(r *Registers) { r.Strings[2] = "a" },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, 5, r.General[0].Interface()) },
+			load: func(r *Registers) { r.Strings[2] = "a" },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, 5, r.General[0].Interface())
+			},
 		},
 	}
 
@@ -111,54 +138,84 @@ func TestTypedMapWritesLandInTheSourceMap(t *testing.T) {
 	}{
 		{
 			name: "an int-keyed int map", handler: handleMapSetIntInt, source: map[int]int{},
-			load:    func(r *Registers) { r.Ints[1] = 1; r.Ints[2] = 10 },
-			inspect: func(t *testing.T, m any) { require.Equal(t, 10, m.(map[int]int)[1]) },
+			load: func(r *Registers) { r.Ints[1] = 1; r.Ints[2] = 10 },
+			inspect: func(t *testing.T, m any) {
+				t.Helper()
+				require.Equal(t, 10, m.(map[int]int)[1])
+			},
 		},
 		{
 			name: "an int64-keyed int64 map", handler: handleMapSetIntInt, source: map[int64]int64{},
-			load:    func(r *Registers) { r.Ints[1] = 1; r.Ints[2] = 10 },
-			inspect: func(t *testing.T, m any) { require.Equal(t, int64(10), m.(map[int64]int64)[1]) },
+			load: func(r *Registers) { r.Ints[1] = 1; r.Ints[2] = 10 },
+			inspect: func(t *testing.T, m any) {
+				t.Helper()
+				require.Equal(t, int64(10), m.(map[int64]int64)[1])
+			},
 		},
 		{
 			name: "a string-keyed int map", handler: handleMapSetStringInt, source: map[string]int{},
-			load:    func(r *Registers) { r.Strings[1] = "a"; r.Ints[2] = 3 },
-			inspect: func(t *testing.T, m any) { require.Equal(t, 3, m.(map[string]int)["a"]) },
+			load: func(r *Registers) { r.Strings[1] = "a"; r.Ints[2] = 3 },
+			inspect: func(t *testing.T, m any) {
+				t.Helper()
+				require.Equal(t, 3, m.(map[string]int)["a"])
+			},
 		},
 		{
 			name: "a string-keyed string map", handler: handleMapSetStringString, source: map[string]string{},
-			load:    func(r *Registers) { r.Strings[1] = "a"; r.Strings[2] = "v" },
-			inspect: func(t *testing.T, m any) { require.Equal(t, "v", m.(map[string]string)["a"]) },
+			load: func(r *Registers) { r.Strings[1] = "a"; r.Strings[2] = "v" },
+			inspect: func(t *testing.T, m any) {
+				t.Helper()
+				require.Equal(t, "v", m.(map[string]string)["a"])
+			},
 		},
 		{
 			name: "an int-keyed string map", handler: handleMapSetIntString, source: map[int]string{},
-			load:    func(r *Registers) { r.Ints[1] = 2; r.Strings[2] = "v" },
-			inspect: func(t *testing.T, m any) { require.Equal(t, "v", m.(map[int]string)[2]) },
+			load: func(r *Registers) { r.Ints[1] = 2; r.Strings[2] = "v" },
+			inspect: func(t *testing.T, m any) {
+				t.Helper()
+				require.Equal(t, "v", m.(map[int]string)[2])
+			},
 		},
 		{
 			name: "an int-keyed interface map", handler: handleMapSetIntGeneral, source: map[int]any{},
-			load:    func(r *Registers) { r.Ints[1] = 2; r.General[2] = reflect.ValueOf("boxed") },
-			inspect: func(t *testing.T, m any) { require.Equal(t, "boxed", m.(map[int]any)[2]) },
+			load: func(r *Registers) { r.Ints[1] = 2; r.General[2] = reflect.ValueOf("boxed") },
+			inspect: func(t *testing.T, m any) {
+				t.Helper()
+				require.Equal(t, "boxed", m.(map[int]any)[2])
+			},
 		},
 		{
 			name: "a string-keyed interface map", handler: handleMapSetStringGeneral, source: map[string]any{},
-			load:    func(r *Registers) { r.Strings[1] = "a"; r.General[2] = reflect.ValueOf(6) },
-			inspect: func(t *testing.T, m any) { require.Equal(t, 6, m.(map[string]any)["a"]) },
+			load: func(r *Registers) { r.Strings[1] = "a"; r.General[2] = reflect.ValueOf(6) },
+			inspect: func(t *testing.T, m any) {
+				t.Helper()
+				require.Equal(t, 6, m.(map[string]any)["a"])
+			},
 		},
 		{
 			name: "an int-keyed accumulate", handler: handleMapAddIntInt, source: map[int]int{1: 5},
-			load:    func(r *Registers) { r.Ints[1] = 1; r.Ints[2] = 4 },
-			inspect: func(t *testing.T, m any) { require.Equal(t, 9, m.(map[int]int)[1]) },
+			load: func(r *Registers) { r.Ints[1] = 1; r.Ints[2] = 4 },
+			inspect: func(t *testing.T, m any) {
+				t.Helper()
+				require.Equal(t, 9, m.(map[int]int)[1])
+			},
 		},
 		{
 			name: "a string-keyed accumulate", handler: handleMapAddStringInt, source: map[string]int{"a": 5},
-			load:    func(r *Registers) { r.Strings[1] = "a"; r.Ints[2] = 4 },
-			inspect: func(t *testing.T, m any) { require.Equal(t, 9, m.(map[string]int)["a"]) },
+			load: func(r *Registers) { r.Strings[1] = "a"; r.Ints[2] = 4 },
+			inspect: func(t *testing.T, m any) {
+				t.Helper()
+				require.Equal(t, 9, m.(map[string]int)["a"])
+			},
 		},
 		{
 			name: "an accumulate onto a missing key starts from zero", handler: handleMapAddStringInt,
-			source:  map[string]int{},
-			load:    func(r *Registers) { r.Strings[1] = "new"; r.Ints[2] = 4 },
-			inspect: func(t *testing.T, m any) { require.Equal(t, 4, m.(map[string]int)["new"]) },
+			source: map[string]int{},
+			load:   func(r *Registers) { r.Strings[1] = "new"; r.Ints[2] = 4 },
+			inspect: func(t *testing.T, m any) {
+				t.Helper()
+				require.Equal(t, 4, m.(map[string]int)["new"])
+			},
 		},
 	}
 
@@ -190,60 +247,91 @@ func TestTypedMapCommaOkReportsPresence(t *testing.T) {
 		{
 			name: "an int-keyed int hit", handler: handleMapIndexOkIntInt, source: map[int]int{1: 10},
 			load: func(r *Registers) { r.Ints[2] = 1 }, wantOk: 1,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(10), r.Ints[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(10), r.Ints[0])
+			},
 		},
 		{
 			name: "an int-keyed int miss", handler: handleMapIndexOkIntInt, source: map[int]int{},
 			load: func(r *Registers) { r.Ints[2] = 9 }, wantOk: 0,
-			inspect: func(t *testing.T, r *Registers) { require.Zero(t, r.Ints[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Zero(t, r.Ints[0])
+			},
 		},
 		{
 			name: "an int64-keyed int64 hit", handler: handleMapIndexOkIntInt, source: map[int64]int64{1: 10},
 			load: func(r *Registers) { r.Ints[2] = 1 }, wantOk: 1,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(10), r.Ints[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(10), r.Ints[0])
+			},
 		},
 		{
 			name: "a named-key map falls to the reflect path", handler: handleMapIndexOkStringInt,
 			source: map[namedStringMapKey]int{"a": 4},
 			load:   func(r *Registers) { r.Strings[2] = "a" }, wantOk: 1,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(4), r.Ints[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(4), r.Ints[0])
+			},
 		},
 		{
 			name: "a string-keyed int hit", handler: handleMapIndexOkStringInt, source: map[string]int{"a": 3},
 			load: func(r *Registers) { r.Strings[2] = "a" }, wantOk: 1,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(3), r.Ints[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(3), r.Ints[0])
+			},
 		},
 		{
 			name: "a string-keyed string hit", handler: handleMapIndexOkStringString,
 			source: map[string]string{"a": "v"},
 			load:   func(r *Registers) { r.Strings[2] = "a" }, wantOk: 1,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "v", r.Strings[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "v", r.Strings[0])
+			},
 		},
 		{
 			name: "a string-keyed string miss", handler: handleMapIndexOkStringString, source: map[string]string{},
 			load: func(r *Registers) { r.Strings[2] = "a" }, wantOk: 0,
-			inspect: func(t *testing.T, r *Registers) { require.Empty(t, r.Strings[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Empty(t, r.Strings[0])
+			},
 		},
 		{
 			name: "an int-keyed string hit", handler: handleMapIndexOkIntString, source: map[int]string{2: "v"},
 			load: func(r *Registers) { r.Ints[2] = 2 }, wantOk: 1,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "v", r.Strings[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "v", r.Strings[0])
+			},
 		},
 		{
 			name: "an int-keyed interface hit", handler: handleMapIndexOkIntGeneral, source: map[int]any{2: "boxed"},
 			load: func(r *Registers) { r.Ints[2] = 2 }, wantOk: 1,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "boxed", r.General[0].Interface()) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "boxed", r.General[0].Interface())
+			},
 		},
 		{
 			name: "a string-keyed interface hit", handler: handleMapIndexOkStringGeneral,
 			source: map[string]any{"a": 5},
 			load:   func(r *Registers) { r.Strings[2] = "a" }, wantOk: 1,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, 5, r.General[0].Interface()) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, 5, r.General[0].Interface())
+			},
 		},
 		{
 			name: "a string-keyed interface miss", handler: handleMapIndexOkStringGeneral, source: map[string]any{},
 			load: func(r *Registers) { r.Strings[2] = "a" }, wantOk: 0,
 			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
 				require.True(t, r.General[0].IsValid(), "a miss writes the element type's zero value, not nothing")
 				require.Nil(t, r.General[0].Interface())
 			},

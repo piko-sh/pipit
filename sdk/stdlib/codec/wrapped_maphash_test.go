@@ -41,7 +41,7 @@ func TestWrappedMaphashComparableNonBuiltin(t *testing.T) {
 	t.Parallel()
 	type point struct{ X, Y int }
 	seed := maphash.MakeSeed()
-	h1 := wrappedMaphashComparable(seed, point{1, 2})
-	h2 := wrappedMaphashComparable(seed, point{1, 2})
+	h1 := wrappedMaphashComparable(seed, point{X: 1, Y: 2})
+	h2 := wrappedMaphashComparable(seed, point{X: 1, Y: 2})
 	require.Equal(t, h1, h2)
 }

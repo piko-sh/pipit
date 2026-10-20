@@ -19,34 +19,30 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
-	"bytes"
-	"fmt"
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/fault"
-	"strings"
+	"pipit.sh/pipit/internal/symtab"
 )
 
 func TestEvalCancelledContext(t *testing.T) {
 	t.Parallel()
 	service := NewService()
 
-	ctx, cancel := context.WithCancelCause(context.Background())
+	ctx, cancel := context.WithCancelCause(t.Context())
 	cancel(errors.New("test: pre-cancelled eval context"))
 
 	_, err := service.Eval(ctx, `1 + 2`)
-	if err == nil {
-		t.Fatal("expected error for cancelled context")
-	}
-	if !errors.Is(err, fault.ErrExecutionCancelled) {
-		t.Fatalf("expected errExecutionCancelled, got: %v", err)
-	}
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("expected context.Canceled in chain, got: %v", err)
-	}
+	require.ErrorIs(t, err, fault.ErrExecutionCancelled, "a cancelled context stops execution")
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestEvalTimeout(t *testing.T) {
@@ -54,7 +50,7 @@ func TestEvalTimeout(t *testing.T) {
 	service := NewService()
 	service.UseSymbols(newOSSymbols())
 
-	ctx, cancel := context.WithTimeoutCause(context.Background(), 100*time.Millisecond, errors.New("test: eval timeout"))
+	ctx, cancel := context.WithTimeoutCause(t.Context(), 100*time.Millisecond, errors.New("test: eval timeout"))
 	defer cancel()
 
 	_, err := service.Eval(ctx, `
@@ -67,28 +63,18 @@ for {
 	os.Getenv("PATH")
 }
 `)
-	if err == nil {
-		t.Fatal("expected timeout error")
-	}
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("expected context.DeadlineExceeded, got: %v", err)
-	}
+	require.ErrorIs(t, err, context.DeadlineExceeded, "the deadline stops execution")
 }
 
 func TestCompileCancelledContext(t *testing.T) {
 	t.Parallel()
 	service := NewService()
 
-	ctx, cancel := context.WithCancelCause(context.Background())
+	ctx, cancel := context.WithCancelCause(t.Context())
 	cancel(errors.New("test: pre-cancelled compile context"))
 
 	_, err := service.Compile(ctx, `1 + 2`)
-	if err == nil {
-		t.Fatal("expected error for cancelled context")
-	}
-	if !errors.Is(err, fault.ErrExecutionCancelled) {
-		t.Fatalf("expected errExecutionCancelled, got: %v", err)
-	}
+	require.ErrorIs(t, err, fault.ErrExecutionCancelled, "a cancelled context stops execution")
 }
 
 func TestExecuteEntrypointCancelledContext(t *testing.T) {
@@ -98,21 +84,14 @@ func TestExecuteEntrypointCancelledContext(t *testing.T) {
 	source := `package main
 func entrypoint() int { return 42 }
 `
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
-	if err != nil {
-		t.Fatal(err)
-	}
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
+	require.NoError(t, err)
 
-	ctx, cancel := context.WithCancelCause(context.Background())
+	ctx, cancel := context.WithCancelCause(t.Context())
 	cancel(errors.New("test: pre-cancelled entrypoint context"))
 
 	_, err = service.ExecuteEntrypoint(ctx, cfs, "entrypoint")
-	if err == nil {
-		t.Fatal("expected error for cancelled context")
-	}
-	if !errors.Is(err, fault.ErrExecutionCancelled) {
-		t.Fatalf("expected errExecutionCancelled, got: %v", err)
-	}
+	require.ErrorIs(t, err, fault.ErrExecutionCancelled, "a cancelled context stops execution")
 }
 
 func TestMaxExecutionTime(t *testing.T) {
@@ -120,7 +99,7 @@ func TestMaxExecutionTime(t *testing.T) {
 	service := NewService(WithMaxExecutionTime(100 * time.Millisecond))
 	service.UseSymbols(newOSSymbols())
 
-	_, err := service.Eval(context.Background(), `
+	_, err := service.Eval(t.Context(), `
 import (
 	"os"
 )
@@ -130,12 +109,7 @@ for {
 	os.Getenv("PATH")
 }
 `)
-	if err == nil {
-		t.Fatal("expected timeout error")
-	}
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("expected context.DeadlineExceeded, got: %v", err)
-	}
+	require.ErrorIs(t, err, context.DeadlineExceeded, "the deadline stops execution")
 }
 
 func TestEvalCancelDuringExecution(t *testing.T) {
@@ -143,7 +117,7 @@ func TestEvalCancelDuringExecution(t *testing.T) {
 	service := NewService()
 	service.UseSymbols(newOSSymbols())
 
-	ctx, cancel := context.WithCancelCause(context.Background())
+	ctx, cancel := context.WithCancelCause(t.Context())
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		cancel(errors.New("test: cancel during execution"))
@@ -159,19 +133,14 @@ for {
 	os.Getenv("PATH")
 }
 `)
-	if err == nil {
-		t.Fatal("expected cancellation error")
-	}
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("expected context.Canceled, got: %v", err)
-	}
+	require.ErrorIs(t, err, context.Canceled, "cancellation stops execution")
 }
 
 func TestCompileDefersGlobalInitialisation(t *testing.T) {
 	t.Parallel()
 	var output bytes.Buffer
 	service := NewService(WithSafeMode(), WithStderr(&output))
-	compiled, err := service.Compile(context.Background(), `
+	compiled, err := service.Compile(t.Context(), `
 func unused() {}
 var value = func() int {
 	println("initialised")
@@ -179,35 +148,60 @@ var value = func() int {
 }()
 value
 `)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if output.Len() != 0 {
-		t.Fatalf("compilation executed script code: %q", output.String())
-	}
-	cancelled, cancel := context.WithCancel(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, output.String(), "compilation runs no script code")
+	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := service.Execute(cancelled, compiled); !errors.Is(err, context.Canceled) {
-		t.Fatalf("cancelled execution: %v", err)
-	}
-	if output.Len() != 0 {
-		t.Fatal("cancelled execution ran the initialiser")
-	}
+	_, err = service.Execute(cancelled, compiled)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 0, output.Len(), "a cancelled execution runs no initialiser")
 	for iteration := 1; iteration <= 2; iteration++ {
-		result, err := service.Execute(context.Background(), compiled)
-		if err != nil || fmt.Sprint(result) != "7" {
-			t.Fatalf("execution %d: result=%v error=%v", iteration, result, err)
-		}
-		if bytes.Count(output.Bytes(), []byte("initialised")) != iteration {
-			t.Fatalf("initialiser did not run once per execution: %q", output.String())
-		}
+		result, err := service.Execute(t.Context(), compiled)
+		require.NoError(t, err)
+		require.Equal(t, "7", fmt.Sprint(result))
+		require.Equal(t, iteration, bytes.Count(output.Bytes(), []byte("initialised")), "the initialiser runs once per execution")
+	}
+}
+
+func TestEntrypointKeepsStringsVariableInitialisersBuilt(t *testing.T) {
+	t.Parallel()
+	const entrypoint = `
+func run() string {
+	other := string(host.Bytes("XXXX"))
+	return value + other[:0]
+}`
+	tests := []struct {
+		name   string
+		source string
+	}{
+		{name: "a conversion in the initialiser", source: `var value = string(host.Bytes("kept"))`},
+		{name: "a conversion in a function the initialiser calls", source: `var value = load()
+func load() string { data := host.Bytes("kept"); return string(data) }`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			service := NewService()
+			service.UseSymbols(symtab.NewSymbolRegistry(symtab.SymbolExports{"host": {
+				"Bytes": reflect.ValueOf(func(s string) []byte { return []byte(s) }),
+			}}))
+			cfs, err := service.CompileFileSet(t.Context(), map[string]string{
+				"main.go": "package main\nimport \"host\"\n" + tt.source + "\n" + entrypoint,
+			})
+			require.NoError(t, err)
+
+			value, err := service.ExecuteEntrypoint(t.Context(), cfs, "run")
+
+			require.NoError(t, err)
+			require.Equal(t, "kept", value, "the global must not point into the initialiser's released arena")
+		})
 	}
 }
 
 func TestCompileDefersFailingInitialiser(t *testing.T) {
 	t.Parallel()
 	service := NewService(WithSafeMode())
-	compiled, err := service.Compile(context.Background(), `
+	compiled, err := service.Compile(t.Context(), `
 func unused() {}
 var value = func() int {
 	panic("initialiser failure")
@@ -215,34 +209,23 @@ var value = func() int {
 }()
 value
 `)
-	if err != nil {
-		t.Fatalf("runtime initialiser failure escaped into compilation: %v", err)
-	}
-	if _, err := service.Execute(context.Background(), compiled); err == nil {
-		t.Fatal("execution ignored the initialiser failure")
-	}
+	require.NoError(t, err, "a runtime initialiser failure does not surface during compilation")
+	_, err = service.Execute(t.Context(), compiled)
+	require.Error(t, err, "execution reports the initialiser failure")
 }
 
 func TestGoroutineLimitIsWiredThroughService(t *testing.T) {
 	t.Parallel()
 	service := NewService(WithMaxGoroutines(4))
-	if service.limits.MaxGoroutines != 4 {
-		t.Fatalf("limits.maxGoroutines = %d, want 4", service.limits.MaxGoroutines)
-	}
+	require.Equal(t, int32(4), service.limits.MaxGoroutines)
 }
 
 func TestErrGoroutineLimitIsExported(t *testing.T) {
 	t.Parallel()
-	if fault.ErrGoroutineLimit == nil {
-		t.Fatalf("errGoroutineLimit unexported or nil")
-	}
+	require.Error(t, fault.ErrGoroutineLimit)
 	wrapped := errors.Join(errors.New("wrapper"), fault.ErrGoroutineLimit)
-	if !errors.Is(wrapped, fault.ErrGoroutineLimit) {
-		t.Fatalf("errors.Is failed to unwrap errGoroutineLimit")
-	}
-	if !strings.Contains(fault.ErrGoroutineLimit.Error(), "goroutine") {
-		t.Fatalf("errGoroutineLimit message %q lacks 'goroutine'", fault.ErrGoroutineLimit.Error())
-	}
+	require.ErrorIs(t, wrapped, fault.ErrGoroutineLimit)
+	require.Contains(t, fault.ErrGoroutineLimit.Error(), "goroutine")
 }
 
 func TestWithCapabilityHookAndForceGoDispatchCompose(t *testing.T) {
@@ -254,13 +237,21 @@ func TestWithCapabilityHookAndForceGoDispatchCompose(t *testing.T) {
 		WithMaxGoroutines(8),
 		WithMaxCallDepth(1024),
 	)
-	if service.CapabilityHook() != hook {
-		t.Fatalf("CapabilityHook not preserved across option list")
-	}
-	if service.limits.MaxGoroutines != 8 {
-		t.Fatalf("maxGoroutines = %d, want 8", service.limits.MaxGoroutines)
-	}
-	if service.limits.MaxCallDepth != 1024 {
-		t.Fatalf("maxCallDepth = %d, want 1024", service.limits.MaxCallDepth)
-	}
+	require.Same(t, hook, service.CapabilityHook(), "the hook survives the rest of the option list")
+	require.Equal(t, int32(8), service.limits.MaxGoroutines)
+	require.Equal(t, 1024, service.limits.MaxCallDepth)
+}
+
+func TestEvalAndSessionsReportSeveralTypeErrors(t *testing.T) {
+	t.Parallel()
+
+	const snippet = "x := missingOne\ny := missingTwo\n_, _ = x, y\n"
+	_, err := NewService().Eval(t.Context(), snippet)
+	require.ErrorIs(t, err, fault.ErrTypeCheck)
+	require.Contains(t, err.Error(), "missingOne")
+	require.Contains(t, err.Error(), "missingTwo")
+
+	_, err = NewService().NewSession().Submit(t.Context(), snippet)
+	require.ErrorIs(t, err, fault.ErrTypeCheck)
+	require.Contains(t, err.Error(), "missingTwo")
 }

@@ -21,31 +21,27 @@
 package bytecode_test
 
 import (
-	"context"
 	"math"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine/program"
-
 	"pipit.sh/pipit/internal/isa"
 )
 
 func execSyntheticGoDispatch(t *testing.T, compiledFunction *program.CompiledFunction) (any, error) {
 	t.Helper()
 	service := app.NewService(app.WithForceGoDispatch())
-	return service.Execute(context.Background(), compiledFunction)
+	return service.Execute(t.Context(), compiledFunction)
 }
 
 func requireSyntheticGoDispatchResult(t *testing.T, compiledFunction *program.CompiledFunction, expect any) {
 	t.Helper()
 	result, err := execSyntheticGoDispatch(t, compiledFunction)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != expect {
-		t.Fatalf("expected %v, got %v", expect, result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, expect, result)
 }
 
 func TestFusedOpcodeEqIntConstJumpTrue(t *testing.T) {

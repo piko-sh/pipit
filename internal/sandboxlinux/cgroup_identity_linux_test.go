@@ -27,6 +27,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestGroupIdentityRejectsOrdinaryStorage(t *testing.T) {
@@ -66,10 +68,7 @@ func TestGroupCleanupNeverAdoptsMissingHandle(t *testing.T) {
 }
 
 func TestCgroupNativeCleanupRejectsReplacement(t *testing.T) {
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	group, err := newServiceGroup(parent, Limits{}, testTenant)
 	if err != nil {
 		t.Fatal(err)

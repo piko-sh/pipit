@@ -974,11 +974,6 @@ type CallSite struct {
 	// receiver for methods).
 	ParameterInterfaceFlags []bool
 
-	// VariadicArgumentsBuffer is a pre-allocated buffer for variadic fast-path calls. Avoids
-	// make([]any, n) per call for functions like fmt.Sprintf that take ...interface{}
-	// parameters.
-	VariadicArgumentsBuffer []any
-
 	// CachedClosureUpvalues holds the upvalue cells extracted from the last-seen closure,
 	// paired with CachedClosurePtr.
 	CachedClosureUpvalues []*UpvalueCell

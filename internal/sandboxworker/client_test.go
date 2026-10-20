@@ -20,10 +20,11 @@ package sandboxworker
 
 import (
 	"encoding/json"
-	"errors"
 	"net"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/sandboxwire"
 )
@@ -39,12 +40,10 @@ func TestExchangeWithSourceWorker(t *testing.T) {
 		Configuration{Profile: Profile, Imports: []string{"math"}},
 		Request{Kind: "expression", Source: "import \"math\"\nmath.Sqrt(49)", Entrypoint: ""},
 	)
-	if err != nil || response.Code != "ok" || string(response.Value) != "7" {
-		t.Fatalf("response=%+v error=%v", response, err)
-	}
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "response=%+v", response)
+	require.Equal(t, "ok", response.Code)
+	require.Equal(t, "7", string(response.Value))
+	require.NoError(t, <-done)
 }
 
 func TestExchangeRejectsWorkerReplies(t *testing.T) {
@@ -71,10 +70,9 @@ func TestExchangeRejectsWorkerReplies(t *testing.T) {
 		{hello, ready, {Kind: sandboxwire.Result, ID: 1, Payload: json.RawMessage(`{"output":null,"error":"","code":"ok","value":7,"cost_used":0,"output_truncated":false}`)}},
 	} {
 		stream := sourceFixture(t, messages...)
-		if _, err := Exchange(stream, Configuration{Profile: Profile, Imports: nil},
-			Request{Kind: "expression", Source: "1", Entrypoint: ""}); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatalf("malicious worker accepted: %v", err)
-		}
+		_, err := Exchange(stream, Configuration{Profile: Profile, Imports: nil},
+			Request{Kind: "expression", Source: "1", Entrypoint: ""})
+		require.ErrorIs(t, err, sandboxwire.ErrProtocol, "malicious worker accepted")
 	}
 }
 
@@ -82,9 +80,7 @@ func TestValidateWorkerResponse(t *testing.T) {
 	t.Parallel()
 	for _, value := range []string{"null", "true", "7", "-1.25", `"text"`} {
 		response := Response{Output: "", Error: "", Code: "ok", Value: json.RawMessage(value), CostUsed: 0, OutputTruncated: false}
-		if err := validateResponse(response); err != nil {
-			t.Fatalf("scalar %s rejected: %v", value, err)
-		}
+		require.NoError(t, validateResponse(response), "scalar %s rejected", value)
 	}
 	for _, mutate := range []func(*Response){
 		func(response *Response) { response.Value = json.RawMessage("{}") },
@@ -106,9 +102,7 @@ func TestValidateWorkerResponse(t *testing.T) {
 	} {
 		response := Response{Output: "", Error: "", Code: "ok", Value: json.RawMessage("null"), CostUsed: 0, OutputTruncated: false}
 		mutate(&response)
-		if err := validateResponse(response); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatalf("invalid result accepted: %v", err)
-		}
+		require.ErrorIs(t, validateResponse(response), sandboxwire.ErrProtocol, "invalid result accepted")
 	}
 }
 
@@ -122,9 +116,8 @@ func TestExchangeValidatesBeforeWriting(t *testing.T) {
 	} {
 		stream := sourceFixture(t)
 		_, err := Exchange(stream, Configuration{Profile: Profile, Imports: nil}, request)
-		if !errors.Is(err, sandboxwire.ErrProtocol) || stream.output.Len() != 0 {
-			t.Fatalf("invalid source reached worker: %v", err)
-		}
+		require.ErrorIs(t, err, sandboxwire.ErrProtocol, "invalid source reached worker")
+		require.Equal(t, 0, stream.output.Len())
 	}
 	oversized := make([]string, maximumSubmissionImports+1)
 	for index := range oversized {
@@ -136,8 +129,7 @@ func TestExchangeValidatesBeforeWriting(t *testing.T) {
 	} {
 		stream := sourceFixture(t)
 		_, err := Exchange(stream, config, Request{Kind: "expression", Source: "1", Entrypoint: ""})
-		if !errors.Is(err, sandboxwire.ErrProtocol) || stream.output.Len() != 0 {
-			t.Fatalf("invalid policy reached worker: %v", err)
-		}
+		require.ErrorIs(t, err, sandboxwire.ErrProtocol, "invalid policy reached worker")
+		require.Equal(t, 0, stream.output.Len())
 	}
 }

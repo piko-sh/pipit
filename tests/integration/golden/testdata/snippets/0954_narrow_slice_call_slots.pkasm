@@ -50,7 +50,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function fold32
-;   registers: int=4 general=1 uint=5
+;   registers: int=4 general=1 uint=4
 ;   dispatch:  asm=12 shim=1 exit=0 go=1
 ;   params:    (general)
 ;   returns:   (uint)
@@ -64,13 +64,13 @@
 0001 A 1:MOVE_UINT                 39   0   1
 0002 G 1:LEN                       70   0   0
 0003 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0004 A 0:LOAD_UINT_CONST            4   1   0    ; LICM hoist of PC 9
+0004 A 0:LOAD_UINT_CONST            3   1   0    ; LICM hoist of PC 9
 0005 A 1:LT_INT_JUMP_FALSE        116   1   0
 0006   0:EXT                        7   0   0
-0007 S 0:SLICE_GET_UINT             2   0   1
-0008 A 0:BIT_XOR_UINT               3   0   2
-0009 A 0:TRUNCATE_NARROW            3  32   5
-0010 A 0:MUL_UINT                   0   3   4
+0007 S 0:SLICE_GET_UINT             1   0   1
+0008 A 0:BIT_XOR_UINT               2   0   1
+0009 A 0:TRUNCATE_NARROW            2  32   5
+0010 A 0:MUL_UINT                   0   2   3
 0011 A 0:TRUNCATE_NARROW            0  32   5
 0012 A 0:ADD_INT_CONST              1   1   1    ; const = 1
 0013 A 1:JUMP                      74 247 255    ; goto -9

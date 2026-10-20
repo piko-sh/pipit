@@ -19,18 +19,18 @@
 package app
 
 import (
+	"reflect"
+	"sync/atomic"
 	"testing"
+	"time"
 
-	"context"
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/clock"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/policy"
 	"pipit.sh/pipit/internal/symtab"
-	"reflect"
-	"sync/atomic"
-	"time"
 )
 
 const (
@@ -46,6 +46,30 @@ func TestWithMaxArenaSizeBytes_PlumbedToConfig(t *testing.T) {
 		"WithMaxArenaSizeBytes should set the canonical maxArenaBytes field")
 	require.Equal(t, uint64(optionSetterTestBudget), service.config.maxArenaSizeBytes,
 		"WithMaxArenaSizeBytes should also set the mirror maxArenaSizeBytes alias")
+}
+
+func TestWithCallbackTimeout_PlumbedToConfigAndLimits(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		timeout time.Duration
+		want    time.Duration
+	}{
+		{name: "a positive timeout bounds each callback", timeout: 250 * time.Millisecond, want: 250 * time.Millisecond},
+		{name: "zero disables the bound", timeout: 0, want: 0},
+		{name: "a negative timeout disables the bound", timeout: -time.Second, want: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			service := NewService(WithCallbackTimeout(tt.timeout))
+
+			require.Equal(t, tt.want, service.config.callbackTimeout)
+			require.Equal(t, tt.want, service.limits.CallbackTimeout, "every execution VM takes the bound from the service limits")
+		})
+	}
 }
 
 func TestWithMaxConstantPoolSize_PlumbedToConfig(t *testing.T) {
@@ -210,7 +234,7 @@ func TestWithSafeMode_PlumbedToConfigAndLimits(t *testing.T) {
 func TestSafeModeParityWithDefault(t *testing.T) {
 	t.Parallel()
 
-	programs := []struct {
+	tests := []struct {
 		want any
 		name string
 		code string
@@ -222,16 +246,16 @@ func TestSafeModeParityWithDefault(t *testing.T) {
 		{name: "closure", code: `add := func(a, b int) int { return a + b }; add(3, 4)`, want: 7},
 	}
 
-	for _, candidate := range programs {
-		t.Run(candidate.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			fast, fastErr := NewService().Eval(context.Background(), candidate.code)
+			fast, fastErr := NewService().Eval(t.Context(), tt.code)
 			require.NoError(t, fastErr)
 
-			safe, safeErr := NewService(WithSafeMode()).Eval(context.Background(), candidate.code)
+			safe, safeErr := NewService(WithSafeMode()).Eval(t.Context(), tt.code)
 			require.NoError(t, safeErr)
 
-			require.Equal(t, candidate.want, fast)
+			require.Equal(t, tt.want, fast)
 			require.Equal(t, fast, safe, "safe mode must produce identical results to fast mode")
 		})
 	}
@@ -287,34 +311,25 @@ func TestWallClockDefaults(t *testing.T) {
 	before := time.Now()
 	got := clock.WallClock.Now()
 	after := time.Now()
-	if got.Before(before) || got.After(after) {
-		t.Fatalf("WallClock.Now() outside expected range: got %v, before=%v after=%v", got, before, after)
-	}
+	require.False(t, got.Before(before), "the wall clock reads the current time")
+	require.False(t, got.After(after))
 
 	clock.WallClock.Sleep(1 * time.Millisecond)
-	if d := clock.WallClock.Since(before); d <= 0 {
-		t.Fatalf("WallClock.Since returned non-positive duration: %v", d)
-	}
+	require.Greater(t, clock.WallClock.Since(before), time.Duration(0), "the wall clock moves forward")
 }
 
 func TestEffectiveClockNilSubstitutesWallClock(t *testing.T) {
 	t.Parallel()
-	if got := clock.EffectiveClock(nil); got != clock.WallClock {
-		t.Fatalf("effectiveClock(nil) should return WallClock")
-	}
+	require.Equal(t, clock.WallClock, clock.EffectiveClock(nil), "a nil clock falls back to the wall clock")
 	custom := &fixedClock{}
-	if got := clock.EffectiveClock(custom); got != custom {
-		t.Fatalf("EffectiveClock(custom) should return the custom clock")
-	}
+	require.Same(t, custom, clock.EffectiveClock(custom))
 }
 
 func TestWithClockOption(t *testing.T) {
 	t.Parallel()
 	fixedSource := &fixedClock{now: time.Date(2026, 5, 24, 12, 0, 0, 0, time.UTC)}
 	service := NewService(WithClock(fixedSource))
-	if service.config.clock != fixedSource {
-		t.Fatalf("service.config.clock did not receive WithClock value")
-	}
+	require.Same(t, fixedSource, service.config.clock)
 }
 
 func TestClockOverridesTimeNowInInterpretedCode(t *testing.T) {
@@ -329,23 +344,15 @@ func TestClockOverridesTimeNowInInterpretedCode(t *testing.T) {
 		},
 	}))
 
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 		import "time"
 		time.Now()
 	`)
-	if err != nil {
-		t.Fatalf("Eval failed: %v", err)
-	}
+	require.NoError(t, err)
 	got, ok := result.(time.Time)
-	if !ok {
-		t.Fatalf("Eval result is not time.Time: %T %v", result, result)
-	}
-	if !got.Equal(fixed) {
-		t.Fatalf("interpreted time.Now() = %v, want fixed %v", got, fixed)
-	}
-	if fixedSource.nowCalls.Load() == 0 {
-		t.Fatalf("fixed clock Now() was never called")
-	}
+	require.True(t, ok, "the result is a time.Time")
+	require.True(t, got.Equal(fixed), "interpreted time.Now reads the fixed clock")
+	require.NotEqual(t, int64(0), fixedSource.nowCalls.Load(), "the fixed clock is consulted")
 }
 
 func TestClockOverlaysPreserveOtherTimeSymbols(t *testing.T) {
@@ -361,18 +368,13 @@ func TestClockOverlaysPreserveOtherTimeSymbols(t *testing.T) {
 	}))
 
 	pkg, ok := service.symbols.PackageSymbols("time")
-	if !ok {
-		t.Fatalf("time package missing from registry after clock overlay")
-	}
-	if _, ok := pkg["Hour"]; !ok {
-		t.Fatalf("time.Hour symbol lost after clock overlay")
-	}
-	if _, ok := pkg["Millisecond"]; !ok {
-		t.Fatalf("time.Millisecond symbol lost after clock overlay")
-	}
-	if _, ok := pkg["Now"]; !ok {
-		t.Fatalf("time.Now symbol missing after clock overlay")
-	}
+	require.True(t, ok, "the clock overlay keeps the time package")
+	_, ok = pkg["Hour"]
+	require.True(t, ok, "the clock overlay keeps time.Hour")
+	_, ok = pkg["Millisecond"]
+	require.True(t, ok, "the clock overlay keeps time.Millisecond")
+	_, ok = pkg["Now"]
+	require.True(t, ok, "the clock overlay provides time.Now")
 }
 
 func TestOverlayPackageOnAbsentPackageCreatesIt(t *testing.T) {
@@ -382,10 +384,8 @@ func TestOverlayPackageOnAbsentPackageCreatesIt(t *testing.T) {
 		"X": reflect.ValueOf(42),
 	})
 	got, ok := registry.PackageSymbols("custom/pkg")
-	if !ok {
-		t.Fatalf("OverlayPackage did not create the package")
-	}
-	if value, ok := got["X"]; !ok || value.Interface() != 42 {
-		t.Fatalf("OverlayPackage did not store the entry")
-	}
+	require.True(t, ok, "the overlay creates the package")
+	value, ok := got["X"]
+	require.True(t, ok, "the overlay stores its entry")
+	require.Equal(t, 42, value.Interface())
 }

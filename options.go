@@ -198,6 +198,18 @@ func WithYieldInterval(interval uint32) Option {
 	return app.WithYieldInterval(interval)
 }
 
+// WithCallbackTimeout bounds each run of an interpreted closure that native code calls,
+// including time spent in channel operations, select or sleep. A run past the bound
+// fails with ErrCallbackTimeout, which also matches ErrExecutionCancelled; zero or
+// negative disables the bound.
+//
+// Takes timeout (time.Duration) which is the bound.
+//
+// Returns Option which applies the bound.
+func WithCallbackTimeout(timeout time.Duration) Option {
+	return app.WithCallbackTimeout(timeout)
+}
+
 // WithDeadlockGrace sets the grace period before parked goroutines trigger ErrDeadlock.
 // The default is one second; a negative value disables the check.
 //

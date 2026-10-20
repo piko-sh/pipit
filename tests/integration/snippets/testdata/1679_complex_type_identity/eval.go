@@ -6,8 +6,6 @@ import (
 	"strings"
 )
 
-// typeFor mirrors the compiler's generic reflect.Type helper: the boxed pointer-to-T
-// path is the only way to name a reflect.Type without a value of that type.
 func typeFor[T any]() reflect.Type {
 	return reflect.TypeOf((*T)(nil)).Elem()
 }

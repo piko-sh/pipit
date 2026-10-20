@@ -27,6 +27,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type mutatingIdentityHash struct {
@@ -44,18 +47,12 @@ func identityFileFixture(t *testing.T) (*scriptIdentityScan, string, fs.FileInfo
 	t.Helper()
 	directory := t.TempDir()
 	path := filepath.Join(directory, "main.go")
-	if err := os.WriteFile(path, []byte("package main"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte("package main"), 0600))
 	root, err := os.OpenRoot(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = root.Close() })
 	expected, err := root.Lstat("main.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var scan scriptIdentityScan
 	scan.digest = sha256.New()
 	scan.rootHandle = root
@@ -68,32 +65,18 @@ func TestIdentityReadRejectsReplacedFile(t *testing.T) {
 	t.Parallel()
 	scan, path, expected := identityFileFixture(t)
 	replacement := filepath.Join(scan.root, "replacement")
-	if err := os.WriteFile(replacement, []byte("package main"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(path, path+".original"); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(replacement, path); err != nil {
-		t.Fatal(err)
-	}
-	if err := scan.addFile(path, expected); err == nil {
-		t.Fatal("same-size replacement was accepted as the original source")
-	}
+	require.NoError(t, os.WriteFile(replacement, []byte("package main"), 0600))
+	require.NoError(t, os.Rename(path, path+".original"))
+	require.NoError(t, os.Rename(replacement, path))
+	require.Error(t, scan.addFile(path, expected), "a same-size replacement is not the original source")
 }
 
 func TestIdentityReadRejectsDirectoryReplacement(t *testing.T) {
 	t.Parallel()
 	scan, path, expected := identityFileFixture(t)
-	if err := os.Remove(path); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(path, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := scan.addFile(path, expected); err == nil {
-		t.Fatal("directory replacement was accepted as source")
-	}
+	require.NoError(t, os.Remove(path))
+	require.NoError(t, os.Mkdir(path, 0700))
+	require.Error(t, scan.addFile(path, expected), "a directory replacement is not source")
 }
 
 func TestIdentityReadChecksFinalMetadata(t *testing.T) {
@@ -103,24 +86,16 @@ func TestIdentityReadChecksFinalMetadata(t *testing.T) {
 		Hash: sha256.New(),
 		mutate: func() {
 			changed := expected.ModTime().Add(time.Hour)
-			if err := os.Chtimes(path, changed, changed); err != nil {
-				t.Fatal(err)
-			}
+			assert.NoError(t, os.Chtimes(path, changed, changed))
 		},
 		once: sync.Once{},
 	}
-	if err := scan.addFile(path, expected); err == nil {
-		t.Fatal("source modification after opening was not detected")
-	}
+	require.Error(t, scan.addFile(path, expected), "a source change after opening is detected")
 }
 
 func TestIdentityReadStableFile(t *testing.T) {
 	t.Parallel()
 	scan, path, expected := identityFileFixture(t)
-	if err := scan.addFile(path, expected); err != nil {
-		t.Fatalf("stable regular source rejected: %v", err)
-	}
-	if scan.remaining != maxIdentityBytes-expected.Size() {
-		t.Fatal("source bytes were not charged to the scan budget")
-	}
+	require.NoError(t, scan.addFile(path, expected), "a stable regular source is accepted")
+	require.Equal(t, maxIdentityBytes-expected.Size(), scan.remaining, "source bytes count towards the scan budget")
 }

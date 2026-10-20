@@ -52,6 +52,9 @@ func (s *Service) Eval(ctx context.Context, code string) (any, error) {
 	if err := s.checkSourceSize(len(code)); err != nil {
 		return nil, engine.NewSafeError(safeMessageEvaluationFailed, err)
 	}
+	if err := rejectGoEmbedSource(evalFileName, code); err != nil {
+		return nil, engine.NewSafeError(safeMessageEvaluationFailed, err)
+	}
 	ctx, cancel := s.applyMaxExecutionTime(ctx)
 	defer cancel()
 	ctx = logging.ContextWithLogger(ctx, s.config.logger)
@@ -244,21 +247,8 @@ func (s *Service) ExecuteInits(ctx context.Context, cfs *program.CompiledFileSet
 		}
 	}()
 
-	if cfs.VariableInitFunction() != nil {
-		vm, cancelExecution := s.newExecutionVM(ctx, engine.DebugRoleVarInit)
-		defer cancelExecution(fault.ErrMainReturned)
-		vm.BindFileSet(program.ExportFunctions(cfs.Root()), cfs.Root())
-		vm.EnsureCallStack()
-		defer vm.ReleaseArena()
-		defer vm.FinishWatcher()
-		vm.PushFrame(cfs.VariableInitFunction())
-		if _, runErr := vm.RunGuarded(0); runErr != nil {
-			return fmt.Errorf(errVarinitFmt, runErr)
-		}
-		if joinErr := vm.JoinSpawnedGoroutines(); joinErr != nil {
-			return fmt.Errorf(errVarinitFmt, joinErr)
-		}
-		vm.MaterialiseGlobalStrings()
+	if err := s.runVariableInits(ctx, cfs); err != nil {
+		return err
 	}
 
 	for _, initIndex := range cfs.InitFunctions() {
@@ -301,7 +291,8 @@ func (s *Service) applyVMOutputs(vm *engine.VM) {
 }
 
 // runVariableInits executes the variable-initialisation function of a compiled file set
-// when present. No-op when the file set has no package-level variables.
+// when present, then copies the strings the globals now hold out of the run's arena
+// before it is released. No-op when the file set has no package-level variables.
 //
 // Takes cfs (*CompiledFileSet) which provides root functions and the optional variable
 // initialiser.
@@ -325,6 +316,7 @@ func (s *Service) runVariableInits(ctx context.Context, cfs *program.CompiledFil
 	if joinErr := vm.JoinSpawnedGoroutines(); joinErr != nil {
 		return fmt.Errorf(errVarinitFmt, joinErr)
 	}
+	vm.MaterialiseGlobalStrings()
 	return nil
 }
 
@@ -486,6 +478,7 @@ func (s *Service) buildLimits() engine.VMLimits {
 		MaxArenaBytes:            0,
 		YieldInterval:            0,
 		DeadlockGrace:            0,
+		CallbackTimeout:          0,
 		ForceGoDispatch:          false,
 		SafeMode:                 false}
 	if s.config != nil {
@@ -511,6 +504,7 @@ func (s *Service) applyConfigLimits(limits *engine.VMLimits) {
 	limits.ArenaFactory = s.config.arenaFactory
 	limits.MaxCallDepth = s.config.maxCallDepth
 	limits.DeadlockGrace = s.config.deadlockGrace
+	limits.CallbackTimeout = s.config.callbackTimeout
 	limits.ForceGoDispatch = s.config.forceGoDispatch
 	limits.SafeMode = s.config.safeMode
 	limits.DisableMinorGC = s.config.disableMinorGC

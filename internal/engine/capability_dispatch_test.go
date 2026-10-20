@@ -20,14 +20,15 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"os"
 	"reflect"
+	"sync"
 	"testing"
 
-	"errors"
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/policy"
-	"sync"
 )
 
 type recordingCapabilityHook struct {
@@ -73,7 +74,7 @@ func TestConsultSpecialisedCapabilityGateRouting(t *testing.T) {
 		}
 		return out
 	}
-	for _, test := range []struct {
+	tests := []struct {
 		name   string
 		path   string
 		args   []reflect.Value
@@ -81,24 +82,23 @@ func TestConsultSpecialisedCapabilityGateRouting(t *testing.T) {
 		first  string
 		second string
 	}{
-		{"http get", "net/http.Get", strv("https://example.com/x"), "netdial", "tcp", "example.com:443"},
-		{"http get port", "net/http.Get", strv("http://example.com:8080/x"), "netdial", "tcp", "example.com:8080"},
-		{"http post", "net/http.Post", strv("http://host/x", "text/plain"), "netdial", "tcp", "host:80"},
-		{"http serve", "net/http.ListenAndServe", strv(":8080", ""), "netlisten", "tcp", ":8080"},
-		{"listen packet", "net.ListenPacket", strv("udp", ":9000"), "netlisten", "udp", ":9000"},
-		{"dirfs", "os.DirFS", strv("/data"), "fileopen", "/data", ""},
-		{"open root", "os.OpenRoot", strv("/data"), "fileopen", "/data", ""},
-		{"start process", "os.StartProcess", strv("/bin/true"), "subprocess", "/bin/true", ""},
-	} {
-		t.Run(test.name, func(t *testing.T) {
+		{name: "http get", path: "net/http.Get", args: strv("https://example.com/x"), gate: "netdial", first: "tcp", second: "example.com:443"},
+		{name: "http get port", path: "net/http.Get", args: strv("http://example.com:8080/x"), gate: "netdial", first: "tcp", second: "example.com:8080"},
+		{name: "http post", path: "net/http.Post", args: strv("http://host/x", "text/plain"), gate: "netdial", first: "tcp", second: "host:80"},
+		{name: "http serve", path: "net/http.ListenAndServe", args: strv(":8080", ""), gate: "netlisten", first: "tcp", second: ":8080"},
+		{name: "listen packet", path: "net.ListenPacket", args: strv("udp", ":9000"), gate: "netlisten", first: "udp", second: ":9000"},
+		{name: "dirfs", path: "os.DirFS", args: strv("/data"), gate: "fileopen", first: "/data", second: ""},
+		{name: "open root", path: "os.OpenRoot", args: strv("/data"), gate: "fileopen", first: "/data", second: ""},
+		{name: "start process", path: "os.StartProcess", args: strv("/bin/true"), gate: "subprocess", first: "/bin/true", second: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			hook := &recordingCapabilityHook{}
-			if err := consultSpecialisedCapabilityGate(context.Background(), hook, "mod", test.path, test.args); err != nil {
-				t.Fatalf("gate returned an error: %v", err)
-			}
-			if hook.gate != test.gate || hook.first != test.first || (test.second != "" && hook.second != test.second) {
-				t.Fatalf("routed to %q(%q,%q); want %q(%q,%q)", hook.gate, hook.first, hook.second, test.gate, test.first, test.second)
-			}
+			require.NoError(t, consultSpecialisedCapabilityGate(t.Context(), hook, "mod", tt.path, tt.args))
+			require.Equal(t, tt.gate, hook.gate)
+			require.Equal(t, tt.first, hook.first)
+			require.Equal(t, tt.second, hook.second)
 		})
 	}
 }
@@ -179,6 +179,7 @@ func (r *recordingHook) snapshot() []recordedHookCall {
 }
 
 func TestConsultSpecialisedCapabilityGate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		fnPath     string
@@ -239,8 +240,9 @@ func TestConsultSpecialisedCapabilityGate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			hook := &recordingHook{}
-			err := consultSpecialisedCapabilityGate(context.Background(), hook, "mod", tt.fnPath, tt.args)
+			err := consultSpecialisedCapabilityGate(t.Context(), hook, "mod", tt.fnPath, tt.args)
 			require.NoError(t, err)
 
 			calls := hook.snapshot()
@@ -254,6 +256,7 @@ func TestConsultSpecialisedCapabilityGate(t *testing.T) {
 }
 
 func TestConsultSpecialisedCapabilityGateDenial(t *testing.T) {
+	t.Parallel()
 	denied := errors.New("file access denied")
 	hook := &recordingHook{denyFn: func(call recordedHookCall) error {
 		if call.Method == "CheckFileOpen" {
@@ -262,18 +265,19 @@ func TestConsultSpecialisedCapabilityGateDenial(t *testing.T) {
 		return nil
 	}}
 
-	err := consultSpecialisedCapabilityGate(context.Background(), hook, "mod", "os.Open",
+	err := consultSpecialisedCapabilityGate(t.Context(), hook, "mod", "os.Open",
 		[]reflect.Value{reflect.ValueOf("/etc/shadow")})
 	require.ErrorIs(t, err, denied)
 }
 
 func TestConsultSpecialisedCapabilityGateUnmatched(t *testing.T) {
+	t.Parallel()
 	hook := &recordingHook{}
 
-	require.NoError(t, consultSpecialisedCapabilityGate(context.Background(), hook, "mod",
+	require.NoError(t, consultSpecialisedCapabilityGate(t.Context(), hook, "mod",
 		"strings.ToUpper", []reflect.Value{reflect.ValueOf("x")}))
-	require.NoError(t, consultSpecialisedCapabilityGate(context.Background(), hook, "mod",
+	require.NoError(t, consultSpecialisedCapabilityGate(t.Context(), hook, "mod",
 		"os.OpenFile", []reflect.Value{reflect.ValueOf("/tmp/x")}))
 
-	require.Empty(t, hook.snapshot(), "no specialised gate should fire for unmatched or malformed calls")
+	require.Empty(t, hook.snapshot(), "no specialised gate fires for unmatched or malformed calls")
 }

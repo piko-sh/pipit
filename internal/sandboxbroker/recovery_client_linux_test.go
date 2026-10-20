@@ -28,6 +28,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/sandboxwire"
 )
 
@@ -46,10 +48,12 @@ func (stream *recoveryTestTransport) Close() error {
 }
 
 func TestRecoveryExchangeRejectsInvalidResultsAndCleanup(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"success", "profile", "call", "payload", "identity", "wait", "close", "cancel"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			stream, requested := recoveryExchangeFixture(t, mode)
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			result := make(chan error, 1)
 			go func() { result <- ExchangeFilesystemRecovery(ctx, stream) }()
@@ -58,21 +62,16 @@ func TestRecoveryExchangeRejectsInvalidResultsAndCleanup(t *testing.T) {
 				cancel()
 			}
 			err := <-result
-			if (err == nil) != (mode == "success") {
-				t.Fatal("incorrect recovery result:", err)
+			require.Equal(t, mode == "success", err == nil, "incorrect recovery result: %v", err)
+			switch mode {
+			case "cancel":
+				require.ErrorIs(t, err, context.Canceled, "recovery keeps the cancellation")
+			case "wait":
+				require.ErrorIs(t, err, stream.waitErr, "recovery keeps the process failure")
+			case "close":
+				require.ErrorIs(t, err, stream.closeErr, "recovery keeps the cleanup failure")
 			}
-			if mode == "cancel" && !errors.Is(err, context.Canceled) {
-				t.Fatal("recovery lost cancellation:", err)
-			}
-			if mode == "wait" && !errors.Is(err, stream.waitErr) {
-				t.Fatal("recovery lost process failure:", err)
-			}
-			if mode == "close" && !errors.Is(err, stream.closeErr) {
-				t.Fatal("recovery lost cleanup failure:", err)
-			}
-			if stream.closes.Load() == 0 {
-				t.Fatal("recovery did not close its process")
-			}
+			require.NotEqual(t, int32(0), stream.closes.Load(), "recovery closes its process")
 		})
 	}
 }

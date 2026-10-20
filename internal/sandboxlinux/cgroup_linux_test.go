@@ -31,6 +31,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestResourceSettings(t *testing.T) {
@@ -125,10 +127,7 @@ func TestCgroupNativeLifecycle(t *testing.T) {
 		time.Sleep(30 * time.Second)
 		return
 	}
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires an explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	group, err := newGroup(parent, Limits{})
 	if err != nil {
 		t.Fatal(err)
@@ -143,8 +142,7 @@ func TestCgroupNativeLifecycle(t *testing.T) {
 	t.Cleanup(cleanup)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=TestCgroupNativeLifecycle")
-	command.Env = append(os.Environ(), "PIPIT_CGROUP_TEST_CHILD=1")
+	command := sandboxtest.Command(ctx, "TestCgroupNativeLifecycle", "PIPIT_CGROUP_TEST_CHILD=1")
 	output, err := command.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -171,8 +169,7 @@ func TestCgroupNativeDescendants(t *testing.T) {
 		if mode == "leader" {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			child := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestCgroupNativeDescendants$")
-			child.Env = append(os.Environ(), "PIPIT_CGROUP_DESCENDANT_CHILD=descendant")
+			child := sandboxtest.Command(ctx, "TestCgroupNativeDescendants", "PIPIT_CGROUP_DESCENDANT_CHILD=descendant")
 			if err := child.Start(); err != nil {
 				t.Fatal(err)
 			}
@@ -185,10 +182,7 @@ func TestCgroupNativeDescendants(t *testing.T) {
 		time.Sleep(30 * time.Second)
 		return
 	}
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires an explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	group, err := newGroup(parent, Limits{})
 	if err != nil {
 		t.Fatal(err)
@@ -203,8 +197,7 @@ func TestCgroupNativeDescendants(t *testing.T) {
 	t.Cleanup(cleanup)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestCgroupNativeDescendants$")
-	command.Env = append(os.Environ(), "PIPIT_CGROUP_DESCENDANT_CHILD=leader")
+	command := sandboxtest.Command(ctx, "TestCgroupNativeDescendants", "PIPIT_CGROUP_DESCENDANT_CHILD=leader")
 	output, err := command.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -250,10 +243,7 @@ func TestCgroupNativeMemory(t *testing.T) {
 		runtime.KeepAlive(allocations)
 		return
 	}
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires an explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	group, err := newGroup(parent, Limits{MemoryBytes: 32 << 20})
 	if err != nil {
 		t.Fatal(err)
@@ -267,8 +257,7 @@ func TestCgroupNativeMemory(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=TestCgroupNativeMemory")
-	command.Env = append(os.Environ(), "PIPIT_CGROUP_MEMORY_CHILD=1")
+	command := sandboxtest.Command(ctx, "TestCgroupNativeMemory", "PIPIT_CGROUP_MEMORY_CHILD=1")
 	if err := group.start(command); err != nil {
 		t.Fatal(err)
 	}

@@ -35,15 +35,14 @@ import (
 // specialised emission paths under the interpreter. It is hand-written in the shape the
 // extractor's adapter generator will produce; the generated file replaces it.
 type emitterAdapter struct {
-	// core is the adapter bridge to the interpreted Compiler methods.
-	core *engine.AdapterCore
+	*engine.AdapterCore
 }
 
 var _ patterns.Emitter = (*emitterAdapter)(nil)
 
 func init() {
 	engine.RegisterInterfaceAdapter(reflect.TypeFor[patterns.Emitter](), func(core *engine.AdapterCore) reflect.Value {
-		return reflect.ValueOf(&emitterAdapter{core: core})
+		return reflect.ValueOf(&emitterAdapter{AdapterCore: core})
 	})
 }
 
@@ -52,7 +51,7 @@ func init() {
 // Returns *program.CompiledFunction which is the function being built, or nil when the
 // interpreted body failed.
 func (a *emitterAdapter) CurrentFunction() *program.CompiledFunction {
-	results := a.core.InvokeRecordingError("CurrentFunction")
+	results := a.InvokeRecordingError("CurrentFunction")
 	function, _ := resultAs[*program.CompiledFunction](results, 0)
 	return function
 }
@@ -62,7 +61,7 @@ func (a *emitterAdapter) CurrentFunction() *program.CompiledFunction {
 // Returns *scope.ScopeStack which is the active scope, or nil when the interpreted body
 // failed.
 func (a *emitterAdapter) ScopeStack() *scope.ScopeStack {
-	results := a.core.InvokeRecordingError("ScopeStack")
+	results := a.InvokeRecordingError("ScopeStack")
 	stack, _ := resultAs[*scope.ScopeStack](results, 0)
 	return stack
 }
@@ -71,7 +70,7 @@ func (a *emitterAdapter) ScopeStack() *scope.ScopeStack {
 //
 // Takes pos (token.Pos) which is the source position.
 func (a *emitterAdapter) SetDebugPosition(ctx context.Context, pos token.Pos) {
-	a.core.InvokeRecordingError("SetDebugPosition", interfaceArgument[context.Context](ctx), reflect.ValueOf(pos))
+	a.InvokeRecordingError("SetDebugPosition", interfaceArgument[context.Context](ctx), reflect.ValueOf(pos))
 }
 
 // CompileExpression compiles expression through the standard walker.
@@ -81,8 +80,8 @@ func (a *emitterAdapter) SetDebugPosition(ctx context.Context, pos token.Pos) {
 // Returns program.VarLocation which is the result destination.
 // Returns error when compilation fails.
 func (a *emitterAdapter) CompileExpression(ctx context.Context, expression ast.Expr) (program.VarLocation, error) {
-	results, err := a.core.Invoke("CompileExpression", interfaceArgument[context.Context](ctx), interfaceArgument[ast.Expr](expression))
-	return locationAndError(results, err)
+	results, err := a.Invoke("CompileExpression", interfaceArgument[context.Context](ctx), interfaceArgument[ast.Expr](expression))
+	return a.locationAndError(results, err)
 }
 
 // CompileStmt compiles statement through the standard walker.
@@ -92,8 +91,8 @@ func (a *emitterAdapter) CompileExpression(ctx context.Context, expression ast.E
 // Returns program.VarLocation which is the result destination.
 // Returns error when compilation fails.
 func (a *emitterAdapter) CompileStmt(ctx context.Context, statement ast.Stmt) (program.VarLocation, error) {
-	results, err := a.core.Invoke("CompileStmt", interfaceArgument[context.Context](ctx), interfaceArgument[ast.Stmt](statement))
-	return locationAndError(results, err)
+	results, err := a.Invoke("CompileStmt", interfaceArgument[context.Context](ctx), interfaceArgument[ast.Stmt](statement))
+	return a.locationAndError(results, err)
 }
 
 // CompileForFallback compiles a for statement through the scalar path, bypassing
@@ -104,8 +103,8 @@ func (a *emitterAdapter) CompileStmt(ctx context.Context, statement ast.Stmt) (p
 // Returns program.VarLocation which is the result destination.
 // Returns error when compilation fails.
 func (a *emitterAdapter) CompileForFallback(ctx context.Context, statement *ast.ForStmt) (program.VarLocation, error) {
-	results, err := a.core.Invoke("CompileForFallback", interfaceArgument[context.Context](ctx), reflect.ValueOf(statement))
-	return locationAndError(results, err)
+	results, err := a.Invoke("CompileForFallback", interfaceArgument[context.Context](ctx), reflect.ValueOf(statement))
+	return a.locationAndError(results, err)
 }
 
 // locationAndError unpacks the (program.VarLocation, error) result pair of a compile
@@ -116,13 +115,12 @@ func (a *emitterAdapter) CompileForFallback(ctx context.Context, statement *ast.
 //
 // Returns program.VarLocation which is the destination the body reported.
 // Returns error which is the invocation error or the body's error result.
-func locationAndError(results []reflect.Value, err error) (program.VarLocation, error) {
+func (a *emitterAdapter) locationAndError(results []reflect.Value, err error) (program.VarLocation, error) {
 	if err != nil {
 		return program.VarLocation{}, err
 	}
 	location, _ := resultAs[program.VarLocation](results, 0)
-	failure, _ := resultAs[error](results, 1)
-	return location, failure
+	return location, a.ResultError(results, 1)
 }
 
 // resultAs extracts result index as T, treating a missing, invalid or nil-interface

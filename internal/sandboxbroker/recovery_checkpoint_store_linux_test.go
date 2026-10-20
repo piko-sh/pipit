@@ -23,11 +23,11 @@ package sandboxbroker
 import (
 	"bytes"
 	"crypto/sha256"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 )
 
@@ -36,94 +36,72 @@ func checkpointStoreFixture(t *testing.T) ([]byte, [sha256.Size]byte, [sha256.Si
 	authority := testRecoveryAuthority(t, Read|Write)
 	binding := [sha256.Size]byte{1}
 	encoded, err := authority.checkpoint(testRecoveryAuthorityJournal(t, authority), binding)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return encoded, sha256.Sum256(encoded), binding
 }
 
 func TestRecoveryCheckpointStoreRoundTrip(t *testing.T) {
+	t.Parallel()
 	encoded, approved, binding := checkpointStoreFixture(t)
 	directory := testRecoveryDirectory(t)
 	owner, err := OpenLinuxRecoveryCheckpointStore(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer owner.Close()
-	if data, err := owner.Load(approved, binding); data != nil || err == nil {
-		t.Fatal("missing checkpoint accepted")
+	missing, err := owner.Load(approved, binding)
+	require.Nil(t, missing, "a missing checkpoint is refused")
+	require.Error(t, err)
+	concurrent, err := OpenLinuxRecoveryCheckpointStore(directory)
+	if concurrent != nil {
+		_ = concurrent.Close()
 	}
-	if concurrent, err := OpenLinuxRecoveryCheckpointStore(directory); concurrent != nil || err == nil {
-		if concurrent != nil {
-			_ = concurrent.Close()
-		}
-		t.Fatal("concurrent checkpoint owner admitted")
-	}
-	if err := owner.store(encoded, approved, binding); err != nil {
-		t.Fatal(err)
-	}
-	if err := owner.store(encoded, approved, binding); !errors.Is(err, ErrDenied) {
-		t.Fatal("checkpoint overwrite accepted:", err)
-	}
-	if data, err := owner.Load(approved, binding); err != nil || !bytes.Equal(data, encoded) {
-		t.Fatal("stored checkpoint mismatch:", err)
-	}
+	require.Nil(t, concurrent, "a concurrent checkpoint owner is refused")
+	require.Error(t, err)
+	require.NoError(t, owner.store(encoded, approved, binding))
+	require.ErrorIs(t, owner.store(encoded, approved, binding), ErrDenied, "checkpoint overwrite accepted")
+	stored, err := owner.Load(approved, binding)
+	require.NoError(t, err, "the stored checkpoint matches")
+	require.True(t, bytes.Equal(stored, encoded))
 	owner.storage.failed = true
-	if err := owner.store(encoded, approved, binding); !errors.Is(err, ErrClosed) {
-		t.Fatal("failed storage accepted another publication:", err)
-	}
-	if data, err := owner.Load(approved, binding); err != nil || !bytes.Equal(data, encoded) {
-		t.Fatal("uncertain publication could not be inspected:", err)
-	}
-	if err := owner.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.ErrorIs(t, owner.store(encoded, approved, binding), ErrClosed, "failed storage refuses another publication")
+	inspected, err := owner.Load(approved, binding)
+	require.NoError(t, err, "an uncertain publication can be inspected")
+	require.True(t, bytes.Equal(inspected, encoded))
+	require.NoError(t, owner.Close())
 	reopened, err := OpenLinuxRecoveryCheckpointStore(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer reopened.Close()
 	data, err := reopened.Load(approved, binding)
-	if err != nil || !bytes.Equal(data, encoded) {
-		t.Fatal("durable checkpoint mismatch:", err)
-	}
+	require.NoError(t, err, "durable checkpoint mismatch")
+	require.True(t, bytes.Equal(data, encoded))
 	data[0] ^= 1
-	if data, err := reopened.Load(approved, binding); err != nil || !bytes.Equal(data, encoded) {
-		t.Fatal("returned bytes changed durable state:", err)
-	}
-	if data, err := reopened.Load(approved, [sha256.Size]byte{2}); data != nil || !errors.Is(err, ErrDenied) {
-		t.Fatal("foreign binding accepted:", err)
-	}
-	if err := os.Remove(filepath.Join(directory, recoveryCheckpointName)); err != nil {
-		t.Fatal(err)
-	}
-	if data, err := reopened.Load(approved, binding); data != nil || err == nil {
-		t.Fatal("missing durable checkpoint used cached state")
-	}
-	if err := owner.store(encoded, approved, binding); !errors.Is(err, ErrClosed) {
-		t.Fatal("closed store accepted write:", err)
-	}
+	data, err = reopened.Load(approved, binding)
+	require.NoError(t, err, "returned bytes changed durable state")
+	require.True(t, bytes.Equal(data, encoded))
+	data, err = reopened.Load(approved, [sha256.Size]byte{2})
+	require.Nil(t, data, "foreign binding accepted")
+	require.ErrorIs(t, err, ErrDenied)
+	require.NoError(t, os.Remove(filepath.Join(directory, recoveryCheckpointName)))
+	data, err = reopened.Load(approved, binding)
+	require.Nil(t, data, "missing durable checkpoint used cached state")
+	require.Error(t, err)
+	require.ErrorIs(t, owner.store(encoded, approved, binding), ErrClosed, "closed store accepted write")
 }
 
 func TestRecoveryCheckpointStoreRejectsUnsafeEntries(t *testing.T) {
+	t.Parallel()
 	encoded, approved, binding := checkpointStoreFixture(t)
 	for _, mode := range []string{"fifo", "symlink", "hardlink", "permissions", "oversized", "corrupt", "unknown-entry", "extra-entry"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			directory := testRecoveryDirectory(t)
 			path := filepath.Join(directory, recoveryCheckpointName)
 			switch mode {
 			case "fifo":
-				if err := unix.Mkfifo(path, 0600); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, unix.Mkfifo(path, 0600))
 			case "symlink":
 				target := filepath.Join(t.TempDir(), "target")
-				if err := os.WriteFile(target, encoded, 0600); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Symlink(target, path); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.WriteFile(target, encoded, 0600))
+				require.NoError(t, os.Symlink(target, path))
 			default:
 				data := encoded
 				if mode == "oversized" {
@@ -132,26 +110,16 @@ func TestRecoveryCheckpointStoreRejectsUnsafeEntries(t *testing.T) {
 				if mode == "corrupt" {
 					data = []byte("{}")
 				}
-				if err := os.WriteFile(path, data, 0600); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.WriteFile(path, data, 0600))
 				switch mode {
 				case "hardlink":
-					if err := os.Link(path, filepath.Join(t.TempDir(), "alias")); err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, os.Link(path, filepath.Join(t.TempDir(), "alias")))
 				case "permissions":
-					if err := os.Chmod(path, 0644); err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, os.Chmod(path, 0644))
 				case "unknown-entry":
-					if err := os.Rename(path, filepath.Join(directory, "foreign")); err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, os.Rename(path, filepath.Join(directory, "foreign")))
 				case "extra-entry":
-					if err := os.WriteFile(filepath.Join(directory, "extra"), nil, 0600); err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, os.WriteFile(filepath.Join(directory, "extra"), nil, 0600))
 				}
 			}
 			owner, err := OpenLinuxRecoveryCheckpointStore(directory)
@@ -159,77 +127,54 @@ func TestRecoveryCheckpointStoreRejectsUnsafeEntries(t *testing.T) {
 				defer owner.Close()
 			}
 			if mode == "unknown-entry" || mode == "extra-entry" {
-				if owner != nil || err == nil {
-					t.Fatal("unexpected directory contents accepted")
-				}
+				require.Nil(t, owner, "unexpected directory contents accepted")
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if data, err := owner.Load(approved, binding); data != nil || err == nil {
-				t.Fatal("unsafe checkpoint accepted")
-			}
+			require.NoError(t, err)
+			data, err := owner.Load(approved, binding)
+			require.Nil(t, data, "unsafe checkpoint accepted")
+			require.Error(t, err)
 		})
 	}
 }
 
 func TestRecoveryCheckpointStorePinnedDirectory(t *testing.T) {
+	t.Parallel()
 	encoded, approved, binding := checkpointStoreFixture(t)
 	directory := testRecoveryDirectory(t)
 	owner, err := OpenLinuxRecoveryCheckpointStore(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer owner.Close()
 	moved := filepath.Join(t.TempDir(), "original")
-	if err := os.Rename(directory, moved); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(directory, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := owner.store(encoded, approved, binding); err != nil {
-		t.Fatal(err)
-	}
-	if data, err := owner.Load(approved, binding); err != nil || !bytes.Equal(data, encoded) {
-		t.Fatal("checkpoint lost original directory:", err)
-	}
+	require.NoError(t, os.Rename(directory, moved))
+	require.NoError(t, os.Mkdir(directory, 0700))
+	require.NoError(t, owner.store(encoded, approved, binding))
+	data, err := owner.Load(approved, binding)
+	require.NoError(t, err, "checkpoint lost original directory")
+	require.True(t, bytes.Equal(data, encoded))
 	entries, err := os.ReadDir(directory)
-	if err != nil || len(entries) != 0 {
-		t.Fatal("checkpoint followed replacement directory:", entries, err)
-	}
+	require.NoError(t, err, "checkpoint followed replacement directory")
+	require.Empty(t, entries)
 }
 
 func TestRecoveryCheckpointStoreInvalidApproval(t *testing.T) {
+	t.Parallel()
 	encoded, approved, binding := checkpointStoreFixture(t)
 	directory := testRecoveryDirectory(t)
 	owner, err := OpenLinuxRecoveryCheckpointStore(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer owner.Close()
-	if err := owner.store(encoded, [sha256.Size]byte{}, binding); err == nil {
-		t.Fatal("missing independent approval accepted")
-	}
-	if err := owner.store(encoded, approved, [sha256.Size]byte{}); err == nil {
-		t.Fatal("empty binding accepted")
-	}
+	require.Error(t, owner.store(encoded, [sha256.Size]byte{}, binding), "missing independent approval accepted")
+	require.Error(t, owner.store(encoded, approved, [sha256.Size]byte{}), "empty binding accepted")
 	entries, err := os.ReadDir(directory)
-	if err != nil || len(entries) != 0 {
-		t.Fatal("invalid approval modified storage:", entries, err)
-	}
-	if err := owner.store(encoded, approved, binding); err != nil {
-		t.Fatal("rejected approval poisoned empty store:", err)
-	}
+	require.NoError(t, err, "invalid approval modified storage")
+	require.Empty(t, entries)
+	require.NoError(t, owner.store(encoded, approved, binding), "rejected approval poisoned empty store")
 	var absent *LinuxRecoveryCheckpointStore
-	if absent.Close() != nil {
-		t.Fatal("nil cleanup failed")
-	}
-	if err := absent.store(encoded, approved, binding); !errors.Is(err, ErrClosed) {
-		t.Fatal(err)
-	}
-	if data, err := absent.Load(approved, binding); data != nil || !errors.Is(err, ErrClosed) {
-		t.Fatal(err)
-	}
+	require.NoError(t, absent.Close(), "a nil cleanup succeeds")
+	require.ErrorIs(t, absent.store(encoded, approved, binding), ErrClosed)
+	data, err := absent.Load(approved, binding)
+	require.Nil(t, data)
+	require.ErrorIs(t, err, ErrClosed)
 }

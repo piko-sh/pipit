@@ -21,7 +21,6 @@
 package bytecode_test
 
 import (
-	"context"
 	"os"
 	"reflect"
 	"sync"
@@ -43,7 +42,7 @@ func TestEnvOverridesConcurrentClonesDoNotRace(t *testing.T) {
 	for range workers {
 		wg.Go(func() {
 			clone := golden.Clone()
-			_, _ = clone.Eval(context.Background(), "1 + 1")
+			_, _ = clone.Eval(t.Context(), "1 + 1")
 		})
 	}
 	wg.Wait()

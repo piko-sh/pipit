@@ -21,20 +21,18 @@
 package snippets_test
 
 import (
-	"context"
 	"testing"
-
-	"pipit.sh/pipit/internal/app"
 
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
 func TestNarrowIntNamedSliceDeferMatchesGo(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	tests := []struct {
 		name    string
 		snippet string
 		want    string
@@ -93,16 +91,16 @@ func run() string { return fmt.Sprintf("%v", f()) }
 		},
 	}
 
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			service := app.NewService()
 			service.UseSymbolProviders(stdlib.Providers()...)
 
-			got, err := service.EvalFile(context.Background(), testCase.snippet, "run")
+			got, err := service.EvalFile(t.Context(), tt.snippet, "run")
 			require.NoError(t, err)
-			require.Equal(t, testCase.want, got)
+			require.Equal(t, tt.want, got)
 		})
 	}
 }

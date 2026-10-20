@@ -21,34 +21,27 @@
 package sandboxbroker
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func exerciseRecoveryLandlock(t *testing.T) {
 	t.Helper()
 	directory := os.Getenv("PIPIT_TEST_BROKER_ROOT")
 	target := filepath.Join(directory, "file")
-	if err := os.WriteFile(target, []byte("original"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(target, []byte("original"), 0600))
 	backend := openTestFilesystem(t, directory, Write, FilesystemLimits{})
 	_, record := stageRecoveryRemnant(t, backend, "data", "file")
 	backend.recovery = []RecoveryRecord{record}
-	if err := backend.SealProcess(); err != nil {
-		t.Fatal(err)
-	}
-	if err := backend.beginProtocol(); err != nil {
-		t.Fatal(err)
-	}
-	if err := backend.recover(); err != nil {
-		t.Fatal("recovery-only Landlock blocked cleanup:", err)
-	}
-	if data, err := os.ReadFile(target); !errors.Is(err, os.ErrPermission) || data != nil {
-		t.Fatal("recovery role read file content:", err)
-	}
+	require.NoError(t, backend.SealProcess())
+	require.NoError(t, backend.beginProtocol())
+	require.NoError(t, backend.recover(), "recovery-only Landlock allows cleanup")
+	data, err := os.ReadFile(target)
+	require.ErrorIs(t, err, os.ErrPermission, "recovery role read file content")
+	require.Nil(t, data)
 	for _, name := range []string{target, filepath.Join(directory, "created")} {
 		flags := os.O_WRONLY
 		if name != target {
@@ -58,15 +51,11 @@ func exerciseRecoveryLandlock(t *testing.T) {
 		if file != nil {
 			_ = file.Close()
 		}
-		if !errors.Is(err, os.ErrPermission) {
-			t.Fatal("recovery role opened content for writing:", err)
-		}
+		require.ErrorIs(t, err, os.ErrPermission, "recovery role opened content for writing")
 	}
 	file, err := createLinuxStagingFile(backend.roots["data"])
 	if file != nil {
 		_ = file.Close()
 	}
-	if !errors.Is(err, os.ErrPermission) {
-		t.Fatal("recovery role created anonymous inode:", err)
-	}
+	require.ErrorIs(t, err, os.ErrPermission, "recovery role created anonymous inode")
 }

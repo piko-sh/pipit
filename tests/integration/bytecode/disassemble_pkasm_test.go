@@ -24,11 +24,11 @@ import (
 	"strings"
 	"testing"
 
-	"pipit.sh/pipit/internal/debug"
-	"pipit.sh/pipit/internal/engine/program"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/debug"
+	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 )
 

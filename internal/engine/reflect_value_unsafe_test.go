@@ -73,7 +73,7 @@ func TestUnsafeNewAtParity(t *testing.T) {
 				require.Equal(t, uint64(0x4242), want.Uint(), "SetUint via unsafe → safe read")
 			case reflect.Float64, reflect.Float32:
 				got.SetFloat(3.14)
-				require.Equal(t, 3.14, want.Float(), "SetFloat via unsafe → safe read")
+				require.InDelta(t, 3.14, want.Float(), 0, "SetFloat via unsafe → safe read")
 			case reflect.Bool:
 				got.SetBool(true)
 				require.True(t, want.Bool(), "SetBool via unsafe → safe read")

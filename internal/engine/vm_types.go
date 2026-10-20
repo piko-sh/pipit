@@ -229,6 +229,11 @@ type VMLimits struct {
 	// check.
 	DeadlockGrace time.Duration
 
+	// CallbackTimeout limits each native invocation of an interpreted closure,
+	// returning fault.ErrCallbackTimeout at the next poll or blocking wait. Zero
+	// disables this additional limit.
+	CallbackTimeout time.Duration
+
 	// ForceGoDispatch forces the pure Go dispatch loop even on architectures with ASM
 	// threaded dispatch (amd64, arm64). Used for testing dispatch parity.
 	ForceGoDispatch bool

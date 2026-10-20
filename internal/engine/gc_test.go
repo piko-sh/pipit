@@ -137,7 +137,7 @@ func TestMinorGC_AdvancesThreshold(t *testing.T) {
 	arena := vm.Arena
 	arena.bytesAllocated = gcInitialThreshold + 1
 	arena.MinorGC(vm)
-	assert.Greaterf(t, arena.nextGCAt, int64(0), "expected nextGCAt to be set after MinorGC, got %d", arena.nextGCAt)
+	assert.Positivef(t, arena.nextGCAt, "expected nextGCAt to be set after MinorGC, got %d", arena.nextGCAt)
 	assert.GreaterOrEqualf(t, arena.nextGCAt, arena.bytesAllocated+gcMinThresholdDelta,
 		"expected nextGCAt >= bytesAllocated+gcMinThresholdDelta, got nextGCAt=%d bytesAllocated=%d",
 		arena.nextGCAt, arena.bytesAllocated)

@@ -23,8 +23,7 @@ package harness
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
+	"math"
 	"runtime"
 	"time"
 
@@ -39,6 +38,9 @@ import (
 // reflects the cost of the algorithm, not pipit's safety bound.
 const benchmarkCallDepthLimit = 200000
 
+// bytesPerKiB converts a byte count to KiB.
+const bytesPerKiB = 1024
+
 // PipitRunner executes a benchmark in-process via the pipit interpreter. It loads the
 // canonical Go source from `<benchmark>/go/pipit_source.go` and calls either `Run`
 // (end-to-end) or `RunInner` (inner-loop) by name.
@@ -49,17 +51,15 @@ type PipitRunner struct{}
 func NewPipitRunner() *PipitRunner { return &PipitRunner{} }
 
 // Kind reports the runner identity used in results.
-func (runner *PipitRunner) Kind() RunnerKind { return RunnerPipit }
+func (*PipitRunner) Kind() RunnerKind { return RunnerPipit }
 
 // Available always returns true; pipit is linked into the test binary.
-func (runner *PipitRunner) Available(ctx context.Context) (bool, string) {
-	_ = ctx
+func (*PipitRunner) Available(context.Context) (bool, string) {
 	return true, ""
 }
 
 // Close is a no-op for the in-process runner.
-func (runner *PipitRunner) Close(ctx context.Context) error {
-	_ = ctx
+func (*PipitRunner) Close(context.Context) error {
 	return nil
 }
 
@@ -69,9 +69,8 @@ func (runner *PipitRunner) Close(ctx context.Context) error {
 // data into the in-process invocation. The first return value is the per-run Result. The
 // second return value is non-nil only on framework-level failures that should abort the
 // suite (e.g. source file missing).
-func (runner *PipitRunner) Run(parent context.Context, spec BenchSpec, mode RunMode, benchmarkDir string) (Result, error) {
-	sourcePath := filepath.Join(benchmarkDir, "go", "pipit_source.go")
-	sourceBytes, err := os.ReadFile(sourcePath)
+func (*PipitRunner) Run(parent context.Context, spec BenchSpec, mode RunMode, benchmarkDir string) (Result, error) {
+	sourceBytes, err := readBenchmarkFile(benchmarkDir, "go", "pipit_source.go")
 	if err != nil {
 		return failedResult(spec.Name, RunnerPipit, mode, "read pipit_source.go: "+err.Error()), nil
 	}
@@ -107,28 +106,12 @@ func (runner *PipitRunner) Run(parent context.Context, spec BenchSpec, mode RunM
 	}
 
 	canonicalOutput, innerNanos := decodePipitResult(resultValue, mode)
-	normalised := NormaliseStdout([]byte(canonicalOutput))
-	stdoutSHA := SHA256Hex(normalised)
-
-	status := StatusOK
-	note := ""
-	if stdoutSHA != spec.ExpectedStdoutSHA {
-		status = StatusMismatch
-		note = fmt.Sprintf("stdout SHA %s does not match expected %s", stdoutSHA, spec.ExpectedStdoutSHA)
-	}
-
-	return Result{
-		Benchmark:    spec.Name,
-		Runner:       RunnerPipit,
-		Mode:         mode,
-		WallNanos:    wallElapsed.Nanoseconds(),
-		InnerNanos:   innerNanos,
-		CompileNanos: compileNanos,
-		PeakRSSKB:    pipitSelfPeakRSSKB(),
-		StdoutSHA:    stdoutSHA,
-		Status:       status,
-		Note:         note,
-	}, nil
+	return checkedResult(spec, RunnerPipit, mode, []byte(canonicalOutput), "", runTimings{
+		wallNanos:    wallElapsed.Nanoseconds(),
+		innerNanos:   innerNanos,
+		compileNanos: compileNanos,
+		peakRSSKB:    pipitSelfPeakRSSKB(),
+	}), nil
 }
 
 // generateWrapper synthesises a tiny `entrypoint.go` file that pipit compiles alongside
@@ -185,6 +168,11 @@ func decodePipitResult(raw any, mode RunMode) (string, int64) {
 	}
 }
 
+// anyToString renders an entrypoint's result value as text.
+//
+// Takes value (any) which is the value.
+//
+// Returns string which is value itself when it is a string.
 func anyToString(value any) string {
 	if asString, ok := value.(string); ok {
 		return asString
@@ -192,6 +180,11 @@ func anyToString(value any) string {
 	return fmt.Sprint(value)
 }
 
+// anyToInt64 reads an integer of any width from an entrypoint's result value.
+//
+// Takes value (any) which is the value.
+//
+// Returns int64 which is the value, saturated, or zero when it is not an integer.
 func anyToInt64(value any) int64 {
 	switch typed := value.(type) {
 	case int:
@@ -201,11 +194,11 @@ func anyToInt64(value any) int64 {
 	case int64:
 		return typed
 	case uint:
-		return int64(typed)
+		return saturatingInt64(uint64(typed))
 	case uint32:
 		return int64(typed)
 	case uint64:
-		return int64(typed)
+		return saturatingInt64(typed)
 	default:
 		return 0
 	}
@@ -218,15 +211,17 @@ func anyToInt64(value any) int64 {
 func pipitSelfPeakRSSKB() int64 {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	return int64(memStats.Sys / 1024)
+	return saturatingInt64(memStats.Sys / bytesPerKiB)
 }
 
-func failedResult(benchmark string, runner RunnerKind, mode RunMode, note string) Result {
-	return Result{
-		Benchmark: benchmark,
-		Runner:    runner,
-		Mode:      mode,
-		Status:    StatusFailed,
-		Note:      note,
+// saturatingInt64 converts n to int64, clamping a value above math.MaxInt64.
+//
+// Takes n (uint64) which is the value.
+//
+// Returns int64 which is n, or math.MaxInt64.
+func saturatingInt64(n uint64) int64 {
+	if n > math.MaxInt64 {
+		return math.MaxInt64
 	}
+	return int64(n)
 }

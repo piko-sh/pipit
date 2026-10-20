@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,24 +32,24 @@ func TestEvalMultiAssign(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "swap_a",
-			code:   "a := 1\nb := 2\na, b = b, a\na",
-			expect: 2,
+			name: "swap_a",
+			code: "a := 1\nb := 2\na, b = b, a\na",
+			want: 2,
 		},
 		{
-			name:   "swap_b",
-			code:   "a := 1\nb := 2\na, b = b, a\nb",
-			expect: 1,
+			name: "swap_b",
+			code: "a := 1\nb := 2\na, b = b, a\nb",
+			want: 1,
 		},
 		{
-			name:   "triple_swap",
-			code:   "a := 1\nb := 2\nc := 3\na, b, c = c, a, b\na",
-			expect: 3,
+			name: "triple_swap",
+			code: "a := 1\nb := 2\nc := 3\na, b, c = c, a, b\na",
+			want: 3,
 		},
 		{
 			name: "multi_return_assign",
@@ -60,7 +60,7 @@ q := 0
 r := 0
 q, r = divmod(17, 5)
 q + r`,
-			expect: 5,
+			want: 5,
 		},
 	}
 
@@ -68,9 +68,9 @@ q + r`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

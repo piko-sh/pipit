@@ -19,46 +19,36 @@
 package sandboxbroker
 
 import (
-	"errors"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestStagingIdentity(t *testing.T) {
+	t.Parallel()
 	namespace, err := newStagingNamespace()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	other, err := newStagingNamespace()
-	if err != nil || namespace == other {
-		t.Fatal("namespace generation failed:", err)
-	}
+	require.NoError(t, err, "namespace generation failed")
+	require.NotEqual(t, other, namespace)
 	first, err := StagingName(namespace, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	second, err := StagingName(namespace, 2)
-	if err != nil || first == second {
-		t.Fatal("operation identities collided:", err)
-	}
+	require.NoError(t, err, "operation identities collided")
+	require.NotEqual(t, second, first)
 	again, err := StagingName(namespace, 1)
-	if err != nil || first != again {
-		t.Fatal("staging identity not reproducible:", err)
-	}
-	if len(first) > maximumNameBytes || strings.Contains(first, "/") {
-		t.Fatal("unbounded staging basename:", first)
-	}
+	require.NoError(t, err, "staging identity not reproducible")
+	require.Equal(t, again, first)
+	require.LessOrEqual(t, len(first), maximumNameBytes, "unbounded staging basename")
+	require.NotContains(t, first, "/")
 	for _, name := range []string{first, strings.ToUpper(first), "directory/" + first, first + "/file"} {
-		if validRelativePath(name, false) {
-			t.Fatal("script can address private staging name:", name)
-		}
+		require.False(t, validRelativePath(name, false), "script can address private staging name: %v", name)
 	}
 	for _, invalid := range []string{"", namespace[:len(namespace)-1], strings.Repeat("A", 32), strings.Repeat("z", 32), "../" + namespace} {
-		if _, err := StagingName(invalid, 1); !errors.Is(err, ErrInvalidPolicy) {
-			t.Fatal("invalid namespace accepted:", invalid, err)
-		}
+		_, err := StagingName(invalid, 1)
+		require.ErrorIs(t, err, ErrInvalidPolicy, "invalid namespace accepted: %v", invalid)
 	}
-	if _, err := StagingName(namespace, 0); !errors.Is(err, ErrInvalidPolicy) {
-		t.Fatal("zero identity accepted:", err)
-	}
+	_, err = StagingName(namespace, 0)
+	require.ErrorIs(t, err, ErrInvalidPolicy, "zero identity accepted")
 }

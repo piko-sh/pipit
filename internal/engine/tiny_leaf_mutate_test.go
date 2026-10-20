@@ -166,23 +166,35 @@ func TestTinyLeafScalarAssignmentWritesEveryScalarBank(t *testing.T) {
 	}{
 		{
 			name: "a signed field", field: 0, kind: reflect.Int64, bank: isa.RegisterInt,
-			seed:  func(registers *Registers) { registers.Ints[1] = 42 },
-			check: func(t *testing.T, target *leafCounter) { require.Equal(t, int64(42), target.Signed) },
+			seed: func(registers *Registers) { registers.Ints[1] = 42 },
+			check: func(t *testing.T, target *leafCounter) {
+				t.Helper()
+				require.Equal(t, int64(42), target.Signed)
+			},
 		},
 		{
 			name: "an unsigned field", field: 1, kind: reflect.Uint64, bank: isa.RegisterUint,
-			seed:  func(registers *Registers) { registers.Uints[1] = 42 },
-			check: func(t *testing.T, target *leafCounter) { require.Equal(t, uint64(42), target.Unsigned) },
+			seed: func(registers *Registers) { registers.Uints[1] = 42 },
+			check: func(t *testing.T, target *leafCounter) {
+				t.Helper()
+				require.Equal(t, uint64(42), target.Unsigned)
+			},
 		},
 		{
 			name: "a float field", field: 2, kind: reflect.Float64, bank: isa.RegisterFloat,
-			seed:  func(registers *Registers) { registers.Floats[1] = 1.5 },
-			check: func(t *testing.T, target *leafCounter) { require.InDelta(t, 1.5, target.Ratio, 0) },
+			seed: func(registers *Registers) { registers.Floats[1] = 1.5 },
+			check: func(t *testing.T, target *leafCounter) {
+				t.Helper()
+				require.InDelta(t, 1.5, target.Ratio, 0)
+			},
 		},
 		{
 			name: "a boolean field", field: 3, kind: reflect.Bool, bank: isa.RegisterBool,
-			seed:  func(registers *Registers) { registers.Bools[1] = true },
-			check: func(t *testing.T, target *leafCounter) { require.True(t, target.Flag) },
+			seed: func(registers *Registers) { registers.Bools[1] = true },
+			check: func(t *testing.T, target *leafCounter) {
+				t.Helper()
+				require.True(t, target.Flag)
+			},
 		},
 	}
 

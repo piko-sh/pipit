@@ -21,14 +21,14 @@
 package bytecode_test
 
 import (
-	"context"
 	"fmt"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/compile/inline"
 	"pipit.sh/pipit/internal/engine/program"
-
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -53,19 +53,12 @@ func entrypoint() int {
 }
 `
 	service := app.NewService()
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fmt.Sprint(result) != "63" {
-		t.Fatalf("sevenTimes(9) = %v, want 63 (tripled(9)+tripled(9)+9 = 27+27+9); "+
-			"189 indicates the inliner is clobbering the caller's parameter via "+
-			"the callee's return-prep MOVE", result)
-	}
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
+	require.NoError(t, err)
+	result, err := service.ExecuteEntrypoint(t.Context(), cfs, "entrypoint")
+	require.NoError(t, err)
+	require.Equal(t, "63", fmt.Sprint(result),
+		"sevenTimes(9) is tripled(9)+tripled(9)+9; 189 means the inliner clobbers the caller's parameter through the callee's return-prep MOVE")
 }
 
 func TestInlinerPreservesByValueParamSemantics_StructArgument(t *testing.T) {
@@ -87,19 +80,12 @@ func entrypoint() int {
 }
 `
 	service := app.NewService()
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fmt.Sprint(result) != "7" {
-		t.Fatalf("b.N after mutate(b) = %v, want 7 (Go's by-value parameter "+
-			"semantics); 999 indicates the inliner is letting the callee's "+
-			"SET_FIELD on its struct param slot leak into the caller's struct", result)
-	}
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
+	require.NoError(t, err)
+	result, err := service.ExecuteEntrypoint(t.Context(), cfs, "entrypoint")
+	require.NoError(t, err)
+	require.Equal(t, "7", fmt.Sprint(result),
+		"a struct parameter is passed by value; 999 means the callee's SET_FIELD leaks into the caller's struct")
 }
 
 func TestInlinerPreservesByValueParamSemantics_ValueReceiver(t *testing.T) {
@@ -122,19 +108,12 @@ func entrypoint() int {
 }
 `
 	service := app.NewService()
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fmt.Sprint(result) != "799" {
-		t.Fatalf("p.N*100+r = %v, want 799 (p.N stays 7, r=99); 9999 indicates "+
-			"the value receiver copy was elided across the inline boundary",
-			result)
-	}
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
+	require.NoError(t, err)
+	result, err := service.ExecuteEntrypoint(t.Context(), cfs, "entrypoint")
+	require.NoError(t, err)
+	require.Equal(t, "799", fmt.Sprint(result),
+		"p.N stays 7 and r is 99; 9999 means the value receiver copy was elided across the inline boundary")
 }
 
 func TestInlinerHandlesRecursiveStructFieldAccess(t *testing.T) {
@@ -163,20 +142,12 @@ func entrypoint() int {
 }
 `
 	service := app.NewService()
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fmt.Sprint(result) != "3" {
-		t.Fatalf("listLen(a→b→c) = %v, want 3; 1 indicates GET_FIELD's "+
-			"destination operand isn't being remapped through the inliner "+
-			"and so each `cur.Next` read overwrites the caller's `a` and "+
-			"reads the never-written remapped slot for cur", result)
-	}
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
+	require.NoError(t, err)
+	result, err := service.ExecuteEntrypoint(t.Context(), cfs, "entrypoint")
+	require.NoError(t, err)
+	require.Equal(t, "3", fmt.Sprint(result),
+		"listLen(a→b→c) is 3; 1 means GET_FIELD's destination is not remapped, so each cur.Next read overwrites the caller's a")
 }
 
 func TestInlinerReadOnlyParamElidesPreCopy(t *testing.T) {
@@ -214,14 +185,9 @@ func TestInlinerReadOnlyParamElidesPreCopy(t *testing.T) {
 		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 8},
 	}
 	result := inline.TrySpliceCall(caller, 0)
-	if !result.Spliced {
-		t.Fatalf("splice failed: %v", result.Reason)
-	}
+	require.True(t, result.Spliced, "the splice succeeds: %v", result.Reason)
 
-	if caller.NumRegisters[isa.RegisterInt] != 10 {
-		t.Fatalf("numRegisters[int] %d want 10 (8 caller + 1 fresh param + 1 local)",
-			caller.NumRegisters[isa.RegisterInt])
-	}
+	require.Equal(t, uint32(10), caller.NumRegisters[isa.RegisterInt])
 
 	var addInt isa.Instruction
 	for _, instr := range caller.Body {
@@ -230,18 +196,10 @@ func TestInlinerReadOnlyParamElidesPreCopy(t *testing.T) {
 			break
 		}
 	}
-	if addInt.Op != isa.OpAddInt {
-		t.Fatalf("expected opAddInt in inlined body, body=%+v", caller.Body)
-	}
-	if addInt.A != 9 {
-		t.Fatalf("opAddInt destination %d want 9 (fresh local for callee slot 2)", addInt.A)
-	}
-	if addInt.B != 8 {
-		t.Fatalf("opAddInt srcA %d want 8 (fresh param slot for callee slot 0)", addInt.B)
-	}
-	if addInt.C != 6 {
-		t.Fatalf("opAddInt srcB %d want 6 (alias to caller argument.register for callee slot 1, no pre-copy)", addInt.C)
-	}
+	require.Equal(t, isa.OpAddInt, addInt.Op, "the inlined body holds an ADD_INT: %+v", caller.Body)
+	require.Equal(t, uint8(9), addInt.A)
+	require.Equal(t, uint8(8), addInt.B)
+	require.Equal(t, uint8(6), addInt.C, "ADD_INT reads argument register 6 directly for callee slot 1, with no pre-copy")
 
 	preCopyCount := 0
 	for _, instr := range caller.Body {
@@ -250,16 +208,11 @@ func TestInlinerReadOnlyParamElidesPreCopy(t *testing.T) {
 			preCopyCount++
 		}
 	}
-	if preCopyCount != 1 {
-		t.Fatalf("pre-copy MOVE_INT destination=8 source=5 count %d want 1 (read-only param "+
-			"must NOT emit a pre-copy for slot 1); body=%+v", preCopyCount, caller.Body)
-	}
+	require.Equal(t, 1, preCopyCount, "one pre-copy MOVE_INT 8 <- 5, and none for the read-only slot 1: %+v", caller.Body)
 
 	for _, instr := range caller.Body {
-		if instr.Op == isa.OpDrillTier1 && isa.SubOpcode(instr.A) == isa.SubOpMoveInt &&
-			instr.C == 6 {
-			t.Fatalf("found pre-copy from caller argument.register 6 - read-only " +
-				"param 1 should have skipped pre-copy")
+		if instr.Op == isa.OpDrillTier1 && isa.SubOpcode(instr.A) == isa.SubOpMoveInt {
+			require.NotEqual(t, uint8(6), instr.C, "the read-only parameter 1 needs no pre-copy from argument register 6")
 		}
 	}
 }
@@ -301,14 +254,9 @@ func TestInlinerWritesThroughParamForceFreshSlot(t *testing.T) {
 		},
 	}
 	result := inline.TrySpliceCall(caller, 0)
-	if !result.Spliced {
-		t.Fatalf("splice failed: %v", result.Reason)
-	}
+	require.True(t, result.Spliced, "the splice succeeds: %v", result.Reason)
 
-	if caller.NumRegisters[isa.RegisterGeneral] != 5 {
-		t.Fatalf("numRegisters[general] %d want 5 (caller's 4 + 1 fresh param slot)",
-			caller.NumRegisters[isa.RegisterGeneral])
-	}
+	require.Equal(t, uint32(5), caller.NumRegisters[isa.RegisterGeneral])
 
 	foundPreCopy := false
 	for _, instr := range caller.Body {
@@ -317,10 +265,7 @@ func TestInlinerWritesThroughParamForceFreshSlot(t *testing.T) {
 			break
 		}
 	}
-	if !foundPreCopy {
-		t.Fatalf("expected opMoveGeneral destination=4 source=3 (pre-copy for struct param), "+
-			"body=%+v", caller.Body)
-	}
+	require.True(t, foundPreCopy, "a struct parameter gets a pre-copy MOVE_GENERAL 4 <- 3: %+v", caller.Body)
 
 	var setField isa.Instruction
 	for _, instr := range caller.Body {
@@ -329,16 +274,8 @@ func TestInlinerWritesThroughParamForceFreshSlot(t *testing.T) {
 			break
 		}
 	}
-	if setField.Op != isa.OpSetField {
-		t.Fatalf("expected opSetField in inlined body, body=%+v", caller.Body)
-	}
-	if setField.A != 4 {
-		t.Fatalf("inlined SET_FIELD struct operand %d want 4 (fresh slot); "+
-			"3 would mean caller's struct mutation", setField.A)
-	}
+	require.Equal(t, isa.OpSetField, setField.Op, "the inlined body holds a SET_FIELD: %+v", caller.Body)
+	require.Equal(t, uint8(4), setField.A, "the inlined SET_FIELD writes the fresh slot 4; 3 would mutate the caller's struct")
 
-	if setField.C != 2 {
-		t.Fatalf("inlined SET_FIELD value operand %d want 2 (aliased to caller argument, no pre-copy)",
-			setField.C)
-	}
+	require.Equal(t, uint8(2), setField.C, "the inlined SET_FIELD reads the caller's argument 2 directly, with no pre-copy")
 }

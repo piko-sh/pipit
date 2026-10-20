@@ -25,34 +25,25 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestInvocationIdentityBindsReplacedDirectory(t *testing.T) {
 	parent := t.TempDir()
 	directory := filepath.Join(parent, "current")
 	target := filepath.Join(parent, "main.go")
-	if err := os.Mkdir(directory, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(target, []byte("package main; func main() {}"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(directory, 0o700))
+	require.NoError(t, os.WriteFile(target, []byte("package main; func main() {}"), 0o600))
 	t.Chdir(directory)
 	_, first, err := InvocationIdentity(target, nil, "main", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(directory, filepath.Join(parent, "previous")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(directory, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, os.Rename(directory, filepath.Join(parent, "previous")))
+	require.NoError(t, os.Mkdir(directory, 0o700))
 	t.Chdir(directory)
 	_, replaced, err := InvocationIdentity(target, nil, "main", nil)
-	if err != nil || replaced == first {
-		t.Fatalf("replacement directory retained approval: %v", err)
-	}
+	require.NoError(t, err, "a replacement directory loses the approval")
+	require.NotEqual(t, first, replaced)
 }
 
 func TestInvocationPrincipalIdentity(t *testing.T) {
@@ -61,9 +52,8 @@ func TestInvocationPrincipalIdentity(t *testing.T) {
 	original := slices.Clone(groups)
 	identity := unixPrincipalIdentity(1, 2, 3, 4, groups, "5", "6")
 	canonical := unixPrincipalIdentity(1, 2, 3, 4, []int{10, 20}, "5", "6")
-	if !slices.Equal(identity, canonical) || !slices.Equal(groups, original) {
-		t.Fatal("group canonicalisation changed identity or caller data")
-	}
+	require.Equal(t, canonical, identity, "group order does not change the identity")
+	require.Equal(t, original, groups, "the caller's groups are left alone")
 	baseline := invocationHash("source", nil, "main", nil, identity)
 	for _, changed := range [][]string{
 		unixPrincipalIdentity(9, 2, 3, 4, groups, "5", "6"),
@@ -74,8 +64,6 @@ func TestInvocationPrincipalIdentity(t *testing.T) {
 		unixPrincipalIdentity(1, 2, 3, 4, groups, "9", "6"),
 		unixPrincipalIdentity(1, 2, 3, 4, groups, "5", "9"),
 	} {
-		if invocationHash("source", nil, "main", nil, changed) == baseline {
-			t.Fatal("changed credentials or directory identity retained approval")
-		}
+		require.NotEqual(t, baseline, invocationHash("source", nil, "main", nil, changed), "changed credentials or directory identity drop the approval")
 	}
 }

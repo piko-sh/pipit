@@ -25,15 +25,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/fault"
 )
 
 func newRestrictedSessionForTest(t *testing.T, config RestrictedSessionConfig) *RestrictedSession {
 	t.Helper()
-	session, err := NewRestrictedSession(context.Background(), config)
-	if err != nil {
-		t.Fatal(err)
-	}
+	session, err := NewRestrictedSession(t.Context(), config)
+	require.NoError(t, err)
 	t.Cleanup(session.Close)
 	return session
 }
@@ -45,59 +46,60 @@ func TestRestrictedSessionRetainsPrivateStateAndCopiesGrants(t *testing.T) {
 	session := newRestrictedSessionForTest(t, config)
 	config.Interpreter.Imports[0] = "os"
 	for _, source := range []string{"import \"math\"", "var value = math.Sqrt(144)"} {
-		if _, err := session.submit(context.Background(), source); err != nil {
-			t.Fatal(err)
-		}
+		_, err := session.submit(t.Context(), source)
+		require.NoError(t, err)
 	}
-	result, err := session.submit(context.Background(), "value + 30")
-	if err != nil || string(result.Value) != "42" {
-		t.Fatalf("result=%s error=%v", result.Value, err)
-	}
+	result, err := session.submit(t.Context(), "value + 30")
+	require.NoError(t, err)
+	require.Equal(t, "42", string(result.Value))
 	other := newRestrictedSessionForTest(t, RestrictedSessionConfig{})
-	if _, err := other.submit(context.Background(), "value"); err == nil {
-		t.Fatal("state leaked between sessions")
-	}
+	_, err = other.submit(t.Context(), "value")
+	require.Error(t, err, "sessions do not share state")
 }
 
 func TestRestrictedSessionFailureIsTerminal(t *testing.T) {
 	t.Parallel()
-	for _, source := range []string{
-		"import \"os\"",
-		"go func() {}()",
-		"make(chan int)",
-		"panic(\"failed\")",
-		"[]int{1, 2}",
-		"not defined",
-	} {
-		t.Run(source, func(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+	}{
+		{name: "os import", source: "import \"os\""},
+		{name: "goroutine", source: "go func() {}()"},
+		{name: "channel", source: "make(chan int)"},
+		{name: "panic", source: "panic(\"failed\")"},
+		{name: "slice result", source: "[]int{1, 2}"},
+		{name: "undefined name", source: "not defined"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			session := newRestrictedSessionForTest(t, RestrictedSessionConfig{})
-			if _, err := session.submit(context.Background(), source); err == nil {
-				t.Fatal("invalid submission accepted")
-			}
-			if result, err := session.submit(context.Background(), "42"); err == nil || result.Value != nil {
-				t.Fatalf("failed session reused: result=%s error=%v", result.Value, err)
-			}
+			_, err := session.submit(t.Context(), tt.source)
+			require.Error(t, err, "an invalid submission is rejected")
+			result, err := session.submit(t.Context(), "42")
+			require.Error(t, err, "a failed session cannot be reused")
+			require.Nil(t, result.Value)
 		})
 	}
 }
 
 func TestRestrictedSessionCumulativeSourceAndSubmissionLimits(t *testing.T) {
 	t.Parallel()
-	for _, kind := range []string{"source", "submissions"} {
-		t.Run(kind, func(t *testing.T) {
-			config := RestrictedSessionConfig{}
-			if kind == "source" {
-				config.MaxCumulativeSourceBytes = 2
-			} else {
-				config.MaxSubmissions = 1
-			}
-			session := newRestrictedSessionForTest(t, config)
-			if _, err := session.submit(context.Background(), "42"); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := session.submit(context.Background(), "1"); !errors.Is(err, ErrRestrictedLimit) {
-				t.Fatalf("cumulative %s budget reset: %v", kind, err)
-			}
+	tests := []struct {
+		name   string
+		config RestrictedSessionConfig
+	}{
+		{name: "source", config: RestrictedSessionConfig{MaxCumulativeSourceBytes: 2}},
+		{name: "submissions", config: RestrictedSessionConfig{MaxSubmissions: 1}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			session := newRestrictedSessionForTest(t, tt.config)
+			_, err := session.submit(t.Context(), "42")
+			require.NoError(t, err)
+			_, err = session.submit(t.Context(), "1")
+			require.ErrorIs(t, err, ErrRestrictedLimit, "the cumulative budget carries across submissions")
 		})
 	}
 }
@@ -107,65 +109,57 @@ func TestRestrictedSessionCumulativeOutputLimit(t *testing.T) {
 	config := RestrictedSessionConfig{}
 	config.MaxCumulativeOutputBytes = 6
 	session := newRestrictedSessionForTest(t, config)
-	first, err := session.submit(context.Background(), "print(\"abcd\")")
-	if err != nil || first.Output != "abcd" {
-		t.Fatalf("first=%+v error=%v", first, err)
-	}
-	second, err := session.submit(context.Background(), "print(\"abcd\")")
-	if err == nil || second.Output != "ab" || !second.OutputTruncated || second.Value != nil {
-		t.Fatalf("output budget reset: result=%+v error=%v", second, err)
-	}
-	if _, err := session.submit(context.Background(), "42"); err == nil {
-		t.Fatal("output failure was not terminal")
-	}
+	first, err := session.submit(t.Context(), "print(\"abcd\")")
+	require.NoError(t, err)
+	require.Equal(t, "abcd", first.Output)
+	second, err := session.submit(t.Context(), "print(\"abcd\")")
+	require.Error(t, err, "the output budget carries across submissions")
+	require.Equal(t, "ab", second.Output)
+	require.True(t, second.OutputTruncated)
+	require.Nil(t, second.Value)
+	_, err = session.submit(t.Context(), "42")
+	require.Error(t, err, "an output failure ends the session")
 }
 
 func TestRestrictedSessionCompilationBoundary(t *testing.T) {
 	t.Parallel()
 	session := newRestrictedSessionForTest(t, RestrictedSessionConfig{})
 	refused := errors.New("host refused execution")
-	result, err := SubmitRestrictedSessionPhased(context.Background(), session,
+	result, err := SubmitRestrictedSessionPhased(t.Context(), session,
 		"var value = func() int { println(42); return 42 }()\nvalue",
 		func() error {
-			if session.output.buffer.Len() != 0 {
-				t.Fatal("initialiser ran during compilation")
-			}
+			assert.Zero(t, session.output.buffer.Len(), "no initialiser runs during compilation")
 			return refused
 		})
-	if !errors.Is(err, refused) || result.Output != "" || result.Value != nil {
-		t.Fatalf("phase refusal ignored: result=%+v error=%v", result, err)
-	}
-	if _, err := session.submit(context.Background(), "42"); !errors.Is(err, refused) {
-		t.Fatalf("refused session reused: %v", err)
-	}
+	require.ErrorIs(t, err, refused, "a phase refusal stops the submission")
+	require.Empty(t, result.Output)
+	require.Nil(t, result.Value)
+	_, err = session.submit(t.Context(), "42")
+	require.ErrorIs(t, err, refused, "a refused session cannot be reused")
 }
 
 func TestRestrictedSessionCostIncludesInitialisers(t *testing.T) {
 	t.Parallel()
 	source := "var value = func() int { println(1); return 40 }()\nfunc init() { value++ }\nvalue+1"
 	probe := newRestrictedSessionForTest(t, RestrictedSessionConfig{})
-	first, err := probe.submit(context.Background(), source)
-	if err != nil || first.CostUsed <= 1 {
-		t.Fatalf("cost not reported: %+v %v", first, err)
-	}
-	second, err := probe.submit(context.Background(), "value+1")
-	if err != nil || second.CostUsed <= 0 || first.CostUsed <= second.CostUsed {
-		t.Fatalf("initialisers not charged: first=%+v second=%+v error=%v", first, second, err)
-	}
+	first, err := probe.submit(t.Context(), source)
+	require.NoError(t, err, "the cost is reported")
+	require.Greater(t, first.CostUsed, int64(1))
+	second, err := probe.submit(t.Context(), "value+1")
+	require.NoError(t, err, "initialisers are charged")
+	require.Positive(t, second.CostUsed)
+	require.Greater(t, first.CostUsed, second.CostUsed)
 	config := RestrictedSessionConfig{}
 	config.costBudget = first.CostUsed + second.CostUsed - 1
 	session := newRestrictedSessionForTest(t, config)
-	if _, err := session.submit(context.Background(), source); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := session.submit(context.Background(), "value+1"); !errors.Is(err, fault.ErrCostBudgetExceeded) {
-		t.Fatalf("cumulative cost budget reset: %v", err)
-	}
+	_, err = session.submit(t.Context(), source)
+	require.NoError(t, err)
+	_, err = session.submit(t.Context(), "value+1")
+	require.ErrorIs(t, err, fault.ErrCostBudgetExceeded, "the cumulative cost budget carries across submissions")
 	config.costBudget = first.CostUsed - 1
 	session = newRestrictedSessionForTest(t, config)
-	if _, err := session.submit(context.Background(), source); !errors.Is(err, fault.ErrCostBudgetExceeded) {
-		t.Fatalf("per-stage cost budget reset: %v", err)
-	}
+	_, err = session.submit(t.Context(), source)
+	require.ErrorIs(t, err, fault.ErrCostBudgetExceeded, "the cost budget is shared across stages")
 }
 
 func TestRestrictedSessionSingleFlightAndTerminalClose(t *testing.T) {
@@ -183,49 +177,46 @@ func TestRestrictedSessionSingleFlightAndTerminalClose(t *testing.T) {
 		done <- err
 	}()
 	<-entered
-	if _, err := session.submit(context.Background(), "1"); !errors.Is(err, ErrRestrictedBusy) {
-		t.Errorf("concurrent submission accepted: %v", err)
-	}
+	_, busyErr := session.submit(t.Context(), "1")
 	session.Close()
 	close(release)
-	if err := <-done; !errors.Is(err, errRestrictedSessionClosed) {
-		t.Fatalf("close ignored: %v", err)
-	}
+	require.ErrorIs(t, busyErr, ErrRestrictedBusy, "a concurrent submission is refused")
+	require.ErrorIs(t, <-done, errRestrictedSessionClosed, "close ends the session")
 	session.mutex.Lock()
 	defer session.mutex.Unlock()
-	if session.session != nil || session.output != nil {
-		t.Fatal("closed session retained interpreter state")
-	}
+	require.Nil(t, session.session, "a closed session releases its interpreter state")
+	require.Nil(t, session.output)
 }
 
 func TestRestrictedSessionExpiryAndCallerCancellation(t *testing.T) {
 	t.Parallel()
-	for _, kind := range []string{"idle", "lifetime", "caller"} {
-		t.Run(kind, func(t *testing.T) {
-			config := RestrictedSessionConfig{}
-			if kind == "idle" {
-				config.IdleTimeout = 10 * time.Millisecond
-			}
-			if kind == "lifetime" {
-				config.Lifetime = 10 * time.Millisecond
-			}
-			session := newRestrictedSessionForTest(t, config)
-			if kind == "caller" {
-				ctx, cancel := context.WithCancel(context.Background())
+	tests := []struct {
+		name         string
+		config       RestrictedSessionConfig
+		cancelCaller bool
+	}{
+		{name: "idle", config: RestrictedSessionConfig{IdleTimeout: 10 * time.Millisecond}},
+		{name: "lifetime", config: RestrictedSessionConfig{Lifetime: 10 * time.Millisecond}},
+		{name: "caller", cancelCaller: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			session := newRestrictedSessionForTest(t, tt.config)
+			if tt.cancelCaller {
+				ctx, cancel := context.WithCancel(t.Context())
 				cancel()
-				if _, err := session.submit(ctx, "42"); !errors.Is(err, context.Canceled) {
-					t.Fatal(err)
-				}
+				_, err := session.submit(ctx, "42")
+				require.ErrorIs(t, err, context.Canceled)
 			} else {
 				select {
 				case <-session.ctx.Done():
 				case <-time.After(2 * time.Second):
-					t.Fatal("session did not expire")
+					require.FailNow(t, "the session expires within two seconds")
 				}
 			}
-			if _, err := session.submit(context.Background(), "42"); err == nil {
-				t.Fatal("expired session reused")
-			}
+			_, err := session.submit(t.Context(), "42")
+			require.Error(t, err, "an expired session cannot be reused")
 		})
 	}
 }
@@ -237,36 +228,45 @@ func TestRestrictedSessionTimeoutTerminatesRunningCode(t *testing.T) {
 	config.Interpreter.CostBudget = 1 << 60
 	config.costBudget = 1 << 60
 	session := newRestrictedSessionForTest(t, config)
-	if _, err := session.submit(context.Background(), "for {}"); err == nil {
-		t.Fatal("infinite loop did not stop")
-	}
-	if _, err := session.submit(context.Background(), "42"); err == nil {
-		t.Fatal("timed-out session reused")
-	}
+	_, err := session.submit(t.Context(), "for {}")
+	require.Error(t, err, "the submission timeout stops an infinite loop")
+	_, err = session.submit(t.Context(), "42")
+	require.Error(t, err, "a timed-out session cannot be reused")
 }
 
 func TestRestrictedSessionInvalidConfiguration(t *testing.T) {
 	t.Parallel()
-	for _, change := range []func(*RestrictedSessionConfig){
-		func(config *RestrictedSessionConfig) { config.IdleTimeout = -1 },
-		func(config *RestrictedSessionConfig) { config.Lifetime = -1 },
-		func(config *RestrictedSessionConfig) { config.costBudget = -1 },
-		func(config *RestrictedSessionConfig) { config.MaxCumulativeSourceBytes = -1 },
-		func(config *RestrictedSessionConfig) { config.MaxCumulativeOutputBytes = -1 },
-		func(config *RestrictedSessionConfig) { config.MaxSubmissions = -1 },
-		func(config *RestrictedSessionConfig) { config.Interpreter.Imports = []string{"os"} },
-	} {
-		config := RestrictedSessionConfig{}
-		change(&config)
-		if session, err := NewRestrictedSession(context.Background(), config); err == nil {
-			session.Close()
-			t.Fatal("invalid configuration accepted")
-		}
+	tests := []struct {
+		name   string
+		change func(*RestrictedSessionConfig)
+	}{
+		{name: "negative idle timeout", change: func(config *RestrictedSessionConfig) { config.IdleTimeout = -1 }},
+		{name: "negative lifetime", change: func(config *RestrictedSessionConfig) { config.Lifetime = -1 }},
+		{name: "negative cost budget", change: func(config *RestrictedSessionConfig) { config.costBudget = -1 }},
+		{name: "negative source limit", change: func(config *RestrictedSessionConfig) { config.MaxCumulativeSourceBytes = -1 }},
+		{name: "negative output limit", change: func(config *RestrictedSessionConfig) { config.MaxCumulativeOutputBytes = -1 }},
+		{name: "negative submission limit", change: func(config *RestrictedSessionConfig) { config.MaxSubmissions = -1 }},
+		{name: "os import", change: func(config *RestrictedSessionConfig) { config.Interpreter.Imports = []string{"os"} }},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			config := RestrictedSessionConfig{}
+			tt.change(&config)
+			session, err := NewRestrictedSession(t.Context(), config)
+			if err == nil {
+				session.Close()
+			}
+			require.Error(t, err, "an invalid configuration is rejected")
+		})
+	}
+}
+
+func TestRestrictedSessionRejectsOversizedSource(t *testing.T) {
+	t.Parallel()
 	session := newRestrictedSessionForTest(t, RestrictedSessionConfig{})
-	if _, err := session.submit(context.Background(), strings.Repeat("x", defaultRestrictedSourceBytes+1)); !errors.Is(err, ErrRestrictedLimit) {
-		t.Fatalf("oversized source accepted: %v", err)
-	}
+	_, err := session.submit(t.Context(), strings.Repeat("x", defaultRestrictedSourceBytes+1))
+	require.ErrorIs(t, err, ErrRestrictedLimit, "oversized source is rejected")
 }
 
 func TestRestrictedSessionIdleTimerStopsDuringSubmission(t *testing.T) {
@@ -274,7 +274,7 @@ func TestRestrictedSessionIdleTimerStopsDuringSubmission(t *testing.T) {
 	config := RestrictedSessionConfig{}
 	config.IdleTimeout = 10 * time.Millisecond
 	session := newRestrictedSessionForTest(t, config)
-	_, err := SubmitRestrictedSessionPhased(context.Background(), session, "42", func() error {
+	_, err := SubmitRestrictedSessionPhased(t.Context(), session, "42", func() error {
 		select {
 		case <-session.ctx.Done():
 			return errors.New("idle timer expired during active submission")
@@ -282,13 +282,11 @@ func TestRestrictedSessionIdleTimerStopsDuringSubmission(t *testing.T) {
 			return nil
 		}
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	select {
 	case <-session.ctx.Done():
 	case <-time.After(2 * time.Second):
-		t.Fatal("idle timer was not restarted")
+		require.FailNow(t, "the idle timer restarts after a submission")
 	}
 }
 
@@ -297,77 +295,69 @@ func TestRestrictedSessionLifetimeCancelsActiveSubmission(t *testing.T) {
 	config := RestrictedSessionConfig{}
 	config.Lifetime = 30 * time.Millisecond
 	session := newRestrictedSessionForTest(t, config)
-	result, err := SubmitRestrictedSessionPhased(context.Background(), session, "println(42)", func() error {
+	result, err := SubmitRestrictedSessionPhased(t.Context(), session, "println(42)", func() error {
 		<-session.ctx.Done()
 		return nil
 	})
-	if !errors.Is(err, errRestrictedSessionExpired) || result.Output != "" || result.Value != nil {
-		t.Fatalf("lifetime expiry allowed execution: result=%+v error=%v", result, err)
-	}
+	require.ErrorIs(t, err, errRestrictedSessionExpired, "lifetime expiry stops execution")
+	require.Empty(t, result.Output)
+	require.Nil(t, result.Value)
 }
 
 func TestRestrictedSessionBoundaryPanicIsTerminal(t *testing.T) {
 	t.Parallel()
 	session := newRestrictedSessionForTest(t, RestrictedSessionConfig{})
-	func() {
-		defer func() {
-			if recover() == nil {
-				t.Error("trusted boundary panic was swallowed")
-			}
-		}()
-		_, _ = SubmitRestrictedSessionPhased(context.Background(), session, "42", func() error {
+	assert.Panics(t, func() {
+		_, _ = SubmitRestrictedSessionPhased(t.Context(), session, "42", func() error {
 			panic("boundary failure")
 		})
-	}()
-	if _, err := session.submit(context.Background(), "42"); !errors.Is(err, errRestrictedSessionClosed) {
-		t.Fatalf("panicked session was reusable: %v", err)
-	}
+	}, "a trusted boundary panic is not swallowed")
+	_, err := session.submit(t.Context(), "42")
+	require.ErrorIs(t, err, errRestrictedSessionClosed, "a panicked session cannot be reused")
 }
 
 func TestRestrictedSessionCompilationFailureDoesNotRequestExecution(t *testing.T) {
 	t.Parallel()
 	session := newRestrictedSessionForTest(t, RestrictedSessionConfig{})
 	called := false
-	result, err := SubmitRestrictedSessionPhased(context.Background(), session,
+	result, err := SubmitRestrictedSessionPhased(t.Context(), session,
 		"var value = func() int { println(42); return 42 }()\ngo func() {}()",
 		func() error { called = true; return nil })
-	if err == nil || called || result.Output != "" || result.Value != nil {
-		t.Fatalf("compilation failure crossed execution boundary: called=%v result=%+v error=%v", called, result, err)
-	}
+	require.Error(t, err, "a compilation failure stops before the execution boundary")
+	require.False(t, called)
+	require.Empty(t, result.Output)
+	require.Nil(t, result.Value)
 }
 
 func TestRestrictedSessionParentCancellationReleasesIdleState(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	session, err := NewRestrictedSession(ctx, RestrictedSessionConfig{})
 	if err != nil {
 		cancel()
-		t.Fatal(err)
 	}
+	require.NoError(t, err)
 	t.Cleanup(session.Close)
 	cancel()
 	session.releaseClosed()
 	session.mutex.Lock()
 	retained := session.session != nil || session.output != nil
 	session.mutex.Unlock()
-	if retained {
-		t.Fatal("cancelled parent retained idle interpreter state")
-	}
-	if _, err := session.submit(context.Background(), "42"); !errors.Is(err, context.Canceled) {
-		t.Fatalf("parent cancellation ignored: %v", err)
-	}
+	require.False(t, retained, "cancelling the parent releases idle interpreter state")
+	_, err = session.submit(t.Context(), "42")
+	require.ErrorIs(t, err, context.Canceled, "parent cancellation ends the session")
 }
 
 func TestRestrictedSessionCallerCancellationAtBoundary(t *testing.T) {
 	t.Parallel()
 	session := newRestrictedSessionForTest(t, RestrictedSessionConfig{})
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	result, err := SubmitRestrictedSessionPhased(ctx, session, "println(42)", func() error {
 		cancel()
 		return nil
 	})
-	if !errors.Is(err, context.Canceled) || result.Output != "" || result.Value != nil {
-		t.Fatalf("caller cancellation allowed execution: result=%+v error=%v", result, err)
-	}
+	require.ErrorIs(t, err, context.Canceled, "caller cancellation stops execution")
+	require.Empty(t, result.Output)
+	require.Nil(t, result.Value)
 }

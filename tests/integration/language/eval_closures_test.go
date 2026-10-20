@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalClosures(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "simple read-only capture",
@@ -43,7 +43,7 @@ add := func(n int) int {
 	return x + n
 }
 add(5)`,
-			expect: 15,
+			want: 15,
 		},
 		{
 			name: "mutable capture counter",
@@ -55,7 +55,7 @@ increment := func() int {
 increment()
 increment()
 increment()`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "multiple captures",
@@ -65,7 +65,7 @@ sum := func() int {
 	return a + b
 }
 sum()`,
-			expect: 30,
+			want: 30,
 		},
 		{
 			name: "capture string",
@@ -74,7 +74,7 @@ greet := func(name string) string {
 	return prefix + name
 }
 greet("world")`,
-			expect: "hello world",
+			want: "hello world",
 		},
 		{
 			name: "closure with params and capture",
@@ -83,7 +83,7 @@ compute := func(x int, y int) int {
 	return base + x*y
 }
 compute(3, 4)`,
-			expect: 112,
+			want: 112,
 		},
 		{
 			name: "closure called multiple times read-only",
@@ -92,14 +92,14 @@ mul := func(x int) int {
 	return x * factor
 }
 mul(3) + mul(7)`,
-			expect: 50,
+			want: 50,
 		},
 		{
 			name: "immediately invoked function literal",
 			code: `func(x int) int {
 	return x * 2
 }(21)`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "immediately invoked with capture",
@@ -108,7 +108,7 @@ func(x int) {
 	b = b + x
 }(10)
 b`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "immediately invoked in loop",
@@ -119,7 +119,7 @@ for i := 0; i < 5; i++ {
 	}(i)
 }
 b`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "immediately invoked with return value",
@@ -127,7 +127,7 @@ b`,
 	return a + b
 }(3, 4)
 result`,
-			expect: 7,
+			want: 7,
 		},
 		{
 			name: "immediately invoked nested",
@@ -137,7 +137,7 @@ result`,
 	}(n * 2)
 }(5)
 y`,
-			expect: 11,
+			want: 11,
 		},
 	}
 
@@ -145,9 +145,9 @@ y`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -156,9 +156,9 @@ func TestEvalClosureTypedUpvalues(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "float upvalue",
@@ -169,7 +169,7 @@ inc := func() float64 {
 }
 inc()
 inc()`,
-			expect: 3.5,
+			want: 3.5,
 		},
 		{
 			name: "bool upvalue",
@@ -179,7 +179,7 @@ toggle := func() bool {
 	return b
 }
 toggle()`,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "uint upvalue",
@@ -190,7 +190,7 @@ inc := func() uint {
 }
 inc()
 inc()`,
-			expect: uint(20),
+			want: uint(20),
 		},
 		{
 			name: "complex upvalue",
@@ -200,7 +200,7 @@ add := func() complex128 {
 	return c
 }
 add()`,
-			expect: complex128(4 + 6i),
+			want: complex128(4 + 6i),
 		},
 		{
 			name: "multiple typed upvalues",
@@ -213,7 +213,7 @@ fn := func() float64 {
 }
 fn()
 fn()`,
-			expect: 15.5,
+			want: 15.5,
 		},
 	}
 
@@ -221,9 +221,9 @@ fn()`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -232,7 +232,7 @@ func TestClosureCaptureUintAndComplex(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -250,7 +250,7 @@ func run() uint {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     uint(42),
+			want:       uint(42),
 		},
 		{
 			name: "capture_complex",
@@ -265,7 +265,7 @@ func run() complex128 {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     complex128(3 + 4i),
+			want:       complex128(3 + 4i),
 		},
 		{
 			name: "mutate_captured_uint",
@@ -281,7 +281,7 @@ func run() uint {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     uint(42),
+			want:       uint(42),
 		},
 	}
 
@@ -289,9 +289,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -300,7 +300,7 @@ func TestClosureCaptureInLoopBody(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -321,7 +321,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     2,
+			want:       2,
 		},
 		{
 			name: "for_loop_shadow_captures_last",
@@ -339,7 +339,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     4,
+			want:       4,
 		},
 		{
 			name: "range_shadow_all_closures",
@@ -357,7 +357,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     3,
+			want:       3,
 		},
 		{
 			name: "two_closures_same_iteration_share",
@@ -376,7 +376,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     14,
+			want:       14,
 		},
 	}
 
@@ -384,9 +384,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

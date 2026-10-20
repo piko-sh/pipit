@@ -24,9 +24,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/symtab"
-
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
@@ -39,15 +40,13 @@ func runHotspotBenchmarks(b *testing.B, benchmarks []struct {
 		b.Run(bm.name, func(b *testing.B) {
 			service := app.NewService()
 			cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": bm.source})
-			if err != nil {
-				b.Fatal(err)
-			}
+			require.NoError(b, err)
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
 				_, err = service.ExecuteEntrypoint(context.Background(), cfs, "run")
 				if err != nil {
-					b.Fatal(err)
+					require.NoError(b, err)
 				}
 			}
 		})
@@ -65,15 +64,13 @@ func runHotspotBenchmarksWithStdlib(b *testing.B, benchmarks []struct {
 			service := app.NewService()
 			service.UseSymbols(symbols)
 			cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": bm.source})
-			if err != nil {
-				b.Fatal(err)
-			}
+			require.NoError(b, err)
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
 				_, err = service.ExecuteEntrypoint(context.Background(), cfs, "run")
 				if err != nil {
-					b.Fatal(err)
+					require.NoError(b, err)
 				}
 			}
 		})
@@ -86,8 +83,8 @@ func BenchmarkBoundaryCopy(b *testing.B) {
 		source string
 	}{
 		{
-			"struct_arg_8_field",
-			`package main
+			name: "struct_arg_8_field",
+			source: `package main
 
 type Wide struct{ a, b, c, d, e, f, g, h int }
 
@@ -104,8 +101,8 @@ func run() int {
 `,
 		},
 		{
-			"struct_arg_2_field",
-			`package main
+			name: "struct_arg_2_field",
+			source: `package main
 
 type Pair struct{ a, b int }
 
@@ -122,8 +119,8 @@ func run() int {
 `,
 		},
 		{
-			"struct_assign_local",
-			`package main
+			name: "struct_assign_local",
+			source: `package main
 
 type Wide struct{ a, b, c, d, e, f, g, h int }
 
@@ -140,8 +137,8 @@ func run() int {
 `,
 		},
 		{
-			"struct_field_read_inner",
-			`package main
+			name: "struct_field_read_inner",
+			source: `package main
 
 type Inner struct{ a, b, c, d int }
 type Outer struct{ inner Inner }
@@ -158,8 +155,8 @@ func run() int {
 `,
 		},
 		{
-			"struct_slice_element_read",
-			`package main
+			name: "struct_slice_element_read",
+			source: `package main
 
 type Cell struct{ a, b, c, d int }
 
@@ -178,8 +175,8 @@ func run() int {
 `,
 		},
 		{
-			"struct_map_element_read",
-			`package main
+			name: "struct_map_element_read",
+			source: `package main
 
 type Cell struct{ a, b, c, d int }
 
@@ -198,8 +195,8 @@ func run() int {
 `,
 		},
 		{
-			"struct_range_value",
-			`package main
+			name: "struct_range_value",
+			source: `package main
 
 type Cell struct{ a, b, c, d int }
 
@@ -217,8 +214,8 @@ func run() int {
 `,
 		},
 		{
-			"struct_array_range_value",
-			`package main
+			name: "struct_array_range_value",
+			source: `package main
 
 type Cell struct{ a, b, c, d int }
 
@@ -238,8 +235,8 @@ func run() int {
 `,
 		},
 		{
-			"struct_type_assert",
-			`package main
+			name: "struct_type_assert",
+			source: `package main
 
 type Cell struct{ a, b, c, d int }
 
@@ -255,8 +252,8 @@ func run() int {
 `,
 		},
 		{
-			"struct_chan_pingpong",
-			`package main
+			name: "struct_chan_pingpong",
+			source: `package main
 
 type Cell struct{ a, b, c, d int }
 
@@ -282,8 +279,8 @@ func BenchmarkInterfaceDispatch(b *testing.B) {
 		source string
 	}{
 		{
-			"monomorphic_value_receiver",
-			`package main
+			name: "monomorphic_value_receiver",
+			source: `package main
 
 type Greeter interface{ Greet() int }
 
@@ -301,8 +298,8 @@ func run() int {
 `,
 		},
 		{
-			"monomorphic_pointer_receiver",
-			`package main
+			name: "monomorphic_pointer_receiver",
+			source: `package main
 
 type Counter interface{ Inc() }
 type C struct{ n int }
@@ -319,8 +316,8 @@ func run() int {
 `,
 		},
 		{
-			"polymorphic_two_types",
-			`package main
+			name: "polymorphic_two_types",
+			source: `package main
 
 type Shape interface{ Area() int }
 
@@ -341,8 +338,8 @@ func run() int {
 `,
 		},
 		{
-			"direct_value_receiver",
-			`package main
+			name: "direct_value_receiver",
+			source: `package main
 
 type En struct{ n int }
 func (e En) Greet() int { return e.n }
@@ -367,8 +364,8 @@ func BenchmarkGenericDispatch(b *testing.B) {
 		source string
 	}{
 		{
-			"identity_int",
-			`package main
+			name: "identity_int",
+			source: `package main
 
 func id[T any](x T) T { return x }
 
@@ -382,8 +379,8 @@ func run() int {
 `,
 		},
 		{
-			"identity_string_len",
-			`package main
+			name: "identity_string_len",
+			source: `package main
 
 func id[T any](x T) T { return x }
 
@@ -397,8 +394,8 @@ func run() int {
 `,
 		},
 		{
-			"compare_constrained",
-			`package main
+			name: "compare_constrained",
+			source: `package main
 
 type Ordered interface{ ~int | ~int64 | ~float64 }
 
@@ -419,8 +416,8 @@ func run() int {
 `,
 		},
 		{
-			"non_generic_baseline",
-			`package main
+			name: "non_generic_baseline",
+			source: `package main
 
 func id(x int) int { return x }
 
@@ -443,8 +440,8 @@ func BenchmarkRangePatterns(b *testing.B) {
 		source string
 	}{
 		{
-			"range_over_int",
-			`package main
+			name: "range_over_int",
+			source: `package main
 
 func run() int {
 	s := 0
@@ -456,8 +453,8 @@ func run() int {
 `,
 		},
 		{
-			"for_i_baseline",
-			`package main
+			name: "for_i_baseline",
+			source: `package main
 
 func run() int {
 	s := 0
@@ -469,8 +466,8 @@ func run() int {
 `,
 		},
 		{
-			"range_over_func",
-			`package main
+			name: "range_over_func",
+			source: `package main
 
 func upTo(n int) func(yield func(int) bool) {
 	return func(yield func(int) bool) {
@@ -492,8 +489,8 @@ func run() int {
 `,
 		},
 		{
-			"range_over_int_slice",
-			`package main
+			name: "range_over_int_slice",
+			source: `package main
 
 func run() int {
 	xs := make([]int, 1000)
@@ -518,8 +515,8 @@ func BenchmarkDeferOverhead(b *testing.B) {
 		source string
 	}{
 		{
-			"no_defer",
-			`package main
+			name: "no_defer",
+			source: `package main
 
 func work(x int) int { return x * 2 }
 
@@ -533,8 +530,8 @@ func run() int {
 `,
 		},
 		{
-			"single_defer",
-			`package main
+			name: "single_defer",
+			source: `package main
 
 func work(x int) int {
 	defer func() {}()
@@ -551,8 +548,8 @@ func run() int {
 `,
 		},
 		{
-			"defer_with_capture",
-			`package main
+			name: "defer_with_capture",
+			source: `package main
 
 func work(x int) int {
 	y := x + 1
@@ -570,8 +567,8 @@ func run() int {
 `,
 		},
 		{
-			"recover_no_panic",
-			`package main
+			name: "recover_no_panic",
+			source: `package main
 
 func work(x int) int {
 	defer func() {
@@ -592,8 +589,8 @@ func run() int {
 `,
 		},
 		{
-			"single_defer_named_function",
-			`package main
+			name: "single_defer_named_function",
+			source: `package main
 
 func cleanup() {}
 
@@ -612,8 +609,8 @@ func run() int {
 `,
 		},
 		{
-			"single_defer_scalar_args",
-			`package main
+			name: "single_defer_scalar_args",
+			source: `package main
 
 var acc int
 
@@ -640,8 +637,8 @@ func run() int {
 `,
 		},
 		{
-			"single_defer_method_value",
-			`package main
+			name: "single_defer_method_value",
+			source: `package main
 
 type counter struct{ n int }
 func (c *counter) inc() { c.n++ }
@@ -671,8 +668,8 @@ func BenchmarkClosureCapture(b *testing.B) {
 		source string
 	}{
 		{
-			"capture_int_read",
-			`package main
+			name: "capture_int_read",
+			source: `package main
 
 func make(x int) func() int {
 	return func() int { return x }
@@ -689,8 +686,8 @@ func run() int {
 `,
 		},
 		{
-			"capture_int_write",
-			`package main
+			name: "capture_int_write",
+			source: `package main
 
 func make() func(int) int {
 	x := 0
@@ -711,8 +708,8 @@ func run() int {
 `,
 		},
 		{
-			"capture_struct_read",
-			`package main
+			name: "capture_struct_read",
+			source: `package main
 
 type State struct{ a, b, c, d int }
 
@@ -731,8 +728,8 @@ func run() int {
 `,
 		},
 		{
-			"capture_pointer_write",
-			`package main
+			name: "capture_pointer_write",
+			source: `package main
 
 func make(p *int) func(int) {
 	return func(d int) { *p += d }
@@ -758,8 +755,8 @@ func BenchmarkChannelThroughput(b *testing.B) {
 		source string
 	}{
 		{
-			"buffered_int_pingpong_1000",
-			`package main
+			name: "buffered_int_pingpong_1000",
+			source: `package main
 
 func run() int {
 	ch := make(chan int, 1)
@@ -773,8 +770,8 @@ func run() int {
 `,
 		},
 		{
-			"buffered_int_throughput_1000",
-			`package main
+			name: "buffered_int_throughput_1000",
+			source: `package main
 
 func run() int {
 	ch := make(chan int, 1024)
@@ -790,8 +787,8 @@ func run() int {
 `,
 		},
 		{
-			"unbuffered_goroutine_pingpong_100",
-			`package main
+			name: "unbuffered_goroutine_pingpong_100",
+			source: `package main
 
 func run() int {
 	ch := make(chan int)
@@ -819,8 +816,8 @@ func BenchmarkNestedFieldAccess(b *testing.B) {
 		source string
 	}{
 		{
-			"depth_1",
-			`package main
+			name: "depth_1",
+			source: `package main
 
 type S1 struct{ x int }
 
@@ -835,8 +832,8 @@ func run() int {
 `,
 		},
 		{
-			"depth_4_value",
-			`package main
+			name: "depth_4_value",
+			source: `package main
 
 type Inner struct{ x int }
 type Mid struct{ inner Inner }
@@ -854,8 +851,8 @@ func run() int {
 `,
 		},
 		{
-			"depth_4_pointer_chain",
-			`package main
+			name: "depth_4_pointer_chain",
+			source: `package main
 
 type Inner struct{ x int }
 type Mid struct{ inner *Inner }
@@ -873,8 +870,8 @@ func run() int {
 `,
 		},
 		{
-			"embedded_method_promotion",
-			`package main
+			name: "embedded_method_promotion",
+			source: `package main
 
 type Base struct{ n int }
 func (b Base) Get() int { return b.n }
@@ -901,8 +898,8 @@ func BenchmarkTypeSwitchBreadth(b *testing.B) {
 		source string
 	}{
 		{
-			"4_cases",
-			`package main
+			name: "4_cases",
+			source: `package main
 
 func classify(v interface{}) int {
 	switch v.(type) {
@@ -929,8 +926,8 @@ func run() int {
 `,
 		},
 		{
-			"8_cases_first_match",
-			`package main
+			name: "8_cases_first_match",
+			source: `package main
 
 func classify(v interface{}) int {
 	switch v.(type) {
@@ -966,8 +963,8 @@ func run() int {
 `,
 		},
 		{
-			"8_cases_last_match",
-			`package main
+			name: "8_cases_last_match",
+			source: `package main
 
 func classify(v interface{}) int {
 	switch v.(type) {
@@ -1012,8 +1009,8 @@ func BenchmarkSliceOfStruct(b *testing.B) {
 		source string
 	}{
 		{
-			"read_via_index",
-			`package main
+			name: "read_via_index",
+			source: `package main
 
 type Cell struct{ a, b, c, d int }
 
@@ -1031,8 +1028,8 @@ func run() int {
 `,
 		},
 		{
-			"write_field_via_index",
-			`package main
+			name: "write_field_via_index",
+			source: `package main
 
 type Cell struct{ a, b, c, d int }
 
@@ -1051,8 +1048,8 @@ func run() int {
 `,
 		},
 		{
-			"compound_assign_via_index",
-			`package main
+			name: "compound_assign_via_index",
+			source: `package main
 
 type Cell struct{ a, b, c, d int }
 
@@ -1071,8 +1068,8 @@ func run() int {
 `,
 		},
 		{
-			"pointer_receiver_method_via_index",
-			`package main
+			name: "pointer_receiver_method_via_index",
+			source: `package main
 
 type Cell struct{ n int }
 func (c *Cell) Inc() { c.n++ }
@@ -1100,8 +1097,8 @@ func BenchmarkMapStringKey(b *testing.B) {
 		source string
 	}{
 		{
-			"set_then_get_100",
-			`package main
+			name: "set_then_get_100",
+			source: `package main
 
 func run() int {
 	m := make(map[string]int, 100)
@@ -1118,8 +1115,8 @@ func run() int {
 `,
 		},
 		{
-			"comma_ok",
-			`package main
+			name: "comma_ok",
+			source: `package main
 
 func run() int {
 	m := map[string]int{"a": 1, "b": 2, "c": 3}
@@ -1134,8 +1131,8 @@ func run() int {
 `,
 		},
 		{
-			"delete_then_set",
-			`package main
+			name: "delete_then_set",
+			source: `package main
 
 func run() int {
 	m := make(map[string]int, 16)
@@ -1157,8 +1154,8 @@ func BenchmarkASMTypeConversion(b *testing.B) {
 		source string
 	}{
 		{
-			"bool_to_int_loop",
-			`package main
+			name: "bool_to_int_loop",
+			source: `package main
 
 func run() int {
 	b := true
@@ -1175,8 +1172,8 @@ func run() int {
 `,
 		},
 		{
-			"int_to_uint_loop",
-			`package main
+			name: "int_to_uint_loop",
+			source: `package main
 
 func run() uint64 {
 	var s uint64
@@ -1188,8 +1185,8 @@ func run() uint64 {
 `,
 		},
 		{
-			"uint_to_int_loop",
-			`package main
+			name: "uint_to_int_loop",
+			source: `package main
 
 func run() int64 {
 	var u uint64 = 7
@@ -1202,8 +1199,8 @@ func run() int64 {
 `,
 		},
 		{
-			"uint_to_float_loop",
-			`package main
+			name: "uint_to_float_loop",
+			source: `package main
 
 func run() float64 {
 	var u uint64 = 1234
@@ -1216,8 +1213,8 @@ func run() float64 {
 `,
 		},
 		{
-			"float_to_uint_loop",
-			`package main
+			name: "float_to_uint_loop",
+			source: `package main
 
 func run() uint64 {
 	f := 3.14
@@ -1230,8 +1227,8 @@ func run() uint64 {
 `,
 		},
 		{
-			"bitnot_uint_loop",
-			`package main
+			name: "bitnot_uint_loop",
+			source: `package main
 
 func run() uint64 {
 	var x uint64 = 0xFF
@@ -1253,8 +1250,8 @@ func BenchmarkErrorWrap(b *testing.B) {
 		source string
 	}{
 		{
-			"errors_is_direct",
-			`package main
+			name: "errors_is_direct",
+			source: `package main
 
 import "errors"
 
@@ -1272,8 +1269,8 @@ func run() int {
 `,
 		},
 		{
-			"errors_is_wrapped_depth_3",
-			`package main
+			name: "errors_is_wrapped_depth_3",
+			source: `package main
 
 import (
 	"errors"

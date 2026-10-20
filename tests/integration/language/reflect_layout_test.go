@@ -24,19 +24,19 @@ import (
 	"reflect"
 	"testing"
 	"unsafe"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestReflectValueLayout(t *testing.T) {
+	t.Parallel()
 	const (
 		wantSize   = 24
 		wantTypOff = 0
 		wantPtrOff = unsafe.Sizeof(uintptr(0))
 	)
-	if got := unsafe.Sizeof(reflect.Value{}); got != wantSize {
-		t.Fatalf("reflect.Value size = %d, want %d "+
-			"(Go reflect layout changed; reflect_value_unsafe.go assumptions are stale)",
-			got, wantSize)
-	}
+	require.Equal(t, uintptr(wantSize), unsafe.Sizeof(reflect.Value{}),
+		"the reflect.Value size matches the reflect_value_unsafe.go assumptions")
 
 	const sentinel = int64(0x0123_4567_89AB_CDEF)
 	heapValue := sentinel
@@ -52,38 +52,18 @@ func TestReflectValueLayout(t *testing.T) {
 		flag uintptr
 	})(unsafe.Pointer(&v))
 
-	if view.typ == nil {
-		t.Fatalf("reflect.Value.typ_ = nil at offset %d, want non-nil "+
-			"(layout changed: word 0 is no longer the *abi.Type)", wantTypOff)
-	}
-	if view.ptr == nil {
-		t.Fatalf("reflect.Value.ptr = nil at offset %d, want non-nil "+
-			"(layout changed: word 1 is no longer the data pointer)", wantPtrOff)
-	}
+	require.NotNil(t, view.typ, "word %d of reflect.Value is the *abi.Type", wantTypOff)
+	require.NotNil(t, view.ptr, "the word at offset %d of reflect.Value is the data pointer", wantPtrOff)
 
 	const flagKindMask = uintptr(0x1f)
 	const flagAddr = uintptr(1 << 8)
 	const flagIndir = uintptr(1 << 7)
 	gotKind := reflect.Kind(view.flag & flagKindMask)
-	if gotKind != reflect.Int64 {
-		t.Fatalf("reflect.Value.flag low bits = %v (Kind), want Int64 "+
-			"(flag layout changed; reflect_value_unsafe.go constants are stale)",
-			gotKind)
-	}
-
-	if view.flag&flagAddr == 0 {
-		t.Fatalf("flagAddr bit missing on .Elem() Value (flag=%#x); "+
-			"flagAddr offset may have moved", view.flag)
-	}
-	if view.flag&flagIndir == 0 {
-		t.Fatalf("flagIndir bit missing on .Elem() Value (flag=%#x); "+
-			"flagIndir offset may have moved", view.flag)
-	}
+	require.Equal(t, reflect.Int64, gotKind, "the flag's low bits hold the Kind, as the reflect_value_unsafe.go constants assume")
+	require.NotZero(t, view.flag&flagAddr, "an .Elem() Value has the flagAddr bit (flag %#x)", view.flag)
+	require.NotZero(t, view.flag&flagIndir, "an .Elem() Value has the flagIndir bit (flag %#x)", view.flag)
 
 	v.SetInt(0x5555_5555_5555_5555)
-	if heapValue != 0x5555_5555_5555_5555 {
-		t.Fatalf("Value.SetInt() did not update backing storage (got %#x); "+
-			"the ptr field at offset %d may not point at the int value",
-			heapValue, wantPtrOff)
-	}
+	require.Equal(t, int64(0x5555_5555_5555_5555), heapValue,
+		"Value.SetInt updates the backing storage through the pointer at offset %d", wantPtrOff)
 }

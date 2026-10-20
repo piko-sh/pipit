@@ -7,9 +7,6 @@ type token struct {
 	value int
 }
 
-// evaluator is the expression-benchmark shape: a struct literal whose tokens field is
-// stored after construction and whose address then feeds pointer-receiver methods that
-// never publish the receiver.
 type evaluator struct {
 	tokens   []token
 	position int
@@ -86,8 +83,6 @@ func (e *evaluator) expression() int {
 	return v
 }
 
-// storm allocates enough to recycle arena and heap storage several times over, so a
-// tokens slice whose backing had been reclaimed would read garbage afterwards.
 func storm(seed int) int {
 	total := 0
 	for i := 0; i < 400; i++ {
@@ -109,7 +104,6 @@ func run() string {
 			evaluator := evaluator{tokens: tokenise(source), position: 0}
 			value := evaluator.expression()
 			storm(value)
-			// Re-read the tokens after the storm: the stored slice must still be intact.
 			sum := 0
 			for _, t := range evaluator.tokens {
 				sum += t.kind*10 + t.value

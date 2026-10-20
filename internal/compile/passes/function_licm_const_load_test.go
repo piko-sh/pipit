@@ -164,7 +164,7 @@ func TestHoistLoopInvariantConstantLoads(t *testing.T) {
 			compiledFunction := &program.CompiledFunction{Body: tt.body, ResultKinds: tt.resultKinds}
 			originalLen := len(tt.body)
 			require.NoError(t, hoistLoopInvariantConstantLoads(context.Background(), compiledFunction, nil))
-			require.Equal(t, originalLen, len(compiledFunction.Body), "a hoist never changes the body length")
+			require.Len(t, compiledFunction.Body, originalLen, "a hoist never changes the body length")
 			require.Equal(t, tt.wantHoist, len(compiledFunction.PeepholeProvenance) > 0, "hoist recorded in the provenance")
 		})
 	}
@@ -175,7 +175,7 @@ func TestHoistLoopInvariantConstantLoadsPlacesTheLoadAtTheHeader(t *testing.T) {
 	body := exitTestedConstLoop(mk(isa.OpLoadStringConst, 0, 3, 0), mk(isa.OpStringIndex, 1, 0, 2), mk(isa.OpLoadStringConst, 0, 1, 0))
 	compiledFunction := &program.CompiledFunction{Body: body}
 	require.NoError(t, hoistLoopInvariantConstantLoads(context.Background(), compiledFunction, nil))
-	require.Equal(t, 6, len(compiledFunction.Body))
+	require.Len(t, compiledFunction.Body, 6)
 	require.Equal(t, isa.OpLoadStringConst, compiledFunction.Body[1].Op, "load sits at the old header")
 	require.Equal(t, uint8(3), compiledFunction.Body[1].B, "constant index travels with the load")
 	require.Equal(t, isa.OpJumpIfFalse, compiledFunction.Body[2].Op, "exit test follows the hoisted load")
@@ -230,7 +230,7 @@ func TestHoistLoopInvariantConstantLoadsHonoursTheCap(t *testing.T) {
 	body = append(body, mk(isa.OpLoadIntConst, 31, 0, 0), tier1Jump(-int16(loads+2)))
 	compiledFunction := &program.CompiledFunction{Body: body}
 	require.NoError(t, hoistLoopInvariantConstantLoads(context.Background(), compiledFunction, nil))
-	require.Equal(t, maxLicmConstHoistsPerFunction, len(compiledFunction.PeepholeProvenance), "exactly the cap's worth of hoists")
+	require.Len(t, compiledFunction.PeepholeProvenance, maxLicmConstHoistsPerFunction, "exactly the cap's worth of hoists")
 	backEdge, isJump := program.JumpTargetAt(compiledFunction.Body, len(body)-1)
 	require.True(t, isJump)
 	require.Equal(t, 1+maxLicmConstHoistsPerFunction, backEdge, "each hoist moved the loop header past one load")

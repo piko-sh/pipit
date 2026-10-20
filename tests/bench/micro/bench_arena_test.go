@@ -24,10 +24,11 @@ import (
 	"context"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-	"pipit.sh/pipit/internal/isa"
+	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine"
+	"pipit.sh/pipit/internal/isa"
 )
 
 func BenchmarkRegisterAllocation(b *testing.B) {
@@ -61,24 +62,24 @@ func BenchmarkCallDepth(b *testing.B) {
 		code string
 	}{
 		{
-			"depth_10",
-			`func recurse(n int) int {
+			name: "depth_10",
+			code: `func recurse(n int) int {
 	if n <= 0 { return 0 }
 	return recurse(n - 1) + 1
 }
 recurse(10)`,
 		},
 		{
-			"depth_100",
-			`func recurse(n int) int {
+			name: "depth_100",
+			code: `func recurse(n int) int {
 	if n <= 0 { return 0 }
 	return recurse(n - 1) + 1
 }
 recurse(100)`,
 		},
 		{
-			"depth_1000",
-			`func recurse(n int) int {
+			name: "depth_1000",
+			code: `func recurse(n int) int {
 	if n <= 0 { return 0 }
 	return recurse(n - 1) + 1
 }
@@ -93,7 +94,7 @@ recurse(1000)`,
 				service := app.NewService()
 				_, err := service.Eval(context.Background(), d.code)
 				if err != nil {
-					b.Fatal(err)
+					require.NoError(b, err)
 				}
 			}
 		})

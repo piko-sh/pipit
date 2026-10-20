@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -47,7 +47,7 @@ for i := 0; i < 6; i++ {
 	total += <-results
 }
 total`
-	result, err := app.NewService().Eval(context.Background(), code)
+	result, err := app.NewService().Eval(t.Context(), code)
 	require.NoError(t, err)
 	require.EqualValues(t, 60000, result)
 }

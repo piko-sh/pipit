@@ -21,14 +21,13 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/compile"
 	"pipit.sh/pipit/internal/compile/passes"
 	"pipit.sh/pipit/internal/engine/program"
-
-	"github.com/stretchr/testify/require"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -39,9 +38,9 @@ func TestCoerceForOperandPassesThroughOnMatch(t *testing.T) {
 	bodyLenBefore := len(c.Function.Body)
 	loc := program.VarLocation{Register: 5, Kind: isa.RegisterInt}
 
-	out := c.CoerceForOperand(context.Background(), isa.RoleRegInt, true, loc)
+	out := c.CoerceForOperand(t.Context(), isa.RoleRegInt, true, loc)
 	require.Equal(t, loc, out, "matching kind should pass through unchanged")
-	require.Equal(t, bodyLenBefore, len(c.Function.Body),
+	require.Len(t, c.Function.Body, bodyLenBefore,
 		"no instructions should be emitted on match")
 }
 
@@ -52,9 +51,9 @@ func TestCoerceForOperandNonReadDoesNothing(t *testing.T) {
 	bodyLenBefore := len(c.Function.Body)
 	loc := program.VarLocation{Register: 3, Kind: isa.RegisterGeneral}
 
-	out := c.CoerceForOperand(context.Background(), isa.RoleRegInt, false, loc)
+	out := c.CoerceForOperand(t.Context(), isa.RoleRegInt, false, loc)
 	require.Equal(t, loc, out, "non-read operands pass through")
-	require.Equal(t, bodyLenBefore, len(c.Function.Body))
+	require.Len(t, c.Function.Body, bodyLenBefore)
 }
 
 func TestCoerceForOperandInsertsUnpackForGeneralToInt(t *testing.T) {
@@ -63,7 +62,7 @@ func TestCoerceForOperandInsertsUnpackForGeneralToInt(t *testing.T) {
 	c := newTestCompiler(t)
 	source := program.VarLocation{Register: 7, Kind: isa.RegisterGeneral}
 
-	out := c.CoerceForOperand(context.Background(), isa.RoleRegInt, true, source)
+	out := c.CoerceForOperand(t.Context(), isa.RoleRegInt, true, source)
 	require.Equal(t, isa.RegisterInt, out.Kind, "result should be in int bank")
 	require.NotEmpty(t, c.Function.Body, "an instruction should have been emitted")
 	last := c.Function.Body[len(c.Function.Body)-1]
@@ -79,7 +78,7 @@ func TestEmitTypedFunnelInjectsCoercion(t *testing.T) {
 	srcA := program.VarLocation{Register: 4, Kind: isa.RegisterGeneral}
 	srcB := program.VarLocation{Register: 1, Kind: isa.RegisterInt}
 
-	c.EmitTyped(context.Background(), isa.OpAddInt, destination, srcA, srcB)
+	c.EmitTyped(t.Context(), isa.OpAddInt, destination, srcA, srcB)
 
 	require.GreaterOrEqual(t, len(c.Function.Body), 2,
 		"funnel should emit at least one coerce + the opAddInt")
@@ -93,7 +92,7 @@ func TestEmitTypedFunnelInjectsCoercion(t *testing.T) {
 func newTestCompiler(t *testing.T) *compile.Compiler {
 	t.Helper()
 	compiledFunction := &program.CompiledFunction{Name: "<test>"}
-	return compile.NewCompiler(context.Background(), compile.CompilerConfig{
+	return compile.NewCompiler(t.Context(), compile.CompilerConfig{
 		Function:     compiledFunction,
 		RootFunction: compiledFunction,
 		ScopeName:    "<test>",

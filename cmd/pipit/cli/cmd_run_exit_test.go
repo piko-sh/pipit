@@ -19,11 +19,12 @@
 package cli
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/cmd/pipit/internal/clitest"
 )
@@ -31,9 +32,7 @@ import (
 func writeScript(t *testing.T, source string) string {
 	t.Helper()
 	file := filepath.Join(t.TempDir(), "main.go")
-	if err := os.WriteFile(file, []byte(source), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
+	require.NoError(t, os.WriteFile(file, []byte(source), 0o644))
 	return file
 }
 
@@ -43,13 +42,9 @@ func TestRunExitCodeUncaughtPanic(t *testing.T) {
 
 func main() { panic("boom") }
 `)
-	result := clitest.Run(context.Background(), RunRun, []string{file}, "")
-	if result.Code != exitPanic {
-		t.Fatalf("exit code = %d, want %d (stderr=%q)", result.Code, exitPanic, result.Stderr)
-	}
-	if !strings.HasPrefix(result.Stderr, "panic: boom\n\ngoroutine 1 [running]:") {
-		t.Fatalf("stderr = %q, want Go's panic report", result.Stderr)
-	}
+	result := clitest.Run(t.Context(), RunRun, []string{file}, "")
+	require.Equal(t, exitPanic, result.Code, "stderr: %q", result.Stderr)
+	require.True(t, strings.HasPrefix(result.Stderr, "panic: boom\n\ngoroutine 1 [running]:"), "stderr holds Go's panic report: %q", result.Stderr)
 }
 
 func TestRunExitCodeGoroutinePanic(t *testing.T) {
@@ -62,13 +57,9 @@ func main() {
 	<-done
 }
 `)
-	result := clitest.Run(context.Background(), RunRun, []string{file}, "")
-	if result.Code != exitPanic {
-		t.Fatalf("exit code = %d, want %d (stderr=%q)", result.Code, exitPanic, result.Stderr)
-	}
-	if !strings.Contains(result.Stderr, "panic: in goroutine") {
-		t.Fatalf("stderr = %q", result.Stderr)
-	}
+	result := clitest.Run(t.Context(), RunRun, []string{file}, "")
+	require.Equal(t, exitPanic, result.Code, "stderr: %q", result.Stderr)
+	require.Contains(t, result.Stderr, "panic: in goroutine")
 }
 
 func TestRunExitCodeTimeout(t *testing.T) {
@@ -80,13 +71,9 @@ func main() {
 	}
 }
 `)
-	result := clitest.Run(context.Background(), RunRun, []string{"-timeout", "200ms", file}, "")
-	if result.Code != exitTimeout {
-		t.Fatalf("exit code = %d, want %d (stderr=%q)", result.Code, exitTimeout, result.Stderr)
-	}
-	if !strings.Contains(result.Stderr, "execution cancelled") {
-		t.Fatalf("stderr = %q", result.Stderr)
-	}
+	result := clitest.Run(t.Context(), RunRun, []string{"-timeout", "200ms", file}, "")
+	require.Equal(t, exitTimeout, result.Code, "stderr: %q", result.Stderr)
+	require.Contains(t, result.Stderr, "execution cancelled")
 }
 
 func TestRunExitCodeDeadlock(t *testing.T) {
@@ -98,13 +85,9 @@ func main() {
 	<-ch
 }
 `)
-	result := clitest.Run(context.Background(), RunRun, []string{"-timeout", "30s", file}, "")
-	if result.Code != exitPanic {
-		t.Fatalf("exit code = %d, want %d (stderr=%q)", result.Code, exitPanic, result.Stderr)
-	}
-	if !strings.HasPrefix(result.Stderr, "fatal error: all goroutines are asleep - deadlock!") {
-		t.Fatalf("stderr = %q", result.Stderr)
-	}
+	result := clitest.Run(t.Context(), RunRun, []string{"-timeout", "30s", file}, "")
+	require.Equal(t, exitPanic, result.Code, "stderr: %q", result.Stderr)
+	require.True(t, strings.HasPrefix(result.Stderr, "fatal error: all goroutines are asleep - deadlock!"))
 }
 
 func TestRunExitCodeCompileError(t *testing.T) {
@@ -113,10 +96,8 @@ func TestRunExitCodeCompileError(t *testing.T) {
 
 func main() { var x int = "s"; _ = x }
 `)
-	result := clitest.Run(context.Background(), RunRun, []string{file}, "")
-	if result.Code != 1 {
-		t.Fatalf("exit code = %d, want 1 (stderr=%q)", result.Code, result.Stderr)
-	}
+	result := clitest.Run(t.Context(), RunRun, []string{file}, "")
+	require.Equal(t, 1, result.Code, "stderr: %q", result.Stderr)
 }
 
 func TestRunDeepRecursionWithinDefaultDepth(t *testing.T) {
@@ -136,14 +117,11 @@ func main() {
 	}
 }
 `)
-	result := clitest.Run(context.Background(), RunRun, []string{file}, "")
-	if result.Code != 0 {
-		t.Fatalf("exit code = %d (stderr=%q)", result.Code, result.Stderr)
-	}
-	tight := clitest.Run(context.Background(), RunRun, []string{"-max-call-depth", "1000", file}, "")
-	if tight.Code != exitPanic || !strings.Contains(tight.Stderr, "stack overflow") {
-		t.Fatalf("with -max-call-depth 1000: code=%d stderr=%q", tight.Code, tight.Stderr)
-	}
+	result := clitest.Run(t.Context(), RunRun, []string{file}, "")
+	require.Equal(t, 0, result.Code, "stderr: %q", result.Stderr)
+	tight := clitest.Run(t.Context(), RunRun, []string{"-max-call-depth", "1000", file}, "")
+	require.Equal(t, exitPanic, tight.Code, "a call depth of 1000 overflows the stack")
+	require.Contains(t, tight.Stderr, "stack overflow")
 }
 
 func TestRunExitCodeGoEmbed(t *testing.T) {
@@ -157,11 +135,8 @@ var self embed.FS
 
 func main() { _ = self }
 `)
-	result := clitest.Run(context.Background(), RunRun, []string{file}, "")
-	if result.Code != 1 {
-		t.Fatalf("exit code = %d, want 1 (stderr=%q)", result.Code, result.Stderr)
-	}
-	if !strings.Contains(result.Stderr, "//go:embed is not supported") || !strings.Contains(result.Stderr, "PIPIT_SCRIPT_DIR") {
-		t.Fatalf("stderr = %q, want the go:embed diagnostic", result.Stderr)
-	}
+	result := clitest.Run(t.Context(), RunRun, []string{file}, "")
+	require.Equal(t, 1, result.Code, "stderr: %q", result.Stderr)
+	require.Contains(t, result.Stderr, "//go:embed is not supported")
+	require.Contains(t, result.Stderr, "PIPIT_SCRIPT_DIR")
 }

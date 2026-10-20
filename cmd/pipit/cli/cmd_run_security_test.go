@@ -19,24 +19,25 @@
 package cli
 
 import (
-	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/cmd/pipit/internal/clitest"
 	"pipit.sh/pipit/cmd/pipit/internal/modloader"
 )
 
 func TestRunApprovalBinding(t *testing.T) {
-	for _, test := range []struct {
-		name                     string
-		changePath, changeSource bool
-		changeDirectory          bool
-		wantCode                 int
-		flags                    []string
-		arguments                []string
+	tests := []struct {
+		name            string
+		changePath      bool
+		changeSource    bool
+		changeDirectory bool
+		wantCode        int
+		flags           []string
+		arguments       []string
 	}{
 		{name: "same identity", changePath: false, changeSource: false, wantCode: 0},
 		{name: "different script", changePath: true, changeSource: false, wantCode: 1},
@@ -45,49 +46,40 @@ func TestRunApprovalBinding(t *testing.T) {
 		{name: "changed gates", flags: []string{"--gate=disk"}, wantCode: 1},
 		{name: "changed entrypoint", flags: []string{"--entrypoint=alternate"}, wantCode: 1},
 		{name: "changed arguments", arguments: []string{"changed"}, wantCode: 1},
-	} {
-		t.Run(test.name, func(t *testing.T) {
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			directory := t.TempDir()
 			script := filepath.Join(directory, "main.go")
 			source := `package main; import "os"; func main() { os.ReadFile(".") }; func alternate() { os.ReadFile(".") }`
-			if err := os.WriteFile(script, []byte(source), 0600); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.WriteFile(script, []byte(source), 0600))
 			axes, err := modloader.ParseGateSpec("all")
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			path, hash, err := modloader.InvocationIdentity(script, axes, "main", nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if test.changePath {
+			require.NoError(t, err)
+			if tt.changePath {
 				path += ".other"
 			}
-			if test.changeSource {
+			if tt.changeSource {
 				hash = "sha256:old"
 			}
 			approvalPath := filepath.Join(directory, "approval.lock")
 			store := modloader.NewStore(approvalPath)
 			store.SetScript(path, hash)
 			store.Upsert(modloader.LockedModule{ApprovedCapabilities: []string{"filesystem.read(.)"}})
-			if err := store.Save(); err != nil {
-				t.Fatal(err)
-			}
-			args := make([]string, 0, 4+len(test.flags)+len(test.arguments))
-			if test.changeDirectory {
+			require.NoError(t, store.Save())
+			args := make([]string, 0, 4+len(tt.flags)+len(tt.arguments))
+			if tt.changeDirectory {
 				t.Chdir(t.TempDir())
 			}
 			args = append(args, "--gate=all", "--autodeny", "--lockfile="+approvalPath)
-			args = append(args, test.flags...)
+			args = append(args, tt.flags...)
 			args = append(args, script)
-			args = append(args, test.arguments...)
-			result := clitest.Run(context.Background(), RunRun, args, "")
-			if result.Code != test.wantCode {
-				t.Fatalf("exit=%d stderr=%s", result.Code, result.Stderr)
-			}
-			if test.wantCode != 0 && !strings.Contains(result.Stderr, "not approved") {
-				t.Fatalf("wrong failure: %s", result.Stderr)
+			args = append(args, tt.arguments...)
+			result := clitest.Run(t.Context(), RunRun, args, "")
+			require.Equal(t, tt.wantCode, result.Code, "stderr: %s", result.Stderr)
+			if tt.wantCode != 0 {
+				require.Contains(t, result.Stderr, "not approved", "the failure is an approval failure")
 			}
 		})
 	}

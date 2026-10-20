@@ -34,7 +34,7 @@ func TestGrowByteSlab_ExpandsAndRetainsOld(t *testing.T) {
 	a.GrowByteSlab(originalCap*2 + 1)
 
 	require.Greater(t, cap(a.byteSlab), originalCap)
-	require.Equal(t, originalRetained+1, len(a.oldByteSlabs),
+	require.Len(t, a.oldByteSlabs, originalRetained+1,
 		"the old slab must be appended to the retention list")
 	require.Equal(t, 0, a.byteIndex,
 		"byteIndex must reset after grow so allocation resumes from zero")

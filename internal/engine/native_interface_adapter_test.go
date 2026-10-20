@@ -30,7 +30,7 @@ func TestPipitErrorAdapterImplementsErrorInterface(t *testing.T) {
 
 	adapter := &pipitErrorAdapter{}
 	var asErr error = adapter
-	require.NotNil(t, asErr,
+	require.Error(t, asErr,
 		"the adapter must satisfy Go's error interface at compile time so reflect.Implements(errorInterface) returns true at runtime")
 }
 
@@ -179,4 +179,42 @@ func TestPipitErrorsIsReturnsFalseOnDifferent(t *testing.T) {
 	matched := pipitErrorsIs(nil, reflect.ValueOf(a), reflect.ValueOf(b))
 	require.False(t, matched,
 		"distinct sentinel pointers (even of the same type) must not match without an Is method registered between them")
+}
+
+func TestEveryAdapterUnwrapsToItsValue(t *testing.T) {
+	t.Parallel()
+
+	value := reflect.ValueOf(struct{ N int }{N: 7})
+	core := pipitAdapterCore{vm: nil, methodRoot: nil, underlying: value, methodIndex: 0}
+	registered := &AdapterCore{vm: nil, methods: nil, typeName: "", underlying: value}
+	adapters := map[string]any{
+		"marshaler":     &pipitMarshalerAdapter{underlying: value},
+		"stringer":      &pipitStringerAdapter{underlying: value},
+		"error":         &pipitErrorAdapter{underlying: value},
+		"writer":        &pipitWriterAdapter{underlying: value},
+		"formatter":     &pipitFormatterAdapter{underlying: value},
+		"scanner":       &pipitScannerAdapter{underlying: value},
+		"sort":          &pipitSortInterfaceAdapter{underlying: value},
+		"reader":        &pipitReaderAdapter{underlying: value},
+		"unmarshaler":   &pipitUnmarshalerAdapter{underlying: value},
+		"closer":        &pipitCloserAdapter{pipitAdapterCore: core},
+		"read closer":   &pipitReadCloserAdapter{pipitReaderAdapter: &pipitReaderAdapter{underlying: value}, pipitCloserAdapter: &pipitCloserAdapter{pipitAdapterCore: core}},
+		"write closer":  &pipitWriteCloserAdapter{pipitWriterAdapter: &pipitWriterAdapter{underlying: value}, pipitCloserAdapter: &pipitCloserAdapter{pipitAdapterCore: core}},
+		"read writer":   &pipitReadWriterAdapter{pipitReaderAdapter: &pipitReaderAdapter{underlying: value}, pipitWriterAdapter: &pipitWriterAdapter{underlying: value}},
+		"reader from":   &pipitReaderFromAdapter{pipitAdapterCore: core},
+		"writer to":     &pipitWriterToAdapter{pipitAdapterCore: core},
+		"text marshal":  &pipitTextMarshalerAdapter{pipitAdapterCore: core},
+		"text unmarsh":  &pipitTextUnmarshalerAdapter{pipitAdapterCore: core},
+		"http handler":  &pipitHTTPHandlerAdapter{pipitAdapterCore: core},
+		"heap":          &pipitHeapInterfaceAdapter{pipitSortInterfaceAdapter: &pipitSortInterfaceAdapter{underlying: value}, push: core, pop: core},
+		"file system":   &pipitFSAdapter{AdapterCore: registered},
+		"file":          newFileAdapter(registered, fileHasReadDir|fileHasSeek).Interface(),
+		"file info":     &pipitFileInfoAdapter{AdapterCore: registered},
+		"dir entry":     &pipitDirEntryAdapter{AdapterCore: registered},
+		"registry core": registered,
+	}
+	for name, adapter := range adapters {
+		unwrapped := unwrapAdapterUnderlying(reflect.ValueOf(adapter))
+		require.Equal(t, value.Interface(), unwrapped.Interface(), name)
+	}
 }

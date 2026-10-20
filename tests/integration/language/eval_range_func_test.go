@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalRangeOverFunc(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "basic 1-value iterator",
@@ -47,7 +47,7 @@ iter := func(yield func(int) bool) {
 sum := 0
 for v := range iter { sum += v }
 sum`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "2-value iterator",
@@ -59,7 +59,7 @@ iter := func(yield func(string, int) bool) {
 total := 0
 for _, v := range iter { total += v }
 total`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "break stops iteration",
@@ -75,7 +75,7 @@ for v := range iter {
 	sum += v
 }
 sum`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "continue skips iteration",
@@ -91,7 +91,7 @@ for v := range iter {
 	sum += v
 }
 sum`,
-			expect: 4,
+			want: 4,
 		},
 		{
 			name: "0-value yield",
@@ -104,7 +104,7 @@ iter := func(yield func() bool) {
 count := 0
 for range iter { count++ }
 count`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "nested range-over-func",
@@ -121,7 +121,7 @@ for a := range iter {
 	}
 }
 sum`,
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "return from inside",
@@ -138,7 +138,7 @@ func find(target int) int {
 	return -1
 }
 find(3)`,
-			expect: 30,
+			want: 30,
 		},
 		{
 			name: "iterator that ignores yield result",
@@ -151,7 +151,7 @@ iter := func(yield func(int) bool) {
 sum := 0
 for v := range iter { sum += v }
 sum`,
-			expect: 6,
+			want: 6,
 		},
 		{
 			name: "range key only with 2-param yield",
@@ -164,7 +164,7 @@ iter := func(yield func(int, string) bool) {
 last := 0
 for k := range iter { last = k }
 last`,
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "labelled break to outer for loop",
@@ -183,7 +183,7 @@ for i := 0; i < 3; i++ {
 	}
 }
 sum`,
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "labelled continue to outer for loop",
@@ -202,7 +202,7 @@ for i := 0; i < 3; i++ {
 	}
 }
 sum`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "labelled break with inner regular loop",
@@ -223,7 +223,7 @@ for i := 0; i < 3; i++ {
 	}
 }
 result`,
-			expect: "x",
+			want: "x",
 		},
 	}
 
@@ -231,9 +231,9 @@ result`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -244,7 +244,7 @@ func TestEvalRangeOverFuncReturnFromAFunctionWithNoResults(t *testing.T) {
 	tests := []struct {
 		name   string
 		source string
-		expect any
+		want   any
 	}{
 		{
 			name: "a bare return skips the statements after the loop",
@@ -274,7 +274,7 @@ func run() int {
 	return n
 }
 `,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "a loop that runs to the end still falls through to them",
@@ -301,7 +301,7 @@ func run() int {
 	return n
 }
 `,
-			expect: 133,
+			want: 133,
 		},
 		{
 			name: "a bare return inside a nested closure belongs to that closure",
@@ -333,7 +333,7 @@ func run() int {
 	return n
 }
 `,
-			expect: 122,
+			want: 122,
 		},
 	}
 
@@ -341,9 +341,9 @@ func run() int {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, "run")
+			result, err := service.EvalFile(t.Context(), tt.source, "run")
 			require.NoError(t, err, "source: %s", tt.source)
-			require.Equal(t, tt.expect, result, "source: %s", tt.source)
+			require.Equal(t, tt.want, result, "source: %s", tt.source)
 		})
 	}
 }

@@ -138,7 +138,7 @@ func (c *Compiler) compileArrayLiteral(ctx context.Context, lit *ast.CompositeLi
 	}
 	zeroValue := reflect.New(reflectType).Elem()
 	constIndex, err := program.AddGeneralConstant(c.Function, zeroValue, descriptor.GeneralConstantDescriptor{Kind: descriptor.GeneralConstantCompositeZero,
-		TypeDescriptor: descriptor.ReflectTypeToDescriptor(reflectType), PackagePath: "", SymbolName: ""})
+		TypeDescriptor: descriptor.TypeDescriptor{}, PackagePath: "", SymbolName: ""})
 	if err != nil {
 		return program.VarLocation{}, err
 	}

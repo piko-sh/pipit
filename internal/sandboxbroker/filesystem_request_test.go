@@ -21,9 +21,10 @@ package sandboxbroker
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/sandboxwire"
 )
@@ -33,29 +34,30 @@ func brokerMessage(id uint64, payload string) sandboxwire.Message {
 }
 
 func TestFilesystemRequest(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		payload   string
 		operation Operation
 		limit     int
 		data      string
 	}{
-		{`{"operation":"fs.read","root":"data","path":"file","max_bytes":65536}`, ReadFile, maximumFileBytes, ""},
-		{`{"operation":"fs.list","root":"data","path":".","max_entries":256}`, ListDirectory, maximumListEntries, ""},
-		{`{"operation":"fs.write","root":"data","path":"file","data":"aGVsbG8="}`, WriteFile, 5, "hello"},
-		{`{"operation":"fs.write","root":"data","path":"file","data":""}`, WriteFile, 0, ""},
+		{payload: `{"operation":"fs.read","root":"data","path":"file","max_bytes":65536}`, operation: ReadFile, limit: maximumFileBytes, data: ""},
+		{payload: `{"operation":"fs.list","root":"data","path":".","max_entries":256}`, operation: ListDirectory, limit: maximumListEntries, data: ""},
+		{payload: `{"operation":"fs.write","root":"data","path":"file","data":"aGVsbG8="}`, operation: WriteFile, limit: 5, data: "hello"},
+		{payload: `{"operation":"fs.write","root":"data","path":"file","data":""}`, operation: WriteFile, limit: 0, data: ""},
 	}
 	for _, test := range cases {
 		request, err := decodeFilesystemRequest(brokerMessage(1, test.payload))
-		if err != nil {
-			t.Fatalf("%s: %v", test.payload, err)
-		}
-		if request.operation != test.operation || request.limit != test.limit || string(request.data) != test.data || request.root != "data" {
-			t.Fatalf("incorrect decoded request: %+v", request)
-		}
+		require.NoError(t, err, "%s", test.payload)
+		require.Equal(t, test.operation, request.operation, "incorrect decoded request: %+v", request)
+		require.Equal(t, test.limit, request.limit)
+		require.Equal(t, test.data, string(request.data))
+		require.Equal(t, "data", request.root)
 	}
 }
 
 func TestFilesystemRequestRejectsMalformed(t *testing.T) {
+	t.Parallel()
 	prefix := `"root":"data","path":"file",`
 	payloads := []string{
 		`{}`, `null`, `[]`,
@@ -87,18 +89,15 @@ func TestFilesystemRequestRejectsMalformed(t *testing.T) {
 		strings.Repeat(" ", maximumRequestBytes+1),
 	}
 	for _, payload := range payloads {
-		if _, err := decodeFilesystemRequest(brokerMessage(1, payload)); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Errorf("accepted malformed request %.120s: %v", payload, err)
-		}
+		_, err := decodeFilesystemRequest(brokerMessage(1, payload))
+		require.ErrorIs(t, err, sandboxwire.ErrProtocol, "a malformed request is refused: %.120s", payload)
 	}
 	message := brokerMessage(0, `{}`)
-	if _, err := decodeFilesystemRequest(message); !errors.Is(err, sandboxwire.ErrProtocol) {
-		t.Fatal(err)
-	}
+	_, err := decodeFilesystemRequest(message)
+	require.ErrorIs(t, err, sandboxwire.ErrProtocol)
 	message.Kind, message.ID = sandboxwire.Result, 1
-	if _, err := decodeFilesystemRequest(message); !errors.Is(err, sandboxwire.ErrProtocol) {
-		t.Fatal(err)
-	}
+	_, err = decodeFilesystemRequest(message)
+	require.ErrorIs(t, err, sandboxwire.ErrProtocol)
 }
 
 func FuzzFilesystemRequest(f *testing.F) {
@@ -110,24 +109,21 @@ func FuzzFilesystemRequest(f *testing.F) {
 		if err != nil {
 			return
 		}
-		if !validRootName(request.root) || !validRelativePath(request.path, request.operation == ListDirectory) {
-			t.Fatal("invalid authority")
-		}
+		require.True(t, validRootName(request.root), "invalid authority")
+		require.True(t, validRelativePath(request.path, request.operation == ListDirectory))
 		switch request.operation {
 		case ReadFile:
-			if request.limit < 1 || request.limit > maximumFileBytes {
-				t.Fatal("read limit escaped")
-			}
+			require.GreaterOrEqual(t, request.limit, 1, "read limit escaped")
+			require.LessOrEqual(t, request.limit, maximumFileBytes)
 		case WriteFile:
-			if request.data == nil || len(request.data) != request.limit || request.limit > maximumFileBytes {
-				t.Fatal("write limit escaped")
-			}
+			require.NotNil(t, request.data, "write limit escaped")
+			require.Len(t, request.data, request.limit)
+			require.LessOrEqual(t, request.limit, maximumFileBytes)
 		case ListDirectory:
-			if request.limit < 1 || request.limit > maximumListEntries {
-				t.Fatal("list limit escaped")
-			}
+			require.GreaterOrEqual(t, request.limit, 1, "list limit escaped")
+			require.LessOrEqual(t, request.limit, maximumListEntries)
 		default:
-			t.Fatal("unknown operation accepted")
+			require.FailNow(t, "an unknown operation is refused")
 		}
 	})
 }

@@ -23,7 +23,6 @@ type rect struct{ w, h int }
 
 func (r rect) area() int { return r.w * r.h }
 
-// build makes a tree by recursion; every call passes and returns pointers.
 func build(depth, value int) *node {
 	if depth == 0 {
 		return nil
@@ -31,7 +30,6 @@ func build(depth, value int) *node {
 	return &node{value: value, left: build(depth-1, value*2), right: build(depth-1, value*2+1)}
 }
 
-// sum recurses with a pointer argument, the general-bank shape of the fast arm.
 func sum(n *node) int {
 	if n == nil {
 		return 0
@@ -39,7 +37,6 @@ func sum(n *node) int {
 	return n.value + sum(n.left) + sum(n.right)
 }
 
-// describe takes an interface argument and a nil-able pointer.
 func describe(s shape, n *node) string {
 	if n == nil {
 		return "nil:" + strconv.Itoa(s.area())
@@ -47,22 +44,17 @@ func describe(s shape, n *node) string {
 	return strconv.Itoa(n.value) + ":" + strconv.Itoa(s.area())
 }
 
-// bump takes a struct by value: the fast arm must decline and let the Go trampoline copy
-// it, so the caller's copy stays independent.
 func bump(p pair) int {
 	p.a += 100
 	p.b += 100
 	return p.a + p.b
 }
 
-// bumpArray takes an array by value, the other kind that needs the boundary copy.
 func bumpArray(xs [3]int) int {
 	xs[0] += 1000
 	return xs[0] + xs[1] + xs[2]
 }
 
-// viaClosure makes a closure call inside a callee that received a pointer, so a tier-2
-// handler runs above a bank the assembly pushed.
 func viaClosure(n *node, f func(int) int) int {
 	if n == nil {
 		return f(0)

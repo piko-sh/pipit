@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -48,13 +47,12 @@ func NewGoRunner(cachePath string) *GoRunner {
 }
 
 // Kind reports the runner identity used in results.
-func (runner *GoRunner) Kind() RunnerKind { return RunnerGo }
+func (*GoRunner) Kind() RunnerKind { return RunnerGo }
 
 // Available probes that `go` is on PATH. We do not require any particular version: the
 // suite reports whatever the host go-toolchain provides and records it in the host info
 // block.
-func (runner *GoRunner) Available(ctx context.Context) (bool, string) {
-	_ = ctx
+func (runner *GoRunner) Available(context.Context) (bool, string) {
 	if _, err := exec.LookPath(runner.goBinary); err != nil {
 		return false, "go binary not found on PATH: " + err.Error()
 	}
@@ -62,8 +60,7 @@ func (runner *GoRunner) Available(ctx context.Context) (bool, string) {
 }
 
 // Close is a no-op; the shared GOCACHE survives suite invocations.
-func (runner *GoRunner) Close(ctx context.Context) error {
-	_ = ctx
+func (*GoRunner) Close(context.Context) error {
 	return nil
 }
 
@@ -73,43 +70,24 @@ func (runner *GoRunner) Close(ctx context.Context) error {
 // the cold-build cost of the standard library, and the per-call `go build` is just our
 // package plus link.
 func (runner *GoRunner) Run(parent context.Context, spec BenchSpec, mode RunMode, benchmarkDir string) (Result, error) {
-	goDirectory := filepath.Join(benchmarkDir, "go")
-
 	binaryFile, err := os.CreateTemp("", "crosslang-go-bench-")
 	if err != nil {
 		return failedResult(spec.Name, RunnerGo, mode, "create temp bin: "+err.Error()), nil
 	}
 	_ = binaryFile.Close()
 	binaryPath := binaryFile.Name()
-	defer os.Remove(binaryPath)
-
-	environment := []string{}
-	if runner.goCache != "" {
-		environment = append(environment, "GOCACHE="+runner.goCache)
-	}
+	defer func() { _ = os.Remove(binaryPath) }()
 
 	timeout := time.Duration(spec.TimeoutSeconds) * time.Second
-	buildArgs := []string{"build", "-o", binaryPath, "./" + filepath.Base(goDirectory)}
-	buildResponse, err := RunSubprocess(parent, SubprocessRequest{
-		Name:       runner.goBinary,
-		Args:       buildArgs,
-		Env:        environment,
-		WorkingDir: benchmarkDir,
-		Timeout:    timeout,
-	})
-	if err != nil {
-		return failedResult(spec.Name, RunnerGo, mode, "framework (build): "+err.Error()), nil
+	buildResponse, failure := runner.build(parent, spec, mode, benchmarkDir, binaryPath, timeout)
+	if failure != nil {
+		return *failure, nil
 	}
-	if buildResponse.Err != nil {
-		return failedResult(spec.Name, RunnerGo, mode, fmt.Sprintf("go build exited %d: %s; stderr=%s",
-			buildResponse.ExitCode, buildResponse.Err.Error(), tailString(string(buildResponse.Stderr), 1024))), nil
-	}
-	compileNanos := buildResponse.WallNanos
 
-	runArgs := buildRunnerArgs(mode, spec)
 	runResponse, err := RunSubprocess(parent, SubprocessRequest{
 		Name:       binaryPath,
-		Args:       runArgs,
+		Args:       buildRunnerArgs(mode, spec),
+		Env:        nil,
 		WorkingDir: benchmarkDir,
 		Timeout:    timeout,
 	})
@@ -118,33 +96,52 @@ func (runner *GoRunner) Run(parent context.Context, spec BenchSpec, mode RunMode
 	}
 	if runResponse.Err != nil {
 		return failedResult(spec.Name, RunnerGo, mode, fmt.Sprintf("go binary exited %d: %s; stderr=%s",
-			runResponse.ExitCode, runResponse.Err.Error(), tailString(string(runResponse.Stderr), 1024))), nil
+			runResponse.ExitCode, runResponse.Err.Error(), tailString(string(runResponse.Stderr), stderrTailBytes))), nil
 	}
 
 	innerNanos, stderrRemainder := ParseInnerElapsedNanos(runResponse.Stderr)
-	normalised := NormaliseStdout(runResponse.Stdout)
-	stdoutSHA := SHA256Hex(normalised)
+	return checkedResult(spec, RunnerGo, mode, runResponse.Stdout, stderrRemainder, runTimings{
+		wallNanos:    buildResponse.WallNanos + runResponse.WallNanos,
+		innerNanos:   innerNanos,
+		compileNanos: buildResponse.WallNanos,
+		peakRSSKB:    runResponse.PeakRSSKB,
+	}), nil
+}
 
-	status := StatusOK
-	note := ""
-	if stdoutSHA != spec.ExpectedStdoutSHA {
-		status = StatusMismatch
-		note = fmt.Sprintf("stdout SHA %s does not match expected %s", stdoutSHA, spec.ExpectedStdoutSHA)
+// build compiles the benchmark's go directory to binaryPath with the shared GOCACHE.
+//
+// Takes parent (context.Context) which bounds the build.
+// Takes spec (BenchSpec) which names the benchmark.
+// Takes mode (RunMode) which is recorded in a failed result.
+// Takes benchmarkDir (string) which holds the go directory.
+// Takes binaryPath (string) which receives the binary.
+// Takes timeout (time.Duration) which bounds the build.
+//
+// Returns SubprocessResponse which is the build's response.
+// Returns *Result which is the failed result when the build did not succeed, nil
+// otherwise.
+func (runner *GoRunner) build(parent context.Context, spec BenchSpec, mode RunMode, benchmarkDir, binaryPath string, timeout time.Duration) (SubprocessResponse, *Result) {
+	var environment []string
+	if runner.goCache != "" {
+		environment = append(environment, "GOCACHE="+runner.goCache)
 	}
-
-	return Result{
-		Benchmark:    spec.Name,
-		Runner:       RunnerGo,
-		Mode:         mode,
-		WallNanos:    buildResponse.WallNanos + runResponse.WallNanos,
-		InnerNanos:   innerNanos,
-		CompileNanos: compileNanos,
-		PeakRSSKB:    runResponse.PeakRSSKB,
-		StdoutSHA:    stdoutSHA,
-		Status:       status,
-		Note:         note,
-		StderrTail:   tailString(stderrRemainder, 1024),
-	}, nil
+	response, err := RunSubprocess(parent, SubprocessRequest{
+		Name:       runner.goBinary,
+		Args:       []string{"build", "-o", binaryPath, "./go"},
+		Env:        environment,
+		WorkingDir: benchmarkDir,
+		Timeout:    timeout,
+	})
+	if err != nil {
+		failure := failedResult(spec.Name, RunnerGo, mode, "framework (build): "+err.Error())
+		return response, &failure
+	}
+	if response.Err != nil {
+		failure := failedResult(spec.Name, RunnerGo, mode, fmt.Sprintf("go build exited %d: %s; stderr=%s",
+			response.ExitCode, response.Err.Error(), tailString(string(response.Stderr), stderrTailBytes)))
+		return response, &failure
+	}
+	return response, nil
 }
 
 // buildRunnerArgs assembles the flag + positional argv passed to subprocess runners.
@@ -159,11 +156,4 @@ func buildRunnerArgs(mode RunMode, spec BenchSpec) []string {
 	}
 	args = append(args, spec.Args...)
 	return args
-}
-
-func tailString(text string, limit int) string {
-	if len(text) <= limit {
-		return text
-	}
-	return text[len(text)-limit:]
 }

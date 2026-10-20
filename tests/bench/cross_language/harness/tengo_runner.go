@@ -24,20 +24,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/d5/tengo/v2"
 	"github.com/d5/tengo/v2/stdlib"
 )
-
-// tengoOSArgsMu guards the global os.Args swap done inside Run so that concurrent tengo
-// invocations cannot interleave.
-var tengoOSArgsMu sync.Mutex
 
 // TengoRunner executes a benchmark via the tengo Go library (github.com/d5/tengo/v2).
 // This is an in-process runner: compile is timed separately from execute via tengo's
@@ -50,33 +44,26 @@ type TengoRunner struct{}
 func NewTengoRunner() *TengoRunner { return &TengoRunner{} }
 
 // Kind reports the runner identity used in results.
-func (runner *TengoRunner) Kind() RunnerKind { return RunnerTengo }
+func (*TengoRunner) Kind() RunnerKind { return RunnerTengo }
 
 // Available is always true; the tengo library is statically linked.
-func (runner *TengoRunner) Available(ctx context.Context) (bool, string) {
-	_ = ctx
+func (*TengoRunner) Available(context.Context) (bool, string) {
 	return true, ""
 }
 
 // Close is a no-op.
-func (runner *TengoRunner) Close(ctx context.Context) error { _ = ctx; return nil }
+func (*TengoRunner) Close(context.Context) error { return nil }
 
 // Run reads the benchmark's tengo/script.tengo, compiles it via tengo.NewScript/Compile
 // (timed as compile_nanos), then runs the compiled program (timed as wall_nanos). The
 // tengo script's own timing of its inner loop is parsed off stderr.
-func (runner *TengoRunner) Run(parent context.Context, spec BenchSpec, mode RunMode, benchmarkDir string) (Result, error) {
+func (*TengoRunner) Run(parent context.Context, spec BenchSpec, mode RunMode, benchmarkDir string) (Result, error) {
 	scriptPath := filepath.Join(benchmarkDir, "tengo", "script.tengo")
 	if _, statErr := os.Stat(scriptPath); statErr != nil {
-		return Result{
-			Benchmark: spec.Name,
-			Runner:    RunnerTengo,
-			Mode:      mode,
-			Status:    StatusSkipped,
-			Note:      "no tengo/script.tengo for this benchmark",
-		}, nil
+		return skippedResult(spec.Name, RunnerTengo, mode, "no tengo/script.tengo for this benchmark"), nil
 	}
 
-	source, err := os.ReadFile(scriptPath)
+	source, err := os.ReadFile(filepath.Clean(scriptPath))
 	if err != nil {
 		return failedResult(spec.Name, RunnerTengo, mode, "read script: "+err.Error()), nil
 	}
@@ -86,132 +73,68 @@ func (runner *TengoRunner) Run(parent context.Context, spec BenchSpec, mode RunM
 		fmt.Errorf("tengo runner %s/%s timed out", spec.Name, mode))
 	defer cancel()
 
-	stdoutBytes, stderrBytes, compileNanos, wallNanos, runErr := runTengoScript(ctx, source, scriptPath, mode, spec)
+	run, runErr := runTengoScript(ctx, source, scriptPath, mode, spec)
 	if runErr != nil {
 		return failedResult(spec.Name, RunnerTengo, mode, runErr.Error()), nil
 	}
-
-	innerNanos, _, stderrRemainder := ParseTimingMarkers(stderrBytes)
-	normalised := NormaliseStdout(stdoutBytes)
-	stdoutSHA := SHA256Hex(normalised)
-
-	status := StatusOK
-	note := ""
-	if stdoutSHA != spec.ExpectedStdoutSHA {
-		status = StatusMismatch
-		note = fmt.Sprintf("stdout SHA %s does not match expected %s", stdoutSHA, spec.ExpectedStdoutSHA)
-	}
-
-	return Result{
-		Benchmark:    spec.Name,
-		Runner:       RunnerTengo,
-		Mode:         mode,
-		WallNanos:    wallNanos,
-		InnerNanos:   innerNanos,
-		CompileNanos: compileNanos,
-		PeakRSSKB:    pipitSelfPeakRSSKB(),
-		StdoutSHA:    stdoutSHA,
-		Status:       status,
-		Note:         note,
-		StderrTail:   tailString(stderrRemainder, 1024),
-	}, nil
+	innerNanos, _, stderrRemainder := ParseTimingMarkers(run.stderr)
+	return checkedResult(spec, RunnerTengo, mode, run.stdout, stderrRemainder, runTimings{
+		wallNanos:    run.wallNanos,
+		innerNanos:   innerNanos,
+		compileNanos: run.compileNanos,
+		peakRSSKB:    pipitSelfPeakRSSKB(),
+	}), nil
 }
 
-// runTengoScript wires stdout/stderr capture pipes, swaps os.Args so the tengo script's
-// `os.args()` sees our --mode/--k flags, then drives the compile/run split. Returns
-// stdout, stderr, compile nanos, wall nanos for the Run() call, and any setup/run error.
-func runTengoScript(
-	ctx context.Context,
-	source []byte,
-	scriptPath string,
-	mode RunMode,
-	spec BenchSpec,
-) ([]byte, []byte, int64, int64, error) {
-	tengoOSArgsMu.Lock()
-	defer tengoOSArgsMu.Unlock()
-
-	stdoutReader, stdoutWriter, pipeErr := os.Pipe()
-	if pipeErr != nil {
-		return nil, nil, 0, 0, fmt.Errorf("pipe stdout: %w", pipeErr)
+// runTengoScript captures the process's standard streams, swaps os.Args so the tengo
+// script's `os.args()` sees our --mode/--k flags, then compiles and runs the script.
+//
+// Takes ctx (context.Context) which bounds the run.
+// Takes source ([]byte) which is the script.
+// Takes scriptPath (string) which becomes the script's argv[1].
+// Takes mode (RunMode) which selects the script's mode flags.
+// Takes spec (BenchSpec) which supplies the iteration count and arguments.
+//
+// Returns interpretedRun which holds the captured output and timings.
+// Returns error when capturing, compiling or running fails.
+func runTengoScript(ctx context.Context, source []byte, scriptPath string, mode RunMode, spec BenchSpec) (interpretedRun, error) {
+	capture, err := startProcessCapture(buildTengoArgv(scriptPath, mode, spec), "")
+	if err != nil {
+		return interpretedRun{stdout: nil, stderr: nil, compileNanos: 0, wallNanos: 0}, err
 	}
-	stderrReader, stderrWriter, pipeErr := os.Pipe()
-	if pipeErr != nil {
-		stdoutWriter.Close()
-		stdoutReader.Close()
-		return nil, nil, 0, 0, fmt.Errorf("pipe stderr: %w", pipeErr)
-	}
+	run, runErr := compileAndRunTengo(ctx, source)
+	run.stdout, run.stderr = capture.finish()
+	return run, runErr
+}
 
-	savedStdout, savedStderr := os.Stdout, os.Stderr
-	os.Stdout = stdoutWriter
-	os.Stderr = stderrWriter
-
-	savedArgs := os.Args
-	os.Args = buildTengoArgv(scriptPath, mode, spec)
-
-	type captured struct {
-		buffer []byte
-		err    error
-	}
-	stdoutCh := make(chan captured, 1)
-	stderrCh := make(chan captured, 1)
-	go func() {
-		data, err := io.ReadAll(stdoutReader)
-		stdoutCh <- captured{buffer: data, err: err}
-	}()
-	go func() {
-		data, err := io.ReadAll(stderrReader)
-		stderrCh <- captured{buffer: data, err: err}
-	}()
-
+// compileAndRunTengo compiles and runs a tengo script; its output goes to os.Stdout and
+// os.Stderr, which the caller has captured.
+//
+// Takes ctx (context.Context) which bounds the run.
+// Takes source ([]byte) which is the script.
+//
+// Returns interpretedRun which holds the timings; the caller fills in the output.
+// Returns error when registering the builtin, compilation or the run fails.
+func compileAndRunTengo(ctx context.Context, source []byte) (interpretedRun, error) {
+	var run interpretedRun
 	script := tengo.NewScript(source)
 	script.SetImports(stdlib.GetModuleMap(stdlib.AllModuleNames()...))
-	if addErr := script.Add("sha256_sum", &tengo.UserFunction{Name: "sha256_sum", Value: tengoSha256Sum}); addErr != nil {
-		stdoutWriter.Close()
-		stderrWriter.Close()
-		os.Stdout, os.Stderr = savedStdout, savedStderr
-		os.Args = savedArgs
-		<-stdoutCh
-		<-stderrCh
-		return nil, nil, 0, 0, fmt.Errorf("tengo register sha256_sum: %w", addErr)
+	if err := script.Add("sha256_sum", &tengo.UserFunction{Name: "sha256_sum", Value: tengoSha256Sum}); err != nil {
+		return run, fmt.Errorf("tengo register sha256_sum: %w", err)
 	}
-
 	compileStart := time.Now()
-	compiled, compileErr := script.Compile()
-	compileNanos := time.Since(compileStart).Nanoseconds()
-	if compileErr != nil {
-		stdoutWriter.Close()
-		stderrWriter.Close()
-		os.Stdout, os.Stderr = savedStdout, savedStderr
-		os.Args = savedArgs
-		<-stdoutCh
-		<-stderrCh
-		return nil, nil, compileNanos, 0, fmt.Errorf("tengo compile: %w", compileErr)
+	compiled, err := script.Compile()
+	run.compileNanos = time.Since(compileStart).Nanoseconds()
+	if err != nil {
+		return run, fmt.Errorf("tengo compile: %w", err)
 	}
-
 	runStart := time.Now()
-	var runErr error
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				runErr = fmt.Errorf("tengo VM panic: %v", r)
-			}
-		}()
-		runErr = compiled.RunContext(ctx)
-	}()
-	wallNanos := time.Since(runStart).Nanoseconds()
-
-	stdoutWriter.Close()
-	stderrWriter.Close()
-	os.Stdout, os.Stderr = savedStdout, savedStderr
-	os.Args = savedArgs
-
-	stdoutResult := <-stdoutCh
-	stderrResult := <-stderrCh
-
-	if runErr != nil {
-		return stdoutResult.buffer, stderrResult.buffer, compileNanos, wallNanos, fmt.Errorf("tengo run: %w", runErr)
+	err = runRecovering("tengo", func() error { return compiled.RunContext(ctx) })
+	run.wallNanos = time.Since(runStart).Nanoseconds()
+	if err != nil {
+		return run, fmt.Errorf("tengo run: %w", err)
 	}
-	return stdoutResult.buffer, stderrResult.buffer, compileNanos, wallNanos, nil
+	return run, nil
 }
 
 // buildTengoArgv shapes the os.Args slice that the tengo script's `os.args()` call

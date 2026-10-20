@@ -37,6 +37,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -254,7 +255,7 @@ func EntrypointRun() (string, int64) {
 // populated *allocResult and nil values on failure.
 func loadBenchmarkSources(name, dir string) (benchSpec, []byte, *allocResult) {
 	specPath := filepath.Join(dir, "spec.json")
-	specBytes, err := os.ReadFile(specPath)
+	specBytes, err := os.ReadFile(filepath.Clean(specPath))
 	if err != nil {
 		failure := failedResult(name, "read spec: "+err.Error())
 		return benchSpec{}, nil, &failure
@@ -265,7 +266,7 @@ func loadBenchmarkSources(name, dir string) (benchSpec, []byte, *allocResult) {
 		return benchSpec{}, nil, &failure
 	}
 	sourcePath := filepath.Join(dir, "go", "pipit_source.go")
-	sourceBytes, err := os.ReadFile(sourcePath)
+	sourceBytes, err := os.ReadFile(filepath.Clean(sourcePath))
 	if err != nil {
 		failure := failedResult(name, "read source: "+err.Error())
 		return benchSpec{}, nil, &failure
@@ -284,9 +285,8 @@ func loadBenchmarkSources(name, dir string) (benchSpec, []byte, *allocResult) {
 // itself errors.
 func measureExecute(ctx context.Context, name string, service *pipit.Interpreter, compiled *pipit.CompiledFileSet) allocResult {
 
-	runtime.GC()
-
-	runtime.GC()
+	runtime.GC() //nolint:revive // settle the heap before measuring
+	runtime.GC() //nolint:revive // settle the heap before measuring
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
 	wallStart := time.Now()
@@ -299,8 +299,8 @@ func measureExecute(ctx context.Context, name string, service *pipit.Interpreter
 	return allocResult{
 		benchmark:    name,
 		errMsg:       "",
-		allocsPerRun: int64(after.Mallocs - before.Mallocs),
-		bytesPerRun:  int64(after.TotalAlloc - before.TotalAlloc),
+		allocsPerRun: saturatingInt64(after.Mallocs - before.Mallocs),
+		bytesPerRun:  saturatingInt64(after.TotalAlloc - before.TotalAlloc),
 		wallNanos:    wallNanos,
 		failed:       false,
 	}
@@ -353,4 +353,16 @@ func humanBytes(value int64) string {
 		return fmt.Sprintf("%.2f KiB", float64(value)/(1<<humanBytesKiBShift))
 	}
 	return fmt.Sprintf("%d B", value)
+}
+
+// saturatingInt64 converts n to int64, clamping a value above math.MaxInt64.
+//
+// Takes n (uint64) which is the value.
+//
+// Returns int64 which is n, or math.MaxInt64.
+func saturatingInt64(n uint64) int64 {
+	if n > math.MaxInt64 {
+		return math.MaxInt64
+	}
+	return int64(n)
 }

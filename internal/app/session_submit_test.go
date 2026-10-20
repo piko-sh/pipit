@@ -21,10 +21,11 @@ package app
 import (
 	"bytes"
 	"context"
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/policy"
@@ -33,7 +34,7 @@ import (
 
 func TestSessionEnforcesImportPolicyBeforeExecution(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct {
+	tests := []struct {
 		name   string
 		option Option
 		code   string
@@ -43,10 +44,12 @@ func TestSessionEnforcesImportPolicyBeforeExecution(t *testing.T) {
 		{name: "denied", option: WithDeniedImports("math"), code: "import \"math\""},
 		{name: "raw import", option: WithDeniedImports("math"), code: "import alias " + "`math`"},
 		{name: "escaped import", option: WithDeniedImports("math"), code: "import \"\\x6dath\""},
-	} {
-		t.Run(test.name, func(t *testing.T) {
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var output bytes.Buffer
-			service := NewService(test.option, WithStderr(&output))
+			service := NewService(tt.option, WithStderr(&output))
 			symbols := symtab.NewSymbolRegistry(symtab.SymbolExports{
 				"math": {"Value": reflect.ValueOf(42)},
 				"os":   {"Value": reflect.ValueOf(42)},
@@ -54,13 +57,12 @@ func TestSessionEnforcesImportPolicyBeforeExecution(t *testing.T) {
 			symbols.SynthesiseAll()
 			service.UseSymbols(symbols)
 			session := service.NewSession()
-			_, err := session.Submit(context.Background(), test.code+"\nvar value = func() int { println(42); return 1 }()")
-			if err == nil || !strings.Contains(err.Error(), "not permitted") {
-				t.Fatalf("session bypassed import policy: %v", err)
-			}
-			if output.Len() != 0 || len(session.imports) != 0 || session.submitCount != 0 {
-				t.Fatal("denied submission executed or changed session history")
-			}
+			_, err := session.Submit(t.Context(), tt.code+"\nvar value = func() int { println(42); return 1 }()")
+			require.Error(t, err, "the session applies the import policy")
+			require.Contains(t, err.Error(), "not permitted")
+			require.Equal(t, 0, output.Len(), "a denied submission neither runs nor changes the session history")
+			require.Empty(t, session.imports)
+			require.Equal(t, 0, session.submitCount)
 		})
 	}
 }
@@ -68,59 +70,53 @@ func TestSessionEnforcesImportPolicyBeforeExecution(t *testing.T) {
 func TestSessionEnforcesSubmissionSourceLimitBeforeParsing(t *testing.T) {
 	t.Parallel()
 	session := NewService(WithMaxSourceSize(32)).NewSession()
-	_, err := session.Submit(context.Background(), strings.Repeat("?", 33))
-	if !errors.Is(err, fault.ErrSourceSizeLimit) || session.rootFunction != nil {
-		t.Fatalf("oversized source reached session preprocessing: %v", err)
-	}
+	_, err := session.Submit(t.Context(), strings.Repeat("?", 33))
+	require.ErrorIs(t, err, fault.ErrSourceSizeLimit, "oversized source is rejected before preprocessing")
+	require.Nil(t, session.rootFunction)
 }
 
 func TestSessionEnforcesCombinedSourceLimit(t *testing.T) {
 	t.Parallel()
 	session := NewService(WithMaxSourceSize(180)).NewSession()
-	if _, err := session.Submit(context.Background(), "var first = \""+strings.Repeat("x", 60)+"\""); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := session.Submit(context.Background(), "var second = \""+strings.Repeat("x", 60)+"\""); !errors.Is(err, fault.ErrSourceSizeLimit) {
-		t.Fatalf("retained declarations escaped source budget: %v", err)
-	}
-	if session.submitCount != 1 || len(session.declaredNames) != 1 {
-		t.Fatal("oversized combined source was committed")
-	}
+	_, err := session.Submit(t.Context(), "var first = \""+strings.Repeat("x", 60)+"\"")
+	require.NoError(t, err)
+	_, err = session.Submit(t.Context(), "var second = \""+strings.Repeat("x", 60)+"\"")
+	require.ErrorIs(t, err, fault.ErrSourceSizeLimit, "retained declarations count towards the source budget")
+	require.Equal(t, 1, session.submitCount, "oversized combined source is not committed")
+	require.Len(t, session.declaredNames, 1)
 }
 
 func TestSessionCancelledBeforePreprocessing(t *testing.T) {
 	t.Parallel()
 	session := NewService().NewSession()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	_, err := session.Submit(ctx, "var value = 42")
-	if !errors.Is(err, context.Canceled) || session.rootFunction != nil || session.submitCount != 0 {
-		t.Fatalf("cancelled submission allocated or committed session state: %v", err)
-	}
+	require.ErrorIs(t, err, context.Canceled, "a cancelled submission neither allocates nor commits session state")
+	require.Nil(t, session.rootFunction)
+	require.Equal(t, 0, session.submitCount)
 }
 
 func TestSessionCompilesAllCodeBeforeExecution(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct {
+	tests := []struct {
 		name string
 		code string
 	}{
 		{name: "function", code: "var value = func() int { println(42); return 1 }()\nfunc denied() { go func() {}() }"},
 		{name: "body", code: "var value = func() int { println(42); return 1 }()\ngo func() {}()"},
 		{name: "init", code: "func init() { println(42) }\ngo func() {}()"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var output bytes.Buffer
 			session := NewService(WithFeatures(policy.InterpFeaturesRestricted), WithStderr(&output)).NewSession()
-			if _, err := session.Submit(context.Background(), test.code); err == nil {
-				t.Fatal("forbidden goroutine compiled successfully")
-			}
-			if output.Len() != 0 {
-				t.Fatalf("code executed before compilation completed: %q", output.String())
-			}
-			if session.submitCount != 0 || len(session.declaredNames) != 0 {
-				t.Fatal("failed compilation committed session history")
-			}
+			_, err := session.Submit(t.Context(), tt.code)
+			require.Error(t, err, "a forbidden goroutine fails compilation")
+			require.Empty(t, output.String(), "no code runs before compilation completes")
+			require.Equal(t, 0, session.submitCount, "a failed compilation leaves the session history unchanged")
+			require.Empty(t, session.declaredNames)
 		})
 	}
 }
@@ -130,13 +126,13 @@ func TestSessionCompilationBarrierPreservesInitialisationOrder(t *testing.T) {
 	var output bytes.Buffer
 	session := NewService(WithFeatures(policy.InterpFeaturesRestricted), WithStderr(&output)).NewSession()
 	code := "var value = initial()\nfunc initial() int { println(1); return 40 }\nfunc init() { println(2); value++ }\nprintln(3)\nfunc() int { return value + 1 }()"
-	result, err := session.Submit(context.Background(), code)
-	if err != nil || result != 42 || output.String() != "1\n2\n3\n" {
-		t.Fatalf("initialisation order changed: result=%v output=%q error=%v", result, output.String(), err)
-	}
+	result, err := session.Submit(t.Context(), code)
+	require.NoError(t, err)
+	require.Equal(t, 42, result)
+	require.Equal(t, "1\n2\n3\n", output.String(), "initialisers run in order before the body")
 	output.Reset()
-	result, err = session.Submit(context.Background(), "value")
-	if err != nil || result != 41 || output.Len() != 0 {
-		t.Fatalf("initialisation repeated: result=%v output=%q error=%v", result, output.String(), err)
-	}
+	result, err = session.Submit(t.Context(), "value")
+	require.NoError(t, err)
+	require.Equal(t, 41, result)
+	require.Empty(t, output.String(), "initialisers do not run again")
 }

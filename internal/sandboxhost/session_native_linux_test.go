@@ -22,9 +22,10 @@ package sandboxhost_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/sandboxhost"
 )
@@ -36,25 +37,19 @@ func testIsolatedSessionNative(t *testing.T, config sandboxhost.IsolatedConfig) 
 		if session != nil {
 			t.Cleanup(func() { _ = session.Close() })
 		}
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		config.Imports[0] = "os"
 		for _, source := range []string{"import \"math\"", "var value = math.Sqrt(144)"} {
-			if _, err := session.Submit(context.Background(), source); err != nil {
-				t.Fatal(err)
-			}
+			_, err := session.Submit(context.Background(), source)
+			require.NoError(t, err)
 		}
 		result, err := session.Submit(context.Background(), "value + 30")
 		if err != nil || string(result.Value) != "42" {
-			t.Fatalf("result=%+v error=%v diagnostics=%s", result, err, session.Diagnostics())
+			require.Failf(t, "the native session returns 42", "result=%+v error=%v diagnostics=%s", result, err, session.Diagnostics())
 		}
-		if err := session.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := session.Submit(context.Background(), "42"); !errors.Is(err, sandboxhost.ErrIsolatedSessionClosed) {
-			t.Fatalf("closed worker reused: %v", err)
-		}
+		require.NoError(t, session.Close())
+		_, err = session.Submit(context.Background(), "42")
+		require.ErrorIs(t, err, sandboxhost.ErrIsolatedSessionClosed, "closed worker reused")
 	})
 	config.Imports = nil
 	t.Run("submission cancellation", func(t *testing.T) {
@@ -62,18 +57,14 @@ func testIsolatedSessionNative(t *testing.T, config sandboxhost.IsolatedConfig) 
 		if session != nil {
 			t.Cleanup(func() { _ = session.Close() })
 		}
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 		defer cancel()
 		result, err := session.Submit(ctx, "for {}")
-		if !errors.Is(err, context.DeadlineExceeded) || result.Value != nil {
-			t.Fatalf("cancelled submission published result: %+v %v", result, err)
-		}
-		if _, err := session.Submit(context.Background(), "42"); !errors.Is(err, sandboxhost.ErrIsolatedSessionClosed) {
-			t.Fatalf("cancelled worker reused: %v", err)
-		}
+		require.ErrorIs(t, err, context.DeadlineExceeded, "cancelled submission published result: %+v", result)
+		require.Nil(t, result.Value)
+		_, err = session.Submit(context.Background(), "42")
+		require.ErrorIs(t, err, sandboxhost.ErrIsolatedSessionClosed, "cancelled worker reused")
 	})
 	t.Run("missing enforcement", func(t *testing.T) {
 		config.LinuxCgroupParent = t.TempDir()
@@ -81,8 +72,6 @@ func testIsolatedSessionNative(t *testing.T, config sandboxhost.IsolatedConfig) 
 		if session != nil {
 			t.Cleanup(func() { _ = session.Close() })
 		}
-		if !errors.Is(err, sandboxhost.ErrIsolatedUnavailable) {
-			t.Fatalf("missing boundary did not fail closed: %v", err)
-		}
+		require.ErrorIs(t, err, sandboxhost.ErrIsolatedUnavailable, "a missing boundary fails closed")
 	})
 }

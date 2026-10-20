@@ -45,9 +45,9 @@ const (
 	importAllowlistSentinel = "\x00allowlist-configured"
 )
 
-// WithBuildTags sets custom build tags for //go:build constraint evaluation in
-// CompileFileSet and CompileProgram. The current GOOS, GOARCH, and Go version are always
-// included as default tags.
+// WithBuildTags adds build tags to the ones the service always sets when it decides which
+// files to compile: the host's GOOS and GOARCH, interp, gc, the Go release tags and the
+// toolchain's tool tags. The cgo tag is never set.
 //
 // Takes tags (string variadic) which are additional build tags to activate.
 //
@@ -443,6 +443,25 @@ func WithDeadlockGrace(grace time.Duration) Option {
 			grace = 0
 		}
 		c.deadlockGrace = grace
+	}
+}
+
+// WithCallbackTimeout bounds each run of an interpreted closure that native code calls,
+// such as a handler, comparator or callback the host stored.
+//
+// A closure whose signature ends in an error returns the stop as that error. Any other
+// closure fails the wrapping execution while it still runs, and returns zero values once
+// it has ended.
+//
+// Takes timeout (time.Duration) which is the bound; zero or negative disables it.
+//
+// Returns Option which applies the bound.
+func WithCallbackTimeout(timeout time.Duration) Option {
+	return func(c *serviceConfig) {
+		if timeout < 0 {
+			timeout = 0
+		}
+		c.callbackTimeout = timeout
 	}
 }
 

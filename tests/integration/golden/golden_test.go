@@ -21,7 +21,6 @@
 package golden_test
 
 import (
-	"context"
 	"maps"
 	"os"
 	"path/filepath"
@@ -62,7 +61,7 @@ func reportDiffering(t *testing.T, kind string, differing []string) {
 	if len(differing) == 0 {
 		return
 	}
-	t.Errorf("golden: %d %s case(s) differ: %s", len(differing), kind, strings.Join(differing, ", "))
+	assert.Failf(t, "golden cases differ", "%d %s case(s) differ: %s", len(differing), kind, strings.Join(differing, ", "))
 }
 
 func TestGoldenSnippets(t *testing.T) {
@@ -142,7 +141,7 @@ func TestGoldenShapes(t *testing.T) {
 	service := newGoldenService()
 	var differing []string
 	for _, name := range sortedNames(cases) {
-		cfs, err := compileGolden(context.Background(), service, cases[name])
+		cfs, err := compileGolden(t.Context(), service, cases[name])
 		require.NoError(t, err, "compiling shape %s", name)
 		assembly := debug.DisassembleAssembly(cfs)
 		if !checkSnapshot(t, snapshotPath("shapes", name), assembly) {

@@ -28,6 +28,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestNativeSupervisedHostWatchdog(t *testing.T) {
@@ -44,10 +46,7 @@ func TestNativeSupervisedHostWatchdog(t *testing.T) {
 }
 
 func TestNativeWorkerWatchdogAttachment(t *testing.T) {
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	workerPath := os.Getenv("PIPIT_TEST_WORKER_BINARY")
 	watchdogPath := os.Getenv("PIPIT_TEST_HOST_WATCHDOG_BINARY")
 	workerImage, err := os.ReadFile(workerPath)

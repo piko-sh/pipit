@@ -60,6 +60,7 @@ func TestRangeInitClassifiesTheCollection(t *testing.T) {
 			name:       "an int slice takes the typed fast path",
 			collection: []int{1, 2},
 			inspect: func(t *testing.T, it *rangeIterator) {
+				t.Helper()
 				require.Equal(t, []int{1, 2}, it.intSlice)
 			},
 		},
@@ -67,6 +68,7 @@ func TestRangeInitClassifiesTheCollection(t *testing.T) {
 			name:       "a string slice takes the typed fast path",
 			collection: []string{"a"},
 			inspect: func(t *testing.T, it *rangeIterator) {
+				t.Helper()
 				require.Equal(t, []string{"a"}, it.stringSlice)
 			},
 		},
@@ -74,6 +76,7 @@ func TestRangeInitClassifiesTheCollection(t *testing.T) {
 			name:       "a float slice takes the typed fast path",
 			collection: []float64{1.5},
 			inspect: func(t *testing.T, it *rangeIterator) {
+				t.Helper()
 				require.Equal(t, []float64{1.5}, it.floatSlice)
 			},
 		},
@@ -81,6 +84,7 @@ func TestRangeInitClassifiesTheCollection(t *testing.T) {
 			name:       "a bool slice takes the typed fast path",
 			collection: []bool{true},
 			inspect: func(t *testing.T, it *rangeIterator) {
+				t.Helper()
 				require.Equal(t, []bool{true}, it.boolSlice)
 			},
 		},
@@ -88,6 +92,7 @@ func TestRangeInitClassifiesTheCollection(t *testing.T) {
 			name:       "a slice of an unlisted element type has no fast path",
 			collection: []uint8{1},
 			inspect: func(t *testing.T, it *rangeIterator) {
+				t.Helper()
 				require.Nil(t, it.intSlice)
 				require.Nil(t, it.stringSlice)
 				require.Nil(t, it.floatSlice)
@@ -98,6 +103,7 @@ func TestRangeInitClassifiesTheCollection(t *testing.T) {
 			name:       "a map gets a reflect map iterator and both scratch cells",
 			collection: map[string]int{"a": 1},
 			inspect: func(t *testing.T, it *rangeIterator) {
+				t.Helper()
 				require.True(t, it.isMap)
 				require.NotNil(t, it.mapIterator)
 				require.True(t, it.keyScratch.IsValid())
@@ -108,6 +114,7 @@ func TestRangeInitClassifiesTheCollection(t *testing.T) {
 			name:       "a channel is marked for the receiving walk",
 			collection: make(chan int),
 			inspect: func(t *testing.T, it *rangeIterator) {
+				t.Helper()
 				require.True(t, it.isChannel)
 			},
 		},
@@ -115,6 +122,7 @@ func TestRangeInitClassifiesTheCollection(t *testing.T) {
 			name:       "a string keeps its own source for the rune walk",
 			collection: "héllo",
 			inspect: func(t *testing.T, it *rangeIterator) {
+				t.Helper()
 				require.True(t, it.IsString)
 				require.Equal(t, "héllo", it.StringSource)
 			},
@@ -123,6 +131,7 @@ func TestRangeInitClassifiesTheCollection(t *testing.T) {
 			name:       "an array is copied so a later write cannot disturb the walk",
 			collection: array,
 			inspect: func(t *testing.T, it *rangeIterator) {
+				t.Helper()
 				require.Equal(t, reflect.Array, it.collection.Kind())
 				require.Equal(t, 3, it.collection.Len())
 			},
@@ -131,6 +140,7 @@ func TestRangeInitClassifiesTheCollection(t *testing.T) {
 			name:       "a pointer to an array is dereferenced",
 			collection: &array,
 			inspect: func(t *testing.T, it *rangeIterator) {
+				t.Helper()
 				require.Equal(t, reflect.Array, it.collection.Kind())
 			},
 		},
@@ -138,6 +148,7 @@ func TestRangeInitClassifiesTheCollection(t *testing.T) {
 			name:       "a value that cannot be ranged over yields an inert iterator",
 			collection: 7,
 			inspect: func(t *testing.T, it *rangeIterator) {
+				t.Helper()
 				require.False(t, it.isMap)
 				require.False(t, it.isChannel)
 				require.False(t, it.IsString)
@@ -346,6 +357,7 @@ func TestRangeSliceValueFallsBackWhenTheBankDisagrees(t *testing.T) {
 			name: "an int slice asked for the general bank goes through reflect", collection: []int{9},
 			kind: isa.RegisterGeneral,
 			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
 				require.Equal(t, 9, r.General[6].Interface())
 			},
 		},
@@ -353,6 +365,7 @@ func TestRangeSliceValueFallsBackWhenTheBankDisagrees(t *testing.T) {
 			name: "a string slice asked for the general bank goes through reflect", collection: []string{"s"},
 			kind: isa.RegisterGeneral,
 			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
 				require.Equal(t, "s", r.General[6].Interface())
 			},
 		},
@@ -360,6 +373,7 @@ func TestRangeSliceValueFallsBackWhenTheBankDisagrees(t *testing.T) {
 			name: "a float slice asked for the general bank goes through reflect", collection: []float64{2.5},
 			kind: isa.RegisterGeneral,
 			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
 				require.InDelta(t, 2.5, r.General[6].Interface(), 0)
 			},
 		},
@@ -367,6 +381,7 @@ func TestRangeSliceValueFallsBackWhenTheBankDisagrees(t *testing.T) {
 			name: "a bool slice asked for the general bank goes through reflect", collection: []bool{true},
 			kind: isa.RegisterGeneral,
 			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
 				require.Equal(t, true, r.General[6].Interface())
 			},
 		},

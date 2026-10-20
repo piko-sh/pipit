@@ -25,10 +25,9 @@ import (
 	"testing"
 	"time"
 
-	"pipit.sh/pipit/internal/app"
-
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
@@ -45,7 +44,7 @@ func runSafeModeFileWithWatchdog(t *testing.T, source string) any {
 	}
 	resultCh := make(chan outcome, 1)
 
-	ctx, cancel := context.WithTimeout(context.Background(), gilWatchdogTimeout)
+	ctx, cancel := context.WithTimeout(t.Context(), gilWatchdogTimeout)
 	defer cancel()
 
 	go func() {
@@ -60,7 +59,7 @@ func runSafeModeFileWithWatchdog(t *testing.T, source string) any {
 		require.NoError(t, got.err, "safe-mode EvalFile failed")
 		return got.result
 	case <-time.After(gilWatchdogTimeout + time.Second):
-		t.Fatalf("safe-mode program deadlocked: watchdog fired after %s", gilWatchdogTimeout+time.Second)
+		require.Failf(t, "deadlock", "the safe-mode program did not finish within %s", gilWatchdogTimeout+time.Second)
 		return nil
 	}
 }

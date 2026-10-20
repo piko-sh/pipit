@@ -21,15 +21,18 @@
 package harness
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Runner is the per-language driver interface. Every implementation knows how to probe
@@ -49,17 +52,35 @@ type Runner interface {
 // writes the JSON+Markdown reports, and fails the test if a required runner is
 // unavailable or if the regen-hashes flow detected drift.
 type Suite struct {
+	// BenchmarksDirectory holds one directory per benchmark.
 	BenchmarksDirectory string
 
+	// OutputDirectory receives latest.json and latest.md.
 	OutputDirectory string
 
-	Config SuiteConfig
-
+	// Specs are the benchmarks to run, sorted by name.
 	Specs []BenchSpec
 
+	// Runners are the enabled runners.
 	Runners []Runner
 
+	// hostInfo describes the machine for the reports.
 	hostInfo HostInfo
+
+	// Config is the suite's configuration.
+	Config SuiteConfig
+}
+
+// outputDirectoryMode is the mode of a created results directory.
+const outputDirectoryMode = 0o750
+
+// suiteOutcome collects what a suite run measured.
+type suiteOutcome struct {
+	// results holds every measured run and every skipped runner.
+	results []Result
+
+	// aggregates summarises the cells that had successful runs.
+	aggregates []Aggregate
 }
 
 // Run executes the full suite and writes reports. Each (benchmark, runner, mode) cell
@@ -68,67 +89,71 @@ type Suite struct {
 // -v` output.
 func (suite *Suite) Run(testingHandle *testing.T) {
 	testingHandle.Helper()
-	context := context.Background()
+	ctx := context.Background()
 
-	suite.checkRequiredRunners(testingHandle, context)
+	suite.checkRequiredRunners(ctx, testingHandle)
 
 	if suite.Config.Regenerate {
-		if err := suite.regenerateHashes(context); err != nil {
-			testingHandle.Fatalf("regenerate hashes: %v", err)
-		}
+		require.NoError(testingHandle, suite.regenerateHashes(ctx), "regenerate hashes")
 		return
 	}
 
-	allResults := []Result{}
-	allAggregates := []Aggregate{}
-
-	for _, spec := range suite.Specs {
-		spec := spec
+	outcome := &suiteOutcome{results: []Result{}, aggregates: []Aggregate{}}
+	for index := range suite.Specs {
+		spec := suite.Specs[index]
 		testingHandle.Run(spec.Name, func(benchmarkTestHandle *testing.T) {
-			benchmarkDirectory := filepath.Join(suite.BenchmarksDirectory, spec.Name)
-			if err := VerifySourceSHAs(spec, benchmarkDirectory); err != nil {
-				benchmarkTestHandle.Fatalf("source SHA verification failed for %s: %v", spec.Name, err)
-			}
-
-			for _, runner := range suite.Runners {
-				runner := runner
-				if isSkippedRunner(spec, runner.Kind()) {
-					continue
-				}
-				available, message := runner.Available(context)
-				if !available {
-					benchmarkTestHandle.Logf("runner %s skipped: %s", runner.Kind(), message)
-					allResults = append(allResults, Result{
-						Benchmark: spec.Name,
-						Runner:    runner.Kind(),
-						Mode:      ModeEndToEnd,
-						Status:    StatusSkipped,
-						Note:      message,
-					})
-					continue
-				}
-				benchmarkTestHandle.Run(string(runner.Kind()), func(runnerTestHandle *testing.T) {
-					for _, mode := range suite.Config.Modes {
-						mode := mode
-						runnerTestHandle.Run(string(mode), func(modeTestHandle *testing.T) {
-							runResults := suite.executeCell(context, modeTestHandle, runner, spec, mode, benchmarkDirectory)
-							allResults = append(allResults, runResults...)
-							if aggregate, ok := aggregateOK(runResults, spec.KInner); ok {
-								allAggregates = append(allAggregates, aggregate)
-							}
-						})
-					}
-				})
-			}
+			suite.runBenchmark(ctx, benchmarkTestHandle, spec, outcome)
 		})
 	}
 
-	sortAggregates(allAggregates)
-	if err := WriteJSONReport(suite, allResults, allAggregates); err != nil {
-		testingHandle.Errorf("write JSON report: %v", err)
+	sortAggregates(outcome.aggregates)
+	assert.NoError(testingHandle, WriteJSONReport(suite, outcome.results, outcome.aggregates), "write JSON report")
+	assert.NoError(testingHandle, WriteMarkdownReport(suite, outcome.aggregates), "write Markdown report")
+}
+
+// runBenchmark checks a benchmark's sources, then runs it on every runner that supports
+// it, recording an unavailable runner as skipped.
+//
+// Takes ctx (context.Context) which bounds the runs.
+// Takes testingHandle (*testing.T) which is the benchmark's subtest.
+// Takes spec (BenchSpec) which is the benchmark.
+// Takes outcome (*suiteOutcome) which receives the results.
+func (suite *Suite) runBenchmark(ctx context.Context, testingHandle *testing.T, spec BenchSpec, outcome *suiteOutcome) {
+	benchmarkDirectory := filepath.Join(suite.BenchmarksDirectory, spec.Name)
+	require.NoError(testingHandle, VerifySourceSHAs(spec, benchmarkDirectory), "source SHAs of %s match the spec", spec.Name)
+
+	for _, runner := range suite.Runners {
+		if isSkippedRunner(spec, runner.Kind()) {
+			continue
+		}
+		if available, message := runner.Available(ctx); !available {
+			testingHandle.Logf("runner %s skipped: %s", runner.Kind(), message)
+			outcome.results = append(outcome.results, skippedResult(spec.Name, runner.Kind(), ModeEndToEnd, message))
+			continue
+		}
+		testingHandle.Run(string(runner.Kind()), func(runnerTestHandle *testing.T) {
+			suite.runModes(ctx, runnerTestHandle, runner, spec, benchmarkDirectory, outcome)
+		})
 	}
-	if err := WriteMarkdownReport(suite, allAggregates); err != nil {
-		testingHandle.Errorf("write Markdown report: %v", err)
+}
+
+// runModes measures one benchmark on one runner in every configured mode.
+//
+// Takes ctx (context.Context) which bounds the runs.
+// Takes testingHandle (*testing.T) which is the runner's subtest.
+// Takes runner (Runner) which runs the benchmark.
+// Takes spec (BenchSpec) which is the benchmark.
+// Takes benchmarkDirectory (string) which holds its sources.
+// Takes outcome (*suiteOutcome) which receives the results.
+func (suite *Suite) runModes(ctx context.Context, testingHandle *testing.T, runner Runner, spec BenchSpec, benchmarkDirectory string, outcome *suiteOutcome) {
+	for _, mode := range suite.Config.Modes {
+		testingHandle.Run(string(mode), func(modeTestHandle *testing.T) {
+			runResults := suite.executeCell(ctx, modeTestHandle, runner, spec, mode, benchmarkDirectory)
+			outcome.results = append(outcome.results, runResults...)
+			if aggregate, ok := aggregateOK(runResults, spec.KInner); ok {
+				outcome.aggregates = append(outcome.aggregates, aggregate)
+			}
+		})
 	}
 }
 
@@ -151,14 +176,12 @@ func (suite *Suite) executeCell(
 	}
 	for runIndex := 0; runIndex < suite.Config.Runs; runIndex++ {
 		result, err := runner.Run(parent, spec, mode, benchmarkDirectory)
-		if err != nil {
-			testingHandle.Errorf("run %d framework error: %v", runIndex, err)
-			continue
-		}
+		require.NoError(testingHandle, err, "run %d has no framework error", runIndex)
 		result.RunIndex = runIndex
-		if result.Status == StatusMismatch {
+		switch result.Status {
+		case StatusMismatch:
 			testingHandle.Logf("mismatch on run %d: %s", runIndex, result.Note)
-		} else if result.Status == StatusFailed {
+		case StatusFailed:
 			testingHandle.Logf("failed run %d: %s", runIndex, result.Note)
 		}
 		results = append(results, result)
@@ -175,7 +198,8 @@ func (suite *Suite) regenerateHashes(ctx context.Context) error {
 	if available, message := goRunner.Available(ctx); !available {
 		return fmt.Errorf("regenerate requires go: %s", message)
 	}
-	for index, spec := range suite.Specs {
+	for index := range suite.Specs {
+		spec := suite.Specs[index]
 		benchmarkDirectory := filepath.Join(suite.BenchmarksDirectory, spec.Name)
 		regenSpec := spec
 		regenSpec.ExpectedStdoutSHA = ""
@@ -201,14 +225,14 @@ func (suite *Suite) regenerateHashes(ctx context.Context) error {
 
 // checkRequiredRunners fails the test early if any runner marked required via
 // CROSS_LANG_REQUIRE is unavailable.
-func (suite *Suite) checkRequiredRunners(testingHandle *testing.T, ctx context.Context) {
+func (suite *Suite) checkRequiredRunners(ctx context.Context, testingHandle *testing.T) {
 	for _, runner := range suite.Runners {
 		if !suite.Config.RunnerRequired(runner.Kind()) {
 			continue
 		}
 		available, message := runner.Available(ctx)
 		if !available {
-			testingHandle.Fatalf("runner %s is required (CROSS_LANG_REQUIRE) but unavailable: %s", runner.Kind(), message)
+			require.Failf(testingHandle, "required runner unavailable", "runner %s is required (CROSS_LANG_REQUIRE) but unavailable: %s", runner.Kind(), message)
 		}
 	}
 }
@@ -237,14 +261,10 @@ func Load(testingHandle *testing.T, benchmarksDirectory string) *Suite {
 	config := LoadSuiteConfig()
 
 	specs, err := discoverSpecs(benchmarksDirectory, config)
-	if err != nil {
-		testingHandle.Fatalf("load benchmarks: %v", err)
-	}
+	require.NoError(testingHandle, err, "load benchmarks")
 
 	outputDirectory := resolveOutputDirectory(benchmarksDirectory, config.OutputDirectory)
-	if err := os.MkdirAll(outputDirectory, 0o755); err != nil {
-		testingHandle.Fatalf("create output directory %s: %v", outputDirectory, err)
-	}
+	require.NoError(testingHandle, os.MkdirAll(outputDirectory, outputDirectoryMode), "create output directory %s", outputDirectory)
 
 	runners := buildRunners(config, benchmarksDirectory)
 	return &Suite{
@@ -253,7 +273,7 @@ func Load(testingHandle *testing.T, benchmarksDirectory string) *Suite {
 		Config:              config,
 		Specs:               specs,
 		Runners:             runners,
-		hostInfo:            collectHostInfo(config, runners),
+		hostInfo:            collectHostInfo(config),
 	}
 }
 
@@ -307,6 +327,13 @@ func collectTestdataSHAs(benchmarkDirectory string, out map[string]string) {
 	})
 }
 
+// discoverSpecs loads the spec of every benchmark directory the filter keeps.
+//
+// Takes benchmarksDirectory (string) which holds one directory per benchmark.
+// Takes config (SuiteConfig) which supplies the filter.
+//
+// Returns []BenchSpec which is the specs sorted by name.
+// Returns error when the directory cannot be read or a spec is invalid.
 func discoverSpecs(benchmarksDirectory string, config SuiteConfig) ([]BenchSpec, error) {
 	entries, err := os.ReadDir(benchmarksDirectory)
 	if err != nil {
@@ -333,10 +360,16 @@ func discoverSpecs(benchmarksDirectory string, config SuiteConfig) ([]BenchSpec,
 		}
 		specs = append(specs, spec)
 	}
-	sort.Slice(specs, func(i, j int) bool { return specs[i].Name < specs[j].Name })
+	slices.SortFunc(specs, func(left, right BenchSpec) int { return cmp.Compare(left.Name, right.Name) })
 	return specs, nil
 }
 
+// buildRunners creates the enabled runners, choosing host or container Python.
+//
+// Takes config (SuiteConfig) which says which runners are enabled.
+// Takes benchmarksDirectory (string) which the Go cache and Python containers use.
+//
+// Returns []Runner which is the runners in report order.
 func buildRunners(config SuiteConfig, benchmarksDirectory string) []Runner {
 	registered := []Runner{}
 	enabled := func(kind RunnerKind) bool { return config.RunnerEnabled(kind) }
@@ -376,12 +409,24 @@ func buildRunners(config SuiteConfig, benchmarksDirectory string) []Runner {
 	return registered
 }
 
-func collectHostInfo(config SuiteConfig, runners []Runner) HostInfo {
+// collectHostInfo records the machine and the Python images or versions for the reports.
+//
+// Takes config (SuiteConfig) which says whether Python runs on the host.
+//
+// Returns HostInfo which describes the host.
+func collectHostInfo(config SuiteConfig) HostInfo {
 	info := HostInfo{
-		OS:              runtime.GOOS,
-		Arch:            runtime.GOARCH,
-		CPUCountLogical: runtime.NumCPU(),
-		GoVersion:       runtime.Version(),
+		OS:               runtime.GOOS,
+		Arch:             runtime.GOARCH,
+		CPUModel:         "",
+		GoVersion:        runtime.Version(),
+		PipitCommit:      "",
+		CPythonImage:     "",
+		CPythonVersion:   "",
+		PyPyImage:        "",
+		PyPyVersion:      "",
+		ContainerRuntime: "",
+		CPUCountLogical:  runtime.NumCPU(),
 	}
 	if config.UseHostPython {
 		info.CPythonImage = "host"
@@ -392,13 +437,16 @@ func collectHostInfo(config SuiteConfig, runners []Runner) HostInfo {
 		info.CPythonImage = config.CPythonImage
 		info.PyPyImage = config.PyPyImage
 	}
-	for _, runner := range runners {
-		_ = runner
-	}
-	_ = time.Now
 	return info
 }
 
+// aggregateOK summarises the successful runs of one cell.
+//
+// Takes results ([]Result) which are the cell's runs.
+// Takes kInner (int) which is the inner-loop iteration count.
+//
+// Returns Aggregate which is the summary.
+// Returns bool which is false when no run succeeded.
 func aggregateOK(results []Result, kInner int) (Aggregate, bool) {
 	if len(results) == 0 {
 		return Aggregate{}, false
@@ -406,7 +454,8 @@ func aggregateOK(results []Result, kInner int) (Aggregate, bool) {
 	successful := []int64{}
 	rssSamples := []int64{}
 	compileSamples := []int64{}
-	for _, result := range results {
+	for index := range results {
+		result := &results[index]
 		if result.Status != StatusOK {
 			continue
 		}
@@ -428,23 +477,25 @@ func aggregateOK(results []Result, kInner int) (Aggregate, bool) {
 	return Summarise(results[0].Benchmark, results[0].Runner, results[0].Mode, successful, rssSamples, compileSamples, kInner), true
 }
 
+// isSkippedRunner reports whether the spec opts out of the runner.
+//
+// Takes spec (BenchSpec) which lists the skipped runners.
+// Takes kind (RunnerKind) which is the runner.
+//
+// Returns bool which is true when the runner is listed.
 func isSkippedRunner(spec BenchSpec, kind RunnerKind) bool {
-	for _, skipped := range spec.SkipRunners {
-		if skipped == kind {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(spec.SkipRunners, kind)
 }
 
+// sortAggregates orders aggregates by benchmark, then mode, then runner.
+//
+// Takes aggregates ([]Aggregate) which is sorted in place.
 func sortAggregates(aggregates []Aggregate) {
-	sort.Slice(aggregates, func(i, j int) bool {
-		if aggregates[i].Benchmark != aggregates[j].Benchmark {
-			return aggregates[i].Benchmark < aggregates[j].Benchmark
-		}
-		if aggregates[i].Mode != aggregates[j].Mode {
-			return aggregates[i].Mode < aggregates[j].Mode
-		}
-		return aggregates[i].Runner < aggregates[j].Runner
+	slices.SortFunc(aggregates, func(left, right Aggregate) int {
+		return cmp.Or(
+			cmp.Compare(left.Benchmark, right.Benchmark),
+			cmp.Compare(left.Mode, right.Mode),
+			cmp.Compare(left.Runner, right.Runner),
+		)
 	})
 }

@@ -19,6 +19,7 @@
 package engine
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -136,4 +137,41 @@ func TestRangeNextStringInvalidUTF8YieldsRuneError(t *testing.T) {
 	rangeNextString(&registers, iterator, context)
 	require.Equal(t, int64(0), registers.Ints[0],
 		"after consuming the lone invalid byte, the iteration terminates")
+}
+
+func TestTypeAssertionsSeeTheScriptValue(t *testing.T) {
+	t.Parallel()
+
+	vm := probeVM(t, "Site", probeOpen)
+
+	t.Run("an adapter for a named script value yields the value", func(t *testing.T) {
+		t.Parallel()
+
+		named := reflect.ValueOf(identityTrailing{})
+		adapter := reflect.ValueOf(&pipitFSAdapter{AdapterCore: &AdapterCore{underlying: named}})
+		require.Equal(t, named.Interface(), typeAssertOperand(vm, adapter).Interface())
+	})
+
+	t.Run("an adapter for an unnamed value stays", func(t *testing.T) {
+		t.Parallel()
+
+		core := &AdapterCore{
+			vm:         vm,
+			methods:    map[string]adapterMethodRef{"Open": {root: nil, index: 0}, "Stat": {root: nil, index: 0}},
+			typeName:   "",
+			underlying: reflect.ValueOf(map[string]int{}),
+		}
+		adapter := reflect.ValueOf(&pipitFSAdapter{AdapterCore: core})
+		require.Equal(t, adapter.Interface(), typeAssertOperand(vm, adapter).Interface())
+		require.True(t, sourceImplementsAllMethods(vm, adapter, []string{"Open", "Stat"}))
+		require.False(t, sourceImplementsAllMethods(vm, adapter, []string{"Open", "ReadDir"}),
+			"the adapter's Go type has ReadDir, but its value does not")
+	})
+
+	t.Run("an interface yields its dynamic value", func(t *testing.T) {
+		t.Parallel()
+
+		var boxed any = 3
+		require.Equal(t, 3, typeAssertOperand(vm, reflect.ValueOf(&boxed).Elem()).Interface())
+	})
 }

@@ -140,6 +140,8 @@ nes_done:
 
 // handlerSliceString sets strings[A] = strings[B][low:high].
 TEXT ·handlerSliceString(SB), NOSPLIT|NOFRAME, $0
+	CMPB    runtime·writeBarrier(SB), $0
+	JNE     wb_fallback
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -195,6 +197,8 @@ sl_bounds_fail:
 	MOVQ    $EXIT_TIER2, CTX_EXIT_REASON(R15)
 	MOVQ    R14, CTX_EXIT_PC(R15)
 	RET     
+wb_fallback:
+	JMP     ·pathBFallback(SB)
 
 // handlerStringIndexToInt sets ints[A] = int64(strings[B][ints[C]]).
 TEXT ·handlerStringIndexToInt(SB), NOSPLIT|NOFRAME, $0

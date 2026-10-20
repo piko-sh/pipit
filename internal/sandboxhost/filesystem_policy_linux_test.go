@@ -23,13 +23,16 @@ package sandboxhost
 import (
 	"context"
 	"crypto/sha256"
-	"errors"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFilesystemRecoveryPolicyCoversConfiguration(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	config := IsolatedFilesystemConfig{
 		BrokerPath:   filepath.Join(directory, "broker"),
@@ -44,10 +47,9 @@ func TestFilesystemRecoveryPolicyCoversConfiguration(t *testing.T) {
 			Imports:           []string{"math"},
 		},
 	}
-	original, err := isolatedFilesystemRecoveryPolicy(context.Background(), &config)
-	if err != nil || original == ([sha256.Size]byte{}) {
-		t.Fatal("invalid baseline:", err)
-	}
+	original, err := isolatedFilesystemRecoveryPolicy(t.Context(), &config)
+	require.NoError(t, err, "invalid baseline")
+	require.NotZero(t, original)
 	mutations := map[string]func(*IsolatedFilesystemConfig){
 		"BrokerPath":               func(config *IsolatedFilesystemConfig) { config.BrokerPath += "-other" },
 		"Worker.Tenant":            func(config *IsolatedFilesystemConfig) { config.Worker.Tenant += "-other" },
@@ -74,33 +76,34 @@ func TestFilesystemRecoveryPolicyCoversConfiguration(t *testing.T) {
 		"Limits.ListEntries":       func(config *IsolatedFilesystemConfig) { config.Limits.ListEntries = 1 },
 	}
 	assertRecoveryPolicyFields(t, reflect.TypeFor[IsolatedFilesystemConfig](), "", mutations)
+	baseline := config
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
-			copied := config
-			copied.Roots = append([]FilesystemRoot(nil), config.Roots...)
+			t.Parallel()
+			copied := baseline
+			copied.Roots = append([]FilesystemRoot(nil), baseline.Roots...)
 			mutate(&copied)
-			changed, err := isolatedFilesystemRecoveryPolicy(context.Background(), &copied)
-			if err != nil || changed == original || changed == ([sha256.Size]byte{}) {
-				t.Fatal("policy change did not invalidate approval:", err)
-			}
+			changed, err := isolatedFilesystemRecoveryPolicy(t.Context(), &copied)
+			require.NoError(t, err, "policy change did not invalidate approval")
+			require.NotEqual(t, original, changed)
+			require.NotZero(t, changed)
 		})
 	}
-	repeated, err := isolatedFilesystemRecoveryPolicy(context.Background(), &config)
-	if err != nil || repeated != original {
-		t.Fatal("policy mutated caller state or produced unstable approval:", err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
+	repeated, err := isolatedFilesystemRecoveryPolicy(t.Context(), &config)
+	require.NoError(t, err, "policy mutated caller state or produced unstable approval")
+	require.Equal(t, original, repeated)
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if digest, err := isolatedFilesystemRecoveryPolicy(ctx, &config); !errors.Is(err, context.Canceled) || digest != ([sha256.Size]byte{}) {
-		t.Fatal("cancelled policy produced approval:", err)
-	}
-	if digest, err := isolatedFilesystemRecoveryPolicy(context.Background(), nil); !errors.Is(err, ErrInvalidIsolatedConfig) || digest != ([sha256.Size]byte{}) {
-		t.Fatal("missing policy produced approval:", err)
-	}
+	digest, err := isolatedFilesystemRecoveryPolicy(ctx, &config)
+	require.ErrorIs(t, err, context.Canceled, "cancelled policy produced approval")
+	require.Zero(t, digest)
+	digest, err = isolatedFilesystemRecoveryPolicy(t.Context(), nil)
+	require.ErrorIs(t, err, ErrInvalidIsolatedConfig, "missing policy produced approval")
+	require.Zero(t, digest)
 	config.Worker.Tenant = ""
-	if digest, err := isolatedFilesystemRecoveryPolicy(context.Background(), &config); !errors.Is(err, ErrInvalidIsolatedConfig) || digest != ([sha256.Size]byte{}) {
-		t.Fatal("invalid policy produced approval:", err)
-	}
+	digest, err = isolatedFilesystemRecoveryPolicy(t.Context(), &config)
+	require.ErrorIs(t, err, ErrInvalidIsolatedConfig, "invalid policy produced approval")
+	require.Zero(t, digest)
 }
 
 func assertRecoveryPolicyFields(t *testing.T, policy reflect.Type, prefix string, mutations map[string]func(*IsolatedFilesystemConfig)) {
@@ -117,8 +120,8 @@ func assertRecoveryPolicyFields(t *testing.T, policy reflect.Type, prefix string
 		}
 		if nested.Kind() == reflect.Struct {
 			assertRecoveryPolicyFields(t, nested, name+".", mutations)
-		} else if mutations[name] == nil {
-			t.Errorf("configuration field lacks an approval-invalidation regression: %s", name)
+		} else {
+			assert.NotNil(t, mutations[name], "configuration field %s has an approval-invalidation regression", name)
 		}
 	}
 }

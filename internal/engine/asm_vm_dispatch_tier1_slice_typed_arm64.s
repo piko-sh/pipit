@@ -335,6 +335,9 @@ bounds_fail:
 
 // handlerSubOpSliceGetStringDirect sets strings[B] = slicesString[C][ints[ext.A]] with bounds check.
 TEXT ·handlerSubOpSliceGetStringDirect(SB), NOSPLIT|NOFRAME, $0
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, wb_fallback
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -362,6 +365,8 @@ TEXT ·handlerSubOpSliceGetStringDirect(SB), NOSPLIT|NOFRAME, $0
 	ADD  $1, R20, R20
 	DISPATCH_NEXT()
 bounds_fail:
+	B    ·pathBFallback(SB)
+wb_fallback:
 	B    ·pathBFallback(SB)
 
 // handlerSubOpSliceGetByteDirect sets uints[B] = uint64(slicesByte[C][ints[ext.A]]) with bounds check.
@@ -420,24 +425,33 @@ bounds_fail:
 
 // handlerSubOpSliceByteSlice sets slicesByte[A] = slicesByte[C][ints[ext.b]:ints[ext.c]] (no max-bound) inline.
 TEXT ·handlerSubOpSliceByteSlice(SB), NOSPLIT|NOFRAME, $0
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, wb_fallback
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
 	AND  $0xFF, R4, R4
 	MOVWU (R22)(R20<<2), R0
-	AND  $0xFF, R0, R6
-	CMP  $3, R6
-	BNE  bounds_fail
-	LSR  $16, R0, R6
-	AND  $0xFF, R6, R6
-	LSR  $24, R0, R7
-	AND  $0xFF, R7, R7
-	MOVD (R23)(R6<<3), R6
-	MOVD (R23)(R7<<3), R7
 	MOVD CTX_SLICES_BYTE_BASE(R19), R5
 	MOVD $24, R9
 	MUL  R9, R4, R10
 	ADD  R10, R5, R5
+	LSR  $8, R0, R4
+	AND  $0xFF, R4, R4
+	TBNZ $2, R4, bounds_fail
+	MOVD ZR, R6
+	TBZ  $0, R4, ss_low_done
+	LSR  $16, R0, R6
+	AND  $0xFF, R6, R6
+	MOVD (R23)(R6<<3), R6
+ss_low_done:
+	MOVD 8(R5), R7
+	TBZ  $1, R4, ss_high_done
+	LSR  $24, R0, R7
+	AND  $0xFF, R7, R7
+	MOVD (R23)(R7<<3), R7
+ss_high_done:
 	MOVD 16(R5), R8
 	CMP  $0, R6
 	BLT  bounds_fail
@@ -446,9 +460,12 @@ TEXT ·handlerSubOpSliceByteSlice(SB), NOSPLIT|NOFRAME, $0
 	CMP  R8, R7
 	BGT  bounds_fail
 	MOVD 0(R5), R4
-	ADD  R6, R4, R4
 	SUB  R6, R7, R7
 	SUB  R6, R8, R8
+	ADD  R6, R4, R9
+	CMP  $0, R8
+	CSEL NE, R9, R4, R4
+	MOVD $24, R9
 	MOVD CTX_SLICES_BYTE_BASE(R19), R5
 	MUL  R9, R3, R10
 	ADD  R10, R5, R5
@@ -458,10 +475,15 @@ TEXT ·handlerSubOpSliceByteSlice(SB), NOSPLIT|NOFRAME, $0
 	ADD  $1, R20, R20
 	DISPATCH_NEXT()
 bounds_fail:
+	B    ·pathBFallback(SB)
+wb_fallback:
 	B    ·pathBFallback(SB)
 
 // handlerSubOpMoveSliceInt copies slicesInt[C] to slicesInt[B] for the tier-1 typed-slice header move sub-op.
 TEXT ·handlerSubOpMoveSliceInt(SB), NOSPLIT|NOFRAME, $0
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, wb_fallback
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -480,9 +502,14 @@ TEXT ·handlerSubOpMoveSliceInt(SB), NOSPLIT|NOFRAME, $0
 	MOVD R7, 8(R5)
 	MOVD R8, 16(R5)
 	DISPATCH_NEXT()
+wb_fallback:
+	B    ·pathBFallback(SB)
 
 // handlerSubOpMoveSliceFloat copies slicesFloat[C] to slicesFloat[B] for the tier-1 typed-slice header move sub-op.
 TEXT ·handlerSubOpMoveSliceFloat(SB), NOSPLIT|NOFRAME, $0
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, wb_fallback
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -501,9 +528,14 @@ TEXT ·handlerSubOpMoveSliceFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVD R7, 8(R5)
 	MOVD R8, 16(R5)
 	DISPATCH_NEXT()
+wb_fallback:
+	B    ·pathBFallback(SB)
 
 // handlerSubOpMoveSliceString copies slicesString[C] to slicesString[B] for the tier-1 typed-slice header move sub-op.
 TEXT ·handlerSubOpMoveSliceString(SB), NOSPLIT|NOFRAME, $0
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, wb_fallback
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -522,9 +554,14 @@ TEXT ·handlerSubOpMoveSliceString(SB), NOSPLIT|NOFRAME, $0
 	MOVD R7, 8(R5)
 	MOVD R8, 16(R5)
 	DISPATCH_NEXT()
+wb_fallback:
+	B    ·pathBFallback(SB)
 
 // handlerSubOpMoveSliceBool copies slicesBool[C] to slicesBool[B] for the tier-1 typed-slice header move sub-op.
 TEXT ·handlerSubOpMoveSliceBool(SB), NOSPLIT|NOFRAME, $0
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, wb_fallback
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -543,9 +580,14 @@ TEXT ·handlerSubOpMoveSliceBool(SB), NOSPLIT|NOFRAME, $0
 	MOVD R7, 8(R5)
 	MOVD R8, 16(R5)
 	DISPATCH_NEXT()
+wb_fallback:
+	B    ·pathBFallback(SB)
 
 // handlerSubOpMoveSliceUint copies slicesUint[C] to slicesUint[B] for the tier-1 typed-slice header move sub-op.
 TEXT ·handlerSubOpMoveSliceUint(SB), NOSPLIT|NOFRAME, $0
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, wb_fallback
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -564,9 +606,14 @@ TEXT ·handlerSubOpMoveSliceUint(SB), NOSPLIT|NOFRAME, $0
 	MOVD R7, 8(R5)
 	MOVD R8, 16(R5)
 	DISPATCH_NEXT()
+wb_fallback:
+	B    ·pathBFallback(SB)
 
 // handlerSubOpMoveSliceByte copies slicesByte[C] to slicesByte[B] for the tier-1 typed-slice header move sub-op.
 TEXT ·handlerSubOpMoveSliceByte(SB), NOSPLIT|NOFRAME, $0
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, wb_fallback
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -585,27 +632,38 @@ TEXT ·handlerSubOpMoveSliceByte(SB), NOSPLIT|NOFRAME, $0
 	MOVD R7, 8(R5)
 	MOVD R8, 16(R5)
 	DISPATCH_NEXT()
+wb_fallback:
+	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceSliceIntDirect performs slicesInt[A] = slicesInt[C][low:high] with bounds check (low+high only).
+// handlerSubOpSliceSliceIntDirect performs slicesInt[A] = slicesInt[C][low:high] with bounds check (any two-index form).
 TEXT ·handlerSubOpSliceSliceIntDirect(SB), NOSPLIT|NOFRAME, $0
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, wb_fallback
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
 	AND  $0xFF, R4, R4
 	MOVWU (R22)(R20<<2), R0
-	AND  $0xFF, R0, R6
-	CMP  $3, R6
-	BNE  bounds_fail
-	LSR  $16, R0, R6
-	AND  $0xFF, R6, R6
-	LSR  $24, R0, R7
-	AND  $0xFF, R7, R7
-	MOVD (R23)(R6<<3), R6
-	MOVD (R23)(R7<<3), R7
 	MOVD CTX_SLICES_INT_BASE(R19), R5
 	MOVD $24, R9
 	MUL  R9, R4, R10
 	ADD  R10, R5, R5
+	LSR  $8, R0, R4
+	AND  $0xFF, R4, R4
+	TBNZ $2, R4, bounds_fail
+	MOVD ZR, R6
+	TBZ  $0, R4, ss_low_done
+	LSR  $16, R0, R6
+	AND  $0xFF, R6, R6
+	MOVD (R23)(R6<<3), R6
+ss_low_done:
+	MOVD 8(R5), R7
+	TBZ  $1, R4, ss_high_done
+	LSR  $24, R0, R7
+	AND  $0xFF, R7, R7
+	MOVD (R23)(R7<<3), R7
+ss_high_done:
 	MOVD 16(R5), R8
 	CMP  $0, R6
 	BLT  bounds_fail
@@ -614,10 +672,12 @@ TEXT ·handlerSubOpSliceSliceIntDirect(SB), NOSPLIT|NOFRAME, $0
 	CMP  R8, R7
 	BGT  bounds_fail
 	MOVD 0(R5), R4
-	LSL  $3, R6, R9
-	ADD  R9, R4, R4
 	SUB  R6, R7, R7
 	SUB  R6, R8, R8
+	LSL  $3, R6, R9
+	ADD  R9, R4, R9
+	CMP  $0, R8
+	CSEL NE, R9, R4, R4
 	MOVD $24, R9
 	MOVD CTX_SLICES_INT_BASE(R19), R5
 	MUL  R9, R3, R10
@@ -629,27 +689,38 @@ TEXT ·handlerSubOpSliceSliceIntDirect(SB), NOSPLIT|NOFRAME, $0
 	DISPATCH_NEXT()
 bounds_fail:
 	B    ·pathBFallback(SB)
+wb_fallback:
+	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceSliceFloatDirect performs slicesFloat[A] = slicesFloat[C][low:high] with bounds check (low+high only).
+// handlerSubOpSliceSliceFloatDirect performs slicesFloat[A] = slicesFloat[C][low:high] with bounds check (any two-index form).
 TEXT ·handlerSubOpSliceSliceFloatDirect(SB), NOSPLIT|NOFRAME, $0
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, wb_fallback
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
 	AND  $0xFF, R4, R4
 	MOVWU (R22)(R20<<2), R0
-	AND  $0xFF, R0, R6
-	CMP  $3, R6
-	BNE  bounds_fail
-	LSR  $16, R0, R6
-	AND  $0xFF, R6, R6
-	LSR  $24, R0, R7
-	AND  $0xFF, R7, R7
-	MOVD (R23)(R6<<3), R6
-	MOVD (R23)(R7<<3), R7
 	MOVD CTX_SLICES_FLOAT_BASE(R19), R5
 	MOVD $24, R9
 	MUL  R9, R4, R10
 	ADD  R10, R5, R5
+	LSR  $8, R0, R4
+	AND  $0xFF, R4, R4
+	TBNZ $2, R4, bounds_fail
+	MOVD ZR, R6
+	TBZ  $0, R4, ss_low_done
+	LSR  $16, R0, R6
+	AND  $0xFF, R6, R6
+	MOVD (R23)(R6<<3), R6
+ss_low_done:
+	MOVD 8(R5), R7
+	TBZ  $1, R4, ss_high_done
+	LSR  $24, R0, R7
+	AND  $0xFF, R7, R7
+	MOVD (R23)(R7<<3), R7
+ss_high_done:
 	MOVD 16(R5), R8
 	CMP  $0, R6
 	BLT  bounds_fail
@@ -658,10 +729,12 @@ TEXT ·handlerSubOpSliceSliceFloatDirect(SB), NOSPLIT|NOFRAME, $0
 	CMP  R8, R7
 	BGT  bounds_fail
 	MOVD 0(R5), R4
-	LSL  $3, R6, R9
-	ADD  R9, R4, R4
 	SUB  R6, R7, R7
 	SUB  R6, R8, R8
+	LSL  $3, R6, R9
+	ADD  R9, R4, R9
+	CMP  $0, R8
+	CSEL NE, R9, R4, R4
 	MOVD $24, R9
 	MOVD CTX_SLICES_FLOAT_BASE(R19), R5
 	MUL  R9, R3, R10
@@ -673,27 +746,38 @@ TEXT ·handlerSubOpSliceSliceFloatDirect(SB), NOSPLIT|NOFRAME, $0
 	DISPATCH_NEXT()
 bounds_fail:
 	B    ·pathBFallback(SB)
+wb_fallback:
+	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceSliceStringDirect performs slicesString[A] = slicesString[C][low:high] with bounds check (low+high only).
+// handlerSubOpSliceSliceStringDirect performs slicesString[A] = slicesString[C][low:high] with bounds check (any two-index form).
 TEXT ·handlerSubOpSliceSliceStringDirect(SB), NOSPLIT|NOFRAME, $0
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, wb_fallback
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
 	AND  $0xFF, R4, R4
 	MOVWU (R22)(R20<<2), R0
-	AND  $0xFF, R0, R6
-	CMP  $3, R6
-	BNE  bounds_fail
-	LSR  $16, R0, R6
-	AND  $0xFF, R6, R6
-	LSR  $24, R0, R7
-	AND  $0xFF, R7, R7
-	MOVD (R23)(R6<<3), R6
-	MOVD (R23)(R7<<3), R7
 	MOVD CTX_SLICES_STRING_BASE(R19), R5
 	MOVD $24, R9
 	MUL  R9, R4, R10
 	ADD  R10, R5, R5
+	LSR  $8, R0, R4
+	AND  $0xFF, R4, R4
+	TBNZ $2, R4, bounds_fail
+	MOVD ZR, R6
+	TBZ  $0, R4, ss_low_done
+	LSR  $16, R0, R6
+	AND  $0xFF, R6, R6
+	MOVD (R23)(R6<<3), R6
+ss_low_done:
+	MOVD 8(R5), R7
+	TBZ  $1, R4, ss_high_done
+	LSR  $24, R0, R7
+	AND  $0xFF, R7, R7
+	MOVD (R23)(R7<<3), R7
+ss_high_done:
 	MOVD 16(R5), R8
 	CMP  $0, R6
 	BLT  bounds_fail
@@ -702,10 +786,12 @@ TEXT ·handlerSubOpSliceSliceStringDirect(SB), NOSPLIT|NOFRAME, $0
 	CMP  R8, R7
 	BGT  bounds_fail
 	MOVD 0(R5), R4
+	SUB  R6, R7, R7
+	SUB  R6, R8, R8
 	LSL  $4, R6, R9
-	ADD  R9, R4, R4
-	SUB  R6, R7, R7
-	SUB  R6, R8, R8
+	ADD  R9, R4, R9
+	CMP  $0, R8
+	CSEL NE, R9, R4, R4
 	MOVD $24, R9
 	MOVD CTX_SLICES_STRING_BASE(R19), R5
 	MUL  R9, R3, R10
@@ -717,27 +803,38 @@ TEXT ·handlerSubOpSliceSliceStringDirect(SB), NOSPLIT|NOFRAME, $0
 	DISPATCH_NEXT()
 bounds_fail:
 	B    ·pathBFallback(SB)
+wb_fallback:
+	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceSliceBoolDirect performs slicesBool[A] = slicesBool[C][low:high] with bounds check (low+high only).
+// handlerSubOpSliceSliceBoolDirect performs slicesBool[A] = slicesBool[C][low:high] with bounds check (any two-index form).
 TEXT ·handlerSubOpSliceSliceBoolDirect(SB), NOSPLIT|NOFRAME, $0
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, wb_fallback
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
 	AND  $0xFF, R4, R4
 	MOVWU (R22)(R20<<2), R0
-	AND  $0xFF, R0, R6
-	CMP  $3, R6
-	BNE  bounds_fail
-	LSR  $16, R0, R6
-	AND  $0xFF, R6, R6
-	LSR  $24, R0, R7
-	AND  $0xFF, R7, R7
-	MOVD (R23)(R6<<3), R6
-	MOVD (R23)(R7<<3), R7
 	MOVD CTX_SLICES_BOOL_BASE(R19), R5
 	MOVD $24, R9
 	MUL  R9, R4, R10
 	ADD  R10, R5, R5
+	LSR  $8, R0, R4
+	AND  $0xFF, R4, R4
+	TBNZ $2, R4, bounds_fail
+	MOVD ZR, R6
+	TBZ  $0, R4, ss_low_done
+	LSR  $16, R0, R6
+	AND  $0xFF, R6, R6
+	MOVD (R23)(R6<<3), R6
+ss_low_done:
+	MOVD 8(R5), R7
+	TBZ  $1, R4, ss_high_done
+	LSR  $24, R0, R7
+	AND  $0xFF, R7, R7
+	MOVD (R23)(R7<<3), R7
+ss_high_done:
 	MOVD 16(R5), R8
 	CMP  $0, R6
 	BLT  bounds_fail
@@ -746,9 +843,11 @@ TEXT ·handlerSubOpSliceSliceBoolDirect(SB), NOSPLIT|NOFRAME, $0
 	CMP  R8, R7
 	BGT  bounds_fail
 	MOVD 0(R5), R4
-	ADD  R6, R4, R4
 	SUB  R6, R7, R7
 	SUB  R6, R8, R8
+	ADD  R6, R4, R9
+	CMP  $0, R8
+	CSEL NE, R9, R4, R4
 	MOVD $24, R9
 	MOVD CTX_SLICES_BOOL_BASE(R19), R5
 	MUL  R9, R3, R10
@@ -760,27 +859,38 @@ TEXT ·handlerSubOpSliceSliceBoolDirect(SB), NOSPLIT|NOFRAME, $0
 	DISPATCH_NEXT()
 bounds_fail:
 	B    ·pathBFallback(SB)
+wb_fallback:
+	B    ·pathBFallback(SB)
 
-// handlerSubOpSliceSliceUintDirect performs slicesUint[A] = slicesUint[C][low:high] with bounds check (low+high only).
+// handlerSubOpSliceSliceUintDirect performs slicesUint[A] = slicesUint[C][low:high] with bounds check (any two-index form).
 TEXT ·handlerSubOpSliceSliceUintDirect(SB), NOSPLIT|NOFRAME, $0
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, wb_fallback
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
 	AND  $0xFF, R4, R4
 	MOVWU (R22)(R20<<2), R0
-	AND  $0xFF, R0, R6
-	CMP  $3, R6
-	BNE  bounds_fail
-	LSR  $16, R0, R6
-	AND  $0xFF, R6, R6
-	LSR  $24, R0, R7
-	AND  $0xFF, R7, R7
-	MOVD (R23)(R6<<3), R6
-	MOVD (R23)(R7<<3), R7
 	MOVD CTX_SLICES_UINT_BASE(R19), R5
 	MOVD $24, R9
 	MUL  R9, R4, R10
 	ADD  R10, R5, R5
+	LSR  $8, R0, R4
+	AND  $0xFF, R4, R4
+	TBNZ $2, R4, bounds_fail
+	MOVD ZR, R6
+	TBZ  $0, R4, ss_low_done
+	LSR  $16, R0, R6
+	AND  $0xFF, R6, R6
+	MOVD (R23)(R6<<3), R6
+ss_low_done:
+	MOVD 8(R5), R7
+	TBZ  $1, R4, ss_high_done
+	LSR  $24, R0, R7
+	AND  $0xFF, R7, R7
+	MOVD (R23)(R7<<3), R7
+ss_high_done:
 	MOVD 16(R5), R8
 	CMP  $0, R6
 	BLT  bounds_fail
@@ -789,10 +899,12 @@ TEXT ·handlerSubOpSliceSliceUintDirect(SB), NOSPLIT|NOFRAME, $0
 	CMP  R8, R7
 	BGT  bounds_fail
 	MOVD 0(R5), R4
-	LSL  $3, R6, R9
-	ADD  R9, R4, R4
 	SUB  R6, R7, R7
 	SUB  R6, R8, R8
+	LSL  $3, R6, R9
+	ADD  R9, R4, R9
+	CMP  $0, R8
+	CSEL NE, R9, R4, R4
 	MOVD $24, R9
 	MOVD CTX_SLICES_UINT_BASE(R19), R5
 	MUL  R9, R3, R10
@@ -803,6 +915,8 @@ TEXT ·handlerSubOpSliceSliceUintDirect(SB), NOSPLIT|NOFRAME, $0
 	ADD  $1, R20, R20
 	DISPATCH_NEXT()
 bounds_fail:
+	B    ·pathBFallback(SB)
+wb_fallback:
 	B    ·pathBFallback(SB)
 
 // handlerSubOpAppendSliceIntDirect - 3-operand shim wrapping ·asmCallAppendSliceIntDirect (typed-bank []int64 append).

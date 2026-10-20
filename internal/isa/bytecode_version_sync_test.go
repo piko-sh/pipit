@@ -27,6 +27,7 @@ import (
 )
 
 func TestBytecodeFormatVersionMixedIntoSchemaHash(t *testing.T) {
+	t.Parallel()
 	require.Equal(t, BytecodeVersionMajor, schema.BytecodeFormatVersion,
 		"schema.BytecodeFormatVersion must equal isa.BytecodeVersionMajor; bump both together")
 }

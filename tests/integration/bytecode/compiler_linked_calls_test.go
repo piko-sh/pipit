@@ -21,17 +21,16 @@
 package bytecode_test
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
-	"pipit.sh/pipit/internal/app"
 	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/tools/go/packages"
 
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/link"
 	"pipit.sh/pipit/internal/symtab"
 )
@@ -124,7 +123,7 @@ func run() string {
 func main() {}
 `
 
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "hello!", result)
 }
@@ -196,7 +195,7 @@ func run() string {
 func main() {}
 `
 
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "hello-from-user-type", result)
 }
@@ -265,7 +264,7 @@ func run() string {
 func main() {}
 `
 
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "present", result)
 }
@@ -385,7 +384,7 @@ func run() string {
 func main() {}
 `
 
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "hello", result)
 }
@@ -431,7 +430,7 @@ func run() string {
 func main() {}
 `
 
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "from-synth", result)
 }

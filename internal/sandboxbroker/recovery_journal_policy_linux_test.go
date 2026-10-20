@@ -21,18 +21,20 @@
 package sandboxbroker
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 )
 
 func TestRecoveryJournalPolicyPinnedOverlap(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"same", "journal-child", "root-child", "siblings", "replaced-path"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			base := t.TempDir()
 			root, journalPath := base, base
 			switch mode {
@@ -43,97 +45,62 @@ func TestRecoveryJournalPolicyPinnedOverlap(t *testing.T) {
 				journalPath = filepath.Join(base, "journal")
 			}
 			for _, name := range []string{root, journalPath} {
-				if err := os.MkdirAll(name, 0700); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Chmod(name, 0700); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.MkdirAll(name, 0700))
+				require.NoError(t, os.Chmod(name, 0700))
 			}
 			bootstrap, err := PrepareLinuxBootstrap([]LinuxRootGrant{{Name: "data", Path: root, Rights: Read}}, FilesystemLimits{})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer bootstrap.Close()
 			authority, err := bootstrap.RecoveryAuthority()
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer authority.Close()
 			if mode == "replaced-path" {
-				if err := os.Rename(root, filepath.Join(base, "original")); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Mkdir(root, 0700); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Rename(root, filepath.Join(base, "original")))
+				require.NoError(t, os.Mkdir(root, 0700))
 				journalPath = filepath.Join(base, "original", "journal")
-				if err := os.Mkdir(journalPath, 0700); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Mkdir(journalPath, 0700))
 			}
 			journal, err := OpenLinuxRecoveryJournal(journalPath, authority.namespace)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer journal.Close()
 			if mode == "root-child" {
-				if err := os.Rename(root, filepath.Join(journalPath, "root")); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Rename(root, filepath.Join(journalPath, "root")))
 			}
 			err = authority.ValidateJournal(journal)
 			if mode == "siblings" {
-				if err != nil {
-					t.Fatal("disjoint pinned directories rejected:", err)
-				}
-			} else if !errors.Is(err, ErrDenied) {
-				t.Fatal("pinned overlap accepted:", err)
+				require.NoError(t, err, "disjoint pinned directories rejected")
+			} else {
+				require.ErrorIs(t, err, ErrDenied, "a pinned overlap is refused")
 			}
-			if err := journal.Close(); err != nil {
-				t.Fatal(err)
-			}
-			if err := authority.ValidateJournal(journal); !errors.Is(err, ErrClosed) {
-				t.Fatal("closed journal accepted:", err)
-			}
+			require.NoError(t, journal.Close())
+			require.ErrorIs(t, authority.ValidateJournal(journal), ErrClosed, "closed journal accepted")
 		})
 	}
 }
 
 func TestRecoveryJournalPolicyRejectsInvalidOwners(t *testing.T) {
+	t.Parallel()
 	authority := testRecoveryAuthority(t, Read)
 	journal := testRecoveryAuthorityJournal(t, authority)
 	var empty LinuxRecoveryAuthority
 	for _, owner := range []*LinuxRecoveryAuthority{nil, &empty} {
-		if err := owner.ValidateJournal(journal); !errors.Is(err, ErrClosed) {
-			t.Fatal("empty authority accepted:", err)
-		}
+		require.ErrorIs(t, owner.ValidateJournal(journal), ErrClosed, "empty authority accepted")
 	}
-	if err := authority.ValidateJournal(nil); !errors.Is(err, ErrClosed) {
-		t.Fatal("nil journal accepted:", err)
-	}
+	require.ErrorIs(t, authority.ValidateJournal(nil), ErrClosed, "nil journal accepted")
 	record := testRecoveryAuthorityRecord(t, authority, 1)
-	if err := journal.appendRecord(record); err != nil {
-		t.Fatal(err)
-	}
-	if err := authority.ValidateJournal(journal); !errors.Is(err, ErrInvalidPolicy) {
-		t.Fatal("populated journal accepted:", err)
-	}
+	require.NoError(t, journal.appendRecord(record))
+	require.ErrorIs(t, authority.ValidateJournal(journal), ErrInvalidPolicy, "populated journal accepted")
 }
 
 func TestRecoveryJournalAncestorBound(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	deep := filepath.Join(base, strings.Repeat("level/", maximumJournalAncestorSteps))
-	if err := os.MkdirAll(deep, 0700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(deep, 0700))
 	descriptor, err := unix.Open(deep, unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	pinned := os.NewFile(uintptr(descriptor), "deep-directory")
 	defer pinned.Close()
-	if err := rejectJournalAncestor(pinned, filesystemBootstrapRoot{}); !errors.Is(err, errLimit) {
-		t.Fatal("ancestry scan exceeded its bound:", err)
-	}
+	err = rejectJournalAncestor(pinned, filesystemBootstrapRoot{})
+	require.ErrorIs(t, err, errLimit, "ancestry scan exceeded its bound")
 }

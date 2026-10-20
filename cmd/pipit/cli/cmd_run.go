@@ -143,7 +143,7 @@ func RunRun(ctx context.Context, args []string, streams output.IO) (exitCode int
 	extras := []pipit.Option{}
 	extras = append(extras,
 		pipit.WithArgs(append([]string{target}, scriptArgs...)),
-		pipit.WithEnv(buildScriptEnv(target, scriptArgs)))
+		pipit.WithEnv(runner.ScriptEnv(target, scriptArgs)))
 
 	gateOptions, saveLockfile, snapshot, err := capabilityGateOptions(options, target, scriptArgs, streams)
 	if err != nil {
@@ -169,9 +169,25 @@ func RunRun(ctx context.Context, args []string, streams output.IO) (exitCode int
 	stopWatchdog := armExecutionWatchdog(*options.timeout, streams.Stderr)
 	defer stopWatchdog()
 	if err := runTarget(ctx, runner.New(limits, extras...), target, *options.entrypoint, streams.Stdout, moduleOptions); err != nil {
-		return reportExecutionError(streams.Stderr, err)
+		code := reportExecutionError(streams.Stderr, err)
+		printScriptDirHint(streams.Stderr, err)
+		return code
 	}
 	return 0
+}
+
+// printScriptDirHint adds to a //go:embed error how a script run by the CLI can find the
+// files beside it, since PIPIT_SCRIPT_DIR holds its directory whatever the working
+// directory is.
+//
+// Takes stderr (io.Writer) which receives the hint.
+// Takes err (error) which is the error just reported.
+func printScriptDirHint(stderr io.Writer, err error) {
+	if !errors.Is(err, pipit.ErrEmbedUnsupported) {
+		return
+	}
+	fmt.Fprintf(stderr, "hint: pipit sets %[1]s to the script's directory, so a file built with //go:build interp "+
+		"can read the files beside the script with os.DirFS(os.Getenv(%[1]q)).\n", runner.ScriptDirectoryEnv)
 }
 
 // splitRunTarget separates the run target from the script's own arguments. Go's flag
@@ -711,6 +727,24 @@ func absolutePath(path string) string {
 	return path
 }
 
+// compiledSources keeps the sources the interpreter compiles, so the imports of a file
+// its build constraints exclude are never resolved. A file whose constraints are
+// malformed is kept, so compiling reports it.
+//
+// Takes interpreter (*pipit.Interpreter) which decides each file.
+// Takes sources (map[string]string) which maps file names to source.
+//
+// Returns map[string]string which holds the files the interpreter compiles.
+func compiledSources(interpreter *pipit.Interpreter, sources map[string]string) map[string]string {
+	kept := make(map[string]string, len(sources))
+	for name, source := range sources {
+		if matched, err := interpreter.MatchFile(name, []byte(source)); err != nil || matched {
+			kept[name] = source
+		}
+	}
+	return kept
+}
+
 // runDirectorySources compiles already acquired source without reopening paths. A package
 // that imports a local or remote module goes through the resolver like a single file
 // does; otherwise the files compile as one file set.
@@ -735,6 +769,7 @@ func runDirectorySources(
 	if len(sources) == 0 {
 		return errors.New("no .go files in directory")
 	}
+	sources = compiledSources(interpreter, sources)
 	needsResolution, err := scriptNeedsResolution(directory, sources, modules.Snapshot)
 	if err != nil {
 		return fmt.Errorf("parsing imports: %w", err)
@@ -774,43 +809,6 @@ func formatResult(value any) string {
 	var builder bytes.Buffer
 	fmt.Fprintf(&builder, "%v", value)
 	return strings.TrimRight(builder.String(), "\n")
-}
-
-// buildScriptEnv builds the variables pipit run overlays on the environment: the
-// positional arguments as PIPIT_ARGC and PIPIT_ARG_<n> (the same arguments reach os.Args
-// through WithArgs) and the script's directory as PIPIT_SCRIPT_DIR, so a script can find
-// files next to itself the way go:embed would have let it.
-//
-// Takes target (string) which is the file or directory being run.
-// Takes scriptArgs ([]string) which holds the positional arguments.
-//
-// Returns map[string]string which is the environment overlay.
-func buildScriptEnv(target string, scriptArgs []string) map[string]string {
-	env := make(map[string]string, len(scriptArgs)+2)
-	env["PIPIT_ARGC"] = fmt.Sprintf("%d", len(scriptArgs))
-	for index, value := range scriptArgs {
-		env[fmt.Sprintf("PIPIT_ARG_%d", index)] = value
-	}
-	env["PIPIT_SCRIPT_DIR"] = scriptDirectory(target)
-	return env
-}
-
-// scriptDirectory returns the absolute directory a run target lives in: the target itself
-// when it is a directory, otherwise its parent. When the path cannot be resolved the
-// cleaned relative form is returned so the variable is always set.
-//
-// Takes target (string) which is the file or directory being run.
-//
-// Returns string which is the directory.
-func scriptDirectory(target string) string {
-	directory := target
-	if info, err := os.Stat(target); err != nil || !info.IsDir() {
-		directory = filepath.Dir(target)
-	}
-	if absolute, err := filepath.Abs(directory); err == nil {
-		return absolute
-	}
-	return filepath.Clean(directory)
 }
 
 // warnCacheWrite reports a failed bytecode cache write; the write is best effort, so the

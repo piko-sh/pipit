@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestStructLiteralPromotedKeyRejectsInvalidForms(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		code   string
-		expect string
+		name string
+		code string
+		want string
 	}{
 		{
 			name: "promoted key overlaps an explicit embedded key",
@@ -50,7 +50,7 @@ func run() string {
 	return l.name
 }
 run()`,
-			expect: "cannot specify promoted field name and enclosing embedded field Object",
+			want: "cannot specify promoted field name and enclosing embedded field Object",
 		},
 		{
 			name: "promoted key traverses an embedded pointer",
@@ -65,17 +65,17 @@ func run() string {
 	return l.name
 }
 run()`,
-			expect: "invalid implicit pointer indirection to reach name",
+			want: "invalid implicit pointer indirection to reach name",
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			_, err := service.Eval(context.Background(), test.code)
+			_, err := service.Eval(t.Context(), tt.code)
 			require.Error(t, err, "expected the type checker to reject this literal")
-			require.ErrorContains(t, err, test.expect)
+			require.ErrorContains(t, err, tt.want)
 		})
 	}
 }

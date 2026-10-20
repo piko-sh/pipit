@@ -21,115 +21,86 @@
 package sandboxbroker
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestLinuxImageStoreOwnership(t *testing.T) {
+	t.Parallel()
 	directory := testRecoveryDirectory(t)
 	grant := testRecoveryDirectory(t)
 	metadata := []string{testRecoveryDirectory(t), testRecoveryDirectory(t), testRecoveryDirectory(t)}
 	store, err := OpenLinuxImageStore(directory, []LinuxRootGrant{{Name: "data", Path: grant, Rights: Read | Write}}, metadata)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer store.Close()
 	identity, err := store.Identity()
-	if err != nil || identity.Inode == 0 || identity.MountID == 0 {
-		t.Fatal("missing original image-store identity:", err)
-	}
-	if initial, err := store.InitialIdentity(); err != nil || initial != identity {
-		t.Fatal("empty store could not capture initial identity:", err)
-	}
-	if err := store.ValidatePolicy([]LinuxRootGrant{{Name: "data", Path: grant, Rights: Read}}, metadata); err != nil {
-		t.Fatal("original exclusion policy rejected:", err)
-	}
-	if err := store.ValidatePolicy([]LinuxRootGrant{{Name: "other", Path: t.TempDir(), Rights: Read}}, metadata); err == nil {
-		t.Fatal("uncovered grant accepted")
-	}
-	if err := store.ValidatePolicy(nil, []string{t.TempDir()}); err == nil {
-		t.Fatal("uncovered metadata accepted")
-	}
+	require.NoError(t, err, "missing original image-store identity")
+	require.NotEqual(t, uint64(0), identity.Inode)
+	require.NotEqual(t, uint64(0), identity.MountID)
+	initial, err := store.InitialIdentity()
+	require.NoError(t, err, "empty store could not capture initial identity")
+	require.Equal(t, identity, initial)
+	require.NoError(t, store.ValidatePolicy([]LinuxRootGrant{{Name: "data", Path: grant, Rights: Read}}, metadata), "original exclusion policy rejected")
+	require.Error(t, store.ValidatePolicy([]LinuxRootGrant{{Name: "other", Path: t.TempDir(), Rights: Read}}, metadata), "uncovered grant accepted")
+	require.Error(t, store.ValidatePolicy(nil, []string{t.TempDir()}), "uncovered metadata accepted")
 	competing, err := OpenLinuxImageStore(directory, nil, nil)
 	if competing != nil {
 		_ = competing.Close()
 	}
-	if err == nil || competing != nil {
-		t.Fatal("image store lease was not exclusive:", err)
-	}
+	require.Error(t, err, "image store lease was not exclusive")
+	require.Nil(t, competing)
 	leases := make([]*os.File, 0, maximumImageStoreLeases)
 	for range maximumImageStoreLeases {
 		file, path, err := store.AcquireDirectory()
-		if err != nil || path != directory {
-			t.Fatal("private directory acquisition failed:", err)
-		}
+		require.NoError(t, err, "private directory acquisition failed")
+		require.Equal(t, directory, path)
 		leases = append(leases, file)
 	}
-	if file, _, err := store.AcquireDirectory(); file != nil || !errors.Is(err, errLimit) {
-		t.Fatal("image lease bound bypassed:", err)
-	}
-	if _, err := store.InitialIdentity(); err == nil {
-		t.Fatal("active staging accepted as initial image identity")
-	}
-	if err := store.Close(); err == nil {
-		t.Fatal("live images lost storage ownership")
-	}
-	if err := store.ReleaseDirectory(nil); !errors.Is(err, ErrDenied) {
-		t.Fatal("foreign image lease accepted:", err)
-	}
+	file, _, err := store.AcquireDirectory()
+	require.Nil(t, file, "image lease bound bypassed")
+	require.ErrorIs(t, err, errLimit)
+	_, err = store.InitialIdentity()
+	require.Error(t, err, "active staging accepted as initial image identity")
+	require.Error(t, store.Close(), "live images keep storage ownership")
+	require.ErrorIs(t, store.ReleaseDirectory(nil), ErrDenied, "foreign image lease accepted")
 	for _, file := range leases {
-		if err := store.ReleaseDirectory(file); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, store.ReleaseDirectory(file))
 	}
-	if err := store.ReleaseDirectory(leases[0]); !errors.Is(err, ErrDenied) {
-		t.Fatal("returned lease accepted twice:", err)
-	}
+	require.ErrorIs(t, store.ReleaseDirectory(leases[0]), ErrDenied, "returned lease accepted twice")
 	unexpected := filepath.Join(directory, "unexpected")
-	if err := os.WriteFile(unexpected, []byte("retain"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err == nil {
-		t.Fatal("non-empty storage was released")
-	}
-	if _, err := store.InitialIdentity(); err == nil {
-		t.Fatal("non-empty storage accepted as initial image identity")
-	}
-	if data, err := os.ReadFile(unexpected); err != nil || string(data) != "retain" {
-		t.Fatal("unexpected storage entry changed:", err)
-	}
-	if err := os.Remove(unexpected); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Identity(); !errors.Is(err, ErrClosed) {
-		t.Fatal("closed store exposed identity:", err)
-	}
-	if file, _, err := store.AcquireDirectory(); file != nil || !errors.Is(err, ErrClosed) {
-		t.Fatal("closed store granted staging:", err)
-	}
+	require.NoError(t, os.WriteFile(unexpected, []byte("retain"), 0600))
+	require.Error(t, store.Close(), "non-empty storage was released")
+	_, err = store.InitialIdentity()
+	require.Error(t, err, "non-empty storage accepted as initial image identity")
+	data, err := os.ReadFile(unexpected)
+	require.NoError(t, err, "unexpected storage entry changed")
+	require.Equal(t, "retain", string(data))
+	require.NoError(t, os.Remove(unexpected))
+	require.NoError(t, store.Close())
+	_, err = store.Identity()
+	require.ErrorIs(t, err, ErrClosed, "closed store exposed identity")
+	file, _, err = store.AcquireDirectory()
+	require.Nil(t, file, "closed store granted staging")
+	require.ErrorIs(t, err, ErrClosed)
 	reopened, err := OpenLinuxImageStore(directory, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer reopened.Close()
-	if current, err := reopened.Identity(); err != nil || current != identity {
-		t.Fatal("storage identity changed on reopen:", err)
-	}
+	current, err := reopened.Identity()
+	require.NoError(t, err, "storage identity changed on reopen")
+	require.Equal(t, identity, current)
 }
 
 func TestLinuxImageStoreRejectsOverlap(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"same-grant", "grant-ancestor", "grant-descendant", "same-metadata", "metadata-ancestor", "metadata-descendant"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			ancestor := testRecoveryDirectory(t)
 			descendant := filepath.Join(ancestor, "nested")
-			if err := os.Mkdir(descendant, 0700); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.Mkdir(descendant, 0700))
 			directory, excluded := descendant, ancestor
 			switch mode {
 			case "same-grant", "same-metadata":
@@ -149,28 +120,23 @@ func TestLinuxImageStoreRejectsOverlap(t *testing.T) {
 			if store != nil {
 				_ = store.Close()
 			}
-			if err == nil || store != nil {
-				t.Fatal("overlapping image storage accepted:", err)
-			}
+			require.Error(t, err, "overlapping image storage accepted")
+			require.Nil(t, store)
 			var probe LinuxRecoveryJournal
-			if err := probe.open(directory); err != nil {
-				t.Fatal("failed image claim retained its lease:", err)
-			}
-			if err := probe.Close(); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, probe.open(directory), "a failed image claim keeps no lease")
+			require.NoError(t, probe.Close())
 		})
 	}
 }
 
 func TestLinuxImageStoreRejectsChangedPaths(t *testing.T) {
+	t.Parallel()
 	for _, change := range []string{"storage", "grant", "mode"} {
 		t.Run(change, func(t *testing.T) {
+			t.Parallel()
 			directory, grant := testRecoveryDirectory(t), testRecoveryDirectory(t)
 			store, err := OpenLinuxImageStore(directory, []LinuxRootGrant{{Name: "data", Path: grant, Rights: Read}}, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer store.Close()
 			target := directory
 			if change == "grant" {
@@ -178,35 +144,21 @@ func TestLinuxImageStoreRejectsChangedPaths(t *testing.T) {
 			}
 			original := target + ".original"
 			if change == "mode" {
-				if err := os.Chmod(target, 0755); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Chmod(target, 0755))
 			} else {
-				if err := os.Rename(target, original); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Mkdir(target, 0700); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Rename(target, original))
+				require.NoError(t, os.Mkdir(target, 0700))
 			}
-			if file, _, err := store.AcquireDirectory(); file != nil || err == nil {
-				t.Fatal("changed storage policy admitted staging:", err)
-			}
+			file, _, err := store.AcquireDirectory()
+			require.Nil(t, file, "changed storage policy admitted staging")
+			require.Error(t, err)
 			if change == "mode" {
-				if err := os.Chmod(target, 0700); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Chmod(target, 0700))
 			} else {
-				if err := os.Remove(target); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Rename(original, target); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Remove(target))
+				require.NoError(t, os.Rename(original, target))
 			}
-			if err := store.Close(); err != nil {
-				t.Fatal("restored storage could not close:", err)
-			}
+			require.NoError(t, store.Close(), "restored storage could not close")
 		})
 	}
 }

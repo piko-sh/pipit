@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"reflect"
 	"sync"
 	"time"
@@ -44,53 +43,68 @@ type ScriggoRunner struct{}
 func NewScriggoRunner() *ScriggoRunner { return &ScriggoRunner{} }
 
 // Kind reports the runner identity used in results.
-func (runner *ScriggoRunner) Kind() RunnerKind { return RunnerScriggo }
+func (*ScriggoRunner) Kind() RunnerKind { return RunnerScriggo }
 
 // Available is always true; scriggo is statically linked.
-func (runner *ScriggoRunner) Available(ctx context.Context) (bool, string) {
-	_ = ctx
+func (*ScriggoRunner) Available(context.Context) (bool, string) {
 	return true, ""
 }
 
 // Close is a no-op; scriggo holds no global resources.
-func (runner *ScriggoRunner) Close(ctx context.Context) error { _ = ctx; return nil }
+func (*ScriggoRunner) Close(context.Context) error { return nil }
 
 // Run compiles the benchmark's pipit_source.go together with a small generated wrapper
 // that calls Run() / RunInner() and forwards the result through registered capture
-// functions, then invokes scriggo.
-func (runner *ScriggoRunner) Run(parent context.Context, spec BenchSpec, mode RunMode, benchmarkDir string) (Result, error) {
-	sourcePath := filepath.Join(benchmarkDir, "go", "pipit_source.go")
-	sourceBytes, err := os.ReadFile(sourcePath)
+// functions, then invokes scriggo. Scriggo's Run takes no context, so a run is not
+// bounded by spec.TimeoutSeconds.
+func (*ScriggoRunner) Run(_ context.Context, spec BenchSpec, mode RunMode, benchmarkDir string) (Result, error) {
+	sourceBytes, err := readBenchmarkFile(benchmarkDir, "go", "pipit_source.go")
 	if err != nil {
 		return failedResult(spec.Name, RunnerScriggo, mode, "read pipit_source.go: "+err.Error()), nil
 	}
 
-	ctx, cancel := context.WithTimeoutCause(
-		parent,
-		time.Duration(spec.TimeoutSeconds)*time.Second,
-		fmt.Errorf("scriggo runner: %s timed out", spec.Name),
-	)
-	defer cancel()
-	_ = ctx
-
 	var capturedStdout string
 	var capturedNanos int64
-	capture := func(s string) { capturedStdout = s }
-	captureNanos := func(n int64) { capturedNanos = n }
-
-	mergedSource, mergeErr := mergeScriggoSource(string(sourceBytes), scriggoWrapperBody(mode, spec.KInner))
-	if mergeErr != nil {
-		return failedResult(spec.Name, RunnerScriggo, mode, "merge source: "+mergeErr.Error()), nil
-	}
+	imports := map[string]struct{}{`"__capture__"`: {}}
+	body := stripPackageAndImports(string(sourceBytes), imports)
 	files := scriggo.Files{
-		"main.go": []byte(mergedSource),
+		"main.go": []byte(singleFileSource(imports, body, scriggoWrapperBody(mode, spec.KInner))),
 	}
+	packages := scriggoPackages(func(s string) { capturedStdout = s }, func(n int64) { capturedNanos = n })
 
-	packages := native.Packages{
+	compileStart := time.Now()
+	program, buildErr := scriggo.Build(files, &scriggo.BuildOptions{Packages: packages})
+	compileNanos := time.Since(compileStart).Nanoseconds()
+	if buildErr != nil {
+		return failedResult(spec.Name, RunnerScriggo, mode, "scriggo build: "+buildErr.Error()), nil
+	}
+	wallStart := time.Now()
+	runErr := runRecovering("scriggo", func() error { return program.Run(nil) })
+	wallElapsed := time.Since(wallStart)
+	if runErr != nil {
+		return failedResult(spec.Name, RunnerScriggo, mode, "scriggo run: "+runErr.Error()), nil
+	}
+	return checkedResult(spec, RunnerScriggo, mode, []byte(capturedStdout), "", runTimings{
+		wallNanos:    wallElapsed.Nanoseconds(),
+		innerNanos:   capturedNanos,
+		compileNanos: compileNanos,
+		peakRSSKB:    pipitSelfPeakRSSKB(),
+	}), nil
+}
+
+// scriggoPackages lists the native packages a benchmark may import under scriggo, and the
+// __capture__ package the wrapper reports its result through.
+//
+// Takes captureStdout (func(string)) which receives the program's output.
+// Takes captureNanos (func(int64)) which receives the inner loop's time.
+//
+// Returns native.Packages which is the table for scriggo.Build.
+func scriggoPackages(captureStdout func(string), captureNanos func(int64)) native.Packages {
+	return native.Packages{
 		"__capture__": native.Package{
 			Name: "__capture__",
 			Declarations: native.Declarations{
-				"Stdout": capture,
+				"Stdout": captureStdout,
 				"Nanos":  captureNanos,
 			},
 		},
@@ -98,14 +112,14 @@ func (runner *ScriggoRunner) Run(parent context.Context, spec BenchSpec, mode Ru
 			Name: "time",
 			Declarations: native.Declarations{
 				"Now":  time.Now,
-				"Time": reflect.TypeOf((*time.Time)(nil)).Elem(),
+				"Time": reflect.TypeFor[time.Time](),
 			},
 		},
 		"sync": native.Package{
 			Name: "sync",
 			Declarations: native.Declarations{
-				"WaitGroup": reflect.TypeOf((*sync.WaitGroup)(nil)).Elem(),
-				"Mutex":     reflect.TypeOf((*sync.Mutex)(nil)).Elem(),
+				"WaitGroup": reflect.TypeFor[sync.WaitGroup](),
+				"Mutex":     reflect.TypeFor[sync.Mutex](),
 			},
 		},
 		"os": native.Package{
@@ -132,50 +146,6 @@ func (runner *ScriggoRunner) Run(parent context.Context, spec BenchSpec, mode Ru
 			},
 		},
 	}
-
-	compileStart := time.Now()
-	program, buildErr := scriggo.Build(files, &scriggo.BuildOptions{Packages: packages})
-	compileNanos := time.Since(compileStart).Nanoseconds()
-	if buildErr != nil {
-		return failedResult(spec.Name, RunnerScriggo, mode, "scriggo build: "+buildErr.Error()), nil
-	}
-	wallStart := time.Now()
-	var runErr error
-	var runPanic any
-	func() {
-		defer func() { runPanic = recover() }()
-		runErr = program.Run(nil)
-	}()
-	wallElapsed := time.Since(wallStart)
-	if runPanic != nil {
-		return failedResult(spec.Name, RunnerScriggo, mode, fmt.Sprintf("scriggo VM panic: %v", runPanic)), nil
-	}
-	if runErr != nil {
-		return failedResult(spec.Name, RunnerScriggo, mode, "scriggo run: "+runErr.Error()), nil
-	}
-
-	normalised := NormaliseStdout([]byte(capturedStdout))
-	stdoutSHA := SHA256Hex(normalised)
-
-	status := StatusOK
-	note := ""
-	if stdoutSHA != spec.ExpectedStdoutSHA {
-		status = StatusMismatch
-		note = fmt.Sprintf("stdout SHA %s does not match expected %s", stdoutSHA, spec.ExpectedStdoutSHA)
-	}
-
-	return Result{
-		Benchmark:    spec.Name,
-		Runner:       RunnerScriggo,
-		Mode:         mode,
-		WallNanos:    wallElapsed.Nanoseconds(),
-		InnerNanos:   capturedNanos,
-		CompileNanos: compileNanos,
-		PeakRSSKB:    pipitSelfPeakRSSKB(),
-		StdoutSHA:    stdoutSHA,
-		Status:       status,
-		Note:         note,
-	}, nil
 }
 
 // scriggoWrapperBody returns the body (no package/import lines) of a main() that calls
@@ -196,32 +166,4 @@ func main() {
 	__capture__.Stdout(Run())
 }
 `
-}
-
-// mergeScriggoSource glues pipit_source.go and the wrapper main() into a single Go source
-// file with one package declaration and a unified import block including "__capture__".
-//
-// pipit_source.go shape: starts with optional comments, then `package main`, then
-// optional imports, then declarations. It never declares main() (that lives in
-// native_main.go). We strip its package + imports, capture the imports, then concatenate.
-func mergeScriggoSource(pipitSource string, wrapperBody string) (string, error) {
-	imports := map[string]struct{}{}
-	imports[`"__capture__"`] = struct{}{}
-	body := stripPackageAndImports(pipitSource, imports)
-	importList := make([]string, 0, len(imports))
-	for imp := range imports {
-		importList = append(importList, imp)
-	}
-
-	for i := 1; i < len(importList); i++ {
-		for j := i; j > 0 && importList[j-1] > importList[j]; j-- {
-			importList[j-1], importList[j] = importList[j], importList[j-1]
-		}
-	}
-	merged := "package main\n\nimport (\n"
-	for _, imp := range importList {
-		merged += "\t" + imp + "\n"
-	}
-	merged += ")\n" + body + "\n" + wrapperBody
-	return merged, nil
 }

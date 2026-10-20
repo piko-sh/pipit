@@ -224,11 +224,12 @@ func (c *Compiler) compileMethodExprDirectCall(ctx context.Context, selectorExpr
 	argumentLocations := make([]program.VarLocation, 0, len(expression.Args))
 	argumentLocations = append(argumentLocations, receiverLocation)
 	for _, argument := range expression.Args[1:] {
+		mark := c.Scopes.Alloc.Snapshot()
 		location, err := c.compileExpression(ctx, argument)
 		if err != nil {
 			return program.VarLocation{}, err
 		}
-		argumentLocations = append(argumentLocations, location)
+		argumentLocations = append(argumentLocations, c.compactArgument(ctx, mark, location, c.staticTypeOf(argument)))
 	}
 
 	returnLocations := c.allocReturnRegisters(ctx, callee.ResultKinds)

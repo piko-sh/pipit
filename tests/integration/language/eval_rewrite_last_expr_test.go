@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,7 +32,7 @@ func TestEvalTrailingBareNilReturnsNil(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
 
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 a := 1
 _ = a
 nil
@@ -45,7 +45,7 @@ func TestEvalTrailingVoidCallReturnsNil(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
 
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 a := 1
 _ = a
 println("hi")
@@ -58,7 +58,7 @@ func TestEvalPureNilExpressionReturnsNil(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
 
-	result, err := service.Eval(context.Background(), `nil`)
+	result, err := service.Eval(t.Context(), `nil`)
 	require.NoError(t, err, "Service.Eval returned an unexpected error")
 	require.Nil(t, result, "pure nil expression should yield a nil interface")
 }
@@ -67,7 +67,7 @@ func TestEvalTrailingValueCallReturnsResult(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
 
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 greet := func(name string) string {
     return "hello, " + name
 }

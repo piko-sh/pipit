@@ -4,7 +4,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=9 string=6 general=4 bool=4
+;   registers: int=9 string=5 general=4 bool=4
 ;   dispatch:  asm=15 shim=4 exit=0 go=6
 ;   params:    (none)
 ;   returns:   (string)
@@ -39,5 +39,5 @@
 0021 A 0:EQ_STRING                  6   3   4
 0022 G 1:INT_TO_BOOL               54   3   6
 0023 G 1:CALL_NATIVE              130   3   0    ; call native general[0] (site 3)
-0024 A 1:MOVE_STRING               37   0   5
+0024 A 1:MOVE_STRING               37   0   2
 0025 A 2:TIER2_RETURN               0  10   1    ; 1 values

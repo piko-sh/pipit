@@ -32,7 +32,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"os"
+	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"strconv"
@@ -86,7 +88,7 @@ func main() {
 //
 // Returns the configured interpreter service and the compiled file set.
 func compileAndWarmup(ctx context.Context, sourcePath string, kInner int) (*pipit.Interpreter, *pipit.CompiledFileSet) {
-	source, err := os.ReadFile(sourcePath)
+	source, err := os.ReadFile(filepath.Clean(sourcePath))
 	if err != nil {
 		panic(err)
 	}
@@ -123,8 +125,7 @@ func measureLoop(
 	cpuProfilePath string,
 	memProfilePath string,
 ) (elapsed time.Duration, allocs, bytes uint64) {
-
-	runtime.GC()
+	runtime.GC() //nolint:revive // measure from a settled heap
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
 	stopCPUProfile := startCPUProfile(cpuProfilePath)
@@ -151,7 +152,7 @@ func startCPUProfile(path string) func() {
 	if path == "" {
 		return func() {}
 	}
-	file, err := os.Create(path)
+	file, err := os.Create(filepath.Clean(path))
 	if err != nil {
 		panic(err)
 	}
@@ -175,8 +176,8 @@ func writeMemProfile(path string) {
 		return
 	}
 
-	runtime.GC()
-	file, err := os.Create(path)
+	runtime.GC() //nolint:revive // complete a collection before the profile
+	file, err := os.Create(filepath.Clean(path))
 	if err != nil {
 		panic(err)
 	}
@@ -202,6 +203,18 @@ func printReport(iterations, kInner int, elapsed time.Duration, allocs, bytes ui
 	fmt.Printf("iterations=%d k_inner=%d wall=%v ns/op=%d allocs/op=%d bytes/op=%d\n",
 		iterations, kInner, elapsed,
 		elapsed.Nanoseconds()/totalRuns,
-		int64(allocs)/totalRuns,
-		int64(bytes)/totalRuns)
+		saturatingInt64(allocs)/totalRuns,
+		saturatingInt64(bytes)/totalRuns)
+}
+
+// saturatingInt64 converts n to int64, clamping a value above math.MaxInt64.
+//
+// Takes n (uint64) which is the value.
+//
+// Returns int64 which is n, or math.MaxInt64.
+func saturatingInt64(n uint64) int64 {
+	if n > math.MaxInt64 {
+		return math.MaxInt64
+	}
+	return int64(n)
 }

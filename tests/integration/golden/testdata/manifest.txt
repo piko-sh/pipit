@@ -114,3 +114,6 @@
 1714_scalarised_value_copies
 0636_uint_subtraction_under
 1715_int32_wraparound
+1747_typed_subslice_bounds_edges
+1749_append_named_element_kinds
+1750_make_with_unsigned_lengths

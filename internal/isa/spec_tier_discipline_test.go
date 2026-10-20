@@ -20,6 +20,8 @@ package isa
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 var operandBytesAtTier = [tierCount]int{3, 2, 1, 0}
@@ -51,10 +53,8 @@ func TestEveryOperationHasADescribedShape(t *testing.T) {
 			continue
 		}
 		shape := OperandShapeAt(row.Tier, row.Code)
-		if shape.Flags&ShapeFlagDescribed == 0 {
-			t.Errorf("%s has no operand shape; the verifier treats it as opaque, which means "+
-				"no bank checking and no register-index bounds checking", row)
-		}
+		assert.NotZero(t, shape.Flags&ShapeFlagDescribed, "%s has no operand shape; the verifier treats it as opaque, which means "+
+			"no bank checking and no register-index bounds checking", row)
 	}
 }
 
@@ -70,26 +70,22 @@ func TestOperationsSitAtTheTierTheirArityRequires(t *testing.T) {
 			continue
 		}
 		used, overflows := shapeOperandUse(shape, row.Tier)
-
-		if overflows {
-			t.Errorf("%s carries an operand on a byte its tier reserves for a drill "+
-				"discriminator, so the handler would read its own sub-opcode as an operand. It "+
-				"needs %d operands and must sit at tier %d", row, used, tierForOperandCount(used))
+		wanted := tierForOperandCount(used)
+		if !assert.False(t, overflows, "%s carries an operand on a byte its tier reserves for a drill "+
+			"discriminator, so the handler would read its own sub-opcode as an operand. It "+
+			"needs %d operands and must sit at tier %d", row, used, wanted) {
 			continue
 		}
 
-		wanted := tierForOperandCount(used)
 		if row.Tier == wanted {
-			if knownTierViolations[row.Name] {
-				t.Errorf("%s is in knownTierViolations but now sits at the right tier; remove "+
-					"it from the list", row)
-			}
+			assert.False(t, knownTierViolations[row.Name], "%s is in knownTierViolations but now sits at the right tier; remove "+
+				"it from the list", row)
 			continue
 		}
 		if knownTierViolations[row.Name] {
 			continue
 		}
-		t.Errorf("%s uses %d operand byte(s) so it belongs at tier %d, not tier %d. Tier 0 is "+
+		assert.Failf(t, "operation at the wrong tier", "%s uses %d operand byte(s) so it belongs at tier %d, not tier %d. Tier 0 is "+
 			"capped at 256 slots, so an operation parked shallower than its arity requires "+
 			"spends a slot another operation needs", row, used, wanted, row.Tier)
 	}

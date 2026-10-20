@@ -24,10 +24,12 @@ import (
 	"context"
 	"testing"
 
-	"pipit.sh/pipit/internal/debug"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
-
+	"pipit.sh/pipit/internal/debug"
+	"pipit.sh/pipit/internal/debug/debugtest"
 	"pipit.sh/pipit/internal/engine"
 )
 
@@ -45,39 +47,30 @@ func run() int {
 	return y
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	dbg.SetBreakpoint("main.go", 5)
 
-	done := make(chan error, 1)
-	go func() {
-		_, execErr := svc.ExecuteEntrypoint(context.Background(), cfs, "run")
-		done <- execErr
-	}()
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+	})
 
-	snap := waitPause(t, dbg)
+	snap := debugtest.WaitPause(t, dbg)
 
-	vars := localsOf(t, dbg, snap, 0)
+	vars := debugtest.LocalsOf(t, dbg, snap, 0)
 	found := false
 	for _, v := range vars {
 		if v.Name == "x" {
 			found = true
-			if val, ok := v.Value.(int64); !ok || val != 42 {
-				t.Errorf("expected x=42 (int64), got %v (%T)", v.Value, v.Value)
-			}
+			assert.Equal(t, int64(42), v.Value)
 		}
 	}
-	if !found {
-		t.Error("variable 'x' not found in inspection results")
-	}
+	assert.True(t, found, "the inspection lists x")
 
 	dbg.Continue()
-	if execErr := <-done; execErr != nil {
-		t.Fatalf("execute: %v", execErr)
-	}
+	_, execErr := execution.Wait(t)
+	require.NoError(t, execErr)
 }
 
 func TestVarInspectionMultipleTypes(t *testing.T) {
@@ -97,20 +90,16 @@ func run() int {
 	return n
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	dbg.SetBreakpoint("main.go", 9)
 
-	done := make(chan error, 1)
-	go func() {
-		_, execErr := svc.ExecuteEntrypoint(context.Background(), cfs, "run")
-		done <- execErr
-	}()
-	snap := waitPause(t, dbg)
-	vars := localsOf(t, dbg, snap, 0)
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+	})
+	snap := debugtest.WaitPause(t, dbg)
+	vars := debugtest.LocalsOf(t, dbg, snap, 0)
 
 	varMap := make(map[string]engine.VariableInfo)
 	for _, v := range vars {
@@ -118,25 +107,18 @@ func run() int {
 	}
 
 	if v, ok := varMap["n"]; ok {
-		if val, isInt := v.Value.(int64); !isInt || val != 100 {
-			t.Errorf("expected n=100, got %v", v.Value)
-		}
+		assert.Equal(t, int64(100), v.Value)
 	}
 	if v, ok := varMap["s"]; ok {
-		if val, isStr := v.Value.(string); !isStr || val != "hello" {
-			t.Errorf("expected s=\"hello\", got %v", v.Value)
-		}
+		assert.Equal(t, "hello", v.Value)
 	}
 	if v, ok := varMap["b"]; ok {
-		if val, isBool := v.Value.(bool); !isBool || !val {
-			t.Errorf("expected b=true, got %v", v.Value)
-		}
+		assert.Equal(t, true, v.Value)
 	}
 
 	dbg.Continue()
-	if execErr := <-done; execErr != nil {
-		t.Fatalf("execute: %v", execErr)
-	}
+	_, execErr := execution.Wait(t)
+	require.NoError(t, execErr)
 }
 
 func TestVarInspectionAfterReassignment(t *testing.T) {
@@ -153,31 +135,24 @@ func run() int {
 	return x
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	dbg.SetBreakpoint("main.go", 6)
 
-	done := make(chan error, 1)
-	go func() {
-		_, execErr := svc.ExecuteEntrypoint(context.Background(), cfs, "run")
-		done <- execErr
-	}()
-	snap := waitPause(t, dbg)
-	vars := localsOf(t, dbg, snap, 0)
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+	})
+	snap := debugtest.WaitPause(t, dbg)
+	vars := debugtest.LocalsOf(t, dbg, snap, 0)
 
 	for _, v := range vars {
 		if v.Name == "x" {
-			if val, ok := v.Value.(int64); !ok || val != 20 {
-				t.Errorf("expected x=20 after reassignment, got %v", v.Value)
-			}
+			assert.Equal(t, int64(20), v.Value, "x after reassignment")
 		}
 	}
 
 	dbg.Continue()
-	if execErr := <-done; execErr != nil {
-		t.Fatalf("execute: %v", execErr)
-	}
+	_, execErr := execution.Wait(t)
+	require.NoError(t, execErr)
 }

@@ -23,6 +23,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestApprovalReloadDiscardsStaleGrants(t *testing.T) {
@@ -33,9 +35,7 @@ func TestApprovalReloadDiscardsStaleGrants(t *testing.T) {
 			path := filepath.Join(t.TempDir(), LockfileName)
 			store := NewStore(path)
 			store.Upsert(LockedModule{Path: "example.com/module", Version: "v1", ApprovedCapabilities: []string{"network"}})
-			if err := store.Save(); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, store.Save())
 			var err error
 			switch condition {
 			case "removed":
@@ -47,27 +47,21 @@ func TestApprovalReloadDiscardsStaleGrants(t *testing.T) {
 			case "oversized":
 				err = os.Truncate(path, maximumApprovalFileBytes+1)
 			case "directory":
-				if removeErr := os.Remove(path); removeErr != nil {
-					t.Fatal(removeErr)
-				}
+				require.NoError(t, os.Remove(path))
 				err = os.Mkdir(path, 0o700)
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			err = store.Load()
-			if condition == "removed" && err != nil {
-				t.Fatal(err)
+			if condition == "removed" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err, "an invalid approval file is rejected")
 			}
-			if condition != "removed" && err == nil {
-				t.Fatal("invalid approval file accepted")
-			}
-			if _, exists := store.Lookup("example.com/module", "v1"); exists {
-				t.Fatal("stale grant survived reload")
-			}
-			if store.dirty || store.lockfile.ScriptHash != "" || store.lockfile.Schema != LockfileSchema {
-				t.Fatal("reload did not reset approval state")
-			}
+			_, exists := store.Lookup("example.com/module", "v1")
+			require.False(t, exists, "a reload drops stale grants")
+			require.False(t, store.dirty, "a reload resets the approval state")
+			require.Empty(t, store.lockfile.ScriptHash)
+			require.Equal(t, LockfileSchema, store.lockfile.Schema)
 		})
 	}
 }
@@ -76,19 +70,12 @@ func TestApprovalOversizedSavePreservesPriorFile(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), LockfileName)
 	original := []byte("original")
-	if err := os.WriteFile(path, original, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, original, 0o600))
 	store := NewStore(path)
 	store.SetScript(strings.Repeat("x", maximumApprovalFileBytes), "hash")
-	if err := store.Save(); err == nil {
-		t.Fatal("oversized approval store published")
-	}
+	require.Error(t, store.Save(), "an oversized approval store is not published")
 	data, err := os.ReadFile(path)
-	if err != nil || string(data) != string(original) {
-		t.Fatalf("rejected save replaced existing file: %v", err)
-	}
-	if !store.dirty {
-		t.Fatal("failed save discarded pending changes")
-	}
+	require.NoError(t, err, "a rejected save keeps the existing file")
+	require.Equal(t, string(original), string(data))
+	require.True(t, store.dirty, "a failed save keeps pending changes")
 }

@@ -127,7 +127,7 @@ func TestHandlerCountPerGroup(t *testing.T) {
 	for _, group := range groups {
 		expected, exists := expectedCounts[group.BaseName]
 		require.True(t, exists, "unexpected group %s", group.BaseName)
-		assert.Equal(t, expected, len(group.Handlers), "handler count mismatch for %s", group.BaseName)
+		assert.Len(t, group.Handlers, expected, "handler count mismatch for %s", group.BaseName)
 	}
 }
 

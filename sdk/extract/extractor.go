@@ -308,7 +308,6 @@ func Extract(importPaths []string, genericConfigs map[string]PackageConfig) ([]E
 // packages.Load and checked before and after loading and inside the per-package
 // extraction loop so a cancelled run aborts promptly.
 //
-// Takes ctx (context.Context) which carries cancellation.
 // Takes importPaths ([]string) which lists the Go import paths to load and extract.
 // Takes genericConfigs (map[string]PackageConfig) which maps import paths to their
 // generic configuration.

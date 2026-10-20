@@ -21,11 +21,11 @@
 package language_test
 
 import (
-	"context"
 	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -33,22 +33,23 @@ func TestMinInt64DivideOverflow(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		code   string
-		expect int64
+		name string
+		code string
+		want int64
 	}{
-		{name: "div_overflow", code: "func d(a, b int64) int64 { return a / b }\nd(-9223372036854775808, -1)", expect: math.MinInt64},
-		{name: "rem_overflow", code: "func m(a, b int64) int64 { return a % b }\nm(-9223372036854775808, -1)", expect: 0},
-		{name: "div_normal", code: "func d(a, b int64) int64 { return a / b }\nd(20, 3)", expect: 6},
-		{name: "rem_normal", code: "func m(a, b int64) int64 { return a % b }\nm(20, 3)", expect: 2},
-		{name: "div_negative", code: "func d(a, b int64) int64 { return a / b }\nd(-20, 3)", expect: -6},
+		{name: "div_overflow", code: "func d(a, b int64) int64 { return a / b }\nd(-9223372036854775808, -1)", want: math.MinInt64},
+		{name: "rem_overflow", code: "func m(a, b int64) int64 { return a % b }\nm(-9223372036854775808, -1)", want: 0},
+		{name: "div_normal", code: "func d(a, b int64) int64 { return a / b }\nd(20, 3)", want: 6},
+		{name: "rem_normal", code: "func m(a, b int64) int64 { return a % b }\nm(20, 3)", want: 2},
+		{name: "div_negative", code: "func d(a, b int64) int64 { return a / b }\nd(-20, 3)", want: -6},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := app.NewService().Eval(context.Background(), tt.code)
+			t.Parallel()
+			result, err := app.NewService().Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.EqualValues(t, tt.expect, result)
+			require.EqualValues(t, tt.want, result)
 		})
 	}
 }

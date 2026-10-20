@@ -180,15 +180,19 @@ func (c *Compiler) compileGenericRange(ctx context.Context, statement *ast.Range
 	if err != nil {
 		return program.VarLocation{}, err
 	}
+	keyDestination := c.rangeNextDestination(keyLocation)
+	valueDestination := c.rangeNextDestination(valueLocation)
 
 	loopStart := program.CurrentPC(c.Function)
 
 	program.EmitTier1(c.Function, isa.SubOpRangeNext, iteratorRegister, doneRegister)
 
-	c.emitRangeNextExt(ctx, statement, keyLocation, valueLocation)
+	c.emitRangeNextExt(ctx, statement, keyDestination, valueDestination)
 
 	jumpToEnd := program.EmitJump(c.Function, isa.OpJumpIfFalse, doneRegister)
 
+	c.storeSpilledRangeVar(ctx, keyLocation, keyDestination)
+	c.storeSpilledRangeVar(ctx, valueLocation, valueDestination)
 	c.emitRangeSharedCellResets(statement, keyLocation, valueLocation)
 
 	if _, err := c.compileStmt(ctx, statement.Body); err != nil {
@@ -205,6 +209,32 @@ func (c *Compiler) compileGenericRange(ctx context.Context, statement *ast.Range
 	c.patchBreakJumpsAndPop(ctx)
 
 	return program.VarLocation{}, nil
+}
+
+// rangeNextDestination returns the range variable's register or a temporary for a
+// spilled variable, since isa.SubOpRangeNext only addresses registers.
+//
+// Takes location (program.VarLocation) which is the range variable, or the zero
+// location when the variable is absent or blank.
+//
+// Returns program.VarLocation which is the destination register.
+func (c *Compiler) rangeNextDestination(location program.VarLocation) program.VarLocation {
+	if !location.IsSpilled {
+		return location
+	}
+	return program.VarLocation{Register: c.Scopes.Alloc.Alloc(location.Kind), Kind: location.Kind}
+}
+
+// storeSpilledRangeVar copies a range variable from the temporary isa.SubOpRangeNext
+// wrote into its spill slot; a variable held in a register needs nothing.
+//
+// Takes location (program.VarLocation) which is the range variable.
+// Takes destination (program.VarLocation) which is the register the iteration wrote.
+func (c *Compiler) storeSpilledRangeVar(ctx context.Context, location, destination program.VarLocation) {
+	if !location.IsSpilled {
+		return
+	}
+	c.emitSpillStore(ctx, destination.Register, location.Kind, location.SpillSlot)
 }
 
 // emitRangeSharedCellResets resets the shared cells holding range-key and range-value
@@ -465,11 +495,19 @@ func (c *Compiler) emitSliceRangeValue(ctx context.Context, statement *ast.Range
 		program.EmitTier1(c.Function, isa.SubOpResetSharedCell, valueLocation.Register, uint8(valueLocation.Kind))
 	}
 
-	if !valueLocation.IsSpilled {
-		done, err := c.emitDirectSliceRangeValue(ctx, statement, valueIdentifier, valueLocation, collectionLocation, indexRegister, typeObject.Type())
-		if done || err != nil {
-			return err
+	target := valueLocation
+	if valueLocation.IsSpilled {
+		target = program.VarLocation{Register: c.Scopes.Alloc.AllocTemp(valueKind), Kind: valueKind}
+	}
+	done, err := c.emitDirectSliceRangeValue(ctx, statement, valueIdentifier, target, collectionLocation, indexRegister, typeObject.Type())
+	if valueLocation.IsSpilled {
+		if done && err == nil {
+			c.emitSpillStore(ctx, target.Register, valueKind, valueLocation.SpillSlot)
 		}
+		c.Scopes.Alloc.FreeTemp(valueKind, target.Register)
+	}
+	if done || err != nil {
+		return err
 	}
 
 	generalRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)

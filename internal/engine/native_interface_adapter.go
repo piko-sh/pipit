@@ -240,9 +240,14 @@ func (a *pipitMarshalerAdapter) MarshalJSON() (raw []byte, returnedError error) 
 		return nil, nil
 	}
 	raw = extractBytesResult(results)
-	returnedError = extractErrorResult(results)
+	returnedError = resultError(a.vm, results, 1)
 	return raw, returnedError
 }
+
+// adapterUnderlying returns the script value the adapter wraps.
+//
+// Returns reflect.Value which is the wrapped value.
+func (a *pipitMarshalerAdapter) adapterUnderlying() reflect.Value { return a.underlying }
 
 // pipitStringerAdapter is the Stringer mirror of pipitErrorAdapter: it wraps a
 // pipit-synthesised value so it satisfies fmt.Stringer even though the value's
@@ -367,7 +372,7 @@ func (a *pipitWriterAdapter) Write(p []byte) (n int, err error) {
 	if len(results) >= 1 && results[0].IsValid() {
 		n = int(results[0].Int())
 	}
-	err = extractErrorResult(results)
+	err = resultError(a.vm, results, 1)
 
 	if n < 0 {
 		n = 0
@@ -380,6 +385,11 @@ func (a *pipitWriterAdapter) Write(p []byte) (n int, err error) {
 	}
 	return n, err
 }
+
+// adapterUnderlying returns the script value the adapter wraps.
+//
+// Returns reflect.Value which is the wrapped value.
+func (a *pipitWriterAdapter) adapterUnderlying() reflect.Value { return a.underlying }
 
 // pipitFormatterAdapter wraps a pipit value to satisfy fmt.Formatter.
 type pipitFormatterAdapter struct {
@@ -479,13 +489,13 @@ func (a *pipitScannerAdapter) Scan(state fmt.ScanState, verb rune) (returnedErro
 	bound := newCrossPackageBoundMethod(a.vm, root, callee)
 	receiver := receiverValueFor(callee, a.underlying)
 	results := bound.invoke(receiver, []reflect.Value{reflect.ValueOf(state), reflect.ValueOf(verb)}, identityArg)
-	if len(results) >= 1 && results[0].IsValid() {
-		if e, ok := reflect.TypeAssert[error](results[0]); ok && e != nil {
-			return e
-		}
-	}
-	return nil
+	return resultError(a.vm, results, 0)
 }
+
+// adapterUnderlying returns the script value the adapter wraps.
+//
+// Returns reflect.Value which is the wrapped value.
+func (a *pipitScannerAdapter) adapterUnderlying() reflect.Value { return a.underlying }
 
 // pipitSortInterfaceAdapter wraps a pipit-synthesised value (typically a named slice such
 // as `type ByLen []string`) so it satisfies sort.Interface -
@@ -545,6 +555,11 @@ func (a *pipitSortInterfaceAdapter) Swap(i, j int) {
 	a.dispatch(a.swapIndex, []reflect.Value{reflect.ValueOf(i), reflect.ValueOf(j)})
 }
 
+// adapterUnderlying returns the script value the adapter wraps.
+//
+// Returns reflect.Value which is the wrapped value.
+func (a *pipitSortInterfaceAdapter) adapterUnderlying() reflect.Value { return a.underlying }
+
 // dispatch invokes one of the wrapped value's sort methods through boundMethodVM, with
 // the panic-containment boilerplate shared by the other pipit adapters.
 //
@@ -590,16 +605,8 @@ type pipitReaderAdapter struct {
 	// methodRoot is nil) of the compiled Read method, cached at adapter construction.
 	methodIndex uint16
 
-	// callCount tracks the total number of times Read has been invoked. Defensive overall
-	// cap against a progress-making infinite loop; the adapter forces io.EOF after
-	// pipitReaderMaxCalls invocations to prevent host hangs.
-	callCount int
-
-	// noProgressCount tracks how many times Read has returned with no bytes copied and no
-	// error. The adapter forces io.EOF once this crosses pipitReaderMaxNoProgressCalls, the
-	// true runaway signature, without penalising a legitimate large stream that makes steady
-	// small-count progress.
-	noProgressCount int
+	// guard bounds the Read calls and turns a read that makes no progress into an error.
+	guard readGuard
 }
 
 // Read invokes the wrapped pipit value's Read method through the interpreter's
@@ -609,18 +616,18 @@ type pipitReaderAdapter struct {
 //
 // Returns n (int) which is the number of bytes copied into p.
 // Returns err (error) which carries any error returned by the pipit-side method (io.EOF
-// or otherwise).
+// or otherwise), io.ErrNoProgress for a read that returned nothing, or the read guard's
+// error once it stops the reader.
 //
 // Panics when an interpreted panic occurs while the interpreter is still on the dispatch
 // stack, re-raising so an upstream interpreted defer/recover can catch it.
 func (a *pipitReaderAdapter) Read(p []byte) (n int, err error) {
 	callee, root, ok := resolveAdapterCallee(a.vm, a.methodRoot, a.methodIndex)
 	if !ok {
-		return 0, io.EOF
+		return 0, fmt.Errorf("pipit reader adapter: %w: Read", errAdapterMethodUnavailable)
 	}
-	a.callCount++
-	if a.callCount > pipitReaderMaxCalls {
-		return 0, io.EOF
+	if err := a.guard.admit(); err != nil {
+		return 0, err
 	}
 	defer func() {
 		recovered := recover()
@@ -636,26 +643,13 @@ func (a *pipitReaderAdapter) Read(p []byte) (n int, err error) {
 	bound := newCrossPackageBoundMethod(a.vm, root, callee)
 	receiver := receiverValueFor(callee, a.underlying)
 	results := bound.invoke(receiver, []reflect.Value{reflect.ValueOf(p)}, identityArg)
-	if len(results) >= 1 && results[0].IsValid() {
-		n = int(results[0].Int())
-	}
-	err = extractErrorResult(results)
-
-	if n < 0 {
-		n = 0
-	}
-	if n > len(p) {
-		n = len(p)
-	}
-	if n == 0 && err == nil && len(p) > 0 {
-		a.noProgressCount++
-		if a.noProgressCount > pipitReaderMaxNoProgressCalls {
-			return 0, io.EOF
-		}
-		err = io.ErrNoProgress
-	}
-	return n, err
+	return a.guard.settle(int64Result(results), len(p), resultError(a.vm, results, 1))
 }
+
+// adapterUnderlying returns the script value the adapter wraps.
+//
+// Returns reflect.Value which is the wrapped value.
+func (a *pipitReaderAdapter) adapterUnderlying() reflect.Value { return a.underlying }
 
 // pipitUnmarshalerAdapter wraps a pipit-synthesised pointer value so it satisfies the
 // encoding/json.Unmarshaler interface. Always wraps a *T because UnmarshalJSON mutates
@@ -714,18 +708,17 @@ func (a *pipitUnmarshalerAdapter) UnmarshalJSON(data []byte) (returnedError erro
 	bound := newCrossPackageBoundMethod(a.vm, root, callee)
 	receiver := receiverValueFor(callee, a.underlying)
 	results := bound.invoke(receiver, []reflect.Value{reflect.ValueOf(data)}, identityArg)
-	if len(results) >= 1 && results[0].IsValid() {
-		if e, ok := reflect.TypeAssert[error](results[0]); ok && e != nil {
-			return e
-		}
-	}
-	return nil
+	return resultError(a.vm, results, 0)
 }
 
-// fmtAdapterUnwrapper is implemented by the fmt adapters that stand in for a script value
-// so fmt can call its String, Error or Format method; %T must name the script value's
-// type, not the adapter's.
-type fmtAdapterUnwrapper interface {
+// adapterUnderlying returns the script value the adapter wraps.
+//
+// Returns reflect.Value which is the wrapped value.
+func (a *pipitUnmarshalerAdapter) adapterUnderlying() reflect.Value { return a.underlying }
+
+// adapterUnwrapper exposes an adapter's original script value when it returns to
+// interpreted code.
+type adapterUnwrapper interface {
 	// adapterUnderlying returns the script value the adapter wraps.
 	//
 	// Returns reflect.Value which is the wrapped script value.
@@ -779,44 +772,32 @@ func unwrapPipitNamedType(v reflect.Value) reflect.Value {
 	return v
 }
 
-// unwrapAdapterUnderlying returns the embedded reflect.Value boxed inside a pipit
-// interface adapter.
+// unwrapAdapterUnderlying returns the script value inside an adapter, or v unchanged when
+// v is not an adapter.
 //
-// Takes v (reflect.Value).
+// Takes v (reflect.Value) which may hold an adapter.
 //
 // Returns the unwrapped reflect.Value.
 func unwrapAdapterUnderlying(v reflect.Value) reflect.Value {
-	if v.Kind() != reflect.Pointer || v.IsNil() || !v.CanInterface() {
+	if !isInterfaceablePointer(v) {
 		return v
 	}
-	if a, ok := reflect.TypeAssert[*pipitStringerAdapter](v); ok {
-		return a.underlying
+	if adapter, ok := reflect.TypeAssert[adapterUnwrapper](v); ok {
+		if underlying := adapter.adapterUnderlying(); underlying.IsValid() {
+			return underlying
+		}
 	}
-	if a, ok := reflect.TypeAssert[*pipitMarshalerAdapter](v); ok {
-		return a.underlying
-	}
-	if a, ok := reflect.TypeAssert[*pipitUnmarshalerAdapter](v); ok {
-		return a.underlying
-	}
-	if a, ok := reflect.TypeAssert[*pipitReaderAdapter](v); ok {
-		return a.underlying
-	}
-	if a, ok := reflect.TypeAssert[*pipitFormatterAdapter](v); ok {
-		return a.underlying
-	}
-	if a, ok := reflect.TypeAssert[*pipitErrorAdapter](v); ok {
-		return a.underlying
-	}
-	if a, ok := reflect.TypeAssert[*pipitScannerAdapter](v); ok {
-		return a.underlying
-	}
-	if a, ok := reflect.TypeAssert[*pipitSortInterfaceAdapter](v); ok {
-		return a.underlying
-	}
-	if a, ok := reflect.TypeAssert[*pipitWriterAdapter](v); ok {
-		return a.underlying
-	}
-	return unwrapExtendedAdapterUnderlying(v)
+	return v
+}
+
+// isInterfaceablePointer reports whether value is a non-nil pointer that can be turned
+// into an interface, which every adapter is.
+//
+// Takes value (reflect.Value) which may be invalid.
+//
+// Returns bool which is true when value may hold an adapter.
+func isInterfaceablePointer(value reflect.Value) bool {
+	return value.IsValid() && value.Kind() == reflect.Pointer && !value.IsNil() && value.CanInterface()
 }
 
 // unwrapReflectTypeSliceElement strips a pipitNamedType or symtab.NamedInterfaceWrapper
@@ -1156,23 +1137,6 @@ func extractBytesResult(results []reflect.Value) []byte {
 	return bytes
 }
 
-// extractErrorResult returns the second reflect.Value in results as error when valid and
-// type-compatible, or nil otherwise.
-//
-// Takes results ([]reflect.Value) which are the method invocation results.
-//
-// Returns error which is the converted second result, or nil.
-func extractErrorResult(results []reflect.Value) error {
-	if len(results) < 2 || !results[1].IsValid() {
-		return nil
-	}
-	errInterface, ok := reflect.TypeAssert[error](results[1])
-	if !ok {
-		return nil
-	}
-	return errInterface
-}
-
 // buildMarshalerAdapterIfRegistered returns a pipitMarshalerAdapter wrapping argument
 // when the type-name has a registered MarshalJSON method, or an invalid value otherwise.
 //
@@ -1245,11 +1209,7 @@ func adapterMethodHasShape(vm *VM, methodRoot *program.CompiledFunction, methodI
 	if !ok || callee == nil {
 		return true
 	}
-	parameterCount := len(callee.ParameterKinds)
-	if callee.HasReceiver {
-		parameterCount--
-	}
-	return parameterCount == params && len(callee.ResultKinds) == results
+	return calleeArityMatches(callee, params, results)
 }
 
 // resolveAdapterCallee picks the callee and its rootFunction.
@@ -1299,11 +1259,10 @@ func resolveAdapterCallee(vm *VM, methodRoot *program.CompiledFunction, methodIn
 //
 // Returns a boundMethodVM ready for invoke().
 func newCrossPackageBoundMethod(vm *VM, root *program.CompiledFunction, callee *program.CompiledFunction) *boundMethodVM {
-	bound := &boundMethodVM{vm: vm, callee: callee, limits: vm.Limits, rootFunctionOverride: nil}
 	if root != nil && root != vm.rootFunction {
-		bound.rootFunctionOverride = root
+		return newBoundMethodVM(vm, callee, root)
 	}
-	return bound
+	return newBoundMethodVM(vm, callee, nil)
 }
 
 // lookupAdapterMethod resolves a "TypeName.MethodName" entry to (rootFunction,
@@ -1501,7 +1460,7 @@ func buildReaderAdapterIfRegistered(vm *VM, argument reflect.Value, typeName str
 	return reflect.ValueOf(&pipitReaderAdapter{vm: vm,
 		methodRoot:  methodRoot,
 		underlying:  argument,
-		methodIndex: methodIndex, callCount: 0, noProgressCount: 0})
+		methodIndex: methodIndex, guard: readGuard{}})
 }
 
 // receiverValueFor coerces an adapter's underlying value to match the callee's receiver

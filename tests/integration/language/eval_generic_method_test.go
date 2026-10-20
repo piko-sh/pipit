@@ -21,7 +21,6 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -44,6 +43,6 @@ func run() int {
 `
 
 	service := app.NewService()
-	_, err := service.EvalFile(context.Background(), source, "run")
+	_, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err, "a generic method must reach the compiler, not fail type checking")
 }

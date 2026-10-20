@@ -21,16 +21,16 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
 func TestClosureWriteIntSliceCoercionReadsBackAsInt(t *testing.T) {
 	t.Parallel()
-	result, err := app.NewService().Eval(context.Background(), `
+	result, err := app.NewService().Eval(t.Context(), `
 xs := []int{}
 fill := func(n int) {
 	ys := make([]int, n)
@@ -49,7 +49,7 @@ isInts && len(xs) == 4 && xs[3] == 9 && cap(xs) >= 4`)
 
 func TestClosureWriteScalarsAndStringsReadBackInParent(t *testing.T) {
 	t.Parallel()
-	result, err := app.NewService().Eval(context.Background(), `
+	result, err := app.NewService().Eval(t.Context(), `
 count := 0
 ratio := 0.0
 flag := false

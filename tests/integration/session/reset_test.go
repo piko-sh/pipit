@@ -21,7 +21,6 @@
 package session_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -32,7 +31,7 @@ func TestSession_Reset_ClearsDecls(t *testing.T) {
 	sess := newTestSession(t)
 	mustSubmit(t, sess, "var x = 5")
 	sess.Reset()
-	_, err := sess.Submit(context.Background(), "x")
+	_, err := sess.Submit(t.Context(), "x")
 	require.Error(t, err)
 }
 
@@ -62,6 +61,6 @@ func TestSession_Reset_ServiceReusable(t *testing.T) {
 	sess.Reset()
 
 	sess2 := sess.Service().NewSession()
-	_, err := sess2.Submit(context.Background(), "x")
+	_, err := sess2.Submit(t.Context(), "x")
 	require.Error(t, err)
 }

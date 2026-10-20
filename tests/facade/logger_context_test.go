@@ -25,6 +25,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit"
 	"pipit.sh/pipit/internal/logging"
 	"pipit.sh/pipit/sdk/stdlib"
@@ -69,27 +72,24 @@ func main() { probe() }
 func TestHostLoggerReachesEveryEntryPoint(t *testing.T) {
 	t.Parallel()
 
-	testCases := []struct {
-		name string
-
+	tests := []struct {
+		name  string
 		drive func(t *testing.T, interpreter *pipit.Interpreter)
 	}{
 		{
 			name: "Eval",
 			drive: func(t *testing.T, interpreter *pipit.Interpreter) {
 				t.Helper()
-				if _, err := interpreter.Eval(t.Context(), loggerProbeExpr); err != nil {
-					t.Fatalf("Eval: %v", err)
-				}
+				_, err := interpreter.Eval(t.Context(), loggerProbeExpr)
+				require.NoError(t, err, "eval")
 			},
 		},
 		{
 			name: "EvalFile",
 			drive: func(t *testing.T, interpreter *pipit.Interpreter) {
 				t.Helper()
-				if _, err := interpreter.EvalFile(t.Context(), loggerProbeSource, "main"); err != nil {
-					t.Fatalf("EvalFile: %v", err)
-				}
+				_, err := interpreter.EvalFile(t.Context(), loggerProbeSource, "main")
+				require.NoError(t, err, "EvalFile")
 			},
 		},
 		{
@@ -97,12 +97,9 @@ func TestHostLoggerReachesEveryEntryPoint(t *testing.T) {
 			drive: func(t *testing.T, interpreter *pipit.Interpreter) {
 				t.Helper()
 				compiled, err := interpreter.Compile(t.Context(), loggerProbeExpr)
-				if err != nil {
-					t.Fatalf("Compile: %v", err)
-				}
-				if _, err := interpreter.Execute(t.Context(), compiled); err != nil {
-					t.Fatalf("Execute: %v", err)
-				}
+				require.NoError(t, err, "compile")
+				_, err = interpreter.Execute(t.Context(), compiled)
+				require.NoError(t, err, "Execute")
 			},
 		},
 		{
@@ -110,9 +107,8 @@ func TestHostLoggerReachesEveryEntryPoint(t *testing.T) {
 			drive: func(t *testing.T, interpreter *pipit.Interpreter) {
 				t.Helper()
 				cfs := compileProbeFileSet(t, interpreter)
-				if _, err := interpreter.ExecuteEntrypoint(t.Context(), cfs, "main"); err != nil {
-					t.Fatalf("ExecuteEntrypoint: %v", err)
-				}
+				_, err := interpreter.ExecuteEntrypoint(t.Context(), cfs, "main")
+				require.NoError(t, err, "ExecuteEntrypoint")
 			},
 		},
 		{
@@ -120,9 +116,8 @@ func TestHostLoggerReachesEveryEntryPoint(t *testing.T) {
 			drive: func(t *testing.T, interpreter *pipit.Interpreter) {
 				t.Helper()
 				cfs := compileProbeFileSet(t, interpreter)
-				if _, err := interpreter.CallFunction(t.Context(), cfs, "probe"); err != nil {
-					t.Fatalf("CallFunction: %v", err)
-				}
+				_, err := interpreter.CallFunction(t.Context(), cfs, "probe")
+				require.NoError(t, err, "CallFunction")
 			},
 		},
 		{
@@ -130,9 +125,7 @@ func TestHostLoggerReachesEveryEntryPoint(t *testing.T) {
 			drive: func(t *testing.T, interpreter *pipit.Interpreter) {
 				t.Helper()
 				cfs := compileProbeFileSet(t, interpreter)
-				if err := interpreter.ExecuteInits(t.Context(), cfs); err != nil {
-					t.Fatalf("ExecuteInits: %v", err)
-				}
+				require.NoError(t, interpreter.ExecuteInits(t.Context(), cfs), "ExecuteInits")
 			},
 		},
 		{
@@ -140,30 +133,25 @@ func TestHostLoggerReachesEveryEntryPoint(t *testing.T) {
 			drive: func(t *testing.T, interpreter *pipit.Interpreter) {
 				t.Helper()
 				session := interpreter.NewSession()
-				if _, err := session.Submit(t.Context(), loggerProbeExpr); err != nil {
-					t.Fatalf("Submit: %v", err)
-				}
+				_, err := session.Submit(t.Context(), loggerProbeExpr)
+				require.NoError(t, err, "submit")
 			},
 		},
 	}
 
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			want := slog.New(slog.DiscardHandler)
 			probe := &loggerProbe{PermissiveCapabilityHook: pipit.PermissiveCapabilityHook{}, mu: sync.Mutex{}, seen: nil}
 			interpreter := pipit.NewInterpreter(stdlib.WithStandardLibrary(), pipit.WithLogger(want), pipit.WithCapabilityHook(probe))
 
-			testCase.drive(t, interpreter)
+			tt.drive(t, interpreter)
 
 			got := probe.observed()
-			if got == nil {
-				t.Fatal("capability hook was never consulted; the probe proves nothing")
-			}
-			if got != want {
-				t.Errorf("entry point did not carry the host logger into its context:\n got %p\nwant %p", got, want)
-			}
+			require.NotNil(t, got, "the capability hook is consulted")
+			assert.Same(t, want, got, "the entry point carries the host logger into its context")
 		})
 	}
 }
@@ -188,28 +176,19 @@ func TestHostLoggerReachesRestrictedTier(t *testing.T) {
 		CostBudget:            0,
 		MaxArenaBytes:         0,
 	}, stdlib.Providers()...)
-	if err != nil {
-		t.Fatalf("NewRestrictedInterpreter: %v", err)
-	}
+	require.NoError(t, err, "NewRestrictedInterpreter")
 
-	if _, err := interpreter.Eval(t.Context(), "import \"fmt\"\nfmt.Sprintf(\"%d\", 42)"); err != nil {
-		t.Fatalf("Eval: %v", err)
-	}
+	_, err = interpreter.Eval(t.Context(), "import \"fmt\"\nfmt.Sprintf(\"%d\", 42)")
+	require.NoError(t, err, "eval")
 
 	got := probe.observed()
-	if got == nil {
-		t.Fatal("capability hook was never consulted; the probe proves nothing")
-	}
-	if got != want {
-		t.Errorf("restricted tier did not carry the host logger into its context:\n got %p\nwant %p", got, want)
-	}
+	require.NotNil(t, got, "the capability hook is consulted")
+	assert.Same(t, want, got, "the restricted tier carries the host logger into its context")
 }
 
 func compileProbeFileSet(t *testing.T, interpreter *pipit.Interpreter) *pipit.CompiledFileSet {
 	t.Helper()
 	cfs, err := interpreter.CompileFileSet(t.Context(), map[string]string{"main.go": loggerProbeSource})
-	if err != nil {
-		t.Fatalf("CompileFileSet: %v", err)
-	}
+	require.NoError(t, err, "CompileFileSet")
 	return cfs
 }

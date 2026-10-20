@@ -22,118 +22,80 @@ package sandboxbroker
 
 import (
 	"crypto/sha256"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRecoveryCheckpointPinsOriginalJournal(t *testing.T) {
+	t.Parallel()
 	authority := testRecoveryAuthority(t, Read|Write)
 	directory := testRecoveryDirectory(t)
 	journal, err := OpenLinuxRecoveryJournal(directory, authority.namespace)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer journal.Close()
 	binding := [sha256.Size]byte{1}
 	encoded, err := authority.checkpoint(journal, binding)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	approved := sha256.Sum256(encoded)
-	if err := ValidateCheckpointJournal(encoded, approved, binding, journal); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, ValidateCheckpointJournal(encoded, approved, binding, journal))
 	moved := filepath.Join(t.TempDir(), "original")
-	if err := os.Rename(directory, moved); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(directory, 0700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Rename(directory, moved))
+	require.NoError(t, os.Mkdir(directory, 0700))
 	replacement, err := OpenLinuxRecoveryJournal(directory, authority.namespace)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer replacement.Close()
-	if err := ValidateCheckpointJournal(encoded, approved, binding, replacement); !errors.Is(err, ErrDenied) {
-		t.Fatal("replacement journal accepted original checkpoint:", err)
-	}
-	if err := ValidateCheckpointJournal(encoded, approved, binding, journal); err != nil {
-		t.Fatal("lost pinned journal:", err)
-	}
-	if err := journal.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.ErrorIs(t, ValidateCheckpointJournal(encoded, approved, binding, replacement), ErrDenied, "replacement journal accepted original checkpoint")
+	require.NoError(t, ValidateCheckpointJournal(encoded, approved, binding, journal), "the pinned journal is kept")
+	require.NoError(t, journal.Close())
 	reopened, err := OpenLinuxRecoveryJournal(moved, authority.namespace)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer reopened.Close()
-	if err := ValidateCheckpointJournal(encoded, approved, binding, reopened); err != nil {
-		t.Fatal("reopened original journal rejected:", err)
-	}
-	if err := ValidateCheckpointJournal(encoded, approved, [sha256.Size]byte{2}, reopened); err == nil {
-		t.Fatal("foreign binding accepted")
-	}
-	if err := ValidateCheckpointJournal(encoded, [sha256.Size]byte{}, binding, reopened); err == nil {
-		t.Fatal("unapproved checkpoint accepted")
-	}
-	if err := ValidateCheckpointJournal(encoded, approved, binding, nil); !errors.Is(err, ErrClosed) {
-		t.Fatal(err)
-	}
-	if err := ValidateCheckpointJournal(encoded, approved, binding, journal); !errors.Is(err, ErrClosed) {
-		t.Fatal("closed journal accepted:", err)
-	}
+	require.NoError(t, ValidateCheckpointJournal(encoded, approved, binding, reopened), "reopened original journal rejected")
+	require.Error(t, ValidateCheckpointJournal(encoded, approved, [sha256.Size]byte{2}, reopened), "foreign binding accepted")
+	require.Error(t, ValidateCheckpointJournal(encoded, [sha256.Size]byte{}, binding, reopened), "unapproved checkpoint accepted")
+	require.ErrorIs(t, ValidateCheckpointJournal(encoded, approved, binding, nil), ErrClosed)
+	require.ErrorIs(t, ValidateCheckpointJournal(encoded, approved, binding, journal), ErrClosed, "closed journal accepted")
 }
 
 func TestRecoveryCheckpointRejectsIneligibleJournal(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"nil", "closed", "failed", "namespace", "nonempty", "overlap", "unsafe-mode"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			root := testRecoveryDirectory(t)
 			bootstrap, err := PrepareLinuxBootstrap([]LinuxRootGrant{{Name: "data", Path: root, Rights: Read | Write}}, FilesystemLimits{})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer bootstrap.Close()
 			authority, err := bootstrap.RecoveryAuthority()
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer authority.Close()
 			directory := testRecoveryDirectory(t)
 			if mode == "overlap" {
 				directory = root
 			}
 			journal, err := OpenLinuxRecoveryJournal(directory, authority.namespace)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer journal.Close()
 			switch mode {
 			case "nil":
 				journal = nil
 			case "closed":
-				if err := journal.Close(); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, journal.Close())
 			case "failed":
 				journal.failed = true
 			case "namespace":
 				journal.namespace = "ffffffffffffffffffffffffffffffff"
 			case "nonempty":
-				if err := journal.appendRecord(testRecoveryAuthorityRecord(t, authority, 1)); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, journal.appendRecord(testRecoveryAuthorityRecord(t, authority, 1)))
 			case "unsafe-mode":
-				if err := os.Chmod(directory, 0755); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Chmod(directory, 0755))
 			}
-			if data, err := authority.checkpoint(journal, [sha256.Size]byte{1}); data != nil || err == nil {
-				t.Fatal("ineligible journal captured")
-			}
+			data, err := authority.checkpoint(journal, [sha256.Size]byte{1})
+			require.Nil(t, data, "ineligible journal captured")
+			require.Error(t, err)
 		})
 	}
 }

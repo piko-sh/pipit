@@ -1116,8 +1116,10 @@ func appendScalarInPlace(
 	return opContinue
 }
 
-// handleAppendByteFast is the tier-0 specialised byte-builder append. A=dest general,
-// B=source general ([]byte), C=byte value uint register.
+// handleAppendByteFast is the tier-0 specialised byte-builder append.
+//
+// A=dest general, B=source general ([]byte), C=byte value uint register. A slice of a named
+// byte type takes the reflect path with the element converted to that type.
 //
 // Takes vm (*VM) which provides arena, evalError, and allocation limits.
 // Takes registers (*Registers) which holds the general slice and uint element banks.
@@ -1141,6 +1143,9 @@ func handleAppendByteFast(vm *VM, _ *CallFrame, registers *Registers, instr isa.
 	if !ok {
 		element := registers.Uints[instr.C]
 		boxedElement := reflect.ValueOf(safeconv.Uint64ToUint8(element))
+		if sliceValue.Kind() == reflect.Slice {
+			boxedElement = boxedElement.Convert(sliceValue.Type().Elem())
+		}
 		if result, ok := appendFastPath(vm.Arena, sliceValue, boxedElement); ok {
 			registers.General[instr.A] = result
 			return opContinue

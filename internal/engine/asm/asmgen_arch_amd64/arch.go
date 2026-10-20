@@ -44,6 +44,25 @@ const (
 	// labelBoundsFail names the shared bounds-check failure trampoline emitted at the foot
 	// of the dispatch file.
 	labelBoundsFail = "bounds_fail"
+
+	// labelWriteBarrierFallback is the out-of-line tail a write-barrier guard jumps to while
+	// the barrier is on.
+	labelWriteBarrierFallback = "wb_fallback"
+
+	// labelSubSliceLowDone follows a sub-slice's optional low-bound load.
+	labelSubSliceLowDone = "ss_low_done"
+
+	// labelSubSliceHighDone follows a sub-slice's optional high-bound load.
+	labelSubSliceHighDone = "ss_high_done"
+
+	// sliceLowFlagLiteral is isa.SliceLowBoundFlag as an immediate.
+	sliceLowFlagLiteral = "1"
+
+	// sliceHighFlagLiteral is isa.SliceHighBoundFlag as an immediate.
+	sliceHighFlagLiteral = "2"
+
+	// sliceMaxFlagLiteral is isa.SliceMaxBitFlag as an immediate.
+	sliceMaxFlagLiteral = "4"
 )
 
 var (
@@ -705,6 +724,19 @@ func (*BytecodeAMD64Arch) EmitEqGeneral(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationJump, "·handlerPathBShimEqGeneral(SB)")
 }
 
+// EmitWriteBarrierGuard runs body while the runtime write barrier is off and otherwise
+// branches to pathBFallback, preserving handler entry registers.
+//
+// Takes e (*asmgen.Emitter) which receives the emitted instructions.
+// Takes body (func()) which emits the guarded handler body.
+func (*BytecodeAMD64Arch) EmitWriteBarrierGuard(e *asmgen.Emitter, body func()) {
+	inst(e, asmamd64.OperationCompare8Bits, "runtime·writeBarrier(SB), $0")
+	inst(e, asmamd64.OperationJumpIfNotEqual, labelWriteBarrierFallback)
+	body()
+	e.Label(labelWriteBarrierFallback)
+	inst(e, asmamd64.OperationJump, "·pathBFallback(SB)")
+}
+
 // EmitMoveGeneralAlias implements BytecodeArchPort.
 //
 // Tier-0 fast path for isa.OpMoveGeneral's alias mode (C==1): a raw 24-byte reflect.Value
@@ -1126,8 +1158,8 @@ func (*BytecodeAMD64Arch) EmitTypedSliceByteSet(e *asmgen.Emitter, contextOffset
 }
 
 // EmitTypedSliceByteSlice implements BytecodeArchPort. It emits the body of slicesByte[B]
-// = slicesByte[C][low:high], handling only the low+high flag combination in ASM and
-// falling back to pathBFallback for other shapes.
+// = slicesByte[C][low:high], handling every two-index form in ASM and falling back to
+// pathBFallback for the three-index form.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 // Takes contextOffset (string) which is the byte offset of the slicesByte bank base
@@ -1174,8 +1206,8 @@ func (*BytecodeAMD64Arch) EmitTypedSliceMove(e *asmgen.Emitter, contextOffset st
 }
 
 // EmitTypedSliceSliceSlice implements BytecodeArchPort. It emits the body of slicesX[A] =
-// slicesX[C][low:high] with a configurable element stride, handling only the low+high
-// flag combination in ASM.
+// slicesX[C][low:high] with a configurable element stride, handling every two-index form
+// in ASM and leaving the three-index form to the Go handler.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 // Takes contextOffset (string) which is the byte offset of the typed-slice bank base

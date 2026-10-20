@@ -28,8 +28,9 @@ import (
 	"strings"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
+	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/symtab"
 )
 
@@ -59,8 +60,8 @@ func BenchmarkNativeCallExec(b *testing.B) {
 		source string
 	}{
 		{
-			"string_to_string_1x",
-			`package main
+			name: "string_to_string_1x",
+			source: `package main
 
 import "strings"
 
@@ -70,8 +71,8 @@ func run() string {
 `,
 		},
 		{
-			"string_to_string_100x",
-			`package main
+			name: "string_to_string_100x",
+			source: `package main
 
 import "strings"
 
@@ -85,8 +86,8 @@ func run() string {
 `,
 		},
 		{
-			"string_to_string_1000x",
-			`package main
+			name: "string_to_string_1000x",
+			source: `package main
 
 import "strings"
 
@@ -100,8 +101,8 @@ func run() string {
 `,
 		},
 		{
-			"string_string_to_bool_100x",
-			`package main
+			name: "string_string_to_bool_100x",
+			source: `package main
 
 import "strings"
 
@@ -117,8 +118,8 @@ func run() int {
 `,
 		},
 		{
-			"string_string_to_string_100x",
-			`package main
+			name: "string_string_to_string_100x",
+			source: `package main
 
 import "strings"
 
@@ -132,8 +133,8 @@ func run() string {
 `,
 		},
 		{
-			"int_to_string_100x",
-			`package main
+			name: "int_to_string_100x",
+			source: `package main
 
 import "strconv"
 
@@ -147,8 +148,8 @@ func run() string {
 `,
 		},
 		{
-			"sprintf_100x",
-			`package main
+			name: "sprintf_100x",
+			source: `package main
 
 import "fmt"
 
@@ -162,8 +163,8 @@ func run() string {
 `,
 		},
 		{
-			"format_int_100x",
-			`package main
+			name: "format_int_100x",
+			source: `package main
 
 import "strconv"
 
@@ -177,8 +178,8 @@ func run() string {
 `,
 		},
 		{
-			"has_prefix_100x",
-			`package main
+			name: "has_prefix_100x",
+			source: `package main
 
 import "strings"
 
@@ -202,16 +203,14 @@ func run() int {
 			service := app.NewService()
 			service.UseSymbols(symbols)
 			cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": bm.source})
-			if err != nil {
-				b.Fatal(err)
-			}
+			require.NoError(b, err)
 
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
 				_, err = service.ExecuteEntrypoint(context.Background(), cfs, "run")
 				if err != nil {
-					b.Fatal(err)
+					require.NoError(b, err)
 				}
 			}
 		})

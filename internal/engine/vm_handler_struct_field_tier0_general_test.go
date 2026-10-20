@@ -99,31 +99,52 @@ func TestTier0GeneralFieldReadsCoverEveryFieldShape(t *testing.T) {
 	}{
 		{
 			name: "a pointer field", field: 0, receiver: &generalFields{Pointer: leaf},
-			inspect: func(t *testing.T, v reflect.Value) { require.Equal(t, leaf, v.Interface()) },
+			inspect: func(t *testing.T, v reflect.Value) {
+				t.Helper()
+				require.Equal(t, leaf, v.Interface())
+			},
 		},
 		{
 			name: "an interface field holding a value", field: 1, receiver: &generalFields{Boxed: 7},
-			inspect: func(t *testing.T, v reflect.Value) { require.Equal(t, 7, v.Interface()) },
+			inspect: func(t *testing.T, v reflect.Value) {
+				t.Helper()
+				require.Equal(t, 7, v.Interface())
+			},
 		},
 		{
 			name: "a nil interface field", field: 1, receiver: &generalFields{},
-			inspect: func(t *testing.T, v reflect.Value) { require.False(t, v.IsValid()) },
+			inspect: func(t *testing.T, v reflect.Value) {
+				t.Helper()
+				require.False(t, v.IsValid())
+			},
 		},
 		{
 			name: "a slice field", field: 2, receiver: &generalFields{Values: []generalLeaf{{Count: 1}}},
-			inspect: func(t *testing.T, v reflect.Value) { require.Equal(t, 1, v.Len()) },
+			inspect: func(t *testing.T, v reflect.Value) {
+				t.Helper()
+				require.Equal(t, 1, v.Len())
+			},
 		},
 		{
 			name: "an array field", field: 3, receiver: &generalFields{Fixed: [3]int64{1, 2, 3}},
-			inspect: func(t *testing.T, v reflect.Value) { require.Equal(t, [3]int64{1, 2, 3}, v.Interface()) },
+			inspect: func(t *testing.T, v reflect.Value) {
+				t.Helper()
+				require.Equal(t, [3]int64{1, 2, 3}, v.Interface())
+			},
 		},
 		{
 			name: "a struct field", field: 4, receiver: &generalFields{Leaf: generalLeaf{Count: 5}},
-			inspect: func(t *testing.T, v reflect.Value) { require.Equal(t, generalLeaf{Count: 5}, v.Interface()) },
+			inspect: func(t *testing.T, v reflect.Value) {
+				t.Helper()
+				require.Equal(t, generalLeaf{Count: 5}, v.Interface())
+			},
 		},
 		{
 			name: "a string field", field: 5, receiver: &generalFields{Label: "text"},
-			inspect: func(t *testing.T, v reflect.Value) { require.Equal(t, "text", v.Interface()) },
+			inspect: func(t *testing.T, v reflect.Value) {
+				t.Helper()
+				require.Equal(t, "text", v.Interface())
+			},
 		},
 	}
 
@@ -321,11 +342,17 @@ func TestTier0SliceFieldScalarIndexReadsTheSubField(t *testing.T) {
 	}{
 		{
 			name: "the leading int sub-field", subOffset: 0, kind: isa.RegisterInt, index: 1,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(2), r.Ints[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(2), r.Ints[0])
+			},
 		},
 		{
 			name: "the trailing float sub-field", subOffset: 8, kind: isa.RegisterFloat, index: 0,
-			inspect: func(t *testing.T, r *Registers) { require.InDelta(t, 1.5, r.Floats[0], 0) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.InDelta(t, 1.5, r.Floats[0], 0)
+			},
 		},
 	}
 

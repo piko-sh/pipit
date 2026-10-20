@@ -32,7 +32,7 @@ var nop = isa.NewInstruction(isa.OpNop, 0, 0, 0)
 func TestControlFlowSuccessorsDecodeEveryJumpLayout(t *testing.T) {
 	t.Parallel()
 	lo, hi := isa.SplitOffset(2)
-	cases := []struct {
+	tests := []struct {
 		name   string
 		branch []isa.Instruction
 	}{
@@ -43,10 +43,10 @@ func TestControlFlowSuccessorsDecodeEveryJumpLayout(t *testing.T) {
 		{name: "twenty-four bit layout", branch: []isa.Instruction{isa.NewInstruction(isa.OpRangeNextSliceInt, 1, 2, 3), isa.NewInstruction(isa.OpExt, 2, 0, 0)}},
 		{name: "extension layout with the offset in B and C", branch: []isa.Instruction{isa.NewInstruction(isa.OpMapIndexOkJumpIfFalseIntInt, 1, 2, 3), isa.NewInstruction(isa.OpExt, 4, lo, hi), nop}},
 	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			body := append([]isa.Instruction(nil), testCase.branch...)
+			body := append([]isa.Instruction(nil), tt.branch...)
 			for range 6 {
 				body = append(body, nop)
 			}

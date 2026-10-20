@@ -68,7 +68,7 @@ func TestWorkerFilterPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, test := range []struct {
+	tests := []struct {
 		name      string
 		number    uint32
 		arguments [6]uint64
@@ -101,15 +101,17 @@ func TestWorkerFilterPolicy(t *testing.T) {
 		{name: "ptrace", number: unix.SYS_PTRACE, arguments: [6]uint64{}, verdict: unix.SECCOMP_RET_KILL_PROCESS},
 		{name: "unshare", number: unix.SYS_UNSHARE, arguments: [6]uint64{}, verdict: unix.SECCOMP_RET_KILL_PROCESS},
 		{name: "mount", number: unix.SYS_MOUNT, arguments: [6]uint64{}, verdict: unix.SECCOMP_RET_KILL_PROCESS},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			verdict := evaluateFilter(t, filter, workerAuditArchitecture, test.number, test.arguments)
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			verdict := evaluateFilter(t, filter, workerAuditArchitecture, tt.number, tt.arguments)
 			want := uint32(denySyscall)
-			if test.allow {
+			if tt.allow {
 				want = unix.SECCOMP_RET_ALLOW
 			}
-			if test.verdict != 0 {
-				want = test.verdict
+			if tt.verdict != 0 {
+				want = tt.verdict
 			}
 			if verdict != want {
 				t.Fatalf("verdict=%x want=%x", verdict, want)

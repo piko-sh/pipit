@@ -65,8 +65,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function itoa
-;   registers: int=10 string=2
-;   dispatch:  asm=14 shim=1 exit=0 go=1
+;   registers: int=8 string=2
+;   dispatch:  asm=13 shim=1 exit=0 go=1
 ;   params:    (int)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -80,19 +80,18 @@
 0002 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "0"
 0003 A 2:TIER2_RETURN               0  10   1    ; 1 values
 0004 A 0:LOAD_STRING_CONST          0   1   0    ; strings[0] = ""
-0005 A 1:LOAD_INT_CONST_SMALL      75   8  48    ; LICM hoist of PC 10
-0006 A 1:LOAD_INT_CONST_SMALL      75   9  10    ; LICM hoist of PC 10
-0007 A 1:LOAD_INT_CONST_SMALL      75   3  10    ; LICM hoist of PC 13
-0008 A 1:GT_INT_CONST_JUMP_FALSE  127   0   0
-0009   0:EXT                        7   0   0
-0010 A 0:REM_INT                    5   0   9
-0011 A 0:ADD_INT32                  7   8   5
-0012 G 1:RUNE_TO_STRING            66   1   7
+0005 A 1:LOAD_INT_CONST_SMALL      75   6  10    ; LICM hoist of PC 9
+0006 A 1:LOAD_INT_CONST_SMALL      75   7  10    ; LICM hoist of PC 13
+0007 A 1:GT_INT_CONST_JUMP_FALSE  127   0   0
+0008   0:EXT                        7   0   0
+0009 A 1:LOAD_INT_CONST_SMALL      75   4  48    ; ints[4] = 48
+0010 A 0:REM_INT                    5   0   6
+0011 A 0:ADD_INT32                  4   4   5
+0012 G 1:RUNE_TO_STRING            66   1   4
 0013 S 0:CONCAT_STRING              0   1   0
-0014 A 0:DIV_INT                    4   0   3
-0015 A 1:MOVE_INT                  35   0   4
-0016 A 1:JUMP                      74 247 255    ; goto -9
-0017 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0014 A 0:DIV_INT                    0   0   7
+0015 A 1:JUMP                      74 247 255    ; goto -9
+0016 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun

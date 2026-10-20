@@ -77,14 +77,20 @@ func TestNativeCallDispatchesToTheGoFunction(t *testing.T) {
 			arguments: []nativeSlot{{kind: isa.RegisterInt, register: 2}},
 			returns:   []nativeSlot{{kind: isa.RegisterInt, register: 0}},
 			seed:      func(r *Registers) { r.Ints[2] = 21 },
-			check:     func(t *testing.T, r *Registers) { require.Equal(t, int64(42), r.Ints[0]) },
+			check: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), r.Ints[0])
+			},
 		},
 		{
 			name:     "no arguments and a string result",
 			function: func() string { return "pipit" },
 			returns:  []nativeSlot{{kind: isa.RegisterString, register: 0}},
 			seed:     func(*Registers) {},
-			check:    func(t *testing.T, r *Registers) { require.Equal(t, "pipit", r.Strings[0]) },
+			check: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "pipit", r.Strings[0])
+			},
 		},
 		{
 			name:     "several integer arguments",
@@ -96,7 +102,10 @@ func TestNativeCallDispatchesToTheGoFunction(t *testing.T) {
 			},
 			returns: []nativeSlot{{kind: isa.RegisterInt, register: 0}},
 			seed:    func(r *Registers) { r.Ints[2], r.Ints[3], r.Ints[4] = 1, 2, 3 },
-			check:   func(t *testing.T, r *Registers) { require.Equal(t, int64(6), r.Ints[0]) },
+			check: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(6), r.Ints[0])
+			},
 		},
 		{
 			name:     "several results land in their own banks",
@@ -107,6 +116,7 @@ func TestNativeCallDispatchesToTheGoFunction(t *testing.T) {
 			},
 			seed: func(*Registers) {},
 			check: func(t *testing.T, r *Registers) {
+				t.Helper()
 				require.Equal(t, int64(1), r.Ints[0])
 				require.Equal(t, "a", r.Strings[5])
 			},
@@ -117,7 +127,10 @@ func TestNativeCallDispatchesToTheGoFunction(t *testing.T) {
 			arguments: []nativeSlot{{kind: isa.RegisterString, register: 2}},
 			returns:   []nativeSlot{{kind: isa.RegisterString, register: 0}},
 			seed:      func(r *Registers) { r.Strings[2] = "pipit" },
-			check:     func(t *testing.T, r *Registers) { require.Equal(t, "pipit!", r.Strings[0]) },
+			check: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "pipit!", r.Strings[0])
+			},
 		},
 		{
 			name:      "a slice argument through the general bank",
@@ -125,7 +138,10 @@ func TestNativeCallDispatchesToTheGoFunction(t *testing.T) {
 			arguments: []nativeSlot{{kind: isa.RegisterGeneral, register: 2}},
 			returns:   []nativeSlot{{kind: isa.RegisterInt, register: 0}},
 			seed:      func(r *Registers) { r.General[2] = reflect.ValueOf([]int{1, 2, 3}) },
-			check:     func(t *testing.T, r *Registers) { require.Equal(t, int64(3), r.Ints[0]) },
+			check: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(3), r.Ints[0])
+			},
 		},
 		{
 			name:      "a float argument and a float result",
@@ -133,7 +149,10 @@ func TestNativeCallDispatchesToTheGoFunction(t *testing.T) {
 			arguments: []nativeSlot{{kind: isa.RegisterFloat, register: 2}},
 			returns:   []nativeSlot{{kind: isa.RegisterFloat, register: 0}},
 			seed:      func(r *Registers) { r.Floats[2] = 1.5 },
-			check:     func(t *testing.T, r *Registers) { require.InDelta(t, 3.0, r.Floats[0], 0) },
+			check: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.InDelta(t, 3.0, r.Floats[0], 0)
+			},
 		},
 		{
 			name:      "a boolean result",
@@ -141,14 +160,20 @@ func TestNativeCallDispatchesToTheGoFunction(t *testing.T) {
 			arguments: []nativeSlot{{kind: isa.RegisterInt, register: 2}},
 			returns:   []nativeSlot{{kind: isa.RegisterBool, register: 0}},
 			seed:      func(r *Registers) { r.Ints[2] = 1 },
-			check:     func(t *testing.T, r *Registers) { require.True(t, r.Bools[0]) },
+			check: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.True(t, r.Bools[0])
+			},
 		},
 		{
 			name:     "an error result lands in the general bank",
 			function: func() error { return errors.New("boom") },
 			returns:  []nativeSlot{{kind: isa.RegisterGeneral, register: 0}},
 			seed:     func(*Registers) {},
-			check:    func(t *testing.T, r *Registers) { require.True(t, r.General[0].IsValid()) },
+			check: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.True(t, r.General[0].IsValid())
+			},
 		},
 	}
 

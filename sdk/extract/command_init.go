@@ -45,6 +45,10 @@ type initFlags struct {
 
 	// force overwrites an existing manifest when true.
 	force bool
+
+	// includeProject reports the project's own packages as required instead of ignoring them
+	// and following their imports.
+	includeProject bool
 }
 
 // runInit discovers the project's required packages and writes them to a new manifest.
@@ -73,7 +77,15 @@ func runInit(ctx context.Context, arguments []string, stdout, stderr io.Writer, 
 	}
 	defer func() { _ = root.Close() }()
 
-	result, err := Discover(ctx, config.discoverOptions(flags.root, nil))
+	if flags.includeProject {
+		config = config.includingProject()
+	}
+	options, err := config.discoverOptions(flags.root, nil)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "Error: %s\n", err)
+		return 1
+	}
+	result, err := Discover(ctx, options)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "Error: %s\n", err)
 		return 1
@@ -132,6 +144,7 @@ func writeInitManifest(stdout, stderr io.Writer, root *os.Root, filename string,
 	for _, path := range result.GenericCandidates {
 		_, _ = fmt.Fprintf(stderr, "warning: %s exports generic types; edit the manifest to add a generic: block\n", path)
 	}
+	reportDiscoverWarnings(stderr, result)
 	return 0
 }
 
@@ -144,11 +157,12 @@ func writeInitManifest(stdout, stderr io.Writer, root *os.Root, filename string,
 // Returns the parsed flags and a parseStatus describing the outcome.
 func parseInitArgs(arguments []string, stderr io.Writer, config Config) (initFlags, parseStatus) {
 	flags := initFlags{
-		root:         ".",
-		output:       config.DefaultManifest,
-		packageName:  config.InitPackage,
-		generatedDir: config.InitDirectory,
-		force:        false,
+		root:           ".",
+		output:         config.DefaultManifest,
+		packageName:    config.InitPackage,
+		generatedDir:   config.InitDirectory,
+		force:          false,
+		includeProject: false,
 	}
 
 	valueTargets := map[string]*string{
@@ -171,6 +185,8 @@ func parseInitArgs(arguments []string, stderr io.Writer, config Config) (initFla
 			return flags, parseHelp
 		case "--force":
 			flags.force = true
+		case includeProjectFlag:
+			flags.includeProject = true
 		default:
 			target, known := valueTargets[argument]
 			if !known {
@@ -231,7 +247,7 @@ Flags:
   --dir <path>         Generated-symbols output directory recorded in
                        the manifest (default: %[4]s)
   --force              Overwrite an existing manifest
-  -h, --help           Show this help message
+%[5]s  -h, --help           Show this help message
 
-`, config.ToolName, config.DefaultManifest, config.InitPackage, config.InitDirectory)
+`, config.ToolName, config.DefaultManifest, config.InitPackage, config.InitDirectory, includeProjectUsage(config))
 }

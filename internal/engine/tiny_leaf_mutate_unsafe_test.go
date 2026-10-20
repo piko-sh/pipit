@@ -46,22 +46,34 @@ func TestWriteScalarFieldAtCoversEveryScalarWidth(t *testing.T) {
 		{
 			name: "a signed field", kind: reflect.Int64, offset: 0,
 			argument: tinyLeafScalarArgument{intValue: 42}, want: true,
-			check: func(t *testing.T, target *leafCounter) { require.Equal(t, int64(42), target.Signed) },
+			check: func(t *testing.T, target *leafCounter) {
+				t.Helper()
+				require.Equal(t, int64(42), target.Signed)
+			},
 		},
 		{
 			name: "an unsigned field", kind: reflect.Uint64, offset: 8,
 			argument: tinyLeafScalarArgument{uintValue: 42}, want: true,
-			check: func(t *testing.T, target *leafCounter) { require.Equal(t, uint64(42), target.Unsigned) },
+			check: func(t *testing.T, target *leafCounter) {
+				t.Helper()
+				require.Equal(t, uint64(42), target.Unsigned)
+			},
 		},
 		{
 			name: "a float field", kind: reflect.Float64, offset: 16,
 			argument: tinyLeafScalarArgument{floatValue: 1.5}, want: true,
-			check: func(t *testing.T, target *leafCounter) { require.InDelta(t, 1.5, target.Ratio, 0) },
+			check: func(t *testing.T, target *leafCounter) {
+				t.Helper()
+				require.InDelta(t, 1.5, target.Ratio, 0)
+			},
 		},
 		{
 			name: "a boolean field", kind: reflect.Bool, offset: 24,
 			argument: tinyLeafScalarArgument{boolValue: true}, want: true,
-			check: func(t *testing.T, target *leafCounter) { require.True(t, target.Flag) },
+			check: func(t *testing.T, target *leafCounter) {
+				t.Helper()
+				require.True(t, target.Flag)
+			},
 		},
 	}
 

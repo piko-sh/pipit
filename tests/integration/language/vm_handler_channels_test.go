@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -44,7 +45,7 @@ func runWithDeadline(t *testing.T, ctx context.Context, source, entrypoint strin
 	case got := <-done:
 		return got.result, got.err
 	case <-time.After(10 * time.Second):
-		t.Fatal("interpreter did not return: a blocking channel/select operation deadlocked")
+		require.FailNow(t, "the interpreter returns; a blocking channel or select operation deadlocked")
 		return nil, nil
 	}
 }
@@ -61,7 +62,7 @@ func run() int {
 
 func main() {}
 `
-	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
 	defer cancel()
 	_, err := runWithDeadline(t, ctx, source, "run")
 	require.Error(t, err, "a blocked receive must surface ctx cancellation")
@@ -80,7 +81,7 @@ func run() int {
 
 func main() {}
 `
-	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
 	defer cancel()
 	_, err := runWithDeadline(t, ctx, source, "run")
 	require.Error(t, err, "a blocked send must surface ctx cancellation")
@@ -101,7 +102,7 @@ func run() int {
 
 func main() {}
 `
-	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
 	defer cancel()
 	_, err := runWithDeadline(t, ctx, source, "run")
 	require.Error(t, err, "a blocked select must surface ctx cancellation")
@@ -122,7 +123,7 @@ func run() int {
 
 func main() {}
 `
-	_, err := runWithDeadline(t, context.Background(), source, "run")
+	_, err := runWithDeadline(t, t.Context(), source, "run")
 	require.Error(t, err, "a sibling goroutine panic must unblock the parked receive")
 	require.Contains(t, err.Error(), "sibling boom", "the surfaced error should carry the panic value")
 }
@@ -145,7 +146,7 @@ func run() int {
 
 func main() {}
 `
-	_, err := runWithDeadline(t, context.Background(), source, "run")
+	_, err := runWithDeadline(t, t.Context(), source, "run")
 	require.Error(t, err, "a sibling goroutine panic must unblock the parked select")
 	require.Contains(t, err.Error(), "select boom")
 }
@@ -187,7 +188,7 @@ func run() int {
 
 func main() {}
 `
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	result, err := runWithDeadline(t, ctx, source, "run")
 	require.NoError(t, err)

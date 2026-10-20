@@ -27,6 +27,7 @@ import (
 )
 
 func TestSession_MultiNameSubmitDoesNotPoison(t *testing.T) {
+	t.Parallel()
 	sess := newTestSession(t)
 	mustSubmit(t, sess, "var a = 1\nvar b = 2")
 	require.EqualValues(t, 3, mustSubmit(t, sess, "a + b"))
@@ -34,12 +35,14 @@ func TestSession_MultiNameSubmitDoesNotPoison(t *testing.T) {
 }
 
 func TestSession_GroupedDeclSubmit(t *testing.T) {
+	t.Parallel()
 	sess := newTestSession(t)
 	mustSubmit(t, sess, "const (\n\tx = 10\n\ty = 20\n)")
 	require.EqualValues(t, 30, mustSubmit(t, sess, "x + y"))
 }
 
 func TestSession_AliasedImportPersists(t *testing.T) {
+	t.Parallel()
 	sess := newTestSession(t)
 	mustSubmit(t, sess, `import s "strings"`)
 	require.Equal(t, "HI", mustSubmit(t, sess, `s.ToUpper("hi")`))

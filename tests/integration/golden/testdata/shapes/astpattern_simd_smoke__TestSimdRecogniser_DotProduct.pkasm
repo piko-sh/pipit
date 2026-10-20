@@ -4,7 +4,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun
-;   registers: int=7 float=1 sliceFloat=2
+;   registers: int=5 float=1 sliceFloat=2
 ;   dispatch:  asm=17 shim=2 exit=0 go=1
 ;   params:    (none)
 ;   returns:   (float)
@@ -17,26 +17,26 @@
 0000 A 1:LOAD_INT_CONST_SMALL      75   0   8    ; ints[0] = 8
 0001 S 1:MAKE_SLICE_FLOAT          18   0   0
 0002   0:EXT                        0   0   0
-0003 A 1:LOAD_INT_CONST_SMALL      75   1   8    ; ints[1] = 8
-0004 S 1:MAKE_SLICE_FLOAT          18   1   1
-0005   0:EXT                        1   0   0
-0006 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
-0007 A 1:LOAD_INT_CONST_SMALL      75   5   8    ; LICM hoist of PC 14
-0008 A 1:LEN_SLICE_FLOAT_DIRECT    21   3   0
-0009 A 1:LT_INT_JUMP_FALSE        116   2   3
+0003 A 1:LOAD_INT_CONST_SMALL      75   0   8    ; ints[0] = 8
+0004 S 1:MAKE_SLICE_FLOAT          18   1   0
+0005   0:EXT                        0   0   0
+0006 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0007 A 1:LOAD_INT_CONST_SMALL      75   3   8    ; LICM hoist of PC 14
+0008 A 1:LEN_SLICE_FLOAT_DIRECT    21   1   0
+0009 A 1:LT_INT_JUMP_FALSE        116   0   1
 0010   0:EXT                       10   0   0
-0011 A 0:ADD_INT_CONST              6   2   2    ; const = 1
-0012 A 1:INT_TO_FLOAT              50   0   6
-0013 A 1:SLICE_SET_FLOAT_DIRECT    20   0   2
+0011 A 0:ADD_INT_CONST              4   0   2    ; const = 1
+0012 A 1:INT_TO_FLOAT              50   0   4
+0013 A 1:SLICE_SET_FLOAT_DIRECT    20   0   0
 0014   0:EXT                        0   0   0
-0015 A 0:SUB_INT                    6   5   2
-0016 A 1:INT_TO_FLOAT              50   0   6
-0017 A 1:SLICE_SET_FLOAT_DIRECT    20   1   2
+0015 A 0:SUB_INT                    4   3   0
+0016 A 1:INT_TO_FLOAT              50   0   4
+0017 A 1:SLICE_SET_FLOAT_DIRECT    20   1   0
 0018   0:EXT                        0   0   0
-0019 A 2:TIER2_INC_INT              0   1   2
+0019 A 2:TIER2_INC_INT              0   1   0
 0020 A 1:JUMP                      74 243 255    ; goto -13
 0021 A 0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 0
-0022 A 1:LEN_SLICE_FLOAT_DIRECT    21   2   0
+0022 A 1:LEN_SLICE_FLOAT_DIRECT    21   0   0
 0023 G 1:SIMD_DOT_PRODUCT_FLOAT64 151   0   0
-0024   0:EXT                        1   2   0
+0024   0:EXT                        1   0   0
 0025 A 2:TIER2_RETURN               0  10   1    ; 1 values

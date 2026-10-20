@@ -26,12 +26,13 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
 func runSafeModeProgram(t *testing.T, code string) (any, error) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	return app.NewService(app.WithSafeMode()).Eval(ctx, code)
 }

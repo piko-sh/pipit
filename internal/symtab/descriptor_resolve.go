@@ -92,7 +92,7 @@ func ReconstructConstant(constantDescriptor descriptor.GeneralConstantDescriptor
 		if reflectType == nil {
 			return reflect.Value{}, fmt.Errorf("%w: composite zero of the nil type", errCorruptTypeDescriptor)
 		}
-		return reflect.New(reflectType).Elem(), nil
+		return ZeroConstant(reflectType), nil
 
 	default:
 		return reflect.Value{}, fmt.Errorf("unknown general constant kind: %d", constantDescriptor.Kind)

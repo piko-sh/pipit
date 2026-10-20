@@ -25,6 +25,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestApprovalAncestorRejectsOtherWriters(t *testing.T) {
@@ -34,34 +36,20 @@ func TestApprovalAncestorRejectsOtherWriters(t *testing.T) {
 		directory := filepath.Join(ancestor, "private")
 		store := NewStore(filepath.Join(directory, LockfileName))
 		store.Upsert(LockedModule{Path: "module", ApprovedCapabilities: []string{"network"}})
-		if err := store.Save(); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chmod(ancestor, mode); err != nil {
-			t.Fatal(err)
-		}
-		if err := store.Load(); err == nil {
-			t.Fatal("loaded through writable ancestor")
-		}
-		if _, exists := store.Lookup("module", ""); exists {
-			t.Fatal("retained prior grants")
-		}
+		require.NoError(t, store.Save())
+		require.NoError(t, os.Chmod(ancestor, mode))
+		require.Error(t, store.Load(), "loading refuses a writable ancestor")
+		_, exists := store.Lookup("module", "")
+		require.False(t, exists, "prior grants are dropped")
 		store.SetScript("script.go", "replacement")
-		if err := store.Save(); err == nil {
-			t.Fatal("saved through writable ancestor")
-		}
+		require.Error(t, store.Save(), "saving refuses a writable ancestor")
 		missing := filepath.Join(ancestor, "missing", "nested")
 		fresh := NewStore(filepath.Join(missing, LockfileName))
 		fresh.SetScript("script.go", "new")
-		if err := fresh.Save(); err == nil {
-			t.Fatal("created approval through writable ancestor")
-		}
-		if _, err := os.Stat(filepath.Join(ancestor, "missing")); !os.IsNotExist(err) {
-			t.Fatalf("created directories before validating ancestor: %v", err)
-		}
-		if err := os.Chmod(ancestor, 0o700); err != nil {
-			t.Fatal(err)
-		}
+		require.Error(t, fresh.Save(), "no approval is created through a writable ancestor")
+		_, err := os.Stat(filepath.Join(ancestor, "missing"))
+		require.True(t, os.IsNotExist(err), "no directory is created before the ancestor check: %v", err)
+		require.NoError(t, os.Chmod(ancestor, 0o700))
 	}
 }
 
@@ -72,31 +60,19 @@ func TestApprovalDirectoryRejectsSymlinkAncestors(t *testing.T) {
 		target := filepath.Join(parent, "target")
 		store := NewStore(filepath.Join(target, "private", LockfileName))
 		store.SetScript("script.go", "original")
-		if err := store.Save(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, store.Save())
 		linkTarget := target
 		if relative {
 			linkTarget = "target"
 		}
 		alias := filepath.Join(parent, "alias")
-		if err := os.Symlink(linkTarget, alias); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.Symlink(linkTarget, alias))
 		aliasStore := NewStore(filepath.Join(alias, "private", LockfileName))
-		if err := aliasStore.Load(); err == nil {
-			t.Fatal("loaded through symlink ancestor")
-		}
+		require.Error(t, aliasStore.Load(), "loading refuses a symlinked ancestor")
 		aliasStore.SetScript("script.go", "replacement")
-		if err := aliasStore.Save(); err == nil {
-			t.Fatal("saved through symlink ancestor")
-		}
-		if err := store.Load(); err != nil {
-			t.Fatal(err)
-		}
-		if store.lockfile.ScriptHash != "original" {
-			t.Fatal("modified original approval")
-		}
+		require.Error(t, aliasStore.Save(), "saving refuses a symlinked ancestor")
+		require.NoError(t, store.Load())
+		require.Equal(t, "original", store.lockfile.ScriptHash, "the original approval is left alone")
 	}
 }
 
@@ -110,9 +86,7 @@ func TestApprovalDirectoryDepthAndTraversal(t *testing.T) {
 		if root != nil {
 			root.Close()
 		}
-		if err == nil {
-			t.Fatalf("accepted invalid directory path: %q", path)
-		}
+		require.Error(t, err, "an invalid directory path %q is rejected", path)
 	}
 }
 
@@ -120,17 +94,9 @@ func TestApprovalDirectoryCreatesProtectedChain(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "first", "second")
 	root, err := openApprovalDirectory(path, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := root.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, root.Close())
 	root, err = openApprovalDirectory(path, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := root.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, root.Close())
 }

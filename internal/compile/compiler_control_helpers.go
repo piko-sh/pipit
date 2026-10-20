@@ -31,7 +31,6 @@ import (
 	"pipit.sh/pipit/internal/compile/typemap"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/fault"
-	"pipit.sh/pipit/internal/symtab/typemodel"
 
 	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
@@ -611,8 +610,6 @@ func (c *Compiler) compileMultiReturnAssign(ctx context.Context, leftHandSideLis
 		return program.VarLocation{}, err
 	}
 
-	c.recycleBlankMultiReturnTargets(leftHandSideList, returnLocations)
-
 	for i := range deferred {
 		ds := &deferred[i]
 		if err := c.emitDeferredStore(ctx, *ds); err != nil {
@@ -627,19 +624,6 @@ func (c *Compiler) compileMultiReturnAssign(ctx context.Context, leftHandSideLis
 		return returnLocations[0], nil
 	}
 	return program.VarLocation{}, nil
-}
-
-// recycleBlankMultiReturnTargets frees the registers that received results assigned to
-// the blank identifier, which nothing reads.
-//
-// Takes targets ([]ast.Expr) which are the left-hand sides.
-// Takes returnLocations ([]program.VarLocation) which received the results, in order.
-func (c *Compiler) recycleBlankMultiReturnTargets(targets []ast.Expr, returnLocations []program.VarLocation) {
-	for i, target := range targets {
-		if identifier, ok := target.(*ast.Ident); ok && identifier.Name == typemap.BlankIdentName {
-			c.Scopes.Alloc.RecycleRegister(returnLocations[i].Kind, returnLocations[i].Register)
-		}
-	}
 }
 
 // promoteDefinedTargets heap-promotes the variables a multi-value define declared, once
@@ -721,7 +705,9 @@ func (c *Compiler) resolveMultiReturnIdent(ctx context.Context,
 	return c.resolveMultiReturnAssignIdent(ctx, target, kind)
 }
 
-// resolveMultiReturnDefine resolves a := target for a multi-return assignment.
+// resolveMultiReturnDefine resolves a := target for a multi-return assignment. A newly
+// declared variable that lands in the spill area receives its result through a deferred
+// store, since a call writes results only to registers.
 //
 // Takes target (*ast.Ident) which is the identifier to declare or look up.
 // Takes kind (isa.RegisterKind) which is the register kind for the new variable.
@@ -735,6 +721,9 @@ func (c *Compiler) resolveMultiReturnDefine(ctx context.Context,
 	if typeObject != nil {
 		location := c.Scopes.DeclareVar(target.Name, kind)
 		c.resetSharedCellForDeclaration(ctx, target.Name, location)
+		if location.IsSpilled {
+			return c.deferredIdentStore(target, kind)
+		}
 		return location, nil, nil
 	}
 
@@ -802,7 +791,7 @@ func (c *Compiler) emitMultiReturnCall(ctx context.Context, callExpression *ast.
 	switch fun := callFun.(type) {
 	case *ast.Ident:
 		if functionLocation, found := c.Scopes.LookupVar(fun.Name); found {
-			return c.emitMultiReturnValueCall(ctx, callExpression, functionLocation, returnLocations)
+			return c.emitMultiReturnValueCall(ctx, callExpression, c.emitReloadIfSpilled(ctx, functionLocation), returnLocations)
 		}
 		return c.emitMultiReturnExpressionCall(ctx, callExpression, returnLocations)
 
@@ -891,19 +880,11 @@ func (c *Compiler) emitMultiReturnExpressionCall(ctx context.Context, callExpres
 //
 // Returns any compilation error.
 func (c *Compiler) emitMultiReturnValueCall(ctx context.Context, callExpression *ast.CallExpr, functionLocation program.VarLocation, returnLocations []program.VarLocation) error {
-	argumentLocations, err := c.compileArgumentExpressions(ctx, callExpression)
+	argumentLocations, err := c.compileNativeArguments(ctx, callExpression)
 	if err != nil {
 		return err
 	}
-	argumentTypeNames, argumentTypeStrings := c.resolveArgumentStaticTypes(callExpression)
-	site := program.CallSite{
-		IsNative:                  true,
-		NativeRegister:            functionLocation.Register,
-		Arguments:                 argumentLocations,
-		Returns:                   returnLocations,
-		ArgumentStaticTypeNames:   argumentTypeNames,
-		ArgumentStaticTypeStrings: argumentTypeStrings,
-	}
+	site := c.nativeCallSite(ctx, callExpression, functionLocation, argumentLocations, returnLocations)
 	siteIndex, addErr := program.AddCallSite(c.Function, &site)
 	if addErr != nil {
 		return addErr
@@ -924,12 +905,14 @@ func (c *Compiler) compileArgumentExpressions(ctx context.Context, callExpressio
 	nativeSignature := c.nativeCallSignature(callExpression)
 	argumentLocations := make([]program.VarLocation, len(callExpression.Args))
 	for i, argument := range callExpression.Args {
+		mark := c.Scopes.Alloc.Snapshot()
 		location, err := c.compileExpression(ctx, argument)
 		if err != nil {
 			return nil, err
 		}
 		location = c.coerceEvalBoolResult(ctx, c.Info, argument, location)
-		argumentLocations[i] = c.preboxNativeInterfaceArgument(ctx, nativeSignature, i, location)
+		location = c.preboxNativeInterfaceArgument(ctx, nativeSignature, i, location)
+		argumentLocations[i] = c.compactArgument(ctx, mark, location, c.staticTypeOf(argument))
 	}
 	return argumentLocations, nil
 }
@@ -1076,17 +1059,14 @@ func (c *Compiler) emitDynamicMethodCallWithReturns(ctx context.Context,
 	}
 	c.boxToGeneral(ctx, &receiverLocation)
 
-	argumentLocations := make([]program.VarLocation, 0, 1+len(callExpression.Args))
-	argumentLocations = append(argumentLocations, receiverLocation)
-	for _, argument := range callExpression.Args {
-		location, err := c.compileExpression(ctx, argument)
-		if err != nil {
-			return err
-		}
-		if typemodel.IsNamedScalarPoolType(location.SourceType) {
-			c.boxToGeneralTemp(ctx, &location)
-		}
-		argumentLocations = append(argumentLocations, location)
+	argumentLocations, err := c.compileDynamicMethodArgs(ctx, receiverLocation, callExpression.Args)
+	if err != nil {
+		return err
+	}
+
+	signature, err := c.resolveDynamicMethodSignature(callExpression.Fun)
+	if err != nil {
+		return err
 	}
 
 	methodIndex, methodErr := program.AddStringConstant(c.Function, selectorExpression.Sel.Name)
@@ -1094,10 +1074,15 @@ func (c *Compiler) emitDynamicMethodCallWithReturns(ctx context.Context,
 		return methodErr
 	}
 
+	staticTypeNames, staticTypeStrings := c.resolveMethodCallStaticTypes(selectorExpression, callExpression)
 	site := program.CallSite{
-		Arguments: argumentLocations,
-		Returns:   returnLocations,
+		Arguments:                 argumentLocations,
+		Returns:                   returnLocations,
+		ArgumentStaticTypeNames:   staticTypeNames,
+		ArgumentStaticTypeStrings: staticTypeStrings,
+		IsEllipsisSpread:          callExpression.Ellipsis.IsValid(),
 	}
+	c.configureDynamicMethodVariadic(ctx, &site, signature, callExpression)
 	siteIndex, addErr := program.AddCallSite(c.Function, &site)
 	if addErr != nil {
 		return addErr
@@ -1128,20 +1113,12 @@ func (c *Compiler) emitNativeSelectorCallWithReturns(ctx context.Context,
 		return err
 	}
 
-	argumentLocations, err := c.compileArgumentExpressions(ctx, callExpression)
+	argumentLocations, err := c.compileNativeArguments(ctx, callExpression)
 	if err != nil {
 		return err
 	}
 
-	argumentTypeNames, argumentTypeStrings := c.resolveArgumentStaticTypes(callExpression)
-	site := program.CallSite{
-		IsNative:                  true,
-		NativeRegister:            functionLocation.Register,
-		Arguments:                 argumentLocations,
-		Returns:                   returnLocations,
-		ArgumentStaticTypeNames:   argumentTypeNames,
-		ArgumentStaticTypeStrings: argumentTypeStrings,
-	}
+	site := c.nativeCallSite(ctx, callExpression, functionLocation, argumentLocations, returnLocations)
 	siteIndex, addErr := program.AddCallSite(c.Function, &site)
 	if addErr != nil {
 		return addErr

@@ -81,7 +81,7 @@ func TestRegisterArenaGrowIndividualSlabs(t *testing.T) {
 	}
 	regs := a.AllocRegisters([isa.NumRegisterKinds]uint32{5, 1, 1, 1})
 	require.Len(t, regs.Ints, 5)
-	require.True(t, len(a.intSlab) >= 5)
+	require.GreaterOrEqual(t, len(a.intSlab), 5)
 }
 
 func TestRegisterArenaPoolRoundTrip(t *testing.T) {
@@ -110,7 +110,7 @@ func TestRegisterArenaUpvalueCellAllocation(t *testing.T) {
 
 	require.Equal(t, isa.RegisterKind(0), cells[0].Kind)
 	require.Equal(t, int64(0), cells[0].IntValue)
-	require.Equal(t, "", cells[0].StringValue)
+	require.Empty(t, cells[0].StringValue)
 	require.Nil(t, refs[0].Value)
 
 	cells[0].Kind = isa.RegisterInt
@@ -134,11 +134,11 @@ func TestRegisterArenaUpvalueCellGrow(t *testing.T) {
 
 	cells := a.allocUpvalueCells(initialUpvalueCellSlabs + 10)
 	require.Len(t, cells, initialUpvalueCellSlabs+10)
-	require.True(t, len(a.upvalueCellSlab) >= initialUpvalueCellSlabs+10)
+	require.GreaterOrEqual(t, len(a.upvalueCellSlab), initialUpvalueCellSlabs+10)
 
 	refs := a.allocUpvalueRefs(initialUpvalueRefSlabs + 10)
 	require.Len(t, refs, initialUpvalueRefSlabs+10)
-	require.True(t, len(a.upvalueReferenceSlab) >= initialUpvalueRefSlabs+10)
+	require.GreaterOrEqual(t, len(a.upvalueReferenceSlab), initialUpvalueRefSlabs+10)
 }
 
 func TestArenaSaveRestoreLIFO(t *testing.T) {
@@ -232,7 +232,7 @@ func TestArenaPoolReuse(t *testing.T) {
 	require.NotNil(t, a)
 
 	regs := a.AllocRegisters([isa.NumRegisterKinds]uint32{4, 2, 2, 2, 1, 1, 1})
-	require.Equal(t, 4, len(regs.Ints))
+	require.Len(t, regs.Ints, 4)
 
 	PutRegisterArena(a)
 
@@ -264,19 +264,19 @@ func TestShrinkOvergrownSlabs(t *testing.T) {
 		a.Reset()
 	}
 
-	require.Equal(t, initialIntSlabs, len(a.intSlab))
-	require.Equal(t, initialFloatSlabs, len(a.floatSlab))
-	require.Equal(t, initialStringSlabs, len(a.stringSlab))
-	require.Equal(t, initialGeneralSlabs, len(a.generalSlab))
-	require.Equal(t, initialBoolSlabs, len(a.boolSlab))
-	require.Equal(t, initialUintSlabs, len(a.uintSlab))
-	require.Equal(t, initialComplexSlabs, len(a.complexSlab))
-	require.Equal(t, initialFrameSlabs, len(a.frameSlab))
-	require.Equal(t, initialFrameSlabs, len(a.callInfoBasesSlab))
-	require.Equal(t, initialFrameSlabs, len(a.dispatchSavesSlab))
-	require.Equal(t, initialUpvalueCellSlabs, len(a.upvalueCellSlab))
-	require.Equal(t, initialUpvalueRefSlabs, len(a.upvalueReferenceSlab))
-	require.Equal(t, InitialByteSlabSize, len(a.byteSlab))
+	require.Len(t, a.intSlab, initialIntSlabs)
+	require.Len(t, a.floatSlab, initialFloatSlabs)
+	require.Len(t, a.stringSlab, initialStringSlabs)
+	require.Len(t, a.generalSlab, initialGeneralSlabs)
+	require.Len(t, a.boolSlab, initialBoolSlabs)
+	require.Len(t, a.uintSlab, initialUintSlabs)
+	require.Len(t, a.complexSlab, initialComplexSlabs)
+	require.Len(t, a.frameSlab, initialFrameSlabs)
+	require.Len(t, a.callInfoBasesSlab, initialFrameSlabs)
+	require.Len(t, a.dispatchSavesSlab, initialFrameSlabs)
+	require.Len(t, a.upvalueCellSlab, initialUpvalueCellSlabs)
+	require.Len(t, a.upvalueReferenceSlab, initialUpvalueRefSlabs)
+	require.Len(t, a.byteSlab, InitialByteSlabSize)
 }
 
 func TestShrinkOvergrownSlabsWithinThreshold(t *testing.T) {
@@ -289,8 +289,8 @@ func TestShrinkOvergrownSlabsWithinThreshold(t *testing.T) {
 
 	a.Reset()
 
-	require.Equal(t, originalIntLen, len(a.intSlab))
-	require.Equal(t, originalFloatLen, len(a.floatSlab))
+	require.Len(t, a.intSlab, originalIntLen)
+	require.Len(t, a.floatSlab, originalFloatLen)
 }
 
 func TestArenaConcatRuneStringTailNoGrowth(t *testing.T) {
@@ -366,7 +366,7 @@ func TestArenaConcatStringBothEmpty(t *testing.T) {
 	t.Parallel()
 	arena := NewRegisterArena()
 	result := ArenaConcatString(arena, "", "")
-	require.Equal(t, "", result)
+	require.Empty(t, result)
 }
 
 func TestArenaConcatStringTailNoGrowth(t *testing.T) {
@@ -543,7 +543,7 @@ func TestArenaBytesToStringAtLengthBoundaries(t *testing.T) {
 		t.Parallel()
 		arena := NewRegisterArena()
 		result := arenaBytesToString(arena, []byte{})
-		require.Equal(t, "", result)
+		require.Empty(t, result)
 	})
 }
 
@@ -554,7 +554,7 @@ func TestGrowByteSlabDoublesSize(t *testing.T) {
 	originalLen := len(arena.byteSlab)
 	arena.GrowByteSlab(1)
 
-	require.Equal(t, originalLen*2, len(arena.byteSlab))
+	require.Len(t, arena.byteSlab, originalLen*2)
 	require.Equal(t, 0, arena.byteIndex)
 	require.Len(t, arena.oldByteSlabs, 1)
 	require.Len(t, arena.oldByteSlabs[0], originalLen)
@@ -568,7 +568,7 @@ func TestGrowByteSlabMinExtraLargerThanDouble(t *testing.T) {
 
 	arena.GrowByteSlab(100)
 
-	require.Equal(t, 100, len(arena.byteSlab))
+	require.Len(t, arena.byteSlab, 100)
 	require.Equal(t, 0, arena.byteIndex)
 }
 
@@ -661,7 +661,7 @@ func TestArenaAllocIntBackingShape(t *testing.T) {
 	arena := NewRegisterArena()
 
 	s := arena.AllocIntBacking(5)
-	require.Equal(t, 5, len(s), "AllocIntBacking len")
+	require.Len(t, s, 5, "AllocIntBacking len")
 	require.Equal(t, 5, cap(s), "AllocIntBacking cap (three-index form)")
 
 	t2 := arena.AllocIntBacking(3)
@@ -698,7 +698,7 @@ func TestArenaAllocIntBackingZero(t *testing.T) {
 func requireEmptyNonNilBacking[T any](t *testing.T, s []T, n int) {
 	t.Helper()
 	require.NotNil(t, s, "n=%d should return a non-nil empty backing", n)
-	require.Zero(t, len(s), "n=%d should return a zero-length backing", n)
+	require.Empty(t, s, "n=%d should return a zero-length backing", n)
 	require.Zero(t, cap(s), "n=%d should return a zero-capacity backing", n)
 }
 
@@ -715,9 +715,9 @@ func TestArenaAllocIntBackingGrow(t *testing.T) {
 
 	require.Empty(t, arena.oldIntBackings, "no old slabs before grow")
 	grown := arena.AllocIntBacking(10)
-	require.Equal(t, 10, len(grown))
+	require.Len(t, grown, 10)
 	require.Len(t, arena.oldIntBackings, 1, "exactly one old slab retained")
-	require.Equal(t, initialCap, len(arena.oldIntBackings[0]),
+	require.Len(t, arena.oldIntBackings[0], initialCap,
 		"retained slab is the previous one at initial capacity")
 
 	for i, v := range drained {
@@ -736,7 +736,7 @@ func TestArenaAppendIntInCapNoAlloc(t *testing.T) {
 	allocs := testing.AllocsPerRun(50, func() {
 		s = arenaAppendInt(arena, s[:0], 42)
 	})
-	require.Equal(t, float64(0), allocs, "append in-cap must not allocate")
+	require.Zero(t, allocs, "append in-cap must not allocate")
 }
 
 func TestArenaAppendIntGrowFromHeapSlice(t *testing.T) {
@@ -844,7 +844,7 @@ func TestArenaEnsureCapacityDoesNotShrink(t *testing.T) {
 	require.Greater(t, bigSize, InitialByteSlabSize)
 
 	arena.ensureCapacity(program.TypedSlabCounts{Bytes: 64})
-	require.Equal(t, bigSize, len(arena.byteSlab),
+	require.Len(t, arena.byteSlab, bigSize,
 		"EnsureCapacity must not shrink an already-grown slab")
 }
 
@@ -893,7 +893,7 @@ func TestArenaAllocByteBackingShape(t *testing.T) {
 	arena := NewRegisterArena()
 
 	s := arena.AllocByteBacking(5)
-	require.Equal(t, 5, len(s))
+	require.Len(t, s, 5)
 	require.Equal(t, 5, cap(s))
 
 	t2 := arena.AllocByteBacking(3)
@@ -1022,10 +1022,10 @@ func TestOwnsSliceHeaderPointer(t *testing.T) {
 }
 
 func TestMaterialiseArenaValue(t *testing.T) {
+	t.Parallel()
 	if !arenaUsesUnsafeSlabs {
 		t.Skip("safe build: arena slab-ownership semantics are not exposed")
 	}
-	t.Parallel()
 
 	type smallStruct struct {
 		A int64

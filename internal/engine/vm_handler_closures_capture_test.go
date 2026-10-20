@@ -86,62 +86,101 @@ func TestMakeClosureCapturesEveryBank(t *testing.T) {
 	}{
 		{
 			name: "the int bank", kind: isa.RegisterInt, load: func(r *Registers) { r.Ints[2] = 5 },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, int64(5), c.IntValue) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, int64(5), c.IntValue)
+			},
 		},
 		{
 			name: "the float bank", kind: isa.RegisterFloat, load: func(r *Registers) { r.Floats[2] = 1.5 },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.InDelta(t, 1.5, c.FloatValue, 0) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.InDelta(t, 1.5, c.FloatValue, 0)
+			},
 		},
 		{
 			name: "the string bank", kind: isa.RegisterString, load: func(r *Registers) { r.Strings[2] = "s" },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, "s", c.StringValue) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, "s", c.StringValue)
+			},
 		},
 		{
 			name: "the bool bank", kind: isa.RegisterBool, load: func(r *Registers) { r.Bools[2] = true },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.True(t, c.BoolValue) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.True(t, c.BoolValue)
+			},
 		},
 		{
 			name: "the uint bank", kind: isa.RegisterUint, load: func(r *Registers) { r.Uints[2] = 6 },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, uint64(6), c.UintValue) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, uint64(6), c.UintValue)
+			},
 		},
 		{
 			name: "the complex bank", kind: isa.RegisterComplex, load: func(r *Registers) { r.Complex[2] = 2i },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, 2i, c.ComplexValue) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, 2i, c.ComplexValue)
+			},
 		},
 		{
 			name: "the general bank", kind: isa.RegisterGeneral,
-			load:    func(r *Registers) { r.General[2] = reflect.ValueOf("boxed") },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, "boxed", c.GeneralValue.Interface()) },
+			load: func(r *Registers) { r.General[2] = reflect.ValueOf("boxed") },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, "boxed", c.GeneralValue.Interface())
+			},
 		},
 		{
 			name: "the int-slice bank", kind: isa.RegisterSliceInt,
-			load:    func(r *Registers) { r.SlicesInt[2] = []int64{1} },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, []int64{1}, c.SliceIntValue) },
+			load: func(r *Registers) { r.SlicesInt[2] = []int64{1} },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, []int64{1}, c.SliceIntValue)
+			},
 		},
 		{
 			name: "the float-slice bank", kind: isa.RegisterSliceFloat,
-			load:    func(r *Registers) { r.slicesFloat[2] = []float64{1.5} },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, []float64{1.5}, c.SliceFloatValue) },
+			load: func(r *Registers) { r.slicesFloat[2] = []float64{1.5} },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, []float64{1.5}, c.SliceFloatValue)
+			},
 		},
 		{
 			name: "the string-slice bank", kind: isa.RegisterSliceString,
-			load:    func(r *Registers) { r.slicesString[2] = []string{"s"} },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, []string{"s"}, c.SliceStringValue) },
+			load: func(r *Registers) { r.slicesString[2] = []string{"s"} },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, []string{"s"}, c.SliceStringValue)
+			},
 		},
 		{
 			name: "the bool-slice bank", kind: isa.RegisterSliceBool,
-			load:    func(r *Registers) { r.slicesBool[2] = []bool{true} },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, []bool{true}, c.SliceBoolValue) },
+			load: func(r *Registers) { r.slicesBool[2] = []bool{true} },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, []bool{true}, c.SliceBoolValue)
+			},
 		},
 		{
 			name: "the uint-slice bank", kind: isa.RegisterSliceUint,
-			load:    func(r *Registers) { r.slicesUint[2] = []uint64{2} },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, []uint64{2}, c.SliceUintValue) },
+			load: func(r *Registers) { r.slicesUint[2] = []uint64{2} },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, []uint64{2}, c.SliceUintValue)
+			},
 		},
 		{
 			name: "the byte-slice bank", kind: isa.RegisterSliceByte,
-			load:    func(r *Registers) { r.slicesByte[2] = []byte{3} },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, []byte{3}, c.SliceByteValue) },
+			load: func(r *Registers) { r.slicesByte[2] = []byte{3} },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, []byte{3}, c.SliceByteValue)
+			},
 		},
 	}
 
@@ -286,42 +325,69 @@ func TestSetUpvalueWritesEveryBankIntoTheCell(t *testing.T) {
 	}{
 		{
 			name: "the int bank", kind: isa.RegisterInt, load: func(r *Registers) { r.Ints[1] = 4 },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, int64(4), c.IntValue) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, int64(4), c.IntValue)
+			},
 		},
 		{
 			name: "the float bank", kind: isa.RegisterFloat, load: func(r *Registers) { r.Floats[1] = 2.5 },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.InDelta(t, 2.5, c.FloatValue, 0) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.InDelta(t, 2.5, c.FloatValue, 0)
+			},
 		},
 		{
 			name: "the string bank", kind: isa.RegisterString, load: func(r *Registers) { r.Strings[1] = "s" },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, "s", c.StringValue) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, "s", c.StringValue)
+			},
 		},
 		{
 			name: "the bool bank", kind: isa.RegisterBool, load: func(r *Registers) { r.Bools[1] = true },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.True(t, c.BoolValue) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.True(t, c.BoolValue)
+			},
 		},
 		{
 			name: "the uint bank", kind: isa.RegisterUint, load: func(r *Registers) { r.Uints[1] = 8 },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, uint64(8), c.UintValue) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, uint64(8), c.UintValue)
+			},
 		},
 		{
 			name: "the complex bank", kind: isa.RegisterComplex, load: func(r *Registers) { r.Complex[1] = 3i },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, 3i, c.ComplexValue) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, 3i, c.ComplexValue)
+			},
 		},
 		{
 			name: "the general bank", kind: isa.RegisterGeneral,
-			load:    func(r *Registers) { r.General[1] = reflect.ValueOf("boxed") },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, "boxed", c.GeneralValue.Interface()) },
+			load: func(r *Registers) { r.General[1] = reflect.ValueOf("boxed") },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, "boxed", c.GeneralValue.Interface())
+			},
 		},
 		{
 			name: "the int-slice bank", kind: isa.RegisterSliceInt,
-			load:    func(r *Registers) { r.SlicesInt[1] = []int64{2} },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, []int64{2}, c.SliceIntValue) },
+			load: func(r *Registers) { r.SlicesInt[1] = []int64{2} },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, []int64{2}, c.SliceIntValue)
+			},
 		},
 		{
 			name: "the byte-slice bank", kind: isa.RegisterSliceByte,
-			load:    func(r *Registers) { r.slicesByte[1] = []byte{4} },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, []byte{4}, c.SliceByteValue) },
+			load: func(r *Registers) { r.slicesByte[1] = []byte{4} },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, []byte{4}, c.SliceByteValue)
+			},
 		},
 	}
 
@@ -353,42 +419,60 @@ func TestSetUpvalueWritesThroughAnIndirectCell(t *testing.T) {
 			name: "an int pointee", kind: isa.RegisterInt, load: func(r *Registers) { r.Ints[1] = 11 },
 			build: func() (reflect.Value, func(*testing.T)) {
 				value := int64(0)
-				return reflect.ValueOf(&value), func(t *testing.T) { require.Equal(t, int64(11), value) }
+				return reflect.ValueOf(&value), func(t *testing.T) {
+					t.Helper()
+					require.Equal(t, int64(11), value)
+				}
 			},
 		},
 		{
 			name: "a float pointee", kind: isa.RegisterFloat, load: func(r *Registers) { r.Floats[1] = 1.25 },
 			build: func() (reflect.Value, func(*testing.T)) {
 				value := 0.0
-				return reflect.ValueOf(&value), func(t *testing.T) { require.InDelta(t, 1.25, value, 0) }
+				return reflect.ValueOf(&value), func(t *testing.T) {
+					t.Helper()
+					require.InDelta(t, 1.25, value, 0)
+				}
 			},
 		},
 		{
 			name: "a string pointee", kind: isa.RegisterString, load: func(r *Registers) { r.Strings[1] = "written" },
 			build: func() (reflect.Value, func(*testing.T)) {
 				value := ""
-				return reflect.ValueOf(&value), func(t *testing.T) { require.Equal(t, "written", value) }
+				return reflect.ValueOf(&value), func(t *testing.T) {
+					t.Helper()
+					require.Equal(t, "written", value)
+				}
 			},
 		},
 		{
 			name: "a bool pointee", kind: isa.RegisterBool, load: func(r *Registers) { r.Bools[1] = true },
 			build: func() (reflect.Value, func(*testing.T)) {
 				value := false
-				return reflect.ValueOf(&value), func(t *testing.T) { require.True(t, value) }
+				return reflect.ValueOf(&value), func(t *testing.T) {
+					t.Helper()
+					require.True(t, value)
+				}
 			},
 		},
 		{
 			name: "a uint pointee", kind: isa.RegisterUint, load: func(r *Registers) { r.Uints[1] = 12 },
 			build: func() (reflect.Value, func(*testing.T)) {
 				value := uint64(0)
-				return reflect.ValueOf(&value), func(t *testing.T) { require.Equal(t, uint64(12), value) }
+				return reflect.ValueOf(&value), func(t *testing.T) {
+					t.Helper()
+					require.Equal(t, uint64(12), value)
+				}
 			},
 		},
 		{
 			name: "a complex pointee", kind: isa.RegisterComplex, load: func(r *Registers) { r.Complex[1] = 4i },
 			build: func() (reflect.Value, func(*testing.T)) {
 				value := complex128(0)
-				return reflect.ValueOf(&value), func(t *testing.T) { require.Equal(t, 4i, value) }
+				return reflect.ValueOf(&value), func(t *testing.T) {
+					t.Helper()
+					require.Equal(t, 4i, value)
+				}
 			},
 		},
 		{
@@ -396,7 +480,10 @@ func TestSetUpvalueWritesThroughAnIndirectCell(t *testing.T) {
 			load: func(r *Registers) { r.General[1] = reflect.ValueOf("boxed") },
 			build: func() (reflect.Value, func(*testing.T)) {
 				value := ""
-				return reflect.ValueOf(&value), func(t *testing.T) { require.Equal(t, "boxed", value) }
+				return reflect.ValueOf(&value), func(t *testing.T) {
+					t.Helper()
+					require.Equal(t, "boxed", value)
+				}
 			},
 		},
 		{
@@ -404,7 +491,10 @@ func TestSetUpvalueWritesThroughAnIndirectCell(t *testing.T) {
 			load: func(r *Registers) { r.SlicesInt[1] = []int64{5, 6} },
 			build: func() (reflect.Value, func(*testing.T)) {
 				value := []int64(nil)
-				return reflect.ValueOf(&value), func(t *testing.T) { require.Equal(t, []int64{5, 6}, value) }
+				return reflect.ValueOf(&value), func(t *testing.T) {
+					t.Helper()
+					require.Equal(t, []int64{5, 6}, value)
+				}
 			},
 		},
 	}

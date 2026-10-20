@@ -4,7 +4,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function tokenise
-;   registers: int=11 general=1 uint=5 sliceByte=2
+;   registers: int=9 general=1 uint=4 sliceByte=2
 ;   dispatch:  asm=32 shim=0 exit=0 go=1
 ;   params:    (sliceByte)
 ;   returns:   (general)
@@ -28,15 +28,15 @@
 0011 A 0:JUMP_IF_FALSE              5   2   0    ; if ints[5] == 0 goto +2
 0012 A 1:LOAD_UINT_CONST_SMALL     99   2 122    ; uints[2] = 122
 0013 A 0:LE_UINT                    5   0   2
-0014 A 1:MOVE_INT                  35   7   5
-0015 A 0:JUMP_IF_TRUE               7   6   0    ; if ints[7] != 0 goto +6
-0016 A 1:LOAD_UINT_CONST_SMALL     99   3  65    ; uints[3] = 65
-0017 A 0:GE_UINT                    9   0   3
-0018 A 0:JUMP_IF_FALSE              9   2   0    ; if ints[9] == 0 goto +2
-0019 A 1:LOAD_UINT_CONST_SMALL     99   4  90    ; uints[4] = 90
-0020 A 0:LE_UINT                    9   0   4
-0021 A 1:MOVE_INT                  35   7   9
-0022 A 0:JUMP_IF_FALSE              7   4   0    ; if ints[7] == 0 goto +4
+0014 A 1:MOVE_INT                  35   5   5
+0015 A 0:JUMP_IF_TRUE               5   6   0    ; if ints[5] != 0 goto +6
+0016 A 1:LOAD_UINT_CONST_SMALL     99   2  65    ; uints[2] = 65
+0017 A 0:GE_UINT                    7   0   2
+0018 A 0:JUMP_IF_FALSE              7   2   0    ; if ints[7] == 0 goto +2
+0019 A 1:LOAD_UINT_CONST_SMALL     99   3  90    ; uints[3] = 90
+0020 A 0:LE_UINT                    7   0   3
+0021 A 1:MOVE_INT                  35   5   7
+0022 A 0:JUMP_IF_FALSE              5   4   0    ; if ints[5] == 0 goto +4
 0023 A 1:LT_INT_CONST_JUMP_FALSE  123   0   1
 0024   0:EXT                        8   0   0
 0025 A 1:MOVE_INT                  35   0   1
@@ -58,7 +58,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function emitToken
-;   registers: int=7 string=1 general=1 uint=3 sliceByte=2
+;   registers: int=6 string=1 general=1 uint=3 sliceByte=2
 ;   dispatch:  asm=13 shim=2 exit=0 go=6
 ;   params:    (general, sliceByte)
 ;   returns:   (none)
@@ -71,12 +71,12 @@
 0000 A 1:LEN_SLICE_BYTE_DIRECT    114   0   0
 0001 S 1:MAKE_SLICE_BYTE          111   1   0
 0002   0:EXT                        0   0   0
-0003 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0004 A 1:LEN_SLICE_BYTE_DIRECT    114   2   0
-0005 A 1:LT_INT_JUMP_FALSE        116   1   2
+0003 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0004 A 1:LEN_SLICE_BYTE_DIRECT    114   1   0
+0005 A 1:LT_INT_JUMP_FALSE        116   0   1
 0006   0:EXT                       18   0   0
 0007 A 1:SLICE_GET_BYTE_DIRECT    112   0   0
-0008   0:EXT                        1   0   0
+0008   0:EXT                        0   0   0
 0009 A 2:RANGE_CHECK_UINT_JUMP_FALSE   0  13   0
 0010   0:EXT                       65  90   0
 0011   0:EXT                        4   0   0
@@ -89,13 +89,13 @@
 0018   0:EXT                        2   0   0
 0019 A 0:TRUNCATE_NARROW            2   8   5
 0020 A 1:MOVE_UINT                 39   0   2
-0021 A 1:SLICE_SET_BYTE_DIRECT    113   1   1
+0021 A 1:SLICE_SET_BYTE_DIRECT    113   1   0
 0022   0:EXT                        0   0   0
-0023 A 2:TIER2_INC_INT              0   1   1
+0023 A 2:TIER2_INC_INT              0   1   0
 0024 A 1:JUMP                      74 235 255    ; goto -21
 0025 G 1:SLICE_BYTE_TO_STRING     149   0   1
-0026 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
-0027 S 0:MAP_ADD_STRING_INT         0   0   1
+0026 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
+0027 S 0:MAP_ADD_STRING_INT         0   0   0
 
 ; ═════════════════════════════════════════════════════════════
 ; function run

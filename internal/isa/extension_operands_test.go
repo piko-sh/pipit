@@ -33,7 +33,7 @@ func TestExtensionIntUseLayouts(t *testing.T) {
 	onlyA := [NumInstructionOperands]bool{true, false, false}
 	onlyB := [NumInstructionOperands]bool{false, true, false}
 
-	cases := []struct {
+	tests := []struct {
 		name  string
 		owner Instruction
 
@@ -89,14 +89,14 @@ func TestExtensionIntUseLayouts(t *testing.T) {
 		{name: "make channel carries a type index", owner: NewTier1Instruction(SubOpMakeChannel, 1, 0), word: word(reg, 0, 0), mask: none, ok: true},
 		{name: "generic append is not recorded", owner: NewInstruction(OpAppend, 1, 2, 3), word: word(reg, 0, 0), ok: false},
 	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			words := append(append([]Instruction(nil), testCase.prefix...), testCase.word)
-			reads, writes, ok := ExtensionIntUse(testCase.owner, words)
-			require.Equal(t, testCase.ok, ok)
-			require.Equal(t, testCase.mask, reads)
-			require.Equal(t, testCase.writes, writes)
+			words := append(append([]Instruction(nil), tt.prefix...), tt.word)
+			reads, writes, ok := ExtensionIntUse(tt.owner, words)
+			require.Equal(t, tt.ok, ok)
+			require.Equal(t, tt.mask, reads)
+			require.Equal(t, tt.writes, writes)
 		})
 	}
 }
@@ -136,7 +136,7 @@ func TestExtensionIntUseOnlyDescribesExtensionCarriers(t *testing.T) {
 
 func TestExtensionNamesOnlyIntRegisters(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	tests := []struct {
 		name  string
 		owner Instruction
 		want  bool
@@ -165,10 +165,10 @@ func TestExtensionNamesOnlyIntRegisters(t *testing.T) {
 		{name: "another tier-2 operation", owner: NewTier2Instruction(SubOpTier2IncInt, 1), want: false},
 		{name: "an unlisted operation", owner: NewInstruction(OpAppend, 1, 2, 3), want: false},
 	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, testCase.want, ExtensionNamesOnlyIntRegisters(testCase.owner))
+			require.Equal(t, tt.want, ExtensionNamesOnlyIntRegisters(tt.owner))
 		})
 	}
 }
@@ -196,20 +196,27 @@ func TestExtensionNamesOnlyIntRegistersImpliesARecordedIntLayout(t *testing.T) {
 
 func TestExtensionRegisterUseSeparatesScalarStoreBanks(t *testing.T) {
 	t.Parallel()
-	for sub, source := range map[SubOpcode]RegisterKind{
-		SubOpSliceSetFloatDirect:  RegisterFloat,
-		SubOpSliceSetStringDirect: RegisterString,
-		SubOpSliceSetBoolDirect:   RegisterBool,
-		SubOpSliceSetUintDirect:   RegisterUint,
-		SubOpSliceSetByteDirect:   RegisterUint,
-	} {
-		for _, bank := range []RegisterKind{RegisterInt, RegisterGeneral, RegisterFloat, RegisterString, RegisterBool, RegisterUint, RegisterSliceByte} {
-			reads, writes, ok := ExtensionRegisterUse(NewTier1Instruction(sub, 0, 1), []Instruction{NewInstruction(OpExt, 3, 0, 0)}, bank)
-			require.True(t, ok)
-			require.Equal(t, ExtensionIntMask{bank == source, false, false}, reads)
-			require.Equal(t, ExtensionIntMask{}, writes)
-		}
-	}
 	_, _, ok := ExtensionRegisterUse(NewInstruction(OpDefer, 0, 0, 0), []Instruction{NewInstruction(OpExt, 3, 0, 0)}, RegisterGeneral)
-	require.False(t, ok)
+	require.False(t, ok, "a deferred call has no recorded register layout")
+	tests := []struct {
+		sub    SubOpcode
+		source RegisterKind
+	}{
+		{sub: SubOpSliceSetFloatDirect, source: RegisterFloat},
+		{sub: SubOpSliceSetStringDirect, source: RegisterString},
+		{sub: SubOpSliceSetBoolDirect, source: RegisterBool},
+		{sub: SubOpSliceSetUintDirect, source: RegisterUint},
+		{sub: SubOpSliceSetByteDirect, source: RegisterUint},
+	}
+	for _, tt := range tests {
+		t.Run(tt.sub.String(), func(t *testing.T) {
+			t.Parallel()
+			for _, bank := range []RegisterKind{RegisterInt, RegisterGeneral, RegisterFloat, RegisterString, RegisterBool, RegisterUint, RegisterSliceByte} {
+				reads, writes, ok := ExtensionRegisterUse(NewTier1Instruction(tt.sub, 0, 1), []Instruction{NewInstruction(OpExt, 3, 0, 0)}, bank)
+				require.True(t, ok, "bank %s", bank)
+				require.Equal(t, ExtensionIntMask{bank == tt.source, false, false}, reads, "bank %s", bank)
+				require.Equal(t, ExtensionIntMask{}, writes, "bank %s", bank)
+			}
+		})
+	}
 }

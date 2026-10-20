@@ -26,99 +26,89 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRecoveryClaimPreparesCleanupOnly(t *testing.T) {
+	t.Parallel()
 	claim, grants, _ := prepareRecoveryClaimFixture(t, true)
 	bootstrap, err := claim.PrepareRecovery(grants)
-	if err != nil || bootstrap == nil {
-		t.Fatal("recovery preparation failed:", err)
-	}
+	require.NoError(t, err, "recovery preparation failed")
+	require.NotNil(t, bootstrap)
 	defer bootstrap.Close()
-	if !bootstrap.RecoveryOnly() {
-		t.Fatal("claim restored normal execution")
+	require.True(t, bootstrap.RecoveryOnly(), "claim restored normal execution")
+	renewed, err := bootstrap.RecoveryAuthority()
+	if renewed != nil {
+		_ = renewed.Close()
 	}
-	if authority, err := bootstrap.RecoveryAuthority(); !errors.Is(err, ErrInvalidPolicy) || authority != nil {
-		if authority != nil {
-			_ = authority.Close()
-		}
-		t.Fatal("claim renewed operation admission:", err)
-	}
+	require.ErrorIs(t, err, ErrInvalidPolicy, "a claim does not renew operation admission")
+	require.Nil(t, renewed)
 	files, err := bootstrap.Files()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	policy, err := readLinuxBootstrap(files[0])
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	records, err := decodeBootstrapRecovery(policy)
-	if err != nil || len(records) != 1 || records[0].Operation != 1 {
-		t.Fatal("original journal intent was lost:", err)
-	}
-	if len(policy.Roots) != 1 || policy.Roots[0].Rights != Write {
-		t.Fatal("cleanup authority widened")
-	}
-	if err := claim.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := linuxBootstrapRootIdentity(files[1]); err != nil {
-		t.Fatal("bootstrap did not own its root handle:", err)
-	}
-	if bootstrap, err := claim.PrepareRecovery(grants); !errors.Is(err, ErrClosed) || bootstrap != nil {
-		t.Fatal("closed claim prepared new authority:", err)
-	}
+	require.NoError(t, err, "original journal intent was lost")
+	require.Len(t, records, 1)
+	require.Equal(t, uint64(1), records[0].Operation)
+	require.Len(t, policy.Roots, 1, "cleanup authority widened")
+	require.Equal(t, Write, policy.Roots[0].Rights)
+	require.NoError(t, claim.Close())
+	_, err = linuxBootstrapRootIdentity(files[1])
+	require.NoError(t, err, "bootstrap did not own its root handle")
+	bootstrap, err = claim.PrepareRecovery(grants)
+	require.ErrorIs(t, err, ErrClosed, "closed claim prepared new authority")
+	require.Nil(t, bootstrap)
 }
 
 func TestRecoveryClaimEmptyJournalStillValidatesRoots(t *testing.T) {
+	t.Parallel()
 	claim, grants, _ := prepareRecoveryClaimFixture(t, false)
 	bootstrap, err := claim.PrepareRecovery(grants)
-	if err != nil || bootstrap != nil {
-		t.Fatal("validated empty journal did not report no work:", err)
-	}
+	require.NoError(t, err, "validated empty journal did not report no work")
+	require.Nil(t, bootstrap)
 	changed := append([]LinuxRootGrant(nil), grants...)
 	changed[0].Path = testRecoveryDirectory(t)
-	if bootstrap, err := claim.PrepareRecovery(changed); !errors.Is(err, ErrDenied) || bootstrap != nil {
-		t.Fatal("empty journal bypassed original root identity:", err)
-	}
+	bootstrap, err = claim.PrepareRecovery(changed)
+	require.ErrorIs(t, err, ErrDenied, "empty journal bypassed original root identity")
+	require.Nil(t, bootstrap)
 	changed = append([]LinuxRootGrant(nil), grants...)
 	changed[0].Rights = Read
-	if bootstrap, err := claim.PrepareRecovery(changed); !errors.Is(err, ErrDenied) || bootstrap != nil {
-		t.Fatal("empty journal bypassed original rights:", err)
-	}
+	bootstrap, err = claim.PrepareRecovery(changed)
+	require.ErrorIs(t, err, ErrDenied, "empty journal bypassed original rights")
+	require.Nil(t, bootstrap)
 }
 
 func TestRecoveryClaimRejectsMetadataMovedIntoGrant(t *testing.T) {
+	t.Parallel()
 	for _, index := range []int{1, 2} {
 		for _, withRecord := range []bool{false, true} {
 			claim, grants, directories := prepareRecoveryClaimFixture(t, withRecord)
-			if err := os.Rename(directories[index], filepath.Join(grants[0].Path, "moved-metadata")); err != nil {
-				t.Fatal(err)
+			require.NoError(t, os.Rename(directories[index], filepath.Join(grants[0].Path, "moved-metadata")))
+			prepared, err := claim.PrepareRecovery(grants)
+			if prepared != nil {
+				_ = prepared.Close()
 			}
-			if bootstrap, err := claim.PrepareRecovery(grants); !errors.Is(err, ErrDenied) || bootstrap != nil {
-				if bootstrap != nil {
-					_ = bootstrap.Close()
-				}
-				t.Fatal("restored grant contains recovery metadata:", index, withRecord, err)
-			}
+			require.ErrorIs(t, err, ErrDenied, "a restored grant holding recovery metadata is refused (%d, %v)", index, withRecord)
+			require.Nil(t, prepared)
 		}
 	}
 }
 
 func TestRecoveryClaimRejectsGrantMovedIntoMetadata(t *testing.T) {
+	t.Parallel()
 	for _, index := range []int{1, 2} {
 		claim, grants, directories := prepareRecoveryClaimFixture(t, true)
 		moved := filepath.Join(directories[index], "moved-root")
-		if err := os.Rename(grants[0].Path, moved); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.Rename(grants[0].Path, moved))
 		grants[0].Path = moved
-		if bootstrap, err := claim.PrepareRecovery(grants); !errors.Is(err, ErrDenied) || bootstrap != nil {
-			if bootstrap != nil {
-				_ = bootstrap.Close()
-			}
-			t.Fatal("restored grant inside recovery metadata accepted:", index, err)
+		prepared, err := claim.PrepareRecovery(grants)
+		if prepared != nil {
+			_ = prepared.Close()
 		}
+		require.ErrorIs(t, err, ErrDenied, "a restored grant inside recovery metadata is refused (%d)", index)
+		require.Nil(t, prepared)
 	}
 }
 
@@ -126,52 +116,33 @@ func prepareRecoveryClaimFixture(t *testing.T, withRecord bool) (*LinuxRecoveryC
 	t.Helper()
 	grants := []LinuxRootGrant{{Name: "data", Path: testRecoveryDirectory(t), Rights: Read | Write | List}}
 	bootstrap, err := PrepareLinuxBootstrap(grants, FilesystemLimits{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer bootstrap.Close()
 	authority, err := bootstrap.RecoveryAuthority()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer authority.Close()
 	directories := [3]string{testRecoveryDirectory(t), testRecoveryDirectory(t), testRecoveryDirectory(t)}
 	journal, err := OpenLinuxRecoveryJournal(directories[0], authority.namespace)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer journal.Close()
 	checkpoint, err := OpenLinuxRecoveryCheckpointStore(directories[1])
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer checkpoint.Close()
 	approval, err := OpenLinuxRecoveryApprovalStore(directories[2])
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer approval.Close()
 	binding := [sha256.Size]byte{1}
-	if _, err := authority.PersistApprovedCheckpoint(journal, checkpoint, approval, binding); err != nil {
-		t.Fatal(err)
-	}
+	_, err = authority.PersistApprovedCheckpoint(journal, checkpoint, approval, binding)
+	require.NoError(t, err)
 	if withRecord {
 		record := testRecoveryAuthorityRecord(t, authority, 1)
 		call, err := authority.admit(brokerMessage(1, recoveryWritePayload))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := errors.Join(authority.record(journal, call, record), call.Finish(0)); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+		require.NoError(t, errors.Join(authority.record(journal, call, record), call.Finish(0)))
 	}
-	if err := errors.Join(authority.Close(), journal.Close(), checkpoint.Close(), approval.Close()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, errors.Join(authority.Close(), journal.Close(), checkpoint.Close(), approval.Close()))
 	claim, err := OpenLinuxRecoveryClaim(directories[0], directories[1], directories[2], binding)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = claim.Close() })
 	return claim, grants, directories
 }

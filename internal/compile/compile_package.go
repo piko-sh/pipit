@@ -58,12 +58,12 @@ func CompileParsedPackage(ctx context.Context, config CompilerConfig, files []*a
 	c.RegisterPackageLevelVarsFromFiles(ctx, files)
 
 	if err := c.TwoPassCompileFuncs(ctx, files, importPath); err != nil {
-		return nil, fmt.Errorf("compiling package %s: %w", importPath, err)
+		return nil, err
 	}
 
-	variableInitialisationFunction, err := c.CompileVariableInitFunction(ctx, files)
+	variableInitialisationFunction, err := c.compileVariableInit(ctx, files)
 	if err != nil {
-		return nil, fmt.Errorf("compiling package %s variable init: %w", importPath, err)
+		return nil, c.wrapCompileError(ctx, fmt.Errorf("package variable initialisation: %w", err), importPath)
 	}
 
 	initIndices := c.InitFunctionIndices()

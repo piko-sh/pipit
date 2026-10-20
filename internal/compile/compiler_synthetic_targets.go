@@ -57,8 +57,8 @@ func (c *Compiler) syntheticUse(pos token.Pos, object *types.Var) *ast.Ident {
 	return use
 }
 
-// rangeTargetsNeedTemps reports whether a range statement assigns to targets other than
-// identifiers.
+// rangeTargetsNeedTemps reports whether any range assignment target is neither blank
+// nor a local held in a register.
 //
 // Takes statement (*ast.RangeStmt) which is the loop.
 //
@@ -67,8 +67,8 @@ func (c *Compiler) rangeTargetsNeedTemps(statement *ast.RangeStmt) bool {
 	if statement.Tok != token.ASSIGN || c.Info == nil {
 		return false
 	}
-	return (statement.Key != nil && !isPlainTarget(statement.Key)) ||
-		(statement.Value != nil && !isPlainTarget(statement.Value))
+	return (statement.Key != nil && !c.isDirectRegisterTarget(statement.Key)) ||
+		(statement.Value != nil && !c.isDirectRegisterTarget(statement.Value))
 }
 
 // compileRangeAssignTargets rewrites `for k, v = range x { body }` with non-identifier
@@ -123,8 +123,8 @@ func (c *Compiler) rangeTargetTemp(statement *ast.RangeStmt, target ast.Expr) (a
 	return definition, assign
 }
 
-// commaOkTargetsNeedTemps reports whether a two-target assignment from a comma-ok
-// expression (map index, type assertion, channel receive) has a non-identifier target.
+// commaOkTargetsNeedTemps reports whether a comma-ok assignment needs temporary results
+// for targets that cannot be written directly.
 //
 // Takes statement (*ast.AssignStmt) which is the assignment.
 //
@@ -133,7 +133,7 @@ func (c *Compiler) commaOkTargetsNeedTemps(statement *ast.AssignStmt) bool {
 	if len(statement.Lhs) != 2 || c.Info == nil || !c.isCommaOkExpression(statement.Rhs[0]) {
 		return false
 	}
-	return !isPlainTarget(statement.Lhs[0]) || !isPlainTarget(statement.Lhs[1])
+	return !c.isDirectRegisterTarget(statement.Lhs[0]) || !c.isDirectRegisterTarget(statement.Lhs[1])
 }
 
 // isCommaOkExpression reports whether expression can yield a (value, ok) pair: a map
@@ -191,12 +191,33 @@ func (c *Compiler) compileCommaOkAssignTargets(ctx context.Context, statement *a
 	return program.VarLocation{}, nil
 }
 
-// isPlainTarget reports whether target is an identifier, blank included.
+// isDirectRegisterTarget reports whether target is blank or a plain register local that
+// an instruction can write directly.
 //
 // Takes target (ast.Expr) which is an assignment target.
 //
-// Returns true for identifiers.
-func isPlainTarget(target ast.Expr) bool {
-	_, ok := target.(*ast.Ident)
-	return ok
+// Returns true when the target is written directly.
+func (c *Compiler) isDirectRegisterTarget(target ast.Expr) bool {
+	identifier, ok := target.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	if identifier.Name == typemap.BlankIdentName {
+		return true
+	}
+	if c.resolveIdentTarget(identifier) != identTargetLocal {
+		return false
+	}
+	location, found := c.Scopes.LookupVar(identifier.Name)
+	return found && isPlainRegisterLocal(location)
+}
+
+// isPlainRegisterLocal reports whether a local is held in a register without spilling,
+// heap promotion, capture or upvalue storage.
+//
+// Takes location (program.VarLocation) which is the local's location.
+//
+// Returns bool which is true for a plain register local.
+func isPlainRegisterLocal(location program.VarLocation) bool {
+	return !location.IsSpilled && !location.IsIndirect && !location.IsCaptured && !location.IsUpvalue
 }

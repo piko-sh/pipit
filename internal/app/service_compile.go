@@ -26,9 +26,11 @@ import (
 	"go/constant"
 	"go/parser"
 	"go/types"
+	"log/slog"
 	"maps"
 	"path"
 	"reflect"
+	runtimedebug "runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -43,6 +45,7 @@ import (
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/frontend"
 	"pipit.sh/pipit/internal/stdlibindex"
+	"pipit.sh/pipit/internal/symtab"
 )
 
 const (
@@ -56,11 +59,24 @@ const (
 	// prefix is updated here.
 	couldNotImportPrefix = "could not import "
 
+	// maxTypeErrorsPerPackage caps the type errors reported for one package.
+	maxTypeErrorsPerPackage = 10
+
 	// notRegisteredMarker is the surface text of fault.ErrPackageNotInRegistry as it appears
 	// inside the Importer's wrapped error message. The marker stays in sync with the
 	// fmt.Errorf call at symbol_registry.go:(*SymbolRegistry).Import; enrichTypeCheckError
 	// falls back to the un-enriched error when the marker no longer matches.
 	notRegisteredMarker = "not registered with interpreter"
+)
+
+var (
+	// errTooManyTypeErrors ends a package's type errors when more than
+	// maxTypeErrorsPerPackage were found.
+	errTooManyTypeErrors = errors.New("too many type errors")
+
+	// errTooManyFileErrors ends a package's parse errors when more than
+	// maxTypeErrorsPerPackage of its files failed.
+	errTooManyFileErrors = errors.New("too many files with errors")
 )
 
 // parsedPackage holds the parsed and filtered files for a single package within a
@@ -77,6 +93,18 @@ type parsedPackage struct {
 
 	// files holds the parsed and build-tag-filtered AST files.
 	files []*ast.File
+}
+
+// packageSet holds parsed packages and collects failures from the remaining packages.
+type packageSet struct {
+	// parsed maps import paths to the packages that parsed cleanly.
+	parsed map[string]*parsedPackage
+
+	// failed holds the import paths of the packages that did not.
+	failed map[string]struct{}
+
+	// problems lists the failed packages' problems in import-path order.
+	problems []error
 }
 
 // packageCompileResult holds the output of compiling a single package within a
@@ -138,6 +166,17 @@ type pendingVarBridge struct {
 	vars []packageVarExport
 }
 
+// typeCheckOptions adjusts checkPackageTypes for its caller.
+type typeCheckOptions struct {
+	// interpretedPaths holds the import paths compiled from source in this batch, which get
+	// no symbol-table hint, or nil.
+	interpretedPaths map[string]bool
+
+	// allowUnusedImports accepts imports nothing uses, as a session does for the imports it
+	// keeps from earlier submissions.
+	allowUnusedImports bool
+}
+
 // Compile parses, type-checks, and compiles Go source code into a CompiledFunction
 // without executing it. The returned function can be executed multiple times via Execute.
 //
@@ -150,6 +189,9 @@ func (s *Service) Compile(ctx context.Context, code string) (*program.CompiledFu
 		return nil, engine.NewSafeError(safeMessageCompilationCancelled, fmt.Errorf(fault.ErrChainFmt, fault.ErrExecutionCancelled, err))
 	}
 	if err := s.checkSourceSize(len(code)); err != nil {
+		return nil, engine.NewSafeError(safeMessageCompilationFailed, err)
+	}
+	if err := rejectGoEmbedSource(evalFileName, code); err != nil {
 		return nil, engine.NewSafeError(safeMessageCompilationFailed, err)
 	}
 	ctx, cancel := s.applyMaxExecutionTime(ctx)
@@ -193,16 +235,20 @@ func (s *Service) Compile(ctx context.Context, code string) (*program.CompiledFu
 // and deterministic ordering) and values are source code strings.
 //
 // Returns *CompiledFileSet which holds all compiled functions.
-// Returns error when parsing, type-checking, or compilation fails.
-func (s *Service) CompileFileSet(ctx context.Context, sources map[string]string) (*program.CompiledFileSet, error) {
+// Returns error when parsing, type-checking, or compilation fails; a compiler panic is
+// reported as fault.ErrCompilePanic, as for CompileProgram.
+func (s *Service) CompileFileSet(ctx context.Context, sources map[string]string) (compiled *program.CompiledFileSet, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logCompilePanic(ctx, recovered)
+			compiled = nil
+			err = engine.NewSafeError(safeMessageCompilationFailed, fmt.Errorf("%w: %v", fault.ErrCompilePanic, recovered))
+		}
+	}()
 	if err := ctx.Err(); err != nil {
 		return nil, engine.NewSafeError(safeMessageCompilationCancelled, fmt.Errorf(fault.ErrChainFmt, fault.ErrExecutionCancelled, err))
 	}
-	totalSourceBytes := 0
-	for _, source := range sources {
-		totalSourceBytes += len(source)
-	}
-	if err := s.checkSourceSize(totalSourceBytes); err != nil {
+	if err := s.checkSourceSize(fileSetSourceBytes(sources)); err != nil {
 		return nil, engine.NewSafeError(safeMessageCompilationFailed, err)
 	}
 	ctx, cancel := s.applyMaxExecutionTime(ctx)
@@ -211,17 +257,15 @@ func (s *Service) CompileFileSet(ctx context.Context, sources map[string]string)
 
 	s.applyEnvOverrides()
 
-	files, err := s.parseAndValidateFileSet(sources)
+	files, err := s.parseAndValidateFileSet(ctx, sources)
 	if err != nil {
 		return nil, engine.NewSafeError(safeMessageCompilationFailed, fmt.Errorf(errFmtCompilingFileSet, err))
 	}
 
 	info := frontend.NewTypesInfo()
-	conf := s.newTypesConfig()
-	typesPackage, err := conf.Check(mainPackageName, s.fileSet, files, info)
+	typesPackage, err := s.checkPackageTypes(mainPackageName, files, info, typeCheckOptions{interpretedPaths: nil, allowUnusedImports: false})
 	if err != nil {
-		enriched := s.enrichTypeCheckError(err, files, nil)
-		return nil, engine.NewSafeError(safeMessageCompilationFailed, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, enriched))
+		return nil, engine.NewSafeError(safeMessageCompilationFailed, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, err))
 	}
 
 	rootFunction := program.NewNamedFunction("<fileset>")
@@ -311,14 +355,15 @@ func (s *Service) CompileProgram(ctx context.Context, modulePath string, package
 
 	s.applyEnvOverrides()
 
-	parsed, err := s.parseAndValidateImports(modulePath, packages)
+	set, err := s.parseAndValidateImports(ctx, modulePath, packages)
 	if err != nil {
-		return nil, engine.NewSafeError(safeMessageCompilationFailed, fmt.Errorf(errFmtCompilingProgram, err))
+		return nil, programFailure(set.problems, err)
 	}
+	parsed := set.parsed
 
 	order, err := topoSort(buildDependencyGraph(parsed))
 	if err != nil {
-		return nil, engine.NewSafeError(safeMessageCompilationFailed, fmt.Errorf(errFmtCompilingProgram, err))
+		return nil, programFailure(set.problems, err)
 	}
 
 	rootFunction := program.NewNamedFunction("<program>")
@@ -335,10 +380,10 @@ func (s *Service) CompileProgram(ctx context.Context, modulePath string, package
 		}()
 	}
 
-	compiled, err := s.compileOrderedPackages(ctx, order, parsed, rootFunction, crossPackageMethods)
+	compiled, err := s.compileOrderedPackages(ctx, order, set, rootFunction, crossPackageMethods)
 	allInitFunctions, mainFunctionTable, lastFunctionTable = compiled.initFunctions, compiled.mainFunctionTable, compiled.lastFunctionTable
-	if err != nil {
-		return nil, engine.NewSafeError(safeMessageCompilationFailed, fmt.Errorf(errFmtCompilingProgram, err))
+	if failure := programFailure(set.problems, err); failure != nil {
+		return nil, failure
 	}
 
 	if err := s.runPostCompilationChecks(ctx, rootFunction, errFmtCompilingProgram); err != nil {
@@ -354,35 +399,45 @@ func (s *Service) CompileProgram(ctx context.Context, modulePath string, package
 }
 
 // parseAllPackages parses and filters files for every package in a multi-package
-// compilation.
+// compilation. A package that fails does not stop the others.
 //
 // Takes modulePath (string) which is the module path prefix.
 // Takes packages (map[string]map[string]string) which maps relative package paths to
 // filename-to-source maps.
 //
-// Returns map[string]*parsedPackage which maps import paths to their parsed package data.
-// Returns error when any package fails to parse.
-func (s *Service) parseAllPackages(modulePath string, packages map[string]map[string]string) (map[string]*parsedPackage, error) {
-	parsed := make(map[string]*parsedPackage, len(packages))
-	for relPath, sources := range packages {
+// Returns packageSet which holds the parsed packages and the problems of the failed ones.
+// Returns error which wraps fault.ErrExecutionCancelled when ctx ends.
+func (s *Service) parseAllPackages(ctx context.Context, modulePath string, packages map[string]map[string]string) (packageSet, error) {
+	set := packageSet{
+		parsed:   make(map[string]*parsedPackage, len(packages)),
+		failed:   make(map[string]struct{}),
+		problems: nil,
+	}
+	for _, relPath := range slices.Sorted(maps.Keys(packages)) {
 		importPath := modulePath
 		if relPath != "" {
 			importPath = modulePath + "/" + relPath
 		}
 
-		pkg, err := s.parseSinglePackage(importPath, relPath, sources)
+		pkg, err := s.parseSinglePackage(ctx, importPath, relPath, packages[relPath])
+		if errors.Is(err, fault.ErrExecutionCancelled) {
+			return set, err
+		}
 		if err != nil {
-			return nil, fmt.Errorf("parsing packages: %w", err)
+			set.failed[importPath] = struct{}{}
+			set.problems = append(set.problems, err)
+			continue
 		}
 		if pkg != nil {
-			parsed[importPath] = pkg
+			set.parsed[importPath] = pkg
 		}
 	}
-	return parsed, nil
+	return set, nil
 }
 
-// parseSinglePackage parses a single package's source files and filters by build
-// constraints.
+// parseSinglePackage parses the source files of one package that the interpreter
+// compiles. A //go:embed directive is rejected only in a file that survives the build
+// filter, so a file guarded by //go:build !interp may embed.
 //
 // Takes importPath (string) which is the fully qualified import path.
 // Takes relPath (string) which is the relative path within the module.
@@ -390,31 +445,19 @@ func (s *Service) parseAllPackages(modulePath string, packages map[string]map[st
 //
 // Returns *parsedPackage which holds the filtered AST files, or nil when all files are
 // excluded by build constraints.
-// Returns error when any file fails to parse.
-func (s *Service) parseSinglePackage(importPath, relPath string, sources map[string]string) (*parsedPackage, error) {
-	names := make([]string, 0, len(sources))
-	for name := range sources {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-
-	allFiles := make([]*ast.File, 0, len(sources))
-	for _, name := range names {
-		file, err := parser.ParseFile(s.fileSet, name, sources[name], parser.ParseComments)
-		if err != nil {
-			return nil, fmt.Errorf(fault.ErrChainMessageFmt, fault.ErrParse, name, err)
-		}
-		allFiles = append(allFiles, file)
-	}
-	if err := rejectGoEmbed(s.fileSet, allFiles); err != nil {
+// Returns error which names the package, when a file's build constraints are malformed, a
+// file fails to parse, or a file embeds; or which wraps fault.ErrExecutionCancelled when
+// ctx ends.
+func (s *Service) parseSinglePackage(ctx context.Context, importPath, relPath string, sources map[string]string) (*parsedPackage, error) {
+	files, err := s.parseSelectedFiles(ctx, sources)
+	if errors.Is(err, fault.ErrExecutionCancelled) {
 		return nil, err
 	}
-
-	files := make([]*ast.File, 0, len(allFiles))
-	for _, f := range allFiles {
-		if s.shouldIncludeFile(f) {
-			files = append(files, f)
-		}
+	if err != nil {
+		return nil, fmt.Errorf(fault.ErrChainMessageFmt, fault.ErrParse, importPath, err)
+	}
+	if err := rejectGoEmbed(s.fileSet, importPath, files); err != nil {
+		return nil, err
 	}
 
 	if len(files) == 0 {
@@ -452,16 +495,15 @@ func (s *Service) compileSinglePackage(
 ) (result *packageCompileResult, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
+			logCompilePanic(ctx, recovered)
 			result = nil
 			err = fmt.Errorf("%w: %s: %v", fault.ErrCompilePanic, pkg.importPath, recovered)
 		}
 	}()
 	info := frontend.NewTypesInfo()
-	conf := s.newTypesConfig()
-	typesPackage, err := conf.Check(pkg.importPath, s.fileSet, pkg.files, info)
+	typesPackage, err := s.checkPackageTypes(pkg.importPath, pkg.files, info, typeCheckOptions{interpretedPaths: interpretedPaths, allowUnusedImports: false})
 	if err != nil {
-		enriched := s.enrichTypeCheckError(err, pkg.files, interpretedPaths)
-		return nil, fmt.Errorf(fault.ErrChainMessageFmt, fault.ErrTypeCheck, pkg.importPath, enriched)
+		return nil, fmt.Errorf(fault.ErrChainMessageFmt, fault.ErrTypeCheck, pkg.importPath, err)
 	}
 
 	s.applyResourceLimits(rootFunction)
@@ -483,6 +525,38 @@ func (s *Service) compileSinglePackage(
 		rootFunction:        rootFunction,
 		exportedVars:        exportedVars,
 	}, nil
+}
+
+// checkPackageTypes type-checks a package or snippet, collecting up to
+// maxTypeErrorsPerPackage errors with diagnostic hints and rejecting oversize function
+// signatures.
+//
+// Takes packagePath (string) which is the package path handed to go/types.
+// Takes files ([]*ast.File) which are the package's files.
+// Takes info (*types.Info) which receives the type information.
+// Takes options (typeCheckOptions) which adjust the check.
+//
+// Returns *types.Package which is the checked package.
+// Returns error which joins the package's type errors, the first one first, or nil.
+func (s *Service) checkPackageTypes(packagePath string, files []*ast.File, info *types.Info, options typeCheckOptions) (*types.Package, error) {
+	typeErrors := newCappedErrors(maxTypeErrorsPerPackage)
+	typesConfig := s.newTypesConfig()
+	typesConfig.DisableUnusedImportCheck = options.allowUnusedImports
+	typesConfig.Error = func(err error) {
+		if !typeErrors.full() {
+			err = s.enrichTypeCheckError(err, files, options.interpretedPaths)
+		}
+		typeErrors.add(err)
+	}
+	typesPackage, err := typesConfig.Check(packagePath, s.fileSet, files, info)
+	sizeErr := rejectOversizeSignatures(s.fileSet, files)
+	if err == nil {
+		return typesPackage, sizeErr
+	}
+	if typeErrors.empty() {
+		typeErrors.add(s.enrichTypeCheckError(err, files, options.interpretedPaths))
+	}
+	return typesPackage, errors.Join(typeErrors.join(errTooManyTypeErrors), sizeErr)
 }
 
 // packageCompilerConfig builds the compiler configuration compileSinglePackage hands to
@@ -596,10 +670,10 @@ func (s *Service) enrichTypeCheckError(err error, files []*ast.File, interpreted
 	identifier := strings.TrimPrefix(message, undefinedPrefix)
 	packageAlias, symbolName, hasDot := strings.Cut(identifier, ".")
 	if !hasDot {
-		return err
+		return s.enrichRenamedPackageError(err, identifier, files)
 	}
 
-	aliases := buildImportAliasMap(files)
+	aliases := buildImportAliasMap(files, s.symbols.PackageName)
 	fullPath, found := aliases[packageAlias]
 	if !found {
 		return err
@@ -625,95 +699,151 @@ func (s *Service) enrichTypeCheckError(err error, files []*ast.File, interpreted
 	)
 }
 
-// parseAndValidateImports parses every package and enforces the import policy.
+// enrichRenamedPackageError explains an "undefined: X" error where X is the last element
+// of an unaliased import whose registered package has another name, which happens when a
+// symbol table records no name and the package declares one other than the name goimports
+// assumes.
 //
-// The denylist/allowlist is applied over the full set, so a policy's own cross-package
-// imports are recognised as local and never rejected.
+// Takes err (error) which is the original error from go/types.
+// Takes identifier (string) which is the undefined name.
+// Takes files ([]*ast.File) which are the AST files being type-checked.
+//
+// Returns the original error unchanged when no import explains it, or a wrapped error
+// with a hint appended.
+func (s *Service) enrichRenamedPackageError(err error, identifier string, files []*ast.File) error {
+	for _, file := range files {
+		for _, importSpec := range file.Imports {
+			if importSpec.Name != nil {
+				continue
+			}
+			importPath, pathErr := importPathOf(importSpec)
+			if pathErr != nil || path.Base(importPath) != identifier || !s.symbols.HasPackage(importPath) {
+				continue
+			}
+			name := s.symbols.PackageName(importPath)
+			if name == identifier {
+				continue
+			}
+			return fmt.Errorf(
+				"%w - package %q is known as %q, not %q; regenerate its symbol table with "+
+					"\"pipit extract generate\" (or \"piko extract generate\"), which records the name a "+
+					"package declares, add a PackageNameSymbol entry to a hand-written table, or "+
+					"import it with an explicit name: import %s %q",
+				err, importPath, name, identifier, identifier, importPath,
+			)
+		}
+	}
+	return err
+}
+
+// parseAndValidateImports parses every package and enforces the import policy. Imports
+// within the source batch are treated as local, including packages that failed to
+// parse.
 //
 // Takes modulePath (string) which is the module's root import path.
 // Takes packages (map[string]map[string]string) which maps each package's relative path
 // to its filename-to-source map.
 //
-// Returns map[string]*parsedPackage which maps import paths to their parsed packages.
-// Returns error when parsing fails or an import violates the policy.
-func (s *Service) parseAndValidateImports(modulePath string, packages map[string]map[string]string) (map[string]*parsedPackage, error) {
-	parsed, err := s.parseAllPackages(modulePath, packages)
+// Returns packageSet which holds the parsed packages and the parse problems.
+// Returns error which holds a problem for each package with imports the policy refuses,
+// or which wraps fault.ErrExecutionCancelled when ctx ends.
+func (s *Service) parseAndValidateImports(ctx context.Context, modulePath string, packages map[string]map[string]string) (packageSet, error) {
+	set, err := s.parseAllPackages(ctx, modulePath, packages)
 	if err != nil {
-		return nil, err
+		return set, err
 	}
-	if err := s.checkImports(parsed); err != nil {
-		return nil, err
+	if err := s.checkImports(set); err != nil {
+		return set, err
 	}
-	return parsed, nil
+	return set, nil
 }
 
-// parseAndValidateFileSet parses, build-tag-filters, and import-checks the sources.
-//
-// The import check is a no-op when no policy is set. A single-package file set has no
-// local packages, so every import is treated as external.
+// parseAndValidateFileSet parses, filters and import-checks a single-package file set.
+// Its imports are all external for policy checks.
 //
 // Takes sources (map[string]string) which maps each filename to its source code.
 //
 // Returns []*ast.File which are the parsed, build-tag-filtered files.
-// Returns error when parsing fails or an import violates the policy.
-func (s *Service) parseAndValidateFileSet(sources map[string]string) ([]*ast.File, error) {
-	files, err := s.parseAndFilterFiles(sources)
+// Returns error when parsing fails, an import violates the policy, or ctx ends.
+func (s *Service) parseAndValidateFileSet(ctx context.Context, sources map[string]string) ([]*ast.File, error) {
+	files, err := s.parseAndFilterFiles(ctx, sources)
 	if err != nil {
 		return nil, err
 	}
+	var refused []string
 	for _, file := range files {
-		if err := s.checkFileImports(nil, file); err != nil {
-			return nil, err
-		}
+		refused = append(refused, s.refusedImports(nil, file)...)
+	}
+	if err := errImportNotPermitted("", refused); err != nil {
+		return nil, err
 	}
 	return files, nil
 }
 
-// checkImports enforces the import policy across every parsed package.
+// checkImports rejects denied paths and external imports absent from an active
+// allowlist.
 //
-// A denylisted package is always refused; when an allowlist is configured, an external
-// import must be on it. Cross-package imports within the same source batch are never
-// rejected. No-op when neither list is set.
+// Takes set (packageSet) which holds the parsed packages and the import paths of those
+// that failed, all of which count as local.
 //
-// Takes parsed (map[string]*parsedPackage) which maps import paths to their parsed
-// packages.
-//
-// Returns error when an import violates the denylist or allowlist.
-func (s *Service) checkImports(parsed map[string]*parsedPackage) error {
+// Returns error which holds one problem for each package with refused imports, naming
+// every refused import, or nil.
+func (s *Service) checkImports(set packageSet) error {
 	if len(s.config.deniedImports) == 0 && len(s.config.allowedImports) == 0 {
 		return nil
 	}
-	for _, pkg := range parsed {
-		for _, file := range pkg.files {
-			if err := s.checkFileImports(parsed, file); err != nil {
-				return err
-			}
+	local := make(map[string]*parsedPackage, len(set.parsed)+len(set.failed))
+	maps.Copy(local, set.parsed)
+	for importPath := range set.failed {
+		local[importPath] = nil
+	}
+	var problems []error
+	for _, importPath := range slices.Sorted(maps.Keys(set.parsed)) {
+		var refused []string
+		for _, file := range set.parsed[importPath].files {
+			refused = append(refused, s.refusedImports(local, file)...)
+		}
+		if err := errImportNotPermitted(importPath, refused); err != nil {
+			problems = append(problems, err)
 		}
 	}
-	return nil
+	return fault.JoinProblems(problems)
 }
 
 // checkFileImports applies the import policy to one file's imports.
-//
-// The denylist is consulted first so a denied path cannot be reached by declaring a local
-// package that shadows it. It is a no-op when neither list is set.
 //
 // Takes parsed (map[string]*parsedPackage) which holds the local packages compiled in
 // this batch, or nil when the file has no local siblings.
 // Takes file (*ast.File) which is the parsed source file to check.
 //
-// Returns error when an import violates the denylist or allowlist.
+// Returns error naming every import that violates the denylist or allowlist.
 func (s *Service) checkFileImports(parsed map[string]*parsedPackage, file *ast.File) error {
+	return errImportNotPermitted("", s.refusedImports(parsed, file))
+}
+
+// refusedImports returns the imports the policy rejects. Denied paths remain forbidden
+// even when a local package has the same name.
+//
+// Takes parsed (map[string]*parsedPackage) which holds the local packages compiled in
+// this batch, or nil when the file has no local siblings.
+// Takes file (*ast.File) which is the parsed source file to check.
+//
+// Returns []string which holds the refused import paths in source order. A path literal
+// that does not unquote is refused as written, so a policy never lets it through.
+func (s *Service) refusedImports(parsed map[string]*parsedPackage, file *ast.File) []string {
 	if len(s.config.deniedImports) == 0 && len(s.config.allowedImports) == 0 {
 		return nil
 	}
-	for _, imp := range file.Imports {
-		importPath, err := importPathOf(imp)
+	var refused []string
+	for _, importSpec := range file.Imports {
+		importPath, err := importPathOf(importSpec)
 		if err != nil {
-			return err
+			refused = append(refused, importSpec.Path.Value)
+			continue
 		}
 		if _, denied := s.config.deniedImports[importPath]; denied {
-			return errImportNotPermitted(importPath)
+			refused = append(refused, importPath)
+			continue
 		}
 		if len(s.config.allowedImports) == 0 {
 			continue
@@ -722,10 +852,10 @@ func (s *Service) checkFileImports(parsed map[string]*parsedPackage, file *ast.F
 			continue
 		}
 		if _, allowed := s.config.allowedImports[importPath]; !allowed {
-			return errImportNotPermitted(importPath)
+			refused = append(refused, importPath)
 		}
 	}
-	return nil
+	return refused
 }
 
 // checkSourceSize returns an error if the total source code size exceeds the configured
@@ -855,13 +985,31 @@ func importPathOf(spec *ast.ImportSpec) (string, error) {
 	return importPath, nil
 }
 
-// errImportNotPermitted reports an import rejected by the denylist or allowlist.
+// errImportNotPermitted reports the imports the denylist or allowlist rejected.
 //
-// Takes importPath (string) which is the rejected import path.
+// Takes packagePath (string) which names the importing package; empty for a file set or a
+// snippet.
+// Takes importPaths ([]string) which are the rejected import paths, in any order.
 //
-// Returns error which wraps fault.ErrParse with the rejected path.
-func errImportNotPermitted(importPath string) error {
-	return fmt.Errorf("%w: import %q is not permitted", fault.ErrParse, importPath)
+// Returns error which wraps fault.ErrParse and names every rejected path once, or nil
+// when importPaths is empty.
+func errImportNotPermitted(packagePath string, importPaths []string) error {
+	if len(importPaths) == 0 {
+		return nil
+	}
+	paths := slices.Compact(slices.Sorted(slices.Values(importPaths)))
+	quoted := make([]string, len(paths))
+	for index, importPath := range paths {
+		quoted[index] = strconv.Quote(importPath)
+	}
+	subject := "import " + quoted[0] + " is"
+	if len(quoted) > 1 {
+		subject = "imports " + strings.Join(quoted, ", ") + " are"
+	}
+	if packagePath == "" {
+		return fmt.Errorf("%w: %s not permitted", fault.ErrParse, subject)
+	}
+	return fmt.Errorf("%w: %s: %s not permitted", fault.ErrParse, packagePath, subject)
 }
 
 // buildDependencyGraph returns an import graph mapping each package to its local
@@ -1015,35 +1163,54 @@ func constantToReflectValue(value constant.Value) reflect.Value {
 	}
 }
 
-// buildImportAliasMap constructs a mapping from local package alias to full import path
-// by inspecting the import declarations in the provided AST files.
+// buildImportAliasMap maps import bindings to full paths. Unaliased imports use the
+// declared package name, which may differ from the final path element.
 //
 // Takes files ([]*ast.File) which are the parsed source files to scan.
+// Takes packageName (func(string) string) which names an unaliased import; nil selects
+// symtab.AssumedPackageName.
 //
-// Returns map[string]string mapping each local alias to its fully qualified import path.
-// Blank imports ("_") and dot imports (".") are excluded.
-func buildImportAliasMap(files []*ast.File) map[string]string {
+// Returns map[string]string mapping each local alias to its fully qualified import
+// path. Blank imports ("_"), dot imports (".") and imports with no usable name are
+// excluded.
+func buildImportAliasMap(files []*ast.File, packageName func(string) string) map[string]string {
+	if packageName == nil {
+		packageName = symtab.AssumedPackageName
+	}
 	aliases := make(map[string]string)
 	for _, file := range files {
-		for _, imp := range file.Imports {
-			importPath, err := importPathOf(imp)
-			if err != nil {
-				continue
-			}
-
-			if imp.Name != nil {
-				name := imp.Name.Name
-				if name == "_" || name == "." {
-					continue
-				}
+		for _, importSpec := range file.Imports {
+			if name, importPath, ok := importBinding(importSpec, packageName); ok {
 				aliases[name] = importPath
-				continue
 			}
-
-			aliases[path.Base(importPath)] = importPath
 		}
 	}
 	return aliases
+}
+
+// importBinding returns the name an import binds in its file and the path it imports.
+//
+// Takes importSpec (*ast.ImportSpec) which is the import.
+// Takes packageName (func(string) string) which names an unaliased import.
+//
+// Returns name (string) which is the bound name.
+// Returns importPath (string) which is the import path.
+// Returns ok (bool) which is false for a blank or dot import, an invalid path, or an
+// import with no usable name.
+func importBinding(importSpec *ast.ImportSpec, packageName func(string) string) (name, importPath string, ok bool) {
+	importPath, err := importPathOf(importSpec)
+	if err != nil {
+		return "", "", false
+	}
+	if importSpec.Name != nil {
+		name = importSpec.Name.Name
+	} else {
+		name = packageName(importPath)
+	}
+	if name == "" || name == "_" || name == "." {
+		return "", "", false
+	}
+	return name, importPath, true
 }
 
 // enrichMissingPackageError appends an actionable hint to the original type-check error
@@ -1122,6 +1289,34 @@ func pretouchCompileTimeDerivedState(rootFunction *program.CompiledFunction) {
 	}
 }
 
+// programFailure is the error CompileProgram returns for the problems found so far and a
+// later failure, so the later failure never hides the earlier problems.
+//
+// Takes problems ([]error) which are the problems found while parsing; never modified.
+// Takes err (error) which is the later failure, or nil.
+//
+// Returns error which is nil when there is nothing to report.
+func programFailure(problems []error, err error) error {
+	joined := fault.JoinProblems(slices.Concat(problems, []error{err}))
+	if joined == nil {
+		return nil
+	}
+	return engine.NewSafeError(safeMessageCompilationFailed, fmt.Errorf(errFmtCompilingProgram, joined))
+}
+
+// fileSetSourceBytes totals the byte length of the source files of one package.
+//
+// Takes sources (map[string]string) which maps file names to source.
+//
+// Returns int which is the total byte count.
+func fileSetSourceBytes(sources map[string]string) int {
+	total := 0
+	for _, source := range sources {
+		total += len(source)
+	}
+	return total
+}
+
 // countSourceBytes totals the byte length across all source files in a multi-package
 // compilation input.
 //
@@ -1132,9 +1327,32 @@ func pretouchCompileTimeDerivedState(rootFunction *program.CompiledFunction) {
 func countSourceBytes(packages map[string]map[string]string) int {
 	total := 0
 	for _, files := range packages {
-		for _, source := range files {
-			total += len(source)
-		}
+		total += fileSetSourceBytes(files)
 	}
 	return total
+}
+
+// logCompilePanic logs a recovered compiler panic with its stack, once, so the error
+// returned for it can stay short.
+//
+// Takes recovered (any) which is the value recover returned.
+func logCompilePanic(ctx context.Context, recovered any) {
+	logging.LoggerFrom(ctx).Warn("Compiler panicked",
+		slog.String("panic", fmt.Sprint(recovered)),
+		slog.String("stack", string(runtimedebug.Stack())))
+}
+
+// cancellationError returns the error compilation reports when ctx has ended, or nil
+// while it is live.
+//
+// Returns error which wraps fault.ErrExecutionCancelled and the reason ctx ended.
+func cancellationError(ctx context.Context) error {
+	if ctx.Err() == nil {
+		return nil
+	}
+	cause := context.Cause(ctx)
+	if errors.Is(cause, fault.ErrExecutionCancelled) {
+		return cause
+	}
+	return fmt.Errorf(fault.ErrChainFmt, fault.ErrExecutionCancelled, cause)
 }

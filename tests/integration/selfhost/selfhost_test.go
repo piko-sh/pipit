@@ -22,7 +22,6 @@ package selfhost_test
 
 import (
 	"bytes"
-	"context"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -37,6 +36,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit"
 	"pipit.sh/pipit/internal/engine"
@@ -64,9 +66,7 @@ func reportFor(args []string) string {
 
 func TestSelfhost(t *testing.T) {
 	root, err := filepath.Abs(repositoryDepth)
-	if err != nil {
-		t.Fatalf("resolving the repository root: %v", err)
-	}
+	require.NoError(t, err, "resolving the repository root")
 
 	t.Chdir(root)
 
@@ -83,16 +83,10 @@ func TestSelfhost(t *testing.T) {
 
 	report := reportFor(args)
 	info, err := os.Stat(report)
-	if err != nil {
-		t.Fatalf("the harness wrote no report at %s: %v", report, err)
-	}
-	if info.Size() == 0 {
-		t.Fatalf("the harness wrote an empty report at %s", report)
-	}
+	require.NoError(t, err, "the harness wrote no report at %s", report)
+	require.NotEqual(t, int64(0), info.Size(), "the harness wrote an empty report at %s", report)
 
-	if status == 2 {
-		t.Fatalf("the harness could not start: %s", stderr.String())
-	}
+	require.NotEqual(t, 2, status, "the harness starts: %s", stderr.String())
 	if status != 0 {
 		t.Logf("programs remain that do not compile identically; see %s", report)
 	}
@@ -103,17 +97,14 @@ func TestSelfhostAssemblyDispatch(t *testing.T) {
 		t.Skip("the assembly-dispatcher lane is skipped under -short")
 	}
 	root, err := filepath.Abs(repositoryDepth)
-	if err != nil {
-		t.Fatalf("resolving the repository root: %v", err)
-	}
+	require.NoError(t, err, "resolving the repository root")
 	t.Chdir(root)
 
 	args := []string{"-go-dispatch=false", "-limit", "40", "-report", filepath.Join(t.TempDir(), "report.md")}
 	var stdout, stderr bytes.Buffer
 	status, results := runWithResults(args, &stdout, &stderr)
-	if status == 2 || results == nil {
-		t.Fatalf("the harness could not start on the assembly dispatcher: %s", stderr.String())
-	}
+	require.NotEqual(t, 2, status, "the harness starts on the assembly dispatcher: %s", stderr.String())
+	require.NotNil(t, results)
 	if stdout.Len() > 0 {
 		t.Logf("assembly-dispatcher summary:\n%s", stdout.String())
 	}
@@ -128,9 +119,7 @@ func TestSelfhostIsDeterministic(t *testing.T) {
 		t.Skip("set PIPIT_SELFHOST_DETERMINISM=N (N >= 2) to compare N runs of the lane")
 	}
 	root, err := filepath.Abs(repositoryDepth)
-	if err != nil {
-		t.Fatalf("resolving the repository root: %v", err)
-	}
+	require.NoError(t, err, "resolving the repository root")
 	t.Chdir(root)
 
 	var reference map[string]string
@@ -139,9 +128,8 @@ func TestSelfhostIsDeterministic(t *testing.T) {
 		var stdout, stderr bytes.Buffer
 		started := time.Now()
 		status, results := runWithResults(args, &stdout, &stderr)
-		if status == 2 || results == nil {
-			t.Fatalf("run %d could not start: %s", iteration, stderr.String())
-		}
+		require.NotEqual(t, 2, status, "run %d starts: %s", iteration, stderr.String())
+		require.NotNil(t, results)
 		t.Logf("run %d: status %d, %d programs in %s, heap after GC %d MiB", iteration, status, len(results), time.Since(started).Round(time.Millisecond), heapInUseMiB())
 		writeHeapProfile(t, iteration)
 		outcomes := outcomesByName(results)
@@ -150,8 +138,8 @@ func TestSelfhostIsDeterministic(t *testing.T) {
 			continue
 		}
 		for name, outcome := range outcomes {
-			if previous, ok := reference[name]; ok && previous != outcome {
-				t.Errorf("%s: run 0 %s, run %d %s", name, previous, iteration, outcome)
+			if previous, ok := reference[name]; ok {
+				assert.Equal(t, previous, outcome, "%s in run %d", name, iteration)
 			}
 		}
 	}
@@ -175,18 +163,15 @@ func heapInUseMiB() uint64 {
 }
 
 func writeHeapProfile(t *testing.T, iteration int) {
+	t.Helper()
 	prefix := os.Getenv("PIPIT_SELFHOST_HEAPPROFILE")
 	if prefix == "" {
 		return
 	}
 	file, err := os.Create(prefix + "-" + strconv.Itoa(iteration) + ".pprof")
-	if err != nil {
-		t.Fatalf("creating the heap profile: %v", err)
-	}
+	require.NoError(t, err, "creating the heap profile")
 	defer func() { _ = file.Close() }()
-	if err := pprof.WriteHeapProfile(file); err != nil {
-		t.Fatalf("writing the heap profile: %v", err)
-	}
+	require.NoError(t, pprof.WriteHeapProfile(file), "writing the heap profile")
 }
 
 func TestSelfhostCompilesItself(t *testing.T) {
@@ -194,52 +179,41 @@ func TestSelfhostCompilesItself(t *testing.T) {
 		t.Skip("the self-compile takes about a minute; skipped under -short")
 	}
 	root, err := filepath.Abs(repositoryDepth)
-	if err != nil {
-		t.Fatalf("resolving the repository root: %v", err)
-	}
+	require.NoError(t, err, "resolving the repository root")
 	t.Chdir(root)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	h, err := newHost(ctx, hostOptions{compilerDir: "internal/compile", goDispatch: true})
-	if err != nil {
-		t.Fatalf("loading the compiler under the interpreter: %v", err)
-	}
+	require.NoError(t, err, "loading the compiler under the interpreter")
 	sources, err := packageSources("internal/compile")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	fset := token.NewFileSet()
 	names := slices.Sorted(maps.Keys(sources))
 	files := make([]*ast.File, 0, len(names))
 	for _, name := range names {
 		file, err := parser.ParseFile(fset, name, sources[name], parser.ParseComments)
-		if err != nil {
-			t.Fatalf("parsing %s: %v", name, err)
-		}
+		require.NoError(t, err, "parsing %s", name)
 		files = append(files, file)
 	}
 	info := newTypesInfo()
 	config := &types.Config{Sizes: types.SizesFor("gc", "amd64"), GoVersion: engine.InterpretedGoVersion, Importer: h.symbols}
-	if _, err := config.Check(compileImportPath, fset, files, info); err != nil {
-		t.Fatalf("type-checking the compiler: %v", err)
-	}
+	_, checkErr := config.Check(compileImportPath, fset, files, info)
+	require.NoError(t, checkErr, "type-checking the compiler")
 
 	nativeStart := time.Now()
 	native, err := h.compileNatively(ctx, fset, info, files, compileImportPath)
-	if err != nil {
-		t.Fatalf("native compile of the compiler: %v", err)
-	}
+	require.NoError(t, err, "native compile of the compiler")
 	nativeTime := time.Since(nativeStart)
 	interpretedStart := time.Now()
 	interpreted, disassembly, err := h.compileInterpreted(ctx, fset, info, files, compileImportPath)
 	if err != nil {
-		t.Fatalf("interpreted compile of the compiler: %v\n%s", err, pipit.UncaughtPanicStack(err))
+		require.Failf(t, "interpreted compile of the compiler", "%v\n%s", err, pipit.UncaughtPanicStack(err))
 	}
 	interpretedTime := time.Since(interpretedStart)
 	t.Logf("compiler source: %d files; native %s, interpreted %s, both including the pack and listing of the %d-byte program",
 		len(files), nativeTime.Round(time.Millisecond), interpretedTime.Round(time.Millisecond), len(native.bytes))
 	if !bytes.Equal(native.bytes, interpreted) {
-		t.Fatalf("the interpreted compiler compiles itself differently from the native compiler:\n%s",
+		require.Failf(t, "self-compilation differs", "the interpreted compiler compiles itself differently from the native compiler:\n%s",
 			firstDifference(native.disassembly, disassembly))
 	}
 }

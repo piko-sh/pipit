@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"github.com/google/go-dap"
+	"github.com/stretchr/testify/require"
 )
 
 func newTestServer() (*server, *bytes.Buffer, *bytes.Buffer) {
@@ -48,15 +49,14 @@ func readOutMessages(t *testing.T, r *bytes.Buffer) []dap.Message {
 			break
 		}
 		message, err := dap.ReadProtocolMessage(reader)
-		if err != nil {
-			t.Fatalf("ReadProtocolMessage: %v", err)
-		}
+		require.NoError(t, err)
 		messages = append(messages, message)
 	}
 	return messages
 }
 
 func TestHandleInitializeReturnsCapabilitiesAndInitializedEvent(t *testing.T) {
+	t.Parallel()
 	srv, out, _ := newTestServer()
 
 	srv.handleInitialize(&dap.InitializeRequest{
@@ -64,25 +64,16 @@ func TestHandleInitializeReturnsCapabilitiesAndInitializedEvent(t *testing.T) {
 	})
 
 	messages := readOutMessages(t, out)
-	if got := len(messages); got != 2 {
-		t.Fatalf("messages: got %d, want 2 (response + initialized event)", got)
-	}
+	require.Len(t, messages, 2)
 	response, ok := messages[0].(*dap.InitializeResponse)
-	if !ok {
-		t.Fatalf("message[0]: got %T, want *dap.InitializeResponse", messages[0])
-	}
-	if !response.Success {
-		t.Fatalf("response.Success: got false, want true")
-	}
-	if !response.Body.SupportsConfigurationDoneRequest {
-		t.Fatalf("SupportsConfigurationDoneRequest: got false, want true")
-	}
-	if _, ok := messages[1].(*dap.InitializedEvent); !ok {
-		t.Fatalf("message[1]: got %T, want *dap.InitializedEvent", messages[1])
-	}
+	require.True(t, ok, "the message is a *dap.InitializeResponse, not %T", messages[0])
+	require.True(t, response.Success, "the response succeeds")
+	require.True(t, response.Body.SupportsConfigurationDoneRequest, "configurationDone is supported")
+	require.IsType(t, &dap.InitializedEvent{}, messages[1])
 }
 
 func TestHandleLaunchRejectsMissingProgram(t *testing.T) {
+	t.Parallel()
 	srv, out, _ := newTestServer()
 
 	args, _ := json.Marshal(map[string]any{})
@@ -92,22 +83,15 @@ func TestHandleLaunchRejectsMissingProgram(t *testing.T) {
 	})
 
 	messages := readOutMessages(t, out)
-	if got := len(messages); got != 1 {
-		t.Fatalf("messages: got %d, want 1 (error response)", got)
-	}
+	require.Len(t, messages, 1)
 	errResponse, ok := messages[0].(*dap.ErrorResponse)
-	if !ok {
-		t.Fatalf("message[0]: got %T, want *dap.ErrorResponse", messages[0])
-	}
-	if errResponse.Success {
-		t.Fatalf("errResponse.Success: got true, want false")
-	}
-	if !strings.Contains(errResponse.Message, "program") {
-		t.Fatalf("errResponse.Message: got %q, want to mention \"program\"", errResponse.Message)
-	}
+	require.True(t, ok, "the message is a *dap.ErrorResponse, not %T", messages[0])
+	require.False(t, errResponse.Success, "the response fails")
+	require.Contains(t, errResponse.Message, "program")
 }
 
 func TestHandleSetBreakpointsReplacesPriorSet(t *testing.T) {
+	t.Parallel()
 	srv, out, _ := newTestServer()
 
 	srv.handleSetBreakpoints(&dap.SetBreakpointsRequest{
@@ -119,30 +103,20 @@ func TestHandleSetBreakpointsReplacesPriorSet(t *testing.T) {
 	})
 
 	messages := readOutMessages(t, out)
-	if got := len(messages); got != 1 {
-		t.Fatalf("messages: got %d, want 1", got)
-	}
+	require.Len(t, messages, 1)
 	response, ok := messages[0].(*dap.SetBreakpointsResponse)
-	if !ok {
-		t.Fatalf("message[0]: got %T, want *dap.SetBreakpointsResponse", messages[0])
-	}
-	if got := len(response.Body.Breakpoints); got != 2 {
-		t.Fatalf("breakpoints: got %d, want 2", got)
-	}
-	if response.Body.Breakpoints[0].Line != 10 || response.Body.Breakpoints[1].Line != 20 {
-		t.Fatalf("breakpoint lines: got %d,%d, want 10,20",
-			response.Body.Breakpoints[0].Line, response.Body.Breakpoints[1].Line)
-	}
+	require.True(t, ok, "the message is a *dap.SetBreakpointsResponse, not %T", messages[0])
+	require.Len(t, response.Body.Breakpoints, 2)
+	require.Equal(t, 10, response.Body.Breakpoints[0].Line)
+	require.Equal(t, 20, response.Body.Breakpoints[1].Line)
 
-	if !response.Body.Breakpoints[0].Verified {
-		t.Fatalf("breakpoint[0].Verified: got false, want true (no program is bound, so lines are taken as given)")
-	}
-	if response.Body.Breakpoints[0].Id == 0 || response.Body.Breakpoints[0].Id == response.Body.Breakpoints[1].Id {
-		t.Fatalf("breakpoint ids: got %d,%d, want two distinct non-zero ids", response.Body.Breakpoints[0].Id, response.Body.Breakpoints[1].Id)
-	}
+	require.True(t, response.Body.Breakpoints[0].Verified, "without a bound program, lines are taken as given")
+	require.NotEqual(t, 0, response.Body.Breakpoints[0].Id)
+	require.NotEqual(t, response.Body.Breakpoints[1].Id, response.Body.Breakpoints[0].Id)
 }
 
 func TestDispatchUnknownCommandRespondsWithError(t *testing.T) {
+	t.Parallel()
 	srv, out, _ := newTestServer()
 
 	srv.dispatch(t.Context(), &dap.CancelRequest{
@@ -150,19 +124,14 @@ func TestDispatchUnknownCommandRespondsWithError(t *testing.T) {
 	})
 
 	messages := readOutMessages(t, out)
-	if got := len(messages); got != 1 {
-		t.Fatalf("messages: got %d, want 1", got)
-	}
+	require.Len(t, messages, 1)
 	errResponse, ok := messages[0].(*dap.ErrorResponse)
-	if !ok {
-		t.Fatalf("message[0]: got %T, want *dap.ErrorResponse", messages[0])
-	}
-	if !strings.Contains(errResponse.Message, "unsupported") {
-		t.Fatalf("errResponse.Message: got %q, want to mention \"unsupported\"", errResponse.Message)
-	}
+	require.True(t, ok, "the message is a *dap.ErrorResponse, not %T", messages[0])
+	require.Contains(t, errResponse.Message, "unsupported")
 }
 
 func TestHandleThreadsIsEmptyWhileNothingRuns(t *testing.T) {
+	t.Parallel()
 	srv, out, _ := newTestServer()
 
 	srv.handleThreads(&dap.ThreadsRequest{
@@ -171,15 +140,12 @@ func TestHandleThreadsIsEmptyWhileNothingRuns(t *testing.T) {
 
 	messages := readOutMessages(t, out)
 	response, ok := messages[0].(*dap.ThreadsResponse)
-	if !ok {
-		t.Fatalf("message[0]: got %T, want *dap.ThreadsResponse", messages[0])
-	}
-	if got := len(response.Body.Threads); got != 0 {
-		t.Fatalf("threads: got %d, want 0 before the program runs", got)
-	}
+	require.True(t, ok, "the message is a *dap.ThreadsResponse, not %T", messages[0])
+	require.Empty(t, response.Body.Threads)
 }
 
 func TestHandleSetBreakpointsReportsBadHitCondition(t *testing.T) {
+	t.Parallel()
 	srv, out, _ := newTestServer()
 
 	srv.handleSetBreakpoints(&dap.SetBreakpointsRequest{
@@ -192,18 +158,15 @@ func TestHandleSetBreakpointsReportsBadHitCondition(t *testing.T) {
 
 	messages := readOutMessages(t, out)
 	response, ok := messages[0].(*dap.SetBreakpointsResponse)
-	if !ok {
-		t.Fatalf("message[0]: got %T, want *dap.SetBreakpointsResponse", messages[0])
-	}
-	if response.Body.Breakpoints[0].Verified || !strings.Contains(response.Body.Breakpoints[0].Message, "hit condition") {
-		t.Fatalf("bad hit condition: got %+v, want unverified with a message", response.Body.Breakpoints[0])
-	}
-	if response.Body.Breakpoints[1].Verified || !strings.Contains(response.Body.Breakpoints[1].Message, "logpoints") {
-		t.Fatalf("logpoint: got %+v, want unverified with a message", response.Body.Breakpoints[1])
-	}
+	require.True(t, ok, "the message is a *dap.SetBreakpointsResponse, not %T", messages[0])
+	require.False(t, response.Body.Breakpoints[0].Verified, "a bad hit condition leaves the breakpoint unverified")
+	require.Contains(t, response.Body.Breakpoints[0].Message, "hit condition")
+	require.False(t, response.Body.Breakpoints[1].Verified, "a logpoint is unverified")
+	require.Contains(t, response.Body.Breakpoints[1].Message, "logpoints")
 }
 
 func TestControlRequestsFailWhileNothingIsPaused(t *testing.T) {
+	t.Parallel()
 	srv, out, _ := newTestServer()
 	request := dap.Request{ProtocolMessage: dap.ProtocolMessage{Seq: 7, Type: "request"}}
 	srv.handleContinue(&dap.ContinueRequest{Request: request, Arguments: dap.ContinueArguments{ThreadId: 1}})
@@ -212,16 +175,12 @@ func TestControlRequestsFailWhileNothingIsPaused(t *testing.T) {
 	srv.handleEvaluate(&dap.EvaluateRequest{Request: request, Arguments: dap.EvaluateArguments{Expression: "1", Context: "hover"}})
 
 	messages := readOutMessages(t, out)
-	if got := len(messages); got != 4 {
-		t.Fatalf("messages: got %d, want 4 error responses", got)
-	}
+	require.Len(t, messages, 4)
 	for index, message := range messages {
 		errResponse, ok := message.(*dap.ErrorResponse)
-		if !ok {
-			t.Fatalf("message[%d]: got %T, want *dap.ErrorResponse", index, message)
-		}
-		if index == 3 && errResponse.Body.Error.ShowUser {
-			t.Fatalf("a failed hover evaluation must not be shown to the user")
+		require.True(t, ok, "message %d is %T", index, message)
+		if index == 3 {
+			require.False(t, errResponse.Body.Error.ShowUser, "a failed hover evaluation is not shown to the user")
 		}
 	}
 }

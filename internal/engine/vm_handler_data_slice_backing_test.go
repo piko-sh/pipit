@@ -167,11 +167,15 @@ func TestBuildClosureErrorReturnsFillsTheSignature(t *testing.T) {
 	}{
 		{
 			name: "a signature with no results yields nothing", targetType: reflect.TypeFor[func()](),
-			inspect: func(t *testing.T, returns []reflect.Value) { require.Nil(t, returns) },
+			inspect: func(t *testing.T, returns []reflect.Value) {
+				t.Helper()
+				require.Nil(t, returns)
+			},
 		},
 		{
 			name: "a trailing error slot carries the failure", targetType: reflect.TypeFor[func() (int, error)](),
 			inspect: func(t *testing.T, returns []reflect.Value) {
+				t.Helper()
 				require.Len(t, returns, 2)
 				require.Equal(t, 0, returns[0].Interface())
 				require.ErrorIs(t, returns[1].Interface().(error), failure)
@@ -180,14 +184,16 @@ func TestBuildClosureErrorReturnsFillsTheSignature(t *testing.T) {
 		{
 			name: "a signature with no error slot yields zero values", targetType: reflect.TypeFor[func() (int, string)](),
 			inspect: func(t *testing.T, returns []reflect.Value) {
+				t.Helper()
 				require.Len(t, returns, 2)
 				require.Equal(t, 0, returns[0].Interface())
-				require.Equal(t, "", returns[1].Interface())
+				require.Empty(t, returns[1].Interface())
 			},
 		},
 		{
 			name: "a lone error slot carries the failure", targetType: reflect.TypeFor[func() error](),
 			inspect: func(t *testing.T, returns []reflect.Value) {
+				t.Helper()
 				require.Len(t, returns, 1)
 				require.ErrorIs(t, returns[0].Interface().(error), failure)
 			},

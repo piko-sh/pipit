@@ -21,7 +21,6 @@
 package session_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -31,7 +30,7 @@ func TestSession_TypeErrorDoesNotMutateDecls(t *testing.T) {
 	t.Parallel()
 	sess := newTestSession(t)
 	mustSubmit(t, sess, "func f() int { return 1 }")
-	_, err := sess.Submit(context.Background(), "this is not valid go +++")
+	_, err := sess.Submit(t.Context(), "this is not valid go +++")
 	require.Error(t, err)
 	require.Equal(t, 1, mustSubmit(t, sess, "f()"))
 }
@@ -40,7 +39,7 @@ func TestSession_ParseErrorDoesNotMutateDecls(t *testing.T) {
 	t.Parallel()
 	sess := newTestSession(t)
 	mustSubmit(t, sess, "var x = 5")
-	_, err := sess.Submit(context.Background(), "func broken( {")
+	_, err := sess.Submit(t.Context(), "func broken( {")
 	require.Error(t, err)
 	require.Equal(t, 5, mustSubmit(t, sess, "x"))
 }
@@ -49,7 +48,7 @@ func TestSession_UndefinedReferenceDoesNotMutateDecls(t *testing.T) {
 	t.Parallel()
 	sess := newTestSession(t)
 	mustSubmit(t, sess, "var x = 5")
-	_, err := sess.Submit(context.Background(), "thisIdentifierDoesNotExist")
+	_, err := sess.Submit(t.Context(), "thisIdentifierDoesNotExist")
 	require.Error(t, err)
 	require.Equal(t, 5, mustSubmit(t, sess, "x"))
 }
@@ -58,7 +57,7 @@ func TestSession_FailedDeclDoesNotPersist(t *testing.T) {
 	t.Parallel()
 	sess := newTestSession(t)
 
-	_, err := sess.Submit(context.Background(), "func g() int { return missingSymbol }")
+	_, err := sess.Submit(t.Context(), "func g() int { return missingSymbol }")
 	require.Error(t, err)
 
 	mustSubmit(t, sess, "func g() int { return 11 }")

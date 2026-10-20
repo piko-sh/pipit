@@ -22,10 +22,11 @@ package sandboxbroker
 
 import (
 	"context"
-	"errors"
 	"net"
 	"sync/atomic"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/sandboxwire"
 )
@@ -74,15 +75,14 @@ func maliciousBrokerFixture(t *testing.T, payload string, identity uint64, stall
 		}
 		_, _ = connection.codec.Read()
 	}()
-	client, err := OpenFilesystemClient(context.Background(), stream, []RootGrant{{Name: "data", Rights: Read}}, FilesystemLimits{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	client, err := OpenFilesystemClient(t.Context(), stream, []RootGrant{{Name: "data", Rights: Read}}, FilesystemLimits{})
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
 	return client, requested
 }
 
 func TestFilesystemClientRejectsReplies(t *testing.T) {
+	t.Parallel()
 	for _, payload := range []string{
 		`{"code":"","data":"YWJj","entries":null,"written":0,"skipped":0}`,
 		`{"code":"io","data":"YQ==","entries":null,"written":0,"skipped":0}`,
@@ -90,23 +90,21 @@ func TestFilesystemClientRejectsReplies(t *testing.T) {
 		`{"code":"","data":null,"entries":null,"written":null,"skipped":0}`,
 	} {
 		client, _ := maliciousBrokerFixture(t, payload, 1, false)
-		response, err := client.Execute(context.Background(), []byte(`{"operation":"fs.read","root":"data","path":"file","max_bytes":1}`))
-		if !errors.Is(err, sandboxwire.ErrProtocol) || response.Data != nil || !client.closed.Load() {
-			t.Fatalf("untrusted reply accepted: %+v: %v", response, err)
-		}
-		if client.budget.outstanding != 0 {
-			t.Fatal("reservation leaked")
-		}
+		response, err := client.Execute(t.Context(), []byte(`{"operation":"fs.read","root":"data","path":"file","max_bytes":1}`))
+		require.ErrorIs(t, err, sandboxwire.ErrProtocol, "untrusted reply accepted: %+v", response)
+		require.Nil(t, response.Data)
+		require.True(t, client.closed.Load())
+		require.Equal(t, 0, client.budget.outstanding, "reservation leaked")
 	}
 	client, _ := maliciousBrokerFixture(t, `{"code":"","data":"YQ==","entries":null,"written":0,"skipped":0}`, 2, false)
-	if _, err := client.Execute(context.Background(), []byte(`{"operation":"fs.read","root":"data","path":"file","max_bytes":1}`)); !errors.Is(err, sandboxwire.ErrProtocol) {
-		t.Fatal("mismatched identity accepted:", err)
-	}
+	_, err := client.Execute(t.Context(), []byte(`{"operation":"fs.read","root":"data","path":"file","max_bytes":1}`))
+	require.ErrorIs(t, err, sandboxwire.ErrProtocol, "mismatched identity accepted")
 }
 
 func TestFilesystemClientCancellationAndSingleFlight(t *testing.T) {
+	t.Parallel()
 	client, requested := maliciousBrokerFixture(t, "", 1, true)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	result := make(chan error, 1)
 	go func() {
@@ -114,33 +112,24 @@ func TestFilesystemClientCancellationAndSingleFlight(t *testing.T) {
 		result <- err
 	}()
 	<-requested
-	if _, err := client.Execute(context.Background(), []byte("{}")); !errors.Is(err, errBusy) {
-		t.Fatal("concurrent call queued:", err)
-	}
+	_, err := client.Execute(t.Context(), []byte("{}"))
+	require.ErrorIs(t, err, errBusy, "concurrent call queued")
 	cancel()
-	if err := <-result; !errors.Is(err, context.Canceled) {
-		t.Fatal("cancellation lost:", err)
-	}
-	if client.budget.outstanding != 0 {
-		t.Fatal("cancelled reservation leaked")
-	}
-	if !client.closed.Load() {
-		t.Fatal("cancelled client remains open")
-	}
+	require.ErrorIs(t, <-result, context.Canceled, "cancellation is kept")
+	require.Equal(t, 0, client.budget.outstanding, "cancelled reservation leaked")
+	require.True(t, client.closed.Load(), "cancelled client remains open")
 }
 
 func TestFilesystemClientHostDenialBeforeSend(t *testing.T) {
+	t.Parallel()
 	client, requested := maliciousBrokerFixture(t, "", 1, true)
-	_, err := client.Execute(context.Background(), []byte(`{"operation":"fs.write","root":"data","path":"file","data":""}`))
-	if !errors.Is(err, ErrDenied) {
-		t.Fatal("host authority not enforced:", err)
-	}
+	_, err := client.Execute(t.Context(), []byte(`{"operation":"fs.write","root":"data","path":"file","data":""}`))
+	require.ErrorIs(t, err, ErrDenied, "host authority not enforced")
 	select {
 	case <-requested:
-		t.Fatal("denied request reached broker")
+		require.FailNow(t, "a denied request does not reach the broker")
 	default:
 	}
-	if !client.closed.Load() || client.budget.outstanding != 0 {
-		t.Fatal("denial did not close cleanly")
-	}
+	require.True(t, client.closed.Load(), "denial did not close cleanly")
+	require.Equal(t, 0, client.budget.outstanding)
 }

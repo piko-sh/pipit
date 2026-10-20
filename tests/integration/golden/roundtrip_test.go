@@ -21,7 +21,6 @@
 package golden_test
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -79,7 +78,7 @@ func TestGoldenRoundTrip(t *testing.T) {
 	require.NotEmpty(t, programs, "nothing to round-trip; record the manifest first")
 
 	service := newGoldenService(app.WithBytecodeStore(adapters.NewBytecodeStore(rootfs.NewMemoryStore())))
-	ctx := context.Background()
+	ctx := t.Context()
 	for _, name := range sortedNames(programs) {
 		cfs, err := compileGolden(ctx, service, programs[name])
 		require.NoError(t, err, "compiling %s", name)

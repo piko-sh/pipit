@@ -767,20 +767,15 @@ type BytecodeArchitecturePort interface {
 	// bank.
 	EmitTypedSliceByteSet(emitter *asmgen.Emitter, contextOffset string)
 
-	// EmitTypedSliceByteSlice emits the body of subOpSliceByteSlice.
+	// EmitTypedSliceByteSlice emits bounds-checked two-index byte slicing, falling back
+	// to Go for three-index slices or failed checks.
 	//
-	// Implements slicesByte[A] = slicesByte[C][low:high] (no max-bound). Reads the source
-	// 24-byte slice header, applies the low/high bounds from ints[ext.b] / ints[ext.c],
-	// writes a fresh 24-byte header to slicesByte[A]. flags must be exactly low+high
-	// (sliceLowBoundFlag | sliceHighBoundFlag); any other shape (no-flag, max-bound)
-	// branches to *pathBFallback so the Go-side handleSubOpSliceByteSlice produces the
-	// canonical error or handles the rare 3-argument case.
-	//
-	// Used by handlerSubOpSliceByteSlice.
+	// Missing bounds default to zero and the source length. Data must stay within the
+	// backing array when the new capacity is zero.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
-	// bank.
+	// Takes contextOffset (string) which is the dispatch context byte offset of the
+	// slice bank.
 	EmitTypedSliceByteSlice(emitter *asmgen.Emitter, contextOffset string)
 
 	// EmitTypedSliceMove emits the body of subOpMoveSlice<Kind>.
@@ -800,23 +795,13 @@ type BytecodeArchitecturePort interface {
 	// bank.
 	EmitTypedSliceMove(emitter *asmgen.Emitter, contextOffset string)
 
-	// EmitTypedSliceSliceSlice emits the body of subOpSliceSlice<Kind>Direct.
-	//
-	// Implements slicesX[A] = slicesX[C][low:high] as a bounds-checked sub-slice on a
-	// typed-slice bank with stride-aware data pointer adjustment. Mirrors
-	// EmitTypedSliceByteSlice but with configurable element size: the source Data pointer is
-	// shifted by (low << elementSizeShift) bytes. Only the low+high flag combination (== 3)
-	// is handled in ASM; any other shape branches to *pathBFallback so the Go-side handler
-	// produces the canonical error or handles the rare 3-argument case. elementSizeShift
-	// selects the stride: 0 (stride 1) for slicesBool, 3 (stride 8) for
-	// slicesInt/Float/Uint, 4 (stride 16) for slicesString. slicesByte continues to use
-	// EmitTypedSliceByteSlice, which fuses the stride-1 case for tighter code.
-	//
-	// Used by handlerSubOpSliceSlice<Kind>Direct.
+	// EmitTypedSliceSliceSlice emits bounds-checked two-index slicing with a
+	// configurable element stride, following EmitTypedSliceByteSlice's bounds and
+	// fallback rules.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
-	// bank.
+	// Takes contextOffset (string) which is the dispatch context byte offset of the
+	// slice bank.
 	// Takes elementSizeShift (uint8) which is the log2 element stride in bytes.
 	EmitTypedSliceSliceSlice(emitter *asmgen.Emitter, contextOffset string, elementSizeShift uint8)
 
@@ -985,6 +970,14 @@ type BytecodeArchitecturePort interface {
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	EmitEqGeneral(emitter *asmgen.Emitter)
+
+	// EmitWriteBarrierGuard runs body only while the garbage collector's write barrier
+	// is off, otherwise exiting through pathBFallback. The guard preserves registers
+	// required at handler entry.
+	//
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	// Takes body (func()) which emits the guarded handler body.
+	EmitWriteBarrierGuard(emitter *asmgen.Emitter, body func())
 
 	// EmitMoveGeneralAlias emits the tier-0 body for opMoveGeneral's alias mode, performing
 	// a raw 24-byte general-slot copy gated on the runtime write-barrier flag, with snapshot

@@ -70,6 +70,19 @@ func (s *DebugSession) checkQuiescentLocked() {
 	}
 }
 
+// reopenQuiescenceLocked replaces a closed quiescent channel when a thread starts running
+// during a stop, so WaitQuiescent waits for it to park; the mutex must be held.
+func (s *DebugSession) reopenQuiescenceLocked() {
+	if !s.stopped || s.quiescent == nil {
+		return
+	}
+	select {
+	case <-s.quiescent:
+		s.quiescent = make(chan struct{})
+	default:
+	}
+}
+
 // pauseHereLocked records a pause for t at the given position, stops the world if it is
 // running, and parks the calling goroutine until the client resumes. The mutex must be
 // held on entry and is released while parked.
@@ -191,6 +204,7 @@ func (vm *VM) debugBlockLeave() {
 	if t.state == DebugThreadBlocked {
 		t.state = debugThreadRunning
 		s.running++
+		s.reopenQuiescenceLocked()
 	}
 	if s.stopped && t.parkedAtGen != s.stopGen && vm.FramePointer >= 0 {
 		frame := &vm.CallStack[vm.FramePointer]

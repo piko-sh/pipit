@@ -26,8 +26,9 @@ import (
 )
 
 const (
-	// coalesceScanWindow bounds how far back a move looks for the definition of its source.
-	coalesceScanWindow = 16
+	// coalesceScanWindow limits how far back move coalescing searches for a source
+	// definition.
+	coalesceScanWindow = 64
 
 	// maxCoalesceSweeps bounds the repeated sweeps that let one coalesced move expose
 	// another.
@@ -145,15 +146,18 @@ func renameDefinitionIntoMove(compiledFunction *program.CompiledFunction, jumpTa
 	return true
 }
 
-// findRenameRange walks back from the move to the instruction that defines its source
-// without reading it, collecting every instruction that names the source.
+// findRenameRange walks back from a move to its source definition, collecting
+// instructions that use the source.
+//
+// The definition may also read the destination for an in-place update. Every other
+// instruction in the range must leave the destination alone.
 //
 // Takes body ([]isa.Instruction) which is the instruction stream.
 // Takes jumpTargets (map[int]bool) which marks branch destinations.
 // Takes move (coalesceCandidate) which is the move.
 //
-// Returns the PCs to rename, the definition last, and false when the walk meets a branch
-// destination, an instruction it cannot rename, or a use of the destination.
+// Returns the PCs to rename, the definition last, and false when the walk meets a
+// branch destination, an instruction it cannot rename, or a use of the destination.
 func findRenameRange(body []isa.Instruction, jumpTargets map[int]bool, move coalesceCandidate) ([]int, bool) {
 	var renamed []int
 	for pc := move.movePC - 1; pc >= max(0, move.movePC-coalesceScanWindow); pc-- {
@@ -161,13 +165,17 @@ func findRenameRange(body []isa.Instruction, jumpTargets map[int]bool, move coal
 			return nil, false
 		}
 		use, ok := plainRegisterUse(body[pc], move.kind, move.source, move.destination)
-		if !ok || use.touchesOther {
+		if !ok {
+			return nil, false
+		}
+		defines := use.writesTarget && !use.readsTarget
+		if use.touchesOther && (!defines || use.writesOther) {
 			return nil, false
 		}
 		if use.readsTarget || use.writesTarget {
 			renamed = append(renamed, pc)
 		}
-		if use.writesTarget && !use.readsTarget {
+		if defines {
 			return renamed, true
 		}
 	}
@@ -261,6 +269,9 @@ type registerUse struct {
 
 	// touchesOther is true when an operand reads or writes the replacement register.
 	touchesOther bool
+
+	// writesOther is true when an operand writes the replacement register.
+	writesOther bool
 }
 
 // plainRegisterUse classifies how inst names target and other in bank kind, refusing
@@ -274,13 +285,12 @@ type registerUse struct {
 //
 // Returns the use and false when the instruction cannot take part in a rename.
 func plainRegisterUse(inst isa.Instruction, kind isa.RegisterKind, target, other uint8) (registerUse, bool) {
-	use := registerUse{readsTarget: false, writesTarget: false, touchesOther: false}
+	use := registerUse{readsTarget: false, writesTarget: false, touchesOther: false, writesOther: false}
 	if isCanonicalNop(inst) {
 		return use, true
 	}
 	shape := isa.ShapeForInstruction(inst)
-	if inst.Op == isa.OpExt || IsCallInstruction(inst) || shape.Flags&isa.ShapeFlagDescribed == 0 ||
-		shape.Flags&(isa.ShapeFlagOpaqueWrites|isa.ShapeFlagFollowsExtension|isa.ShapeFlagControlFlow|isa.ShapeFlagTerminator) != 0 {
+	if refusesRename(inst, &shape) {
 		return use, false
 	}
 	bankRole := isa.RoleForKind(kind)
@@ -295,15 +305,41 @@ func plainRegisterUse(inst isa.Instruction, kind isa.RegisterKind, target, other
 				return use, false
 			}
 		}
-		switch operands[position] {
-		case target:
-			use.readsTarget = use.readsTarget || shape.Reads[position]
-			use.writesTarget = use.writesTarget || shape.Writes[position]
-		case other:
-			use.touchesOther = true
-		}
+		use.note(operands[position], target, other, shape.Reads[position], shape.Writes[position])
 	}
 	return use, true
+}
+
+// refusesRename reports whether control flow, opaque writes or operands outside the
+// ordinary fields prevent register renaming.
+//
+// Takes inst (isa.Instruction) which is the instruction.
+// Takes shape (*isa.OperandShape) which is its shape.
+//
+// Returns bool which is true when the instruction cannot take part in a rename.
+func refusesRename(inst isa.Instruction, shape *isa.OperandShape) bool {
+	if inst.Op == isa.OpExt || IsCallInstruction(inst) || shape.Flags&isa.ShapeFlagDescribed == 0 {
+		return true
+	}
+	return shape.Flags&(isa.ShapeFlagOpaqueWrites|isa.ShapeFlagFollowsExtension|isa.ShapeFlagControlFlow|isa.ShapeFlagTerminator) != 0
+}
+
+// note adds one operand's use of target or other.
+//
+// Takes operand (uint8) which is the register the operand names.
+// Takes target (uint8) which is the register being renamed.
+// Takes other (uint8) which is the register it is renamed to.
+// Takes reads (bool) which reports whether the operand is read.
+// Takes writes (bool) which reports whether the operand is written.
+func (use *registerUse) note(operand, target, other uint8, reads, writes bool) {
+	switch operand {
+	case target:
+		use.readsTarget = use.readsTarget || reads
+		use.writesTarget = use.writesTarget || writes
+	case other:
+		use.touchesOther = true
+		use.writesOther = use.writesOther || writes
+	}
 }
 
 // renameRegister replaces every operand of inst that names target in bank kind with

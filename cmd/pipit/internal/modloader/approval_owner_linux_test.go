@@ -21,9 +21,12 @@
 package modloader
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestApprovalLoadRejectsUnsafeInodes(t *testing.T) {
@@ -35,12 +38,8 @@ func TestApprovalLoadRejectsUnsafeInodes(t *testing.T) {
 			path := filepath.Join(directory, LockfileName)
 			store := NewStore(path)
 			store.Upsert(LockedModule{Path: "module", ApprovedCapabilities: []string{"network"}})
-			if err := store.Save(); err != nil {
-				t.Fatal(err)
-			}
-			if err := store.Load(); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, store.Save())
+			require.NoError(t, store.Load())
 			var err error
 			switch kind {
 			case "group-read":
@@ -51,22 +50,15 @@ func TestApprovalLoadRejectsUnsafeInodes(t *testing.T) {
 				err = os.Chmod(path, 0o604)
 			case "symlink":
 				target := filepath.Join(directory, "target")
-				if err := os.Rename(path, target); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Rename(path, target))
 				err = os.Symlink("target", path)
 			case "hardlink":
 				err = os.Link(path, filepath.Join(directory, "alias"))
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := store.Load(); err == nil {
-				t.Fatal("unsafe approval file loaded")
-			}
-			if _, exists := store.Lookup("module", ""); exists {
-				t.Fatal("unsafe file retained prior grants")
-			}
+			require.NoError(t, err)
+			require.Error(t, store.Load(), "an unsafe approval file is refused")
+			_, exists := store.Lookup("module", "")
+			require.False(t, exists, "an unsafe file drops prior grants")
 		})
 	}
 }
@@ -74,12 +66,8 @@ func TestApprovalLoadRejectsUnsafeInodes(t *testing.T) {
 func TestApprovalLoadAcceptsPrivateReadOnlyFile(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), LockfileName)
-	if err := os.WriteFile(path, []byte(`{"schema":2,"modules":[]}`), 0o400); err != nil {
-		t.Fatal(err)
-	}
-	if err := NewStore(path).Load(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(`{"schema":2,"modules":[]}`), 0o400))
+	require.NoError(t, NewStore(path).Load())
 }
 
 func TestApprovalDirectoryRejectsOtherWriters(t *testing.T) {
@@ -89,28 +77,14 @@ func TestApprovalDirectoryRejectsOtherWriters(t *testing.T) {
 		path := filepath.Join(directory, LockfileName)
 		store := NewStore(path)
 		store.SetScript("script.go", "original")
-		if err := store.Save(); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chmod(directory, mode); err != nil {
-			t.Fatal(err)
-		}
-		if err := store.Load(); err == nil {
-			t.Fatal("approval loaded from writable directory")
-		}
+		require.NoError(t, store.Save())
+		require.NoError(t, os.Chmod(directory, mode))
+		require.Error(t, store.Load(), "no approval is loaded from a writable directory")
 		store.SetScript("script.go", "replacement")
-		if err := store.Save(); err == nil {
-			t.Fatal("approval saved to writable directory")
-		}
-		if err := os.Chmod(directory, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := store.Load(); err != nil {
-			t.Fatal(err)
-		}
-		if store.lockfile.ScriptHash != "original" {
-			t.Fatal("rejected save replaced approval")
-		}
+		require.Error(t, store.Save(), "no approval is saved to a writable directory")
+		require.NoError(t, os.Chmod(directory, 0o700))
+		require.NoError(t, store.Load())
+		require.Equal(t, "original", store.lockfile.ScriptHash, "a rejected save keeps the approval")
 	}
 }
 
@@ -119,38 +93,23 @@ func TestApprovalPublicationUsesPinnedDirectory(t *testing.T) {
 	parent := t.TempDir()
 	path := filepath.Join(parent, "original")
 	moved := filepath.Join(parent, "moved")
-	if err := os.Mkdir(path, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(path, 0o700))
 	root, err := os.OpenRoot(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer root.Close()
 	guard, err := acquireApprovalGuardRoot(root, LockfileName)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer guard.Close()
-	if err := os.Rename(path, moved); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(path, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Rename(path, moved))
+	require.NoError(t, os.Mkdir(path, 0o700))
 	data := []byte(`{"schema":2,"modules":[]}`)
-	if err := publishApprovalFile(root, LockfileName, data); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, publishApprovalFile(root, LockfileName, data))
 	actual, err := os.ReadFile(filepath.Join(moved, LockfileName))
-	if err != nil || string(actual) != string(data) {
-		t.Fatalf("publication lost the pinned directory: %q %v", actual, err)
-	}
-	if _, err := os.Stat(filepath.Join(path, LockfileName)); !os.IsNotExist(err) {
-		t.Fatalf("publication followed a replaced pathname: %v", err)
-	}
+	require.NoError(t, err, "publication keeps the pinned directory")
+	require.Equal(t, string(data), string(actual))
+	_, statErr := os.Stat(filepath.Join(path, LockfileName))
+	require.ErrorIs(t, statErr, fs.ErrNotExist, "publication does not follow a replaced pathname")
 	entries, err := os.ReadDir(moved)
-	if err != nil || len(entries) != 2 {
-		t.Fatalf("publication left temporary files: %v %v", entries, err)
-	}
+	require.NoError(t, err, "publication leaves no temporary files")
+	require.Len(t, entries, 2)
 }

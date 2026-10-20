@@ -20,11 +20,12 @@ package app
 
 import (
 	"context"
-	"errors"
 	"testing"
 
-	"pipit.sh/pipit/internal/engine"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -35,12 +36,8 @@ func TestRecordFastPathTypeMismatchIncrementsAndReturnsError(t *testing.T) {
 	vm.Limits = service.limits
 
 	err := engine.RecordFastPathTypeMismatch(vm, 7, "func(string) string", "func() int")
-	if err == nil {
-		t.Fatalf("expected non-nil error")
-	}
-	if firstOf(vm.Limits.FastPathDiagnostics().Counts()) != 1 {
-		t.Fatalf("typeMismatches counter not incremented")
-	}
+	require.Error(t, err)
+	require.Equal(t, int64(1), firstOf(vm.Limits.FastPathDiagnostics().Counts()), "a type mismatch is counted")
 }
 
 func TestRecordFastPathOOBWriteIncrements(t *testing.T) {
@@ -49,12 +46,8 @@ func TestRecordFastPathOOBWriteIncrements(t *testing.T) {
 	vm := engine.NewVM(service.applyMaxExecutionTimeCtx(), service.globals, service.symbols)
 	vm.Limits = service.limits
 
-	if err := engine.RecordFastPathOOBWrite(vm, isa.RegisterInt, 999, 256); err == nil {
-		t.Fatalf("expected non-nil error")
-	}
-	if secondOf(vm.Limits.FastPathDiagnostics().Counts()) != 1 {
-		t.Fatalf("outOfBoundsWrites counter not incremented")
-	}
+	require.Error(t, engine.RecordFastPathOOBWrite(vm, isa.RegisterInt, 999, 256))
+	require.Equal(t, int64(1), secondOf(vm.Limits.FastPathDiagnostics().Counts()), "an out-of-bounds write is counted")
 }
 
 func TestFastPathStatsAggregatesAcrossIncrements(t *testing.T) {
@@ -68,23 +61,14 @@ func TestFastPathStatsAggregatesAcrossIncrements(t *testing.T) {
 	_ = engine.RecordFastPathOOBWrite(vm, isa.RegisterString, 1024, 256)
 
 	stats := service.FastPathStats()
-	if stats.TypeMismatches < 2 {
-		t.Errorf("TypeMismatches = %d, want >= 2", stats.TypeMismatches)
-	}
-	if stats.OutOfBoundsWrites < 1 {
-		t.Errorf("OutOfBoundsWrites = %d, want >= 1", stats.OutOfBoundsWrites)
-	}
+	assert.GreaterOrEqual(t, stats.TypeMismatches, int64(2))
+	assert.GreaterOrEqual(t, stats.OutOfBoundsWrites, int64(1))
 }
 
 func TestRecordFastPathTypeMismatchTolerantOfNilVM(t *testing.T) {
 	t.Parallel()
 	err := engine.RecordFastPathTypeMismatch(nil, 0, "x", "y")
-	if err == nil {
-		t.Fatalf("expected non-nil error for nil VM")
-	}
-	if errors.Is(err, nil) {
-		t.Fatalf("error should be non-nil")
-	}
+	require.Error(t, err, "a nil VM is an error")
 }
 
 func (s *Service) applyMaxExecutionTimeCtx() context.Context {

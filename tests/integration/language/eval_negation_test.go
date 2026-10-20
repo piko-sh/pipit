@@ -21,70 +21,70 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
 func TestEvalUnaryOperators(t *testing.T) {
 	t.Parallel()
 
-	intTests := []struct {
-		name   string
-		code   string
-		expect int
+	tests := []struct {
+		name string
+		code string
+		want int
 	}{
-		{name: "negate literal", code: `-42`, expect: -42},
-		{name: "bitwise not zero", code: `^0`, expect: -1},
+		{name: "negate literal", code: `-42`, want: -42},
+		{name: "bitwise not zero", code: `^0`, want: -1},
 	}
 
-	for _, tt := range intTests {
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 
 	floatTests := []struct {
-		name   string
-		code   string
-		expect float64
+		name string
+		code string
+		want float64
 	}{
-		{name: "negate float literal", code: `-3.14`, expect: -3.14},
+		{name: "negate float literal", code: `-3.14`, want: -3.14},
 	}
 
 	for _, tt := range floatTests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.InDelta(t, tt.expect, result, 0.0001)
+			require.InDelta(t, tt.want, result, 0.0001)
 		})
 	}
 
 	boolTests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "not true", code: `!true`, expect: false},
-		{name: "not false", code: `!false`, expect: true},
-		{name: "double not", code: `!!true`, expect: true},
+		{name: "not true", code: `!true`, want: false},
+		{name: "not false", code: `!false`, want: true},
+		{name: "double not", code: `!!true`, want: true},
 	}
 
 	for _, tt := range boolTests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

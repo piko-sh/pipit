@@ -30,8 +30,6 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/sys/unix"
-
 	"pipit.sh/pipit/internal/sandboxbroker"
 	"pipit.sh/pipit/internal/sandboxwire"
 )
@@ -41,13 +39,7 @@ func TestNativeFilesystemBrokerSupervised(t *testing.T) {
 	if executable == "" || parent == "" {
 		t.Skip("requires a static filesystem broker and delegated cgroup")
 	}
-	version, _, errno := unix.Syscall(unix.SYS_LANDLOCK_CREATE_RULESET, 0, 0, unix.LANDLOCK_CREATE_RULESET_VERSION)
-	if errno != 0 || version < 8 {
-		if os.Getenv("PIPIT_REQUIRE_BROKER_LANDLOCK") == "1" {
-			t.Fatalf("Landlock TSYNC unavailable: %d: %v", version, errno)
-		}
-		t.Skipf("Landlock TSYNC unavailable: %d: %v", version, errno)
-	}
+	requireLandlockTSYNC(t)
 	image, err := os.ReadFile(executable)
 	if err != nil {
 		t.Fatal(err)

@@ -21,10 +21,10 @@
 package bytecode_test
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/engine/program"
 )
 
@@ -63,8 +63,7 @@ run()
 		_, isSpecialisation := specialised[index]
 		require.False(t, isSpecialisation,
 			"method table entry %q resolves to specialised function index %d", name, index)
-		require.False(t, strings.Contains(name, "[spec:"),
-			"method table contains a specialisation name %q", name)
+		require.NotContains(t, name, "[spec:", "the method table holds no specialisation names")
 	}
 }
 

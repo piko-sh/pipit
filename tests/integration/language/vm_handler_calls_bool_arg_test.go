@@ -21,16 +21,16 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
 func TestCallPassesComparisonResultToBoolParameter(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := t.Context()
 	result, err := app.NewService().Eval(ctx, `type C struct{ b bool }
 func (c *C) SetB(v bool) { c.b = v }
 type I interface{ SetB(v bool) }

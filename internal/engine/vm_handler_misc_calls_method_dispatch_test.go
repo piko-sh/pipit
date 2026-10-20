@@ -116,17 +116,17 @@ func TestResolvePromotedMethodWalksEmbeddedFields(t *testing.T) {
 		wantReceiver any
 	}{
 		{
-			name: "a value embedding promotes the method", receiver: reflect.ValueOf(dispatchOuter{dispatchBase{Value: 1}, "n"}),
+			name: "a value embedding promotes the method", receiver: reflect.ValueOf(dispatchOuter{dispatchBase: dispatchBase{Value: 1}, Name: "n"}),
 			method: "Ping", wantIndex: 3, wantFound: true, wantReceiver: dispatchBase{Value: 1},
 		},
 		{
 			name:     "a pointer receiver is dereferenced first",
-			receiver: reflect.ValueOf(&dispatchOuter{dispatchBase{Value: 2}, "n"}),
+			receiver: reflect.ValueOf(&dispatchOuter{dispatchBase: dispatchBase{Value: 2}, Name: "n"}),
 			method:   "Ping", wantIndex: 3, wantFound: true, wantReceiver: dispatchBase{Value: 2},
 		},
 		{
 			name:     "a pointer embedding is followed",
-			receiver: reflect.ValueOf(dispatchPointerOuter{&dispatchBase{Value: 4}, "n"}),
+			receiver: reflect.ValueOf(dispatchPointerOuter{dispatchBase: &dispatchBase{Value: 4}, Name: "n"}),
 			method:   "Ping", wantIndex: 3, wantFound: true, wantReceiver: dispatchBase{Value: 4},
 		},
 		{
@@ -169,7 +169,7 @@ func TestResolvePromotedMethodUnwrapsInterfaceReceivers(t *testing.T) {
 		t.Parallel()
 
 		vm := methodTableVM(t, map[string]uint16{"dispatchBase.Ping": 3})
-		boxed := reflect.ValueOf(map[string]any{"k": dispatchOuter{dispatchBase{Value: 6}, "n"}}).MapIndex(reflect.ValueOf("k"))
+		boxed := reflect.ValueOf(map[string]any{"k": dispatchOuter{dispatchBase: dispatchBase{Value: 6}, Name: "n"}}).MapIndex(reflect.ValueOf("k"))
 
 		index, resolved, found := resolvePromotedMethod(vm, boxed, "Ping")
 		require.True(t, found)
@@ -466,7 +466,7 @@ func TestCallMethodResolvesAPromotedMethod(t *testing.T) {
 	callee := pingMethod(t)
 	vm, frame, registers, siteIndex := methodDispatchFrame(t,
 		"Ping", map[string]uint16{"dispatchBase.Ping": 0}, callee)
-	original := reflect.ValueOf(dispatchOuter{dispatchBase{Value: 2}, "n"})
+	original := reflect.ValueOf(dispatchOuter{dispatchBase: dispatchBase{Value: 2}, Name: "n"})
 	registers.General[1] = original
 
 	require.Equal(t, opFrameChanged, handleCallMethod(vm, frame, registers, callSlotOperands(siteIndex)))

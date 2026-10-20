@@ -19,11 +19,11 @@
 package app_test
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/adapters"
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/module"
@@ -83,13 +83,13 @@ func Report(r Reporter, a, b int) string {
 		SchemaVersion: module.DescriptorVersion,
 		Ref:           module.Ref{Path: "example.com/lib", Version: "v0.0.0"},
 	}
-	bundle, err := builder.PackageModule(context.Background(),
+	bundle, err := builder.PackageModule(t.Context(),
 		descriptor, "example.com/lib", libSources, adapters.PackCompiledFileSetToBytes)
 	require.NoError(t, err)
 
 	consumer := app.NewService()
 	reference := module.Ref{Path: descriptor.Ref.Path, Version: descriptor.Ref.Version, Pin: bundle.Descriptor.Ref.Pin}
-	_, err = consumer.LoadModule(context.Background(), bundle, reference, nil, adapters.LoadCompiledFromBytes)
+	_, err = consumer.LoadModule(t.Context(), bundle, reference, nil, adapters.LoadCompiledFromBytes)
 	require.NoError(t, err)
 
 	mainSources := map[string]map[string]string{
@@ -134,10 +134,10 @@ func main() {}
 `,
 		},
 	}
-	mainCfs, err := consumer.CompileProgram(context.Background(), "main", mainSources)
+	mainCfs, err := consumer.CompileProgram(t.Context(), "main", mainSources)
 	require.NoError(t, err)
 
-	result, err := consumer.ExecuteEntrypoint(context.Background(), mainCfs, "entrypoint")
+	result, err := consumer.ExecuteEntrypoint(t.Context(), mainCfs, "entrypoint")
 	require.NoError(t, err)
 	require.Equal(t,
 		"probe:less|probe:less|probe:less|probe:less|probe:equal|probe:greater|probe:greater|probe:greater|"+

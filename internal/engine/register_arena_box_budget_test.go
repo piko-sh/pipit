@@ -19,10 +19,10 @@
 package engine
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/fault"
 )
 
@@ -53,14 +53,13 @@ func TestBoxSlabGrowthTripsBudget(t *testing.T) {
 		require.NotNil(t, recovered, "unbounded box-slab doubling must eventually exceed the budget")
 		recoveredErr, ok := recovered.(error)
 		require.True(t, ok, "expected error-typed panic, got %T", recovered)
-		require.True(t, errors.Is(recoveredErr, fault.ErrArenaBudgetExceeded),
-			"box-slab overrun must wrap errArenaBudgetExceeded, got %v", recoveredErr)
+		require.ErrorIs(t, recoveredErr, fault.ErrArenaBudgetExceeded, "a box-slab overrun wraps the arena budget error")
 	}()
 
 	for range 32 {
 		a.growIntBoxSlab()
 	}
-	t.Fatal("expected box-slab growth to trip the arena budget before 32 doublings")
+	require.FailNow(t, "box-slab growth trips the arena budget within 32 doublings")
 }
 
 func TestResetShrinksOvergrownBoxSlab(t *testing.T) {
@@ -76,13 +75,13 @@ func TestResetShrinksOvergrownBoxSlab(t *testing.T) {
 
 	grownLen := len(a.intBoxSlab)
 	a.Reset()
-	require.Equal(t, grownLen, len(a.intBoxSlab),
+	require.Len(t, a.intBoxSlab, grownLen,
 		"a Reset after an Execute that grew the box slab must retain it (hot)")
 
 	for range backingSlabIdleResetsBeforeShrink {
 		a.Reset()
 	}
-	require.Equal(t, initialBoxSlabCapacity, len(a.intBoxSlab),
+	require.Len(t, a.intBoxSlab, initialBoxSlabCapacity,
 		"consecutive idle Resets must shrink an overgrown box slab back to its initial capacity")
 }
 
@@ -101,16 +100,16 @@ func TestResetShrinksOvergrownGenericAndSliceHeaderSlabs(t *testing.T) {
 	grownGenericLen := len(a.genericBytesSlab)
 	grownHeaderLen := len(a.sliceHeaderSlab)
 	a.Reset()
-	require.Equal(t, grownGenericLen, len(a.genericBytesSlab),
+	require.Len(t, a.genericBytesSlab, grownGenericLen,
 		"a Reset after an Execute that grew the generic byte slab must retain it (hot)")
-	require.Equal(t, grownHeaderLen, len(a.sliceHeaderSlab),
+	require.Len(t, a.sliceHeaderSlab, grownHeaderLen,
 		"a Reset after an Execute that grew the slice-header slab must retain it (hot)")
 
 	for range backingSlabIdleResetsBeforeShrink {
 		a.Reset()
 	}
-	require.Equal(t, initialGenericBytesCapacity, len(a.genericBytesSlab),
+	require.Len(t, a.genericBytesSlab, initialGenericBytesCapacity,
 		"consecutive idle Resets must shrink an overgrown generic byte slab")
-	require.Equal(t, initialSliceHeaderCapacity, len(a.sliceHeaderSlab),
+	require.Len(t, a.sliceHeaderSlab, initialSliceHeaderCapacity,
 		"consecutive idle Resets must shrink an overgrown slice-header slab")
 }

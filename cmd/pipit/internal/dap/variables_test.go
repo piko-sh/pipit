@@ -19,12 +19,11 @@
 package dap
 
 import (
-	"context"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/google/go-dap"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit"
 	"pipit.sh/pipit/internal/debug"
@@ -33,6 +32,7 @@ import (
 )
 
 func TestExpandReflectValueStruct(t *testing.T) {
+	t.Parallel()
 	stop := newStopState(pipit.DebugEvent{})
 	srv := &server{}
 
@@ -43,83 +43,65 @@ func TestExpandReflectValueStruct(t *testing.T) {
 	value := reflect.ValueOf(point{X: 3, Y: 4})
 
 	variables := srv.expandReflectValue(stop, value, 0, 0)
-	if got := len(variables); got != 2 {
-		t.Fatalf("expanded fields: got %d, want 2", got)
-	}
+	require.Len(t, variables, 2)
 	names := []string{variables[0].Name, variables[1].Name}
-	if !reflect.DeepEqual(names, []string{"X", "Y"}) {
-		t.Fatalf("field names: got %v, want [X Y]", names)
-	}
-	if variables[0].Value != "3" {
-		t.Fatalf("X value: got %q, want \"3\"", variables[0].Value)
-	}
+	require.Equal(t, []string{"X", "Y"}, names)
+	require.Equal(t, "3", variables[0].Value)
 }
 
 func TestExpandReflectValueMapSortsByKey(t *testing.T) {
+	t.Parallel()
 	stop := newStopState(pipit.DebugEvent{})
 	srv := &server{}
 
 	value := reflect.ValueOf(map[string]int{"b": 2, "a": 1, "c": 3})
 	variables := srv.expandReflectValue(stop, value, 0, 0)
 
-	if got := len(variables); got != 3 {
-		t.Fatalf("map entries: got %d, want 3", got)
-	}
+	require.Len(t, variables, 3)
 	names := []string{variables[0].Name, variables[1].Name, variables[2].Name}
-	if !reflect.DeepEqual(names, []string{"a", "b", "c"}) {
-		t.Fatalf("map key order: got %v, want [a b c] (sorted)", names)
-	}
+	require.Equal(t, []string{"a", "b", "c"}, names)
 }
 
 func TestExpandReflectValueSlice(t *testing.T) {
+	t.Parallel()
 	stop := newStopState(pipit.DebugEvent{})
 	srv := &server{}
 
 	value := reflect.ValueOf([]string{"alpha", "beta"})
 	variables := srv.expandReflectValue(stop, value, 0, 0)
 
-	if got := len(variables); got != 2 {
-		t.Fatalf("slice elements: got %d, want 2", got)
-	}
-	if variables[0].Name != "[0]" || variables[1].Name != "[1]" {
-		t.Fatalf("element names: got %q,%q, want [0],[1]", variables[0].Name, variables[1].Name)
-	}
-	if !strings.Contains(variables[0].Value, "alpha") {
-		t.Fatalf("element 0 value: got %q, want to contain \"alpha\"", variables[0].Value)
-	}
+	require.Len(t, variables, 2)
+	require.Equal(t, "[0]", variables[0].Name)
+	require.Equal(t, "[1]", variables[1].Name)
+	require.Contains(t, variables[0].Value, "alpha")
 }
 
 func TestMakeVariableAllocatesReferenceForComposites(t *testing.T) {
+	t.Parallel()
 	stop := newStopState(pipit.DebugEvent{})
 	srv := &server{}
 
 	scalar := srv.makeVariable(stop, "n", "int", reflect.ValueOf(42))
-	if scalar.VariablesReference != 0 {
-		t.Fatalf("scalar got reference %d; want 0 (no children)", scalar.VariablesReference)
-	}
+	require.Equal(t, 0, scalar.VariablesReference, "a scalar has no variables reference")
 
 	composite := srv.makeVariable(stop, "pt", "Point", reflect.ValueOf(struct{ X int }{X: 1}))
-	if composite.VariablesReference == 0 {
-		t.Fatalf("composite got reference 0; want non-zero so the IDE can expand it")
-	}
+	require.NotEqual(t, 0, composite.VariablesReference, "a composite has a variables reference, so the IDE can expand it")
 }
 
 func TestMakeVariableNoReferenceForEmptyComposites(t *testing.T) {
+	t.Parallel()
 	stop := newStopState(pipit.DebugEvent{})
 	srv := &server{}
 
 	empty := srv.makeVariable(stop, "m", "map[string]int", reflect.ValueOf(map[string]int{}))
-	if empty.VariablesReference != 0 {
-		t.Fatalf("empty map got reference %d; want 0 (no children to expand)", empty.VariablesReference)
-	}
+	require.Equal(t, 0, empty.VariablesReference, "an empty map has no variables reference")
 
 	nilSlice := srv.makeVariable(stop, "s", "[]int", reflect.ValueOf([]int(nil)))
-	if nilSlice.VariablesReference != 0 {
-		t.Fatalf("nil slice got reference %d; want 0", nilSlice.VariablesReference)
-	}
+	require.Equal(t, 0, nilSlice.VariablesReference, "a nil slice has no variables reference")
 }
 
 func TestExpandReflectValueWalksThroughPointer(t *testing.T) {
+	t.Parallel()
 	stop := newStopState(pipit.DebugEvent{})
 	srv := &server{}
 
@@ -127,61 +109,60 @@ func TestExpandReflectValueWalksThroughPointer(t *testing.T) {
 	value := reflect.ValueOf(&box{N: 7})
 
 	variables := srv.expandReflectValue(stop, value, 0, 0)
-	if got := len(variables); got != 1 {
-		t.Fatalf("pointer-to-struct fields: got %d, want 1", got)
-	}
-	if variables[0].Name != "N" || variables[0].Value != "7" {
-		t.Fatalf("field: got name=%q value=%q, want name=N value=7", variables[0].Name, variables[0].Value)
-	}
+	require.Len(t, variables, 1)
+	require.Equal(t, "N", variables[0].Name)
+	require.Equal(t, "7", variables[0].Value)
 }
 
 func TestExpandReflectValueNilPointerYieldsNothing(t *testing.T) {
+	t.Parallel()
 	stop := newStopState(pipit.DebugEvent{})
 	srv := &server{}
 
 	type box struct{ N int }
 	var nilBox *box
 
-	if got := srv.expandReflectValue(stop, reflect.ValueOf(nilBox), 0, 0); got != nil {
-		t.Fatalf("nil pointer expansion: got %v, want nil", got)
-	}
+	require.Nil(t, srv.expandReflectValue(stop, reflect.ValueOf(nilBox), 0, 0))
 }
 
 func TestFormatLeafQuotesStrings(t *testing.T) {
-	if got := debugview.Leaf(reflect.ValueOf("hi")); got != `"hi"` {
-		t.Fatalf("debugview.Leaf(\"hi\"): got %q, want \"hi\" with quotes", got)
-	}
+	t.Parallel()
+	require.Equal(t, `"hi"`, debugview.Leaf(reflect.ValueOf("hi")), "debugview.Leaf(\"hi\")")
 }
 
 func TestStoppedReasonMapsKnownEvents(t *testing.T) {
-	cases := []struct {
+	t.Parallel()
+	tests := []struct {
+		name   string
 		reason pipit.StopReason
 		want   string
 	}{
-		{debug.StopReasonBreakpoint, "breakpoint"},
-		{debug.StopReasonStep, "step"},
-		{debug.StopReasonEntry, "entry"},
-		{debug.StopReasonPause, "pause"},
-		{debug.StopReasonPanic, "exception"},
-		{debug.StopReasonFunctionBreakpoint, "function breakpoint"},
-		{debug.StopReasonOtherThread, "pause"},
-		{pipit.StopReason(255), "pause"},
+		{name: "breakpoint", reason: debug.StopReasonBreakpoint, want: "breakpoint"},
+		{name: "step", reason: debug.StopReasonStep, want: "step"},
+		{name: "entry", reason: debug.StopReasonEntry, want: "entry"},
+		{name: "pause", reason: debug.StopReasonPause, want: "pause"},
+		{name: "panic", reason: debug.StopReasonPanic, want: "exception"},
+		{name: "function breakpoint", reason: debug.StopReasonFunctionBreakpoint, want: "function breakpoint"},
+		{name: "another thread", reason: debug.StopReasonOtherThread, want: "pause"},
+		{name: "unknown reason", reason: pipit.StopReason(255), want: "pause"},
 	}
-	for _, c := range cases {
-		if got := stoppedReason(c.reason); got != c.want {
-			t.Fatalf("stoppedReason(%v): got %q, want %q", c.reason, got, c.want)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, stoppedReason(tt.reason))
+		})
 	}
 }
 
 func TestExpandReflectValueRendersAWindow(t *testing.T) {
+	t.Parallel()
 	type pair struct {
 		left  int
 		right bool
 	}
 	elements := reflect.ValueOf([]int{10, 11, 12, 13, 14})
 
-	testCases := []struct {
+	tests := []struct {
 		name       string
 		value      reflect.Value
 		start      int
@@ -194,47 +175,46 @@ func TestExpandReflectValueRendersAWindow(t *testing.T) {
 		{name: "a window running past the end", value: elements, start: 4, count: 3, wantNames: []string{"[4]"}, wantValues: []string{"14"}},
 		{name: "numeric map keys in numeric order", value: reflect.ValueOf(map[int]int{10: 1, 2: 2}), wantNames: []string{"2", "10"}, wantValues: []string{"2", "1"}},
 	}
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			srv := &server{}
-			variables := srv.expandReflectValue(newStopState(pipit.DebugEvent{}), tc.value, tc.start, tc.count)
+			variables := srv.expandReflectValue(newStopState(pipit.DebugEvent{}), tt.value, tt.start, tt.count)
 			names := make([]string, 0, len(variables))
 			values := make([]string, 0, len(variables))
 			for _, variable := range variables {
 				names = append(names, variable.Name)
 				values = append(values, variable.Value)
 			}
-			if !reflect.DeepEqual(names, tc.wantNames) || !reflect.DeepEqual(values, tc.wantValues) {
-				t.Fatalf("got %v = %v, want %v = %v", names, values, tc.wantNames, tc.wantValues)
-			}
+			require.Equal(t, tt.wantNames, names)
+			require.Equal(t, tt.wantValues, values)
 		})
 	}
 }
 
 func TestMakeVariableCountsOnlyUserFields(t *testing.T) {
+	t.Parallel()
 	synthesised := reflect.StructOf([]reflect.StructField{
 		{Name: "A", Type: reflect.TypeFor[int]()},
 		{Name: isa.SynthesisedIDFieldPrefix + "pair", Type: reflect.TypeFor[struct{}](), PkgPath: "main"},
 	})
 	variable := (&server{}).makeVariable(newStopState(pipit.DebugEvent{}), "p", "pair", reflect.New(synthesised).Elem())
-	if variable.NamedVariables != 1 {
-		t.Fatalf("NamedVariables = %d, want 1 (the interpreter's name marker is not a field)", variable.NamedVariables)
-	}
+	require.Equal(t, 1, variable.NamedVariables)
 }
 
 func TestDispatchAnswersAPanickingRequest(t *testing.T) {
+	t.Parallel()
 	srv, out, _ := newTestServer()
 	srv.debugger = nil
 	request := &dap.ThreadsRequest{Request: dap.Request{ProtocolMessage: dap.ProtocolMessage{Seq: 7, Type: "request"}, Command: "threads"}}
 
-	srv.dispatch(context.Background(), request)
+	srv.dispatch(t.Context(), request)
 
 	messages := readOutMessages(t, out)
-	if len(messages) != 1 {
-		t.Fatalf("messages: got %d, want 1 error response", len(messages))
-	}
+	require.Len(t, messages, 1)
 	response, ok := messages[0].(*dap.ErrorResponse)
-	if !ok || response.Success || response.RequestSeq != 7 || !strings.Contains(response.Message, "internal error") {
-		t.Fatalf("response = %#v, want a failed response to request 7 (the handler has no debugger)", messages[0])
-	}
+	require.True(t, ok, "the message is a *dap.ErrorResponse, not %T", messages[0])
+	require.False(t, response.Success, "the handler has no debugger, so the request fails")
+	require.Equal(t, 7, response.RequestSeq)
+	require.Contains(t, response.Message, "internal error")
 }

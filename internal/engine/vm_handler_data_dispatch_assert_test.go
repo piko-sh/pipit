@@ -99,7 +99,7 @@ func TestTypeAssertHandlerWritesTheValueAndFlag(t *testing.T) {
 		got := handleTypeAssert(vm, frame, registers, op(3, 1, 4))
 		require.Equal(t, opContinue, got)
 		require.Equal(t, int64(0), registers.Ints[4])
-		require.Equal(t, "", registers.General[3].Interface(), "a failed comma-ok assertion yields the zero value")
+		require.Empty(t, registers.General[3].Interface(), "a failed comma-ok assertion yields the zero value")
 	})
 
 	t.Run("a failed type-switch arm leaves the destination untouched", func(t *testing.T) {

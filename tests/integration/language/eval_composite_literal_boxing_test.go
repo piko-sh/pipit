@@ -21,32 +21,34 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
 func TestCompositeLiteralPreservesElementType(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name   string
-		code   string
-		expect any
+		name string
+		code string
+		want any
 	}{
-		{name: "slice_any_int_assert", code: `s := []any{1}; s[0].(int)`, expect: int(1)},
-		{name: "map_any_int_assert", code: `m := map[string]any{"a": 1}; m["a"].(int)`, expect: int(1)},
-		{name: "struct_any_int_assert", code: `type T struct{ X any }; t := T{X: 1}; t.X.(int)`, expect: int(1)},
-		{name: "array_any_int_assert", code: `a := [1]any{1}; a[0].(int)`, expect: int(1)},
-		{name: "slice_any_int32_assert", code: `s := []any{int32(1)}; s[0].(int32)`, expect: int32(1)},
+		{name: "slice_any_int_assert", code: `s := []any{1}; s[0].(int)`, want: int(1)},
+		{name: "map_any_int_assert", code: `m := map[string]any{"a": 1}; m["a"].(int)`, want: int(1)},
+		{name: "struct_any_int_assert", code: `type T struct{ X any }; t := T{X: 1}; t.X.(int)`, want: int(1)},
+		{name: "array_any_int_assert", code: `a := [1]any{1}; a[0].(int)`, want: int(1)},
+		{name: "slice_any_int32_assert", code: `s := []any{int32(1)}; s[0].(int32)`, want: int32(1)},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "type assertion should succeed with precise element type")
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

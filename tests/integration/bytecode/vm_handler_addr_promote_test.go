@@ -21,10 +21,10 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/engine/program"
@@ -35,7 +35,7 @@ func TestPointerToPointerFreeStructSurvivesAcrossSubmits(t *testing.T) {
 	t.Parallel()
 	session := app.NewService().NewSession()
 	submit := func(code string) any {
-		result, err := session.Submit(context.Background(), code)
+		result, err := session.Submit(t.Context(), code)
 		require.NoError(t, err, code)
 		return result
 	}
@@ -56,7 +56,7 @@ func TestPointerToPointerFreeStructSurvivesAcrossSubmits(t *testing.T) {
 func TestEscapePassAnnotatesAddrSites(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": `package main
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": `package main
 type P struct {
 	A int
 	B int

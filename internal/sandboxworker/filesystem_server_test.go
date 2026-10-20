@@ -22,10 +22,13 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 func TestFilesystemWorkerRejectsInvalidConfiguration(t *testing.T) {
+	t.Parallel()
 	for _, payload := range []string{
 		`{"profile":"restricted-filesystem-v1","imports":["pipit/fs"],"roots":[]}`,
 		`{"profile":"restricted-filesystem-v1","imports":["pipit/fs"],"roots":null,"limits":{}}`,
@@ -37,8 +40,6 @@ func TestFilesystemWorkerRejectsInvalidConfiguration(t *testing.T) {
 		`{"Profile":"restricted-filesystem-v1","imports":["pipit/fs"],"roots":[],"limits":{}}`,
 	} {
 		stream := sourceFixture(t, sandboxwire.Message{Kind: sandboxwire.Configure, ID: 0, Payload: json.RawMessage(payload)})
-		if err := Serve(stream); err == nil {
-			t.Fatalf("accepted invalid config: %s", payload)
-		}
+		require.Error(t, Serve(stream), "accepted invalid config: %s", payload)
 	}
 }

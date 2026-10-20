@@ -56,43 +56,73 @@ func TestWideStructFieldUnsafeReadsCoverEveryBank(t *testing.T) {
 	}{
 		{
 			name: "a signed field", field: 0, handler: handleGetStructFieldUnsafeInt,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(42), r.Ints[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), r.Ints[0])
+			},
 		},
 		{
 			name: "an unsigned field", field: 1, handler: handleGetStructFieldUnsafeUint,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, uint64(7), r.Uints[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(7), r.Uints[0])
+			},
 		},
 		{
 			name: "a bool field", field: 3, handler: handleGetStructFieldUnsafeBool,
-			inspect: func(t *testing.T, r *Registers) { require.True(t, r.Bools[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.True(t, r.Bools[0])
+			},
 		},
 		{
 			name: "a string field", field: 4, handler: handleGetStructFieldUnsafeString,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "text", r.Strings[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "text", r.Strings[0])
+			},
 		},
 		{
 			name: "an int-slice field", field: 5, handler: handleGetStructFieldUnsafeSliceInt,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []int64{1, 2}, r.SlicesInt[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []int64{1, 2}, r.SlicesInt[0])
+			},
 		},
 		{
 			name: "a float-slice field", field: 6, handler: handleGetStructFieldUnsafeSliceFloat,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []float64{1.5}, r.slicesFloat[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []float64{1.5}, r.slicesFloat[0])
+			},
 		},
 		{
 			name: "a uint-slice field", field: 7, handler: handleGetStructFieldUnsafeSliceUint,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []uint64{3}, r.slicesUint[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []uint64{3}, r.slicesUint[0])
+			},
 		},
 		{
 			name: "a string-slice field", field: 8, handler: handleGetStructFieldUnsafeSliceString,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []string{"a"}, r.slicesString[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []string{"a"}, r.slicesString[0])
+			},
 		},
 		{
 			name: "a bool-slice field", field: 9, handler: handleGetStructFieldUnsafeSliceBool,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []bool{true}, r.slicesBool[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []bool{true}, r.slicesBool[0])
+			},
 		},
 		{
 			name: "a byte-slice field", field: 10, handler: handleGetStructFieldUnsafeSliceByte,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []byte{9}, r.slicesByte[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []byte{9}, r.slicesByte[0])
+			},
 		},
 	}
 
@@ -146,23 +176,38 @@ func TestWideStructFieldUnsafeReadsWalkANonPointerReceiver(t *testing.T) {
 	}{
 		{
 			name: "a signed field", field: 0, handler: handleGetStructFieldUnsafeInt,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(42), r.Ints[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), r.Ints[0])
+			},
 		},
 		{
 			name: "an unsigned field", field: 1, handler: handleGetStructFieldUnsafeUint,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, uint64(7), r.Uints[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(7), r.Uints[0])
+			},
 		},
 		{
 			name: "a bool field", field: 3, handler: handleGetStructFieldUnsafeBool,
-			inspect: func(t *testing.T, r *Registers) { require.True(t, r.Bools[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.True(t, r.Bools[0])
+			},
 		},
 		{
 			name: "a string field", field: 4, handler: handleGetStructFieldUnsafeString,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "text", r.Strings[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "text", r.Strings[0])
+			},
 		},
 		{
 			name: "an int-slice field", field: 5, handler: handleGetStructFieldUnsafeSliceInt,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []int64{1, 2}, r.SlicesInt[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []int64{1, 2}, r.SlicesInt[0])
+			},
 		},
 	}
 
@@ -224,27 +269,45 @@ func TestSliceIndexStructFieldReadsEveryLeafBank(t *testing.T) {
 	}{
 		{
 			name: "a signed leaf", field: 0, index: 0, handler: handleSliceIndexStructFieldInt,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(42), r.Ints[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), r.Ints[0])
+			},
 		},
 		{
 			name: "a signed leaf at the second element", field: 0, index: 1, handler: handleSliceIndexStructFieldInt,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(99), r.Ints[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(99), r.Ints[0])
+			},
 		},
 		{
 			name: "an unsigned leaf", field: 1, index: 0, handler: handleSliceIndexStructFieldUint,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, uint64(7), r.Uints[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(7), r.Uints[0])
+			},
 		},
 		{
 			name: "a float leaf", field: 2, index: 0, handler: handleSliceIndexStructFieldFloat,
-			inspect: func(t *testing.T, r *Registers) { require.InDelta(t, 1.5, r.Floats[0], 0) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.InDelta(t, 1.5, r.Floats[0], 0)
+			},
 		},
 		{
 			name: "a bool leaf", field: 3, index: 0, handler: handleSliceIndexStructFieldBool,
-			inspect: func(t *testing.T, r *Registers) { require.True(t, r.Bools[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.True(t, r.Bools[0])
+			},
 		},
 		{
 			name: "a string leaf", field: 4, index: 1, handler: handleSliceIndexStructFieldString,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "second", r.Strings[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "second", r.Strings[0])
+			},
 		},
 	}
 

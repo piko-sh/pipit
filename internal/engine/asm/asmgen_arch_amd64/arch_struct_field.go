@@ -1218,32 +1218,45 @@ func emitTypedSliceByteSliceExtractOperands(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationMove32Bits, "(R12)(R14*4), DX")
 }
 
-// emitTypedSliceByteSliceLoadExtAndBounds extracts the flags / low / high fields from the
-// ext1 word, loads the source slice header, and runs the three-step bounds check.
-// Branches to labelBoundsFail on any failure.
+// emitTypedSliceByteSliceLoadExtAndBounds loads a sub-slice's source header and checks
+// its bounds. Three-index slices and failed checks branch to labelBoundsFail.
+//
+// Expects AX = dstReg, BX = srcReg and DX = ext1
+// (emitTypedSliceByteSliceExtractOperands). Leaves SI = the source header, CX = low, DI
+// = high and DX = the source capacity.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-// Takes contextOffset (string) which is the byte offset of the slicesByte bank base
+// Takes contextOffset (string) which is the byte offset of the typed-slice bank base
 // pointer within the dispatchContext.
 func emitTypedSliceByteSliceLoadExtAndBounds(e *asmgen.Emitter, contextOffset string) {
-	inst(e, asmamd64.OperationMove64Bits, "DX, CX")
-	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "CL, CX")
-	inst(e, asmamd64.OperationCompare64Bits, "CX, $3")
-	inst(e, asmamd64.OperationJumpIfNotEqual, labelBoundsFail)
-
-	inst(e, asmamd64.OperationMove64Bits, "DX, CX")
-	inst(e, asmamd64.OperationShiftRight64Bits, "$16, CX")
-	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "CL, CX")
-	inst(e, asmamd64.OperationMove64Bits, "DX, DI")
-	inst(e, asmamd64.OperationShiftRight64Bits, "$24, DI")
-	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, lowByteOf("DI")+", DI")
-
-	inst(e, asmamd64.OperationMove64Bits, "(R8)(CX*8), CX")
-	inst(e, asmamd64.OperationMove64Bits, "(R8)(DI*8), DI")
-
 	inst(e, asmamd64.OperationMove64Bits, contextOffset+"(R15), SI")
 	inst(e, asmamd64.OperationSignedMultiply64Bits, "$24, BX")
 	inst(e, asmamd64.OperationAdd64Bits, "BX, SI")
+
+	inst(e, asmamd64.OperationMove64Bits, "DX, BX")
+	inst(e, asmamd64.OperationShiftRight64Bits, "$8, BX")
+	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "BL, BX")
+	inst(e, asmamd64.OperationTest64Bits, "$"+sliceMaxFlagLiteral+", BX")
+	inst(e, asmamd64.OperationJumpIfNotZero, labelBoundsFail)
+
+	inst(e, asmamd64.OperationBitwiseXor64Bits, "CX, CX")
+	inst(e, asmamd64.OperationTest64Bits, "$"+sliceLowFlagLiteral+", BX")
+	inst(e, asmamd64.OperationJumpIfZero, labelSubSliceLowDone)
+	inst(e, asmamd64.OperationMove64Bits, "DX, CX")
+	inst(e, asmamd64.OperationShiftRight64Bits, "$16, CX")
+	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "CL, CX")
+	inst(e, asmamd64.OperationMove64Bits, "(R8)(CX*8), CX")
+	e.Label(labelSubSliceLowDone)
+
+	inst(e, asmamd64.OperationMove64Bits, "8(SI), DI")
+	inst(e, asmamd64.OperationTest64Bits, "$"+sliceHighFlagLiteral+", BX")
+	inst(e, asmamd64.OperationJumpIfZero, labelSubSliceHighDone)
+	inst(e, asmamd64.OperationMove64Bits, "DX, DI")
+	inst(e, asmamd64.OperationShiftRight64Bits, "$24, DI")
+	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, lowByteOf("DI")+", DI")
+	inst(e, asmamd64.OperationMove64Bits, "(R8)(DI*8), DI")
+	e.Label(labelSubSliceHighDone)
+
 	inst(e, asmamd64.OperationMove64Bits, "16(SI), DX")
 
 	inst(e, asmamd64.OperationTest64Bits, "CX, CX")
@@ -1254,8 +1267,11 @@ func emitTypedSliceByteSliceLoadExtAndBounds(e *asmgen.Emitter, contextOffset st
 	inst(e, asmamd64.OperationJumpIfGreaterSigned, labelBoundsFail)
 }
 
-// emitTypedSliceSliceSliceWriteHeader writes the adjusted Data/Len/Cap header for a
-// stride-parameterised typed-slice sub-slice.
+// emitTypedSliceSliceSliceWriteHeader writes the header for source[low:high], keeping
+// Data within the backing array when the new capacity is zero.
+//
+// Expects AX = dstReg, SI = the source header, CX = low, DI = high and DX = the source
+// capacity (emitTypedSliceByteSliceLoadExtAndBounds).
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 // Takes contextOffset (string) which is the byte offset of the typed-slice bank base
@@ -1263,15 +1279,15 @@ func emitTypedSliceByteSliceLoadExtAndBounds(e *asmgen.Emitter, contextOffset st
 // Takes elementSizeShift (uint8) which is the log2 of the element stride.
 func emitTypedSliceSliceSliceWriteHeader(e *asmgen.Emitter, contextOffset string, elementSizeShift uint8) {
 	inst(e, asmamd64.OperationMove64Bits, "0(SI), BX")
-	if elementSizeShift != 0 {
-		inst(e, asmamd64.OperationMove64Bits, "CX, R10")
-		inst(e, asmamd64.OperationShiftLeft64Bits, "$"+shiftLiteral(elementSizeShift)+", R10")
-		inst(e, asmamd64.OperationAdd64Bits, "R10, BX")
-	} else {
-		inst(e, asmamd64.OperationAdd64Bits, "CX, BX")
-	}
 	inst(e, asmamd64.OperationSubtract64Bits, "CX, DI")
 	inst(e, asmamd64.OperationSubtract64Bits, "CX, DX")
+	inst(e, asmamd64.OperationMove64Bits, "CX, SI")
+	if elementSizeShift != 0 {
+		inst(e, asmamd64.OperationShiftLeft64Bits, "$"+shiftLiteral(elementSizeShift)+", SI")
+	}
+	inst(e, asmamd64.OperationAdd64Bits, "BX, SI")
+	inst(e, asmamd64.OperationTest64Bits, "DX, DX")
+	inst(e, asmamd64.OperationConditionalMove64BitsIfNotEqual, "SI, BX")
 
 	inst(e, asmamd64.OperationMove64Bits, contextOffset+"(R15), SI")
 	inst(e, asmamd64.OperationSignedMultiply64Bits, "$24, AX")
@@ -1302,26 +1318,14 @@ func shiftLiteral(shift uint8) string {
 	return "0"
 }
 
-// emitTypedSliceByteSliceWriteHeader computes the destination slot pointer and writes the
-// adjusted Data/Len/Cap into the new 24-byte header. Assumes bounds have already been
-// validated by the caller.
+// emitTypedSliceByteSliceWriteHeader writes the sub-slice header for the byte bank, whose
+// stride is one byte (emitTypedSliceSliceSliceWriteHeader).
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 // Takes contextOffset (string) which is the byte offset of the slicesByte bank base
 // pointer within the dispatchContext.
 func emitTypedSliceByteSliceWriteHeader(e *asmgen.Emitter, contextOffset string) {
-	inst(e, asmamd64.OperationMove64Bits, "0(SI), BX")
-	inst(e, asmamd64.OperationAdd64Bits, "CX, BX")
-	inst(e, asmamd64.OperationSubtract64Bits, "CX, DI")
-	inst(e, asmamd64.OperationSubtract64Bits, "CX, DX")
-
-	inst(e, asmamd64.OperationMove64Bits, contextOffset+"(R15), SI")
-	inst(e, asmamd64.OperationSignedMultiply64Bits, "$24, AX")
-	inst(e, asmamd64.OperationAdd64Bits, "AX, SI")
-
-	inst(e, asmamd64.OperationMove64Bits, "BX, 0(SI)")
-	inst(e, asmamd64.OperationMove64Bits, "DI, 8(SI)")
-	inst(e, asmamd64.OperationMove64Bits, "DX, 16(SI)")
+	emitTypedSliceSliceSliceWriteHeader(e, contextOffset, 0)
 }
 
 // emitTypedRangeNextByteOperands extracts idxReg, srcReg and dstReg from the instruction

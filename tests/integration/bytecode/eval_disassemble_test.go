@@ -21,14 +21,13 @@
 package bytecode_test
 
 import (
-	"context"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine/program"
-
-	"github.com/stretchr/testify/require"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -40,132 +39,196 @@ func TestDisassembleOutput(t *testing.T) {
 		compiledFunction func() *program.CompiledFunction
 		contains         []string
 	}{
-		{name: "int_constant", compiledFunction: func() *program.CompiledFunction {
-			b := newBytecodeBuilder()
-			b.addIntConst(42)
-			b.intRegisters(1)
-			b.Emit(isa.OpLoadIntConst, 0, 0, 0)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-			b.returnInt()
-			return b.build()
-		}, contains: []string{"LOAD_INT_CONST", "ints[0] = 42"}},
-		{name: "float_constant", compiledFunction: func() *program.CompiledFunction {
-			b := newBytecodeBuilder()
-			b.addFloatConst(3.14)
-			b.floatRegisters(1)
-			b.Emit(isa.OpLoadFloatConst, 0, 0, 0)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-			b.returnFloat()
-			return b.build()
-		}, contains: []string{"LOAD_FLOAT_CONST", "floats[0] = 3.14"}},
-		{name: "string_constant", compiledFunction: func() *program.CompiledFunction {
-			b := newBytecodeBuilder()
-			b.addStringConst("hello")
-			b.stringRegisters(1)
-			b.Emit(isa.OpLoadStringConst, 0, 0, 0)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-			b.returnString()
-			return b.build()
-		}, contains: []string{"LOAD_STRING_CONST", "strings[0] = \"hello\""}},
-		{name: "bool_constant", compiledFunction: func() *program.CompiledFunction {
-			b := newBytecodeBuilder()
-			b.addBoolConst(true)
-			b.boolRegisters(1)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBoolConst), 0, 0)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-			b.returnBool()
-			return b.build()
-		}, contains: []string{"LOAD_BOOL_CONST", "bools[0] = true"}},
-		{name: "load_bool_inline", compiledFunction: func() *program.CompiledFunction {
-			b := newBytecodeBuilder()
-			b.intRegisters(1)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBool), 0, 1)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-			b.returnInt()
-			return b.build()
-		}, contains: []string{"LOAD_BOOL", "ints[0] = true"}},
-		{name: "load_bool_false", compiledFunction: func() *program.CompiledFunction {
-			b := newBytecodeBuilder()
-			b.intRegisters(1)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBool), 0, 0)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-			b.returnInt()
-			return b.build()
-		}, contains: []string{"LOAD_BOOL", "ints[0] = false"}},
-		{name: "load_nil", compiledFunction: func() *program.CompiledFunction {
-			b := newBytecodeBuilder()
-			b.generalRegisters(1)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2LoadNil), 0)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-			b.returnGeneral()
-			return b.build()
-		}, contains: []string{"TIER2_LOAD_NIL"}},
-		{name: "load_int_const_small", compiledFunction: func() *program.CompiledFunction {
-			b := newBytecodeBuilder()
-			b.intRegisters(1)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), 0, 7)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-			b.returnInt()
-			return b.build()
-		}, contains: []string{"LOAD_INT_CONST_SMALL", "ints[0] = 7"}},
-		{name: "jump_comment", compiledFunction: func() *program.CompiledFunction {
-			b := newBytecodeBuilder()
-			b.intRegisters(1)
-			b.EmitJump(isa.OpDrillTier1, uint8(isa.SubOpJump), 2)
-			b.Emit(isa.OpNop, 0, 0, 0)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-			b.returnInt()
-			return b.build()
-		}, contains: []string{"JUMP", "goto"}},
-		{name: "return_comment", compiledFunction: func() *program.CompiledFunction {
-			b := newBytecodeBuilder()
-			b.intRegisters(1)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 2)
-			return b.build()
-		}, contains: []string{"RETURN", "2 values"}},
-		{name: "return_void_comment", compiledFunction: func() *program.CompiledFunction {
-			b := newBytecodeBuilder()
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DrillTier3), uint8(isa.SubOpTier3ReturnVoid))
-			return b.build()
-		}, contains: []string{"TIER3_RETURN_VOID"}},
-		{name: "add_int_const_comment", compiledFunction: func() *program.CompiledFunction {
-			b := newBytecodeBuilder()
-			b.addIntConst(5)
-			b.intRegisters(2)
-			b.Emit(isa.OpAddIntConst, 0, 1, 0)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-			b.returnInt()
-			return b.build()
-		}, contains: []string{"ADD_INT_CONST", "const = 5"}},
-		{name: "long_string_truncated", compiledFunction: func() *program.CompiledFunction {
-			b := newBytecodeBuilder()
-			b.addStringConst("this is a very long string that should be truncated in disassembly output")
-			b.stringRegisters(1)
-			b.Emit(isa.OpLoadStringConst, 0, 0, 0)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-			b.returnString()
-			return b.build()
-		}, contains: []string{"...", "LOAD_STRING_CONST"}},
-		{name: "empty_body", compiledFunction: func() *program.CompiledFunction {
-			b := newBytecodeBuilder()
-			return b.build()
-		}, contains: nil},
-		{name: "jump_if_true", compiledFunction: func() *program.CompiledFunction {
-			b := newBytecodeBuilder()
-			b.intRegisters(1)
-			b.EmitJump(isa.OpJumpIfTrue, 0, 1)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-			b.returnInt()
-			return b.build()
-		}, contains: []string{"JUMP_IF_TRUE", "if ints[0] != 0 goto"}},
-		{name: "jump_if_false", compiledFunction: func() *program.CompiledFunction {
-			b := newBytecodeBuilder()
-			b.intRegisters(1)
-			b.EmitJump(isa.OpJumpIfFalse, 0, 1)
-			b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
-			b.returnInt()
-			return b.build()
-		}, contains: []string{"JUMP_IF_FALSE", "if ints[0] == 0 goto"}},
+		{
+			name: "int_constant",
+			compiledFunction: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.addIntConst(42)
+				b.intRegisters(1)
+				b.Emit(isa.OpLoadIntConst, 0, 0, 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				b.returnInt()
+				return b.build()
+			},
+			contains: []string{"LOAD_INT_CONST", "ints[0] = 42"},
+		},
+		{
+			name: "float_constant",
+			compiledFunction: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.addFloatConst(3.14)
+				b.floatRegisters(1)
+				b.Emit(isa.OpLoadFloatConst, 0, 0, 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				b.returnFloat()
+				return b.build()
+			},
+			contains: []string{"LOAD_FLOAT_CONST", "floats[0] = 3.14"},
+		},
+		{
+			name: "string_constant",
+			compiledFunction: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.addStringConst("hello")
+				b.stringRegisters(1)
+				b.Emit(isa.OpLoadStringConst, 0, 0, 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				b.returnString()
+				return b.build()
+			},
+			contains: []string{"LOAD_STRING_CONST", "strings[0] = \"hello\""},
+		},
+		{
+			name: "bool_constant",
+			compiledFunction: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.addBoolConst(true)
+				b.boolRegisters(1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBoolConst), 0, 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				b.returnBool()
+				return b.build()
+			},
+			contains: []string{"LOAD_BOOL_CONST", "bools[0] = true"},
+		},
+		{
+			name: "load_bool_inline",
+			compiledFunction: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.intRegisters(1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBool), 0, 1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				b.returnInt()
+				return b.build()
+			},
+			contains: []string{"LOAD_BOOL", "ints[0] = true"},
+		},
+		{
+			name: "load_bool_false",
+			compiledFunction: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.intRegisters(1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBool), 0, 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				b.returnInt()
+				return b.build()
+			},
+			contains: []string{"LOAD_BOOL", "ints[0] = false"},
+		},
+		{
+			name: "load_nil",
+			compiledFunction: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.generalRegisters(1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2LoadNil), 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				b.returnGeneral()
+				return b.build()
+			},
+			contains: []string{"TIER2_LOAD_NIL"},
+		},
+		{
+			name: "load_int_const_small",
+			compiledFunction: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.intRegisters(1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), 0, 7)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				b.returnInt()
+				return b.build()
+			},
+			contains: []string{"LOAD_INT_CONST_SMALL", "ints[0] = 7"},
+		},
+		{
+			name: "jump_comment",
+			compiledFunction: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.intRegisters(1)
+				b.EmitJump(isa.OpDrillTier1, uint8(isa.SubOpJump), 2)
+				b.Emit(isa.OpNop, 0, 0, 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				b.returnInt()
+				return b.build()
+			},
+			contains: []string{"JUMP", "goto"},
+		},
+		{
+			name: "return_comment",
+			compiledFunction: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.intRegisters(1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 2)
+				return b.build()
+			},
+			contains: []string{"RETURN", "2 values"},
+		},
+		{
+			name: "return_void_comment",
+			compiledFunction: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DrillTier3), uint8(isa.SubOpTier3ReturnVoid))
+				return b.build()
+			},
+			contains: []string{"TIER3_RETURN_VOID"},
+		},
+		{
+			name: "add_int_const_comment",
+			compiledFunction: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.addIntConst(5)
+				b.intRegisters(2)
+				b.Emit(isa.OpAddIntConst, 0, 1, 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				b.returnInt()
+				return b.build()
+			},
+			contains: []string{"ADD_INT_CONST", "const = 5"},
+		},
+		{
+			name: "long_string_truncated",
+			compiledFunction: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.addStringConst("this is a very long string that should be truncated in disassembly output")
+				b.stringRegisters(1)
+				b.Emit(isa.OpLoadStringConst, 0, 0, 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				b.returnString()
+				return b.build()
+			},
+			contains: []string{"...", "LOAD_STRING_CONST"},
+		},
+		{
+			name: "empty_body",
+			compiledFunction: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				return b.build()
+			},
+			contains: nil,
+		},
+		{
+			name: "jump_if_true",
+			compiledFunction: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.intRegisters(1)
+				b.EmitJump(isa.OpJumpIfTrue, 0, 1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				b.returnInt()
+				return b.build()
+			},
+			contains: []string{"JUMP_IF_TRUE", "if ints[0] != 0 goto"},
+		},
+		{
+			name: "jump_if_false",
+			compiledFunction: func() *program.CompiledFunction {
+				b := newBytecodeBuilder()
+				b.intRegisters(1)
+				b.EmitJump(isa.OpJumpIfFalse, 0, 1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+				b.returnInt()
+				return b.build()
+			},
+			contains: []string{"JUMP_IF_FALSE", "if ints[0] == 0 goto"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -178,8 +241,7 @@ func TestDisassembleOutput(t *testing.T) {
 				return
 			}
 			for _, substr := range tt.contains {
-				require.True(t, strings.Contains(output, substr),
-					"disassembly should contain %q, got:\n%s", substr, output)
+				require.Contains(t, output, substr)
 			}
 		})
 	}
@@ -221,7 +283,7 @@ func TestDisassembleRange(t *testing.T) {
 				require.Empty(t, output)
 			} else {
 				lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
-				require.Equal(t, tt.lines, len(lines))
+				require.Len(t, lines, tt.lines)
 			}
 		})
 	}
@@ -243,7 +305,7 @@ func TestServiceCompileErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			_, err := service.Eval(context.Background(), tt.code)
+			_, err := service.Eval(t.Context(), tt.code)
 			require.Error(t, err)
 		})
 	}

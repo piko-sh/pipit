@@ -4,7 +4,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: complex=3
+;   registers: complex=2
 ;   dispatch:  asm=4 shim=1 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (complex)
@@ -15,6 +15,6 @@
 
 0000 S 0:LOAD_COMPLEX_CONST         1   0   0
 0001 A 1:MOVE_COMPLEX              15   0   1
-0002 A 1:NEG_COMPLEX               14   2   0
-0003 A 1:MOVE_COMPLEX              15   0   2
+0002 A 1:NEG_COMPLEX               14   1   0
+0003 A 1:MOVE_COMPLEX              15   0   1
 0004 A 2:TIER2_RETURN               0  10   1    ; 1 values

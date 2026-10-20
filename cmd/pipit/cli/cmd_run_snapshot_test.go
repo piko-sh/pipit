@@ -20,53 +20,50 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"flag"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit"
 	"pipit.sh/pipit/cmd/pipit/internal/output"
 )
 
 func TestGatedRunExecutesCapturedSource(t *testing.T) {
-	for _, directoryTarget := range []bool{false, true} {
-		t.Run(map[bool]string{false: "file", true: "directory"}[directoryTarget], func(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name            string
+		directoryTarget bool
+	}{
+		{name: "file", directoryTarget: false},
+		{name: "directory", directoryTarget: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			directory := t.TempDir()
 			sourcePath := filepath.Join(directory, "main.go")
 			target := sourcePath
-			if directoryTarget {
+			if tt.directoryTarget {
 				target = directory
 			}
 			original := "package main; func answer() int { return 42 }"
-			if err := os.WriteFile(sourcePath, []byte(original), 0600); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.WriteFile(sourcePath, []byte(original), 0600))
 			flags := flag.NewFlagSet("fixture", flag.ContinueOnError)
 			options := registerRunFlags(flags)
-			if err := flags.Parse([]string{"--gate=all", "--entrypoint=answer", "--autodeny", "--lockfile=" + filepath.Join(t.TempDir(), "approval.lock")}); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, flags.Parse([]string{"--gate=all", "--entrypoint=answer", "--autodeny", "--lockfile=" + filepath.Join(t.TempDir(), "approval.lock")}))
 			gateOptions, _, snapshot, err := capabilityGateOptions(options, target, nil, output.IO{Stdin: nil, Stdout: io.Discard, Stderr: io.Discard})
-			if err != nil || snapshot == nil {
-				t.Fatalf("capture failed: %v", err)
-			}
-			if err := os.Remove(sourcePath); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(directory, "replacement.go"), []byte("package main; func answer() int { return 99 }"), 0600); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+			require.NotNil(t, snapshot)
+			require.NoError(t, os.Remove(sourcePath))
+			require.NoError(t, os.WriteFile(filepath.Join(directory, "replacement.go"), []byte("package main; func answer() int { return 99 }"), 0600))
 			interpreter := pipit.NewInterpreter(gateOptions...)
 			var stdout bytes.Buffer
-			if err := runTarget(context.Background(), interpreter, target, "answer", &stdout, moduleRunOptions{Snapshot: snapshot}); err != nil {
-				t.Fatal(err)
-			}
-			if stdout.String() != "42\n" {
-				t.Fatalf("executed live replacement instead of approved bytes: %q", stdout.String())
-			}
+			require.NoError(t, runTarget(t.Context(), interpreter, target, "answer", &stdout, moduleRunOptions{Snapshot: snapshot}))
+			require.Equal(t, "42\n", stdout.String(), "the approved bytes run, not a live replacement")
 		})
 	}
 }

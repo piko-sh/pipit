@@ -37,44 +37,83 @@ func TestRegisterToReflectValueBoxesEveryBank(t *testing.T) {
 		kind  isa.RegisterKind
 	}{
 		{name: "the integer bank", kind: isa.RegisterInt,
-			seed:  func(registers *Registers) { registers.Ints[0] = 42 },
-			check: func(t *testing.T, boxed reflect.Value) { require.Equal(t, int64(42), boxed.Int()) }},
+			seed: func(registers *Registers) { registers.Ints[0] = 42 },
+			check: func(t *testing.T, boxed reflect.Value) {
+				t.Helper()
+				require.Equal(t, int64(42), boxed.Int())
+			}},
 		{name: "the float bank", kind: isa.RegisterFloat,
-			seed:  func(registers *Registers) { registers.Floats[0] = 1.5 },
-			check: func(t *testing.T, boxed reflect.Value) { require.InDelta(t, 1.5, boxed.Float(), 0) }},
+			seed: func(registers *Registers) { registers.Floats[0] = 1.5 },
+			check: func(t *testing.T, boxed reflect.Value) {
+				t.Helper()
+				require.InDelta(t, 1.5, boxed.Float(), 0)
+			}},
 		{name: "the string bank", kind: isa.RegisterString,
-			seed:  func(registers *Registers) { registers.Strings[0] = "pipit" },
-			check: func(t *testing.T, boxed reflect.Value) { require.Equal(t, "pipit", boxed.String()) }},
+			seed: func(registers *Registers) { registers.Strings[0] = "pipit" },
+			check: func(t *testing.T, boxed reflect.Value) {
+				t.Helper()
+				require.Equal(t, "pipit", boxed.String())
+			}},
 		{name: "the boolean bank", kind: isa.RegisterBool,
-			seed:  func(registers *Registers) { registers.Bools[0] = true },
-			check: func(t *testing.T, boxed reflect.Value) { require.True(t, boxed.Bool()) }},
+			seed: func(registers *Registers) { registers.Bools[0] = true },
+			check: func(t *testing.T, boxed reflect.Value) {
+				t.Helper()
+				require.True(t, boxed.Bool())
+			}},
 		{name: "the unsigned bank", kind: isa.RegisterUint,
-			seed:  func(registers *Registers) { registers.Uints[0] = 42 },
-			check: func(t *testing.T, boxed reflect.Value) { require.Equal(t, uint64(42), boxed.Uint()) }},
+			seed: func(registers *Registers) { registers.Uints[0] = 42 },
+			check: func(t *testing.T, boxed reflect.Value) {
+				t.Helper()
+				require.Equal(t, uint64(42), boxed.Uint())
+			}},
 		{name: "the complex bank", kind: isa.RegisterComplex,
-			seed:  func(registers *Registers) { registers.Complex[0] = 1 + 2i },
-			check: func(t *testing.T, boxed reflect.Value) { require.Equal(t, 1+2i, boxed.Complex()) }},
+			seed: func(registers *Registers) { registers.Complex[0] = 1 + 2i },
+			check: func(t *testing.T, boxed reflect.Value) {
+				t.Helper()
+				require.Equal(t, 1+2i, boxed.Complex())
+			}},
 		{name: "the general bank passes through untouched", kind: isa.RegisterGeneral,
-			seed:  func(registers *Registers) { registers.General[0] = reflect.ValueOf("boxed") },
-			check: func(t *testing.T, boxed reflect.Value) { require.Equal(t, "boxed", boxed.String()) }},
+			seed: func(registers *Registers) { registers.General[0] = reflect.ValueOf("boxed") },
+			check: func(t *testing.T, boxed reflect.Value) {
+				t.Helper()
+				require.Equal(t, "boxed", boxed.String())
+			}},
 		{name: "the integer slice bank", kind: isa.RegisterSliceInt,
-			seed:  func(registers *Registers) { registers.SlicesInt[0] = []int64{1, 2} },
-			check: func(t *testing.T, boxed reflect.Value) { require.Equal(t, 2, boxed.Len()) }},
+			seed: func(registers *Registers) { registers.SlicesInt[0] = []int64{1, 2} },
+			check: func(t *testing.T, boxed reflect.Value) {
+				t.Helper()
+				require.Equal(t, 2, boxed.Len())
+			}},
 		{name: "the float slice bank", kind: isa.RegisterSliceFloat,
-			seed:  func(registers *Registers) { registers.slicesFloat[0] = []float64{1} },
-			check: func(t *testing.T, boxed reflect.Value) { require.Equal(t, 1, boxed.Len()) }},
+			seed: func(registers *Registers) { registers.slicesFloat[0] = []float64{1} },
+			check: func(t *testing.T, boxed reflect.Value) {
+				t.Helper()
+				require.Equal(t, 1, boxed.Len())
+			}},
 		{name: "the string slice bank", kind: isa.RegisterSliceString,
-			seed:  func(registers *Registers) { registers.slicesString[0] = []string{"a"} },
-			check: func(t *testing.T, boxed reflect.Value) { require.Equal(t, 1, boxed.Len()) }},
+			seed: func(registers *Registers) { registers.slicesString[0] = []string{"a"} },
+			check: func(t *testing.T, boxed reflect.Value) {
+				t.Helper()
+				require.Equal(t, 1, boxed.Len())
+			}},
 		{name: "the boolean slice bank", kind: isa.RegisterSliceBool,
-			seed:  func(registers *Registers) { registers.slicesBool[0] = []bool{true} },
-			check: func(t *testing.T, boxed reflect.Value) { require.Equal(t, 1, boxed.Len()) }},
+			seed: func(registers *Registers) { registers.slicesBool[0] = []bool{true} },
+			check: func(t *testing.T, boxed reflect.Value) {
+				t.Helper()
+				require.Equal(t, 1, boxed.Len())
+			}},
 		{name: "the unsigned slice bank", kind: isa.RegisterSliceUint,
-			seed:  func(registers *Registers) { registers.slicesUint[0] = []uint64{7} },
-			check: func(t *testing.T, boxed reflect.Value) { require.Equal(t, 1, boxed.Len()) }},
+			seed: func(registers *Registers) { registers.slicesUint[0] = []uint64{7} },
+			check: func(t *testing.T, boxed reflect.Value) {
+				t.Helper()
+				require.Equal(t, 1, boxed.Len())
+			}},
 		{name: "the byte slice bank", kind: isa.RegisterSliceByte,
-			seed:  func(registers *Registers) { registers.slicesByte[0] = []byte("hi") },
-			check: func(t *testing.T, boxed reflect.Value) { require.Equal(t, 2, boxed.Len()) }},
+			seed: func(registers *Registers) { registers.slicesByte[0] = []byte("hi") },
+			check: func(t *testing.T, boxed reflect.Value) {
+				t.Helper()
+				require.Equal(t, 2, boxed.Len())
+			}},
 	}
 
 	for _, tt := range tests {
@@ -114,32 +153,59 @@ func TestCopySameKindArgMovesBetweenRegisterFiles(t *testing.T) {
 		kind  isa.RegisterKind
 	}{
 		{name: "the integer bank", kind: isa.RegisterInt,
-			seed:  func(registers *Registers) { registers.Ints[1] = 42 },
-			check: func(t *testing.T, d *Registers) { require.Equal(t, int64(42), d.Ints[0]) }},
+			seed: func(registers *Registers) { registers.Ints[1] = 42 },
+			check: func(t *testing.T, d *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), d.Ints[0])
+			}},
 		{name: "the float bank", kind: isa.RegisterFloat,
-			seed:  func(registers *Registers) { registers.Floats[1] = 1.5 },
-			check: func(t *testing.T, d *Registers) { require.InDelta(t, 1.5, d.Floats[0], 0) }},
+			seed: func(registers *Registers) { registers.Floats[1] = 1.5 },
+			check: func(t *testing.T, d *Registers) {
+				t.Helper()
+				require.InDelta(t, 1.5, d.Floats[0], 0)
+			}},
 		{name: "the string bank", kind: isa.RegisterString,
-			seed:  func(registers *Registers) { registers.Strings[1] = "pipit" },
-			check: func(t *testing.T, d *Registers) { require.Equal(t, "pipit", d.Strings[0]) }},
+			seed: func(registers *Registers) { registers.Strings[1] = "pipit" },
+			check: func(t *testing.T, d *Registers) {
+				t.Helper()
+				require.Equal(t, "pipit", d.Strings[0])
+			}},
 		{name: "the boolean bank", kind: isa.RegisterBool,
-			seed:  func(registers *Registers) { registers.Bools[1] = true },
-			check: func(t *testing.T, d *Registers) { require.True(t, d.Bools[0]) }},
+			seed: func(registers *Registers) { registers.Bools[1] = true },
+			check: func(t *testing.T, d *Registers) {
+				t.Helper()
+				require.True(t, d.Bools[0])
+			}},
 		{name: "the unsigned bank", kind: isa.RegisterUint,
-			seed:  func(registers *Registers) { registers.Uints[1] = 42 },
-			check: func(t *testing.T, d *Registers) { require.Equal(t, uint64(42), d.Uints[0]) }},
+			seed: func(registers *Registers) { registers.Uints[1] = 42 },
+			check: func(t *testing.T, d *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(42), d.Uints[0])
+			}},
 		{name: "the complex bank", kind: isa.RegisterComplex,
-			seed:  func(registers *Registers) { registers.Complex[1] = 1 + 2i },
-			check: func(t *testing.T, d *Registers) { require.Equal(t, 1+2i, d.Complex[0]) }},
+			seed: func(registers *Registers) { registers.Complex[1] = 1 + 2i },
+			check: func(t *testing.T, d *Registers) {
+				t.Helper()
+				require.Equal(t, 1+2i, d.Complex[0])
+			}},
 		{name: "the general bank", kind: isa.RegisterGeneral,
-			seed:  func(registers *Registers) { registers.General[1] = reflect.ValueOf(7) },
-			check: func(t *testing.T, d *Registers) { require.Equal(t, int64(7), d.General[0].Int()) }},
+			seed: func(registers *Registers) { registers.General[1] = reflect.ValueOf(7) },
+			check: func(t *testing.T, d *Registers) {
+				t.Helper()
+				require.Equal(t, int64(7), d.General[0].Int())
+			}},
 		{name: "the integer slice bank", kind: isa.RegisterSliceInt,
-			seed:  func(registers *Registers) { registers.SlicesInt[1] = []int64{1} },
-			check: func(t *testing.T, d *Registers) { require.Equal(t, []int64{1}, d.SlicesInt[0]) }},
+			seed: func(registers *Registers) { registers.SlicesInt[1] = []int64{1} },
+			check: func(t *testing.T, d *Registers) {
+				t.Helper()
+				require.Equal(t, []int64{1}, d.SlicesInt[0])
+			}},
 		{name: "the byte slice bank", kind: isa.RegisterSliceByte,
-			seed:  func(registers *Registers) { registers.slicesByte[1] = []byte("hi") },
-			check: func(t *testing.T, d *Registers) { require.Equal(t, []byte("hi"), d.slicesByte[0]) }},
+			seed: func(registers *Registers) { registers.slicesByte[1] = []byte("hi") },
+			check: func(t *testing.T, d *Registers) {
+				t.Helper()
+				require.Equal(t, []byte("hi"), d.slicesByte[0])
+			}},
 	}
 
 	for _, tt := range tests {

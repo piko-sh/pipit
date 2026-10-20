@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,49 +32,49 @@ func TestEvalBitwiseShiftRuntime(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		code   string
-		expect int
+		name string
+		code string
+		want int
 	}{
 		{
-			name:   "shift left via variables",
-			code:   "x := 1\nn := 4\nx << n",
-			expect: 16,
+			name: "shift left via variables",
+			code: "x := 1\nn := 4\nx << n",
+			want: 16,
 		},
 		{
-			name:   "shift right via variables",
-			code:   "x := 256\nn := 4\nx >> n",
-			expect: 16,
+			name: "shift right via variables",
+			code: "x := 256\nn := 4\nx >> n",
+			want: 16,
 		},
 		{
-			name:   "bitwise AND via variables",
-			code:   "x := 0xFF\ny := 0x0F\nx & y",
-			expect: 15,
+			name: "bitwise AND via variables",
+			code: "x := 0xFF\ny := 0x0F\nx & y",
+			want: 15,
 		},
 		{
-			name:   "bitwise OR via variables",
-			code:   "x := 0xF0\ny := 0x0F\nx | y",
-			expect: 255,
+			name: "bitwise OR via variables",
+			code: "x := 0xF0\ny := 0x0F\nx | y",
+			want: 255,
 		},
 		{
-			name:   "bitwise XOR via variables",
-			code:   "x := 0xFF\ny := 0x0F\nx ^ y",
-			expect: 240,
+			name: "bitwise XOR via variables",
+			code: "x := 0xFF\ny := 0x0F\nx ^ y",
+			want: 240,
 		},
 		{
-			name:   "bitwise AND NOT via variables",
-			code:   "x := 0xFF\ny := 0x0F\nx &^ y",
-			expect: 240,
+			name: "bitwise AND NOT via variables",
+			code: "x := 0xFF\ny := 0x0F\nx &^ y",
+			want: 240,
 		},
 		{
-			name:   "combined shift and OR via variables",
-			code:   "x := 3\ny := 2\n(x << y) | (x >> y)",
-			expect: 12,
+			name: "combined shift and OR via variables",
+			code: "x := 3\ny := 2\n(x << y) | (x >> y)",
+			want: 12,
 		},
 		{
-			name:   "large shift via variables",
-			code:   "x := 1\nn := 32\nx << n",
-			expect: 4294967296,
+			name: "large shift via variables",
+			code: "x := 1\nn := 32\nx << n",
+			want: 4294967296,
 		},
 	}
 
@@ -82,9 +82,9 @@ func TestEvalBitwiseShiftRuntime(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -93,34 +93,34 @@ func TestEvalBitwiseCompound(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		code   string
-		expect int
+		name string
+		code string
+		want int
 	}{
 		{
-			name:   "AND assign",
-			code:   "x := 0xFF\nx &= 0x0F\nx",
-			expect: 15,
+			name: "AND assign",
+			code: "x := 0xFF\nx &= 0x0F\nx",
+			want: 15,
 		},
 		{
-			name:   "OR assign",
-			code:   "x := 0\nx |= 0xFF\nx",
-			expect: 255,
+			name: "OR assign",
+			code: "x := 0\nx |= 0xFF\nx",
+			want: 255,
 		},
 		{
-			name:   "XOR assign",
-			code:   "x := 0xFF\nx ^= 0x0F\nx",
-			expect: 240,
+			name: "XOR assign",
+			code: "x := 0xFF\nx ^= 0x0F\nx",
+			want: 240,
 		},
 		{
-			name:   "shift left assign",
-			code:   "x := 1\nx <<= 8\nx",
-			expect: 256,
+			name: "shift left assign",
+			code: "x := 1\nx <<= 8\nx",
+			want: 256,
 		},
 		{
-			name:   "shift right assign",
-			code:   "x := 256\nx >>= 4\nx",
-			expect: 16,
+			name: "shift right assign",
+			code: "x := 256\nx >>= 4\nx",
+			want: 16,
 		},
 	}
 
@@ -128,9 +128,9 @@ func TestEvalBitwiseCompound(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

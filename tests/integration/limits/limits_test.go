@@ -21,13 +21,11 @@
 package limits_test
 
 import (
-	"context"
 	"testing"
-
-	"pipit.sh/pipit/internal/app"
 
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/policy"
 	"pipit.sh/pipit/sdk/stdlib"
@@ -43,75 +41,39 @@ func allFeaturesExcept(excluded policy.InterpFeature) policy.InterpFeature {
 	return policy.InterpFeaturesAll &^ excluded
 }
 
-func TestFeature_ForLoop_Disallowed(t *testing.T) {
+func TestFeatureDisallowed(t *testing.T) {
 	t.Parallel()
-	s := newService(app.WithFeatures(allFeaturesExcept(policy.InterpFeatureForLoops)))
-	_, err := s.Eval(context.Background(), `for i := 0; i < 10; i++ {}; 0`)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "language feature not allowed")
-	require.ErrorContains(t, err, "for loops")
+	tests := []struct {
+		name    string
+		feature policy.InterpFeature
+		code    string
+		want    string
+	}{
+		{name: "for loop", feature: policy.InterpFeatureForLoops, code: `for i := 0; i < 10; i++ {}; 0`, want: "for loops"},
+		{name: "range loop", feature: policy.InterpFeatureRangeLoops, code: `sum := 0; for _, v := range []int{1, 2, 3} { sum += v }; sum`, want: "range loops"},
+		{name: "goroutine", feature: policy.InterpFeatureGoroutines, code: `go func() {}()`, want: "goroutines"},
+		{name: "channel make", feature: policy.InterpFeatureChannels, code: `ch := make(chan int); _ = ch; 0`, want: "channels"},
+		{name: "channel send", feature: policy.InterpFeatureChannels, code: `ch := make(chan int, 1); ch <- 1`, want: "channels"},
+		{name: "channel receive", feature: policy.InterpFeatureChannels, code: `ch := make(chan int, 1); ch <- 1; <-ch`, want: "channels"},
+		{name: "defer", feature: policy.InterpFeatureDefer, code: `defer func() {}()`, want: "defer"},
+		{name: "closure", feature: policy.InterpFeatureClosures, code: `f := func() int { return 42 }; f()`, want: "closures"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := newService(app.WithFeatures(allFeaturesExcept(tt.feature))).Eval(t.Context(), tt.code)
+			require.ErrorContains(t, err, "language feature not allowed")
+			require.ErrorContains(t, err, tt.want)
+		})
+	}
 }
 
 func TestFeature_ForLoop_Allowed(t *testing.T) {
 	t.Parallel()
 	s := newService()
-	result, err := s.Eval(context.Background(), `sum := 0; for i := 0; i < 5; i++ { sum += i }; sum`)
+	result, err := s.Eval(t.Context(), `sum := 0; for i := 0; i < 5; i++ { sum += i }; sum`)
 	require.NoError(t, err)
 	require.Equal(t, 10, result)
-}
-
-func TestFeature_RangeLoop_Disallowed(t *testing.T) {
-	t.Parallel()
-	s := newService(app.WithFeatures(allFeaturesExcept(policy.InterpFeatureRangeLoops)))
-	_, err := s.Eval(context.Background(), `sum := 0; for _, v := range []int{1, 2, 3} { sum += v }; sum`)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "language feature not allowed")
-	require.ErrorContains(t, err, "range loops")
-}
-
-func TestFeature_Goroutine_Disallowed(t *testing.T) {
-	t.Parallel()
-	s := newService(app.WithFeatures(allFeaturesExcept(policy.InterpFeatureGoroutines)))
-	_, err := s.Eval(context.Background(), `go func() {}()`)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "language feature not allowed")
-	require.ErrorContains(t, err, "goroutines")
-}
-
-func TestFeature_Channel_Make_Disallowed(t *testing.T) {
-	t.Parallel()
-	s := newService(app.WithFeatures(allFeaturesExcept(policy.InterpFeatureChannels)))
-	_, err := s.Eval(context.Background(), `ch := make(chan int); _ = ch; 0`)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "language feature not allowed")
-	require.ErrorContains(t, err, "channels")
-}
-
-func TestFeature_Channel_Send_Disallowed(t *testing.T) {
-	t.Parallel()
-	s := newService(app.WithFeatures(allFeaturesExcept(policy.InterpFeatureChannels)))
-	_, err := s.Eval(context.Background(), `ch := make(chan int, 1); ch <- 1`)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "language feature not allowed")
-	require.ErrorContains(t, err, "channels")
-}
-
-func TestFeature_Channel_Receive_Disallowed(t *testing.T) {
-	t.Parallel()
-	s := newService(app.WithFeatures(allFeaturesExcept(policy.InterpFeatureChannels)))
-	_, err := s.Eval(context.Background(), `ch := make(chan int, 1); ch <- 1; <-ch`)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "language feature not allowed")
-	require.ErrorContains(t, err, "channels")
-}
-
-func TestFeature_Defer_Disallowed(t *testing.T) {
-	t.Parallel()
-	s := newService(app.WithFeatures(allFeaturesExcept(policy.InterpFeatureDefer)))
-	_, err := s.Eval(context.Background(), `defer func() {}()`)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "language feature not allowed")
-	require.ErrorContains(t, err, "defer")
 }
 
 func TestFeature_Goto_Disallowed(t *testing.T) {
@@ -125,20 +87,11 @@ end:
 	return 1
 }
 `
-	cfs, err := s.CompileFileSet(context.Background(), map[string]string{"main.go": code})
+	cfs, err := s.CompileFileSet(t.Context(), map[string]string{"main.go": code})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "language feature not allowed")
 	require.ErrorContains(t, err, "goto")
 	_ = cfs
-}
-
-func TestFeature_Closure_Disallowed(t *testing.T) {
-	t.Parallel()
-	s := newService(app.WithFeatures(allFeaturesExcept(policy.InterpFeatureClosures)))
-	_, err := s.Eval(context.Background(), `f := func() int { return 42 }; f()`)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "language feature not allowed")
-	require.ErrorContains(t, err, "closures")
 }
 
 func TestFeature_Panic_Disallowed(t *testing.T) {
@@ -151,7 +104,7 @@ func entrypoint() int {
 	return 0
 }
 `
-	_, err := s.CompileFileSet(context.Background(), map[string]string{"main.go": code})
+	_, err := s.CompileFileSet(t.Context(), map[string]string{"main.go": code})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "language feature not allowed")
 	require.ErrorContains(t, err, "panic/recover")
@@ -166,7 +119,7 @@ func entrypoint() interface{} {
 	return recover()
 }
 `
-	_, err := s.CompileFileSet(context.Background(), map[string]string{"main.go": code})
+	_, err := s.CompileFileSet(t.Context(), map[string]string{"main.go": code})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "language feature not allowed")
 	require.ErrorContains(t, err, "panic/recover")
@@ -186,7 +139,7 @@ func entrypoint() unsafe.Pointer {
 	return unsafe.Add(p, 1)
 }
 `
-	_, err := s.CompileFileSet(context.Background(), map[string]string{"main.go": code})
+	_, err := s.CompileFileSet(t.Context(), map[string]string{"main.go": code})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "language feature not allowed")
 	require.ErrorContains(t, err, "unsafe")
@@ -207,7 +160,7 @@ func entrypoint() int {
 	return factorial(5)
 }
 `
-	_, err := s.CompileFileSet(context.Background(), map[string]string{"main.go": code})
+	_, err := s.CompileFileSet(t.Context(), map[string]string{"main.go": code})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "language feature not allowed")
 	require.ErrorContains(t, err, "recursion")
@@ -233,7 +186,7 @@ func entrypoint() bool {
 	return isEven(4)
 }
 `
-	_, err := s.CompileFileSet(context.Background(), map[string]string{"main.go": code})
+	_, err := s.CompileFileSet(t.Context(), map[string]string{"main.go": code})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "language feature not allowed")
 	require.ErrorContains(t, err, "recursion")
@@ -254,9 +207,9 @@ func entrypoint() int {
 	return factorial(5)
 }
 `
-	cfs, err := s.CompileFileSet(context.Background(), map[string]string{"main.go": code})
+	cfs, err := s.CompileFileSet(t.Context(), map[string]string{"main.go": code})
 	require.NoError(t, err)
-	result, err := s.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
+	result, err := s.ExecuteEntrypoint(t.Context(), cfs, "entrypoint")
 	require.NoError(t, err)
 	require.Equal(t, 120, result)
 }
@@ -264,7 +217,7 @@ func entrypoint() int {
 func TestFeatures_All_AllowsEverything(t *testing.T) {
 	t.Parallel()
 	s := newService()
-	result, err := s.Eval(context.Background(), `sum := 0; for i := 0; i < 3; i++ { sum += i }; sum`)
+	result, err := s.Eval(t.Context(), `sum := 0; for i := 0; i < 3; i++ { sum += i }; sum`)
 	require.NoError(t, err)
 	require.Equal(t, 3, result)
 }
@@ -273,18 +226,18 @@ func TestFeatures_Restricted_Composite(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithFeatures(policy.InterpFeaturesRestricted))
 
-	result, err := s.Eval(context.Background(), `sum := 0; for i := 0; i < 3; i++ { sum += i }; sum`)
+	result, err := s.Eval(t.Context(), `sum := 0; for i := 0; i < 3; i++ { sum += i }; sum`)
 	require.NoError(t, err)
 	require.Equal(t, 3, result)
 
-	_, err = s.Eval(context.Background(), `go func() {}()`)
+	_, err = s.Eval(t.Context(), `go func() {}()`)
 	require.ErrorContains(t, err, "language feature not allowed")
 }
 
 func TestFeatures_Default_AllowsAll(t *testing.T) {
 	t.Parallel()
 	s := newService()
-	result, err := s.Eval(context.Background(), `1 + 2`)
+	result, err := s.Eval(t.Context(), `1 + 2`)
 	require.NoError(t, err)
 	require.Equal(t, 3, result)
 }
@@ -292,7 +245,7 @@ func TestFeatures_Default_AllowsAll(t *testing.T) {
 func TestCost_BudgetExceeded(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithCostBudget(50))
-	_, err := s.Eval(context.Background(), `sum := 0; for i := 0; i < 1000; i++ { sum += i }; sum`)
+	_, err := s.Eval(t.Context(), `sum := 0; for i := 0; i < 1000; i++ { sum += i }; sum`)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "cost budget exceeded")
 }
@@ -300,7 +253,7 @@ func TestCost_BudgetExceeded(t *testing.T) {
 func TestCost_BudgetSufficient(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithCostBudget(1000000))
-	result, err := s.Eval(context.Background(), `1 + 2 + 3`)
+	result, err := s.Eval(t.Context(), `1 + 2 + 3`)
 	require.NoError(t, err)
 	require.Equal(t, 6, result)
 }
@@ -308,7 +261,7 @@ func TestCost_BudgetSufficient(t *testing.T) {
 func TestCost_DisabledByDefault(t *testing.T) {
 	t.Parallel()
 	s := newService()
-	result, err := s.Eval(context.Background(), `sum := 0; for i := 0; i < 10000; i++ { sum += i }; sum`)
+	result, err := s.Eval(t.Context(), `sum := 0; for i := 0; i < 10000; i++ { sum += i }; sum`)
 	require.NoError(t, err)
 	require.Equal(t, 49995000, result)
 }
@@ -316,15 +269,15 @@ func TestCost_DisabledByDefault(t *testing.T) {
 func TestCost_Reporting(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithCostBudget(1000000))
-	_, err := s.Eval(context.Background(), `x := 1; y := 2; x + y`)
+	_, err := s.Eval(t.Context(), `x := 1; y := 2; x + y`)
 	require.NoError(t, err)
-	require.Greater(t, s.LastCostUsed(), int64(0))
+	require.Positive(t, s.LastCostUsed())
 }
 
 func TestCost_ZeroBudgetMeansDisabled(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithCostBudget(0))
-	result, err := s.Eval(context.Background(), `sum := 0; for i := 0; i < 10000; i++ { sum += i }; sum`)
+	result, err := s.Eval(t.Context(), `sum := 0; for i := 0; i < 10000; i++ { sum += i }; sum`)
 	require.NoError(t, err)
 	require.Equal(t, 49995000, result)
 	require.Equal(t, int64(0), s.LastCostUsed())
@@ -333,7 +286,7 @@ func TestCost_ZeroBudgetMeansDisabled(t *testing.T) {
 func TestCost_InfiniteLoop_Halts(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithCostBudget(1000))
-	_, err := s.Eval(context.Background(), `x := 0; for { x++ }; x`)
+	_, err := s.Eval(t.Context(), `x := 0; for { x++ }; x`)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "cost budget exceeded")
 }
@@ -349,7 +302,7 @@ func TestCost_CustomTable(t *testing.T) {
 		app.WithCostBudget(50),
 		app.WithCostTable(&table),
 	)
-	_, err := s.Eval(context.Background(), `x := 1; y := 2; x + y`)
+	_, err := s.Eval(t.Context(), `x := 1; y := 2; x + y`)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "cost budget exceeded")
 }
@@ -361,19 +314,19 @@ func TestFeaturesAndCost_Combined(t *testing.T) {
 		app.WithCostBudget(1000000),
 	)
 
-	result, err := s.Eval(context.Background(), `sum := 0; for i := 0; i < 10; i++ { sum += i }; sum`)
+	result, err := s.Eval(t.Context(), `sum := 0; for i := 0; i < 10; i++ { sum += i }; sum`)
 	require.NoError(t, err)
 	require.Equal(t, 45, result)
-	require.Greater(t, s.LastCostUsed(), int64(0))
+	require.Positive(t, s.LastCostUsed())
 
-	_, err = s.Eval(context.Background(), `go func() {}()`)
+	_, err = s.Eval(t.Context(), `go func() {}()`)
 	require.ErrorContains(t, err, "language feature not allowed")
 }
 
 func TestDefault_Regression(t *testing.T) {
 	t.Parallel()
 	s := newService()
-	result, err := s.Eval(context.Background(), `42`)
+	result, err := s.Eval(t.Context(), `42`)
 	require.NoError(t, err)
 	require.Equal(t, 42, result)
 	require.Equal(t, int64(0), s.LastCostUsed())
@@ -382,7 +335,7 @@ func TestDefault_Regression(t *testing.T) {
 func TestSourceSize_ExceedsLimit(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithMaxSourceSize(10))
-	_, err := s.Eval(context.Background(), `1 + 2 + 3 + 4 + 5`)
+	_, err := s.Eval(t.Context(), `1 + 2 + 3 + 4 + 5`)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "source size limit exceeded")
 }
@@ -390,7 +343,7 @@ func TestSourceSize_ExceedsLimit(t *testing.T) {
 func TestSourceSize_WithinLimit(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithMaxSourceSize(1000))
-	result, err := s.Eval(context.Background(), `1 + 2`)
+	result, err := s.Eval(t.Context(), `1 + 2`)
 	require.NoError(t, err)
 	require.Equal(t, 3, result)
 }
@@ -398,7 +351,7 @@ func TestSourceSize_WithinLimit(t *testing.T) {
 func TestSourceSize_Disabled(t *testing.T) {
 	t.Parallel()
 	s := newService()
-	result, err := s.Eval(context.Background(), `1 + 2`)
+	result, err := s.Eval(t.Context(), `1 + 2`)
 	require.NoError(t, err)
 	require.Equal(t, 3, result)
 }
@@ -407,7 +360,7 @@ func TestSourceSize_FileSet_TotalSize(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithMaxSourceSize(50))
 
-	_, err := s.CompileFileSet(context.Background(), map[string]string{
+	_, err := s.CompileFileSet(t.Context(), map[string]string{
 		"a.go": `package main; func a() int { return 1 }`,
 		"b.go": `package main; func b() int { return 2 }`,
 	})
@@ -418,7 +371,7 @@ func TestSourceSize_FileSet_TotalSize(t *testing.T) {
 func TestStringSize_ConcatExceedsLimit(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithMaxStringSize(100))
-	_, err := s.Eval(context.Background(), `s := "a"; for i := 0; i < 10; i++ { s = s + s }; s`)
+	_, err := s.Eval(t.Context(), `s := "a"; for i := 0; i < 10; i++ { s = s + s }; s`)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "string size limit exceeded")
 }
@@ -426,7 +379,7 @@ func TestStringSize_ConcatExceedsLimit(t *testing.T) {
 func TestStringSize_ConcatWithinLimit(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithMaxStringSize(1000))
-	result, err := s.Eval(context.Background(), `"hello" + " " + "world"`)
+	result, err := s.Eval(t.Context(), `"hello" + " " + "world"`)
 	require.NoError(t, err)
 	require.Equal(t, "hello world", result)
 }
@@ -435,14 +388,14 @@ func TestStringSize_Disabled(t *testing.T) {
 	t.Parallel()
 	s := newService()
 
-	_, err := s.Eval(context.Background(), `s := "a"; for i := 0; i < 15; i++ { s = s + s }; len(s)`)
+	_, err := s.Eval(t.Context(), `s := "a"; for i := 0; i < 15; i++ { s = s + s }; len(s)`)
 	require.NoError(t, err)
 }
 
 func TestAppendLimit_ExceedsAllocSize(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithMaxAllocSize(50))
-	_, err := s.Eval(context.Background(), `s := make([]int, 0); for i := 0; i < 100; i++ { s = append(s, i) }; len(s)`)
+	_, err := s.Eval(t.Context(), `s := make([]int, 0); for i := 0; i < 100; i++ { s = append(s, i) }; len(s)`)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "allocation size limit exceeded")
 }
@@ -450,7 +403,7 @@ func TestAppendLimit_ExceedsAllocSize(t *testing.T) {
 func TestAppendLimit_WithinLimit(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithMaxAllocSize(100))
-	result, err := s.Eval(context.Background(), `s := make([]int, 0); for i := 0; i < 10; i++ { s = append(s, i) }; len(s)`)
+	result, err := s.Eval(t.Context(), `s := make([]int, 0); for i := 0; i < 10; i++ { s = append(s, i) }; len(s)`)
 	require.NoError(t, err)
 	require.Equal(t, 10, result)
 }
@@ -458,7 +411,7 @@ func TestAppendLimit_WithinLimit(t *testing.T) {
 func TestLiteralElements_SliceExceedsLimit(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithMaxLiteralElements(3))
-	_, err := s.Eval(context.Background(), `[]int{1, 2, 3, 4, 5}`)
+	_, err := s.Eval(t.Context(), `[]int{1, 2, 3, 4, 5}`)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "literal element count limit exceeded")
 }
@@ -466,7 +419,7 @@ func TestLiteralElements_SliceExceedsLimit(t *testing.T) {
 func TestLiteralElements_MapExceedsLimit(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithMaxLiteralElements(2))
-	_, err := s.Eval(context.Background(), `map[string]int{"a": 1, "b": 2, "c": 3}`)
+	_, err := s.Eval(t.Context(), `map[string]int{"a": 1, "b": 2, "c": 3}`)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "literal element count limit exceeded")
 }
@@ -474,7 +427,7 @@ func TestLiteralElements_MapExceedsLimit(t *testing.T) {
 func TestLiteralElements_WithinLimit(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithMaxLiteralElements(10))
-	result, err := s.Eval(context.Background(), `[]int{1, 2, 3}`)
+	result, err := s.Eval(t.Context(), `[]int{1, 2, 3}`)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 }
@@ -482,7 +435,7 @@ func TestLiteralElements_WithinLimit(t *testing.T) {
 func TestLiteralElements_Disabled(t *testing.T) {
 	t.Parallel()
 	s := newService()
-	result, err := s.Eval(context.Background(), `[]int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}`)
+	result, err := s.Eval(t.Context(), `[]int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}`)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 }
@@ -491,7 +444,7 @@ func TestYieldInterval_ExecutesCorrectly(t *testing.T) {
 	t.Parallel()
 
 	s := newService(app.WithYieldInterval(1024))
-	result, err := s.Eval(context.Background(), `sum := 0; for i := 0; i < 100; i++ { sum += i }; sum`)
+	result, err := s.Eval(t.Context(), `sum := 0; for i := 0; i < 100; i++ { sum += i }; sum`)
 	require.NoError(t, err)
 	require.Equal(t, 4950, result)
 }
@@ -500,7 +453,7 @@ func TestYieldInterval_Disabled(t *testing.T) {
 	t.Parallel()
 
 	s := newService()
-	result, err := s.Eval(context.Background(), `sum := 0; for i := 0; i < 100; i++ { sum += i }; sum`)
+	result, err := s.Eval(t.Context(), `sum := 0; for i := 0; i < 100; i++ { sum += i }; sum`)
 	require.NoError(t, err)
 	require.Equal(t, 4950, result)
 }
@@ -512,19 +465,19 @@ func TestYieldInterval_WithCostBudget(t *testing.T) {
 		app.WithYieldInterval(512),
 		app.WithCostBudget(1000000),
 	)
-	result, err := s.Eval(context.Background(), `sum := 0; for i := 0; i < 50; i++ { sum += i }; sum`)
+	result, err := s.Eval(t.Context(), `sum := 0; for i := 0; i < 50; i++ { sum += i }; sum`)
 	require.NoError(t, err)
 	require.Equal(t, 1225, result)
-	require.Greater(t, s.LastCostUsed(), int64(0))
+	require.Positive(t, s.LastCostUsed())
 }
 
 func TestCostBudgetAppliesInsideGoroutine(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithCostBudget(50_000))
-	_, err := s.Eval(context.Background(), `x := 0; for i := 0; i < 2000000; i++ { x += i }; x`)
+	_, err := s.Eval(t.Context(), `x := 0; for i := 0; i < 2000000; i++ { x += i }; x`)
 	require.Error(t, err, "main goroutine must exhaust the cost budget")
 	require.ErrorContains(t, err, "cost budget exceeded")
-	_, err = s.Eval(context.Background(), `done := make(chan int); go func() { x := 0; for i := 0; i < 2000000; i++ { x += i }; done <- x }(); <-done`)
+	_, err = s.Eval(t.Context(), `done := make(chan int); go func() { x := 0; for i := 0; i < 2000000; i++ { x += i }; done <- x }(); <-done`)
 	require.Error(t, err, "spawned goroutine must also exhaust the cost budget")
 	require.ErrorContains(t, err, "cost budget exceeded")
 }
@@ -539,13 +492,13 @@ total := 0
 for g := 0; g < 4; g++ { total += <-done }
 total`
 	unlimited := newService(app.WithCostBudget(1 << 40))
-	_, err := unlimited.Eval(context.Background(), spin)
+	_, err := unlimited.Eval(t.Context(), spin)
 	require.NoError(t, err)
 	fourWorkers := unlimited.LastCostUsed()
-	require.Greater(t, fourWorkers, int64(0))
+	require.Positive(t, fourWorkers)
 
 	s := newService(app.WithCostBudget(fourWorkers / 2))
-	_, err = s.Eval(context.Background(), spin)
+	_, err = s.Eval(t.Context(), spin)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "cost budget exceeded")
 }
@@ -553,10 +506,10 @@ total`
 func TestLastCostUsedIncludesGoroutineWork(t *testing.T) {
 	t.Parallel()
 	s := newService(app.WithCostBudget(1 << 40))
-	_, err := s.Eval(context.Background(), `done := make(chan int); go func() { done <- 0 }(); <-done`)
+	_, err := s.Eval(t.Context(), `done := make(chan int); go func() { done <- 0 }(); <-done`)
 	require.NoError(t, err)
 	idle := s.LastCostUsed()
-	_, err = s.Eval(context.Background(), `done := make(chan int); go func() { x := 0; for i := 0; i < 100000; i++ { x += i }; done <- x }(); <-done`)
+	_, err = s.Eval(t.Context(), `done := make(chan int); go func() { x := 0; for i := 0; i < 100000; i++ { x += i }; done <- x }(); <-done`)
 	require.NoError(t, err)
 	require.Greater(t, s.LastCostUsed(), idle+100000)
 }
@@ -595,7 +548,7 @@ func eight() int { return run(8) }
 
 func main() {}
 `
-	ctx := context.Background()
+	ctx := t.Context()
 	s := newService(app.WithMaxArenaSizeBytes(8 << 20))
 	compiled, err := s.CompileFileSet(ctx, map[string]string{"main.go": program})
 	require.NoError(t, err)

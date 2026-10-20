@@ -105,25 +105,37 @@ func TestTypedSliceDirectReadsRefuseAnOutOfRangeIndex(t *testing.T) {
 			name:    "a float slice read",
 			handler: handleSubOpSliceGetFloatDirect,
 			seed:    func(registers *Registers) { registers.slicesFloat[2] = []float64{1.5, 2.5} },
-			check:   func(t *testing.T, registers *Registers) { require.InDelta(t, 2.5, registers.Floats[1], 0) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.InDelta(t, 2.5, registers.Floats[1], 0)
+			},
 		},
 		{
 			name:    "a string slice read",
 			handler: handleSubOpSliceGetStringDirect,
 			seed:    func(registers *Registers) { registers.slicesString[2] = []string{"a", "b"} },
-			check:   func(t *testing.T, registers *Registers) { require.Equal(t, "b", registers.Strings[1]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, "b", registers.Strings[1])
+			},
 		},
 		{
 			name:    "a boolean slice read",
 			handler: handleSubOpSliceGetBoolDirect,
 			seed:    func(registers *Registers) { registers.slicesBool[2] = []bool{false, true} },
-			check:   func(t *testing.T, registers *Registers) { require.True(t, registers.Bools[1]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.True(t, registers.Bools[1])
+			},
 		},
 		{
 			name:    "an unsigned slice read",
 			handler: handleSubOpSliceGetUintDirect,
 			seed:    func(registers *Registers) { registers.slicesUint[2] = []uint64{7, 42} },
-			check:   func(t *testing.T, registers *Registers) { require.Equal(t, uint64(42), registers.Uints[1]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(42), registers.Uints[1])
+			},
 		},
 	}
 
@@ -322,23 +334,38 @@ func TestTypedSliceMakeCoversEveryBank(t *testing.T) {
 	}{
 		{
 			name: "the integer bank", handler: handleSubOpMakeSliceInt,
-			check: func(t *testing.T, registers *Registers) { require.Len(t, registers.SlicesInt[1], 2) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Len(t, registers.SlicesInt[1], 2)
+			},
 		},
 		{
 			name: "the float bank", handler: handleSubOpMakeSliceFloat,
-			check: func(t *testing.T, registers *Registers) { require.Len(t, registers.slicesFloat[1], 2) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Len(t, registers.slicesFloat[1], 2)
+			},
 		},
 		{
 			name: "the string bank", handler: handleSubOpMakeSliceString,
-			check: func(t *testing.T, registers *Registers) { require.Len(t, registers.slicesString[1], 2) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Len(t, registers.slicesString[1], 2)
+			},
 		},
 		{
 			name: "the boolean bank", handler: handleSubOpMakeSliceBool,
-			check: func(t *testing.T, registers *Registers) { require.Len(t, registers.slicesBool[1], 2) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Len(t, registers.slicesBool[1], 2)
+			},
 		},
 		{
 			name: "the unsigned bank", handler: handleSubOpMakeSliceUint,
-			check: func(t *testing.T, registers *Registers) { require.Len(t, registers.slicesUint[1], 2) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Len(t, registers.slicesUint[1], 2)
+			},
 		},
 	}
 
@@ -376,33 +403,51 @@ func TestTypedSliceAppendCoversEveryBank(t *testing.T) {
 	}{
 		{
 			name: "the integer bank", handler: handleSubOpAppendSliceIntDirect,
-			seed:  func(r *Registers) { r.SlicesInt[2] = []int64{1}; r.Ints[3] = 2 },
-			check: func(t *testing.T, r *Registers) { require.Equal(t, []int64{1, 2}, r.SlicesInt[1]) },
+			seed: func(r *Registers) { r.SlicesInt[2] = []int64{1}; r.Ints[3] = 2 },
+			check: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []int64{1, 2}, r.SlicesInt[1])
+			},
 		},
 		{
 			name: "the float bank", handler: handleSubOpAppendSliceFloatDirect,
-			seed:  func(r *Registers) { r.slicesFloat[2] = []float64{1}; r.Floats[3] = 2 },
-			check: func(t *testing.T, r *Registers) { require.Len(t, r.slicesFloat[1], 2) },
+			seed: func(r *Registers) { r.slicesFloat[2] = []float64{1}; r.Floats[3] = 2 },
+			check: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Len(t, r.slicesFloat[1], 2)
+			},
 		},
 		{
 			name: "the string bank", handler: handleSubOpAppendSliceStringDirect,
-			seed:  func(r *Registers) { r.slicesString[2] = []string{"a"}; r.Strings[3] = "b" },
-			check: func(t *testing.T, r *Registers) { require.Equal(t, []string{"a", "b"}, r.slicesString[1]) },
+			seed: func(r *Registers) { r.slicesString[2] = []string{"a"}; r.Strings[3] = "b" },
+			check: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []string{"a", "b"}, r.slicesString[1])
+			},
 		},
 		{
 			name: "the boolean bank", handler: handleSubOpAppendSliceBoolDirect,
-			seed:  func(r *Registers) { r.slicesBool[2] = []bool{true}; r.Bools[3] = false },
-			check: func(t *testing.T, r *Registers) { require.Len(t, r.slicesBool[1], 2) },
+			seed: func(r *Registers) { r.slicesBool[2] = []bool{true}; r.Bools[3] = false },
+			check: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Len(t, r.slicesBool[1], 2)
+			},
 		},
 		{
 			name: "the unsigned bank", handler: handleSubOpAppendSliceUintDirect,
-			seed:  func(r *Registers) { r.slicesUint[2] = []uint64{1}; r.Uints[3] = 2 },
-			check: func(t *testing.T, r *Registers) { require.Equal(t, []uint64{1, 2}, r.slicesUint[1]) },
+			seed: func(r *Registers) { r.slicesUint[2] = []uint64{1}; r.Uints[3] = 2 },
+			check: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []uint64{1, 2}, r.slicesUint[1])
+			},
 		},
 		{
 			name: "the byte bank", handler: handleSubOpAppendSliceByteDirect,
-			seed:  func(r *Registers) { r.slicesByte[2] = []byte("a"); r.Uints[3] = 'b' },
-			check: func(t *testing.T, r *Registers) { require.Equal(t, []byte("ab"), r.slicesByte[1]) },
+			seed: func(r *Registers) { r.slicesByte[2] = []byte("a"); r.Uints[3] = 'b' },
+			check: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []byte("ab"), r.slicesByte[1])
+			},
 		},
 	}
 

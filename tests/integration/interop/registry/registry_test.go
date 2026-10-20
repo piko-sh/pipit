@@ -25,13 +25,13 @@
 package registry_test
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/sdk/stdlib"
@@ -41,41 +41,33 @@ type Visitor interface {
 	Visit(depth int) int
 }
 
-type seekerAdapter struct{ core *engine.AdapterCore }
+type seekerAdapter struct{ *engine.AdapterCore }
 
 func (a *seekerAdapter) Seek(offset int64, whence int) (int64, error) {
-	results, err := a.core.Invoke("Seek", reflect.ValueOf(offset), reflect.ValueOf(whence))
+	results, err := a.Invoke("Seek", reflect.ValueOf(offset), reflect.ValueOf(whence))
 	if err != nil {
 		return 0, err
 	}
 	position, _ := reflect.TypeAssert[int64](results[0])
-	return position, errorResult(results[1])
+	return position, a.ResultError(results, 1)
 }
 
-type visitorAdapter struct{ core *engine.AdapterCore }
+type visitorAdapter struct{ *engine.AdapterCore }
 
 func (a *visitorAdapter) Visit(depth int) int {
-	results, err := a.core.Invoke("Visit", reflect.ValueOf(depth))
+	results, err := a.Invoke("Visit", reflect.ValueOf(depth))
 	if err != nil {
 		return -1
 	}
 	return int(results[0].Int())
 }
 
-func errorResult(value reflect.Value) error {
-	if !value.IsValid() || value.IsNil() {
-		return nil
-	}
-	err, _ := reflect.TypeAssert[error](value)
-	return err
-}
-
 func init() {
 	engine.RegisterInterfaceAdapter(reflect.TypeFor[io.Seeker](), func(core *engine.AdapterCore) reflect.Value {
-		return reflect.ValueOf(&seekerAdapter{core: core})
+		return reflect.ValueOf(&seekerAdapter{AdapterCore: core})
 	})
 	engine.RegisterInterfaceAdapter(reflect.TypeFor[Visitor](), func(core *engine.AdapterCore) reflect.Value {
-		return reflect.ValueOf(&visitorAdapter{core: core})
+		return reflect.ValueOf(&visitorAdapter{AdapterCore: core})
 	})
 }
 
@@ -131,7 +123,7 @@ host.TakeSeeker(Broken{})`,
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result, err := newRegistryService(t).Eval(context.Background(), tt.code)
+			result, err := newRegistryService(t).Eval(t.Context(), tt.code)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, fmt.Sprint(result))
 		})
@@ -140,7 +132,7 @@ host.TakeSeeker(Broken{})`,
 
 func TestRegisteredAdapterReentersTheHostOnTheSameReceiver(t *testing.T) {
 	t.Parallel()
-	result, err := newRegistryService(t).Eval(context.Background(), `
+	result, err := newRegistryService(t).Eval(t.Context(), `
 import "host"
 type walker struct{ seen []int }
 func (w *walker) Visit(depth int) int {
@@ -157,7 +149,7 @@ host.Walk(&walker{}, 3)`)
 
 func TestUnregisteredInterfaceIsStillRefused(t *testing.T) {
 	t.Parallel()
-	_, err := newRegistryService(t).Eval(context.Background(), `
+	_, err := newRegistryService(t).Eval(t.Context(), `
 import "host"
 type Source struct{}
 func (Source) ReadByte() (byte, error) { return 'x', nil }

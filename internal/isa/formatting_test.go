@@ -19,7 +19,6 @@
 package isa
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -77,8 +76,7 @@ func TestInstructionString(t *testing.T) {
 
 	instr := NewInstruction(OpAddInt, 0, 1, 2)
 	got := instr.String()
-	require.True(t, strings.Contains(got, "ADD_INT"),
-		"expected instruction string to contain ADD_INT, got %q", got)
+	require.Contains(t, got, "ADD_INT")
 }
 
 func TestInstructionSignedOffset(t *testing.T) {

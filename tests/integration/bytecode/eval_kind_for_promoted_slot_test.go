@@ -21,12 +21,12 @@
 package bytecode_test
 
 import (
-	"context"
 	"go/types"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/compile/typemap"
 	"pipit.sh/pipit/internal/engine/program"
@@ -197,7 +197,7 @@ func main() {
 }
 `
 	service := app.NewService()
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
 
 	survive := findCompiledFunctionByNameForPromotedTest(t, cfs, "surviveByIndex")
@@ -247,7 +247,7 @@ func main() {
 }
 `
 	service := app.NewService()
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
 
 	gsumSpec := findCompiledFunctionBySpecPrefixForPromotedTest(t, cfs, "gsum")

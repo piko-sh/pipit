@@ -21,11 +21,11 @@
 package language_test
 
 import (
-	"context"
 	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -33,9 +33,9 @@ func TestEvalTypedSliceStructFieldRead(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 
@@ -52,7 +52,7 @@ func sum(h *Holder) int64 {
 }
 h := &Holder{Xs: []int64{1, 2, 3, 4, 5}}
 sum(h)`,
-			expect: int64(15),
+			want: int64(15),
 		},
 		{
 
@@ -60,7 +60,7 @@ sum(h)`,
 			code: `func first(h *struct{ Xs []uint64 }) uint64 { return h.Xs[0] }
 h := &struct{ Xs []uint64 }{Xs: []uint64{42, 7}}
 first(h)`,
-			expect: uint64(42),
+			want: uint64(42),
 		},
 		{
 
@@ -68,7 +68,7 @@ first(h)`,
 			code: `func first(h *struct{ Xs []float64 }) float64 { return h.Xs[0] }
 h := &struct{ Xs []float64 }{Xs: []float64{3.14, 2.71}}
 first(h)`,
-			expect: 3.14,
+			want: 3.14,
 		},
 		{
 
@@ -76,7 +76,7 @@ first(h)`,
 			code: `func first(h *struct{ Xs []string }) string { return h.Xs[0] }
 h := &struct{ Xs []string }{Xs: []string{"alpha", "beta"}}
 first(h)`,
-			expect: "alpha",
+			want: "alpha",
 		},
 		{
 
@@ -84,7 +84,7 @@ first(h)`,
 			code: `func first(h *struct{ Xs []bool }) bool { return h.Xs[0] }
 h := &struct{ Xs []bool }{Xs: []bool{true, false}}
 first(h)`,
-			expect: true,
+			want: true,
 		},
 		{
 
@@ -92,7 +92,7 @@ first(h)`,
 			code: `func first(h *struct{ Xs []byte }) byte { return h.Xs[0] }
 h := &struct{ Xs []byte }{Xs: []byte{42, 7}}
 first(h)`,
-			expect: uint8(42),
+			want: uint8(42),
 		},
 		{
 
@@ -100,7 +100,7 @@ first(h)`,
 			code: `func first(h *struct{ Xs []int32 }) int32 { return h.Xs[0] }
 h := &struct{ Xs []int32 }{Xs: []int32{42, 7}}
 first(h)`,
-			expect: int32(42),
+			want: int32(42),
 		},
 		{
 
@@ -108,7 +108,7 @@ first(h)`,
 			code: `func first(h *struct{ Xs []uint32 }) uint32 { return h.Xs[0] }
 h := &struct{ Xs []uint32 }{Xs: []uint32{42, 7}}
 first(h)`,
-			expect: uint32(42),
+			want: uint32(42),
 		},
 		{
 
@@ -123,7 +123,7 @@ func sum(h *H) int64 {
 }
 h := &H{Xs: []int64{10, 20, 30, 40, 50}}
 sum(h)`,
-			expect: int64(150),
+			want: int64(150),
 		},
 		{
 
@@ -132,7 +132,7 @@ sum(h)`,
 func get(h *H) []int64 { return h.Xs }
 h := &H{Xs: []int64{1, 2, 3}}
 get(h)[1]`,
-			expect: int64(2),
+			want: int64(2),
 		},
 		{
 
@@ -145,7 +145,7 @@ func mutate(h *H) {
 h := &H{Xs: []int64{1, 2, 3}}
 mutate(h)
 h.Xs[0]`,
-			expect: int64(999),
+			want: int64(999),
 		},
 		{
 
@@ -154,24 +154,24 @@ h.Xs[0]`,
 func length(h *H) int64 { return int64(len(h.Xs)) }
 h := &H{Xs: []int64{}}
 length(h)`,
-			expect: int64(0),
+			want: int64(0),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if tt.expect == nil {
+			if tt.want == nil {
 
 				service := app.NewService()
-				_, err := service.Eval(context.Background(), tt.code)
+				_, err := service.Eval(t.Context(), tt.code)
 				require.NoError(t, err)
 				return
 			}
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -180,9 +180,9 @@ func TestEvalTypedSliceStructFieldWrite(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 
@@ -196,7 +196,7 @@ func install(h *Holder) {
 h := &Holder{Xs: []int64{1}}
 install(h)
 h.Xs[1]`,
-			expect: int64(20),
+			want: int64(20),
 		},
 		{
 
@@ -208,7 +208,7 @@ func install(h *H) {
 h := &H{Xs: []uint64{1}}
 install(h)
 h.Xs[2]`,
-			expect: uint64(13),
+			want: uint64(13),
 		},
 		{
 
@@ -220,7 +220,7 @@ func install(h *H) {
 h := &H{Xs: []float64{0.0}}
 install(h)
 h.Xs[1]`,
-			expect: 2.5,
+			want: 2.5,
 		},
 		{
 
@@ -232,7 +232,7 @@ func install(h *H) {
 h := &H{Xs: []string{"old"}}
 install(h)
 h.Xs[1]`,
-			expect: "world",
+			want: "world",
 		},
 		{
 
@@ -244,7 +244,7 @@ func install(h *H) {
 h := &H{Xs: []bool{false}}
 install(h)
 h.Xs[2]`,
-			expect: true,
+			want: true,
 		},
 		{
 
@@ -256,7 +256,7 @@ func install(h *H) {
 h := &H{Xs: []byte{0}}
 install(h)
 h.Xs[0]`,
-			expect: uint8(42),
+			want: uint8(42),
 		},
 		{
 
@@ -272,7 +272,7 @@ func setAndSum(h *H) int64 {
 }
 h := &H{Xs: []int64{0}}
 setAndSum(h)`,
-			expect: int64(600),
+			want: int64(600),
 		},
 		{
 
@@ -285,7 +285,7 @@ func swap(h *H) int64 {
 }
 h := &H{Xs: []int64{0, 0}}
 swap(h)`,
-			expect: int64(3),
+			want: int64(3),
 		},
 		{
 
@@ -297,7 +297,7 @@ func install(h *H, xs []int64) {
 h := &H{Xs: []int64{0}}
 install(h, []int64{5, 10, 15})
 h.Xs[2]`,
-			expect: int64(15),
+			want: int64(15),
 		},
 		{
 
@@ -310,7 +310,7 @@ func clear(h *H) int64 {
 }
 h := &H{Xs: []int64{1, 2, 3}}
 clear(h)`,
-			expect: int64(0),
+			want: int64(0),
 		},
 		{
 
@@ -326,23 +326,23 @@ func stress(h *H) int64 {
 }
 h := &H{Xs: []int64{0}}
 stress(h)`,
-			expect: int64(99 * 3),
+			want: int64(99 * 3),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if tt.expect == nil {
+			if tt.want == nil {
 				service := app.NewService()
-				_, err := service.Eval(context.Background(), tt.code)
+				_, err := service.Eval(t.Context(), tt.code)
 				require.NoError(t, err)
 				return
 			}
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 			runtime.GC()
 		})
 	}

@@ -27,6 +27,8 @@
 
 // handlerSubOpStrconvFormatBool sets strings[B] = bools[C] ? "true" : "false" by stamping a pre-allocated header.
 TEXT ·handlerSubOpStrconvFormatBool(SB), NOSPLIT|NOFRAME, $0
+	CMPB    runtime·writeBarrier(SB), $0
+	JNE     wb_fallback
 	MOVQ    DX, BX
 	SHRQ    $16, BX
 	MOVBLZX BL, BX
@@ -45,6 +47,8 @@ TEXT ·handlerSubOpStrconvFormatBool(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    AX, 0(SI)(BX*1)
 	MOVQ    DX, 8(SI)(BX*1)
 	DISPATCH_NEXT()
+wb_fallback:
+	JMP     ·pathBFallback(SB)
 
 // handlerSubOpStrconvItoa sets strings[B] = strconv.Itoa(int(ints[C])) via asmCallStrconvItoa.
 TEXT ·handlerSubOpStrconvItoa(SB), NOSPLIT|NOFRAME, $0

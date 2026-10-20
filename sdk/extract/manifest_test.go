@@ -232,11 +232,11 @@ func TestPackageConfigIsGeneric(t *testing.T) {
 		config PackageConfig
 		expect bool
 	}{
-		{"empty", PackageConfig{}, false},
-		{"element_types", PackageConfig{ElementTypes: []string{"int"}}, true},
-		{"key_types", PackageConfig{KeyTypes: []string{"string"}}, true},
-		{"functions_only", PackageConfig{Functions: map[string]FunctionConfig{"Sort": {}}}, true},
-		{"import_path_only", PackageConfig{ImportPath: "fmt"}, false},
+		{name: "empty", config: PackageConfig{}, expect: false},
+		{name: "element_types", config: PackageConfig{ElementTypes: []string{"int"}}, expect: true},
+		{name: "key_types", config: PackageConfig{KeyTypes: []string{"string"}}, expect: true},
+		{name: "functions_only", config: PackageConfig{Functions: map[string]FunctionConfig{"Sort": {}}}, expect: true},
+		{name: "import_path_only", config: PackageConfig{ImportPath: "fmt"}, expect: false},
 	}
 
 	for _, tt := range tests {

@@ -53,10 +53,9 @@ func MaterialiseStringForGoAppend(arena *RegisterArena, source []string, s strin
 	return materialiseStringForSliceStore(arena, unsafe.Pointer(unsafe.SliceData(source)), s)
 }
 
-// MaterialiseStringForArenaAppend is the store barrier for an element appended with
-// arenaAppendString, whose backing ownership is sticky: an arena-born slice grows in the
-// arena and a heap-born one on the heap, so the ownership of source's backing decides in
-// every case except an empty slice, which always starts in the arena.
+// MaterialiseStringForArenaAppend applies the string store barrier for
+// arenaAppendString. Foreign arena strings are cloned even into local arena storage
+// because the escape walk only recognises local strings.
 //
 // Takes arena (*RegisterArena) which owns the candidate slabs.
 // Takes source ([]string) which is the slice being appended to.
@@ -65,15 +64,16 @@ func MaterialiseStringForGoAppend(arena *RegisterArena, source []string, s strin
 // Returns the element to append.
 func MaterialiseStringForArenaAppend(arena *RegisterArena, source []string, s string) string {
 	if cap(source) == 0 {
+		if arena != nil && arena.mayHoldForeignString(s) {
+			return strings.Clone(s)
+		}
 		return s
 	}
 	return materialiseStringForSliceStore(arena, unsafe.Pointer(unsafe.SliceData(source)), s)
 }
 
-// MaterialiseStringForFieldStore is the store barrier for a string written into a struct
-// field through a raw base pointer. The clone is skipped when the struct itself lives in
-// the arena's byte slab: an arena struct dies with the arena and its string fields are
-// materialised by materialiseArenaCompositeFields when it escapes.
+// MaterialiseStringForFieldStore applies the string store barrier when writing through
+// a struct's raw base pointer.
 //
 // Takes arena (*RegisterArena) which owns the candidate slabs.
 // Takes base (unsafe.Pointer) which is the address of the receiving struct.
@@ -82,7 +82,7 @@ func MaterialiseStringForArenaAppend(arena *RegisterArena, source []string, s st
 // Returns a heap-cloned copy when s is arena-backed and the struct is not, or s
 // unchanged.
 func MaterialiseStringForFieldStore(arena *RegisterArena, base unsafe.Pointer, s string) string {
-	if arena == nil || !arenaUsesUnsafeSlabs || arena.ownsBytePointer(base) {
+	if arena == nil || !arenaUsesUnsafeSlabs || (arena.ownsBytePointer(base) && !arena.mayHoldForeignString(s)) {
 		return s
 	}
 	return materialiseStringUnconditional(arena, s)
@@ -102,26 +102,57 @@ func materialiseString(arena *RegisterArena, s string) string {
 	return materialiseStringUnconditional(arena, s)
 }
 
-// materialiseStringUnconditional heap-clones s when it points into the arena in every
-// build. Used by boundary paths (return values, panic captures, closure capture) that
-// must detach a string even where the safe build's store barrier is folded away.
+// materialiseStringUnconditional clones arena-backed strings at escape boundaries,
+// including builds where store barriers are disabled.
 //
 // Takes arena (*RegisterArena) which owns the candidate slabs.
 // Takes s (string) which is the candidate string.
 //
-// Returns a heap-cloned copy when arena-backed, or s unchanged.
+// Returns a heap-cloned copy when arena-backed or possibly foreign, or s unchanged.
 func materialiseStringUnconditional(arena *RegisterArena, s string) string {
-	if arena.OwnsString(s) {
+	if arena.OwnsString(s) || arena.inAnArenaSlab(s) {
 		return strings.Clone(s)
 	}
 	return s
 }
 
-// materialiseStringForSliceStore is the store barrier for a string element written into a
-// []string backing. The clone is skipped when the backing is itself arena-owned: such a
-// slice dies with the arena, its elements are roots for the arena collector, and the
-// escape boundary re-copies it with materialised elements
-// (MaterialiseArenaSliceUnconditional).
+// mayHoldForeignString reports whether s may point into another VM's arena when cloning
+// unowned strings is enabled.
+//
+// Takes s (string) which is the candidate string.
+//
+// Returns true when s must be cloned as possibly foreign.
+func (a *RegisterArena) mayHoldForeignString(s string) bool {
+	return a.inAnArenaSlab(s) && !a.OwnsString(s)
+}
+
+// inAnArenaSlab checks whether s lies in a registered slab when cloning unowned strings
+// is enabled.
+//
+// The cached slab may have left the registry, which can cause an unnecessary but safe
+// clone.
+//
+// Takes s (string) which is the candidate string.
+//
+// Returns true when s lies in some arena's byte slab and this arena clones unowned
+// strings.
+func (a *RegisterArena) inAnArenaSlab(s string) bool {
+	if !arenaUsesUnsafeSlabs || !a.cloneUnownedStrings || len(s) == 0 {
+		return false
+	}
+	pointer := uintptr(unsafe.Pointer(unsafe.StringData(s)))
+	if pointer-a.foreignSlabStart < a.foreignSlabLength {
+		return true
+	}
+	start, end, found := arenaSlabContaining(pointer)
+	if found {
+		a.foreignSlabStart, a.foreignSlabLength = start, end-start
+	}
+	return found
+}
+
+// materialiseStringForSliceStore applies the string store barrier to an element written
+// into a []string backing.
 //
 // Takes arena (*RegisterArena) which owns the candidate slabs.
 // Takes backing (unsafe.Pointer) which is the destination slice's data pointer.
@@ -130,7 +161,7 @@ func materialiseStringUnconditional(arena *RegisterArena, s string) string {
 // Returns a heap-cloned copy when s is arena-backed and the destination is not, or s
 // unchanged.
 func materialiseStringForSliceStore(arena *RegisterArena, backing unsafe.Pointer, s string) string {
-	if arena == nil || !arenaUsesUnsafeSlabs || arena.ownsStringBacking(backing) {
+	if arena == nil || !arenaUsesUnsafeSlabs || (arena.ownsStringBacking(backing) && !arena.mayHoldForeignString(s)) {
 		return s
 	}
 	return materialiseStringUnconditional(arena, s)

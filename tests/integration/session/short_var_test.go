@@ -21,7 +21,6 @@
 package session_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -51,7 +50,7 @@ func TestSession_ShortVar_InferredFloatType(t *testing.T) {
 func TestSession_ShortVar_MultiValueReturnsClearError(t *testing.T) {
 	t.Parallel()
 	sess := newTestSession(t)
-	_, err := sess.Submit(context.Background(), "x, y := 1, 2")
+	_, err := sess.Submit(t.Context(), "x, y := 1, 2")
 	require.Error(t, err)
 	require.ErrorContains(t, err, "var")
 }
@@ -59,7 +58,7 @@ func TestSession_ShortVar_MultiValueReturnsClearError(t *testing.T) {
 func TestSession_ShortVar_BlankIdentReturnsClearError(t *testing.T) {
 	t.Parallel()
 	sess := newTestSession(t)
-	_, err := sess.Submit(context.Background(), "_ := 1")
+	_, err := sess.Submit(t.Context(), "_ := 1")
 	require.Error(t, err)
 }
 
@@ -67,11 +66,11 @@ func TestSession_ShortVar_InsideIfNotRewritten(t *testing.T) {
 	t.Parallel()
 	sess := newTestSession(t)
 
-	result, err := sess.Submit(context.Background(), `if x := 5; x > 0 { _ = x }
+	result, err := sess.Submit(t.Context(), `if x := 5; x > 0 { _ = x }
 0`)
 	require.NoError(t, err)
 	require.Equal(t, 0, result)
 
-	_, err = sess.Submit(context.Background(), "x")
+	_, err = sess.Submit(t.Context(), "x")
 	require.Error(t, err)
 }

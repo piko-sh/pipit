@@ -21,11 +21,11 @@
 package bytecode_test
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/symtab"
 )
 
@@ -59,16 +59,21 @@ func TestSymbolRegistrySelfReferentialStructTypeChecks(t *testing.T) {
 					Level: 1,
 					Children: []sectionLikeNode{
 						{Title: "a", Slug: "a", Level: 2},
-						{Title: "b", Slug: "b", Level: 2, Children: []sectionLikeNode{
-							{Title: "b1", Slug: "b1", Level: 3},
-						}},
+						{
+							Title: "b",
+							Slug:  "b",
+							Level: 2,
+							Children: []sectionLikeNode{
+								{Title: "b1", Slug: "b1", Level: 3},
+							},
+						},
 					},
 				}
 			}),
 		},
 	})
 
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 import (
 	"tree"
 )
@@ -101,7 +106,7 @@ func TestSymbolRegistryMutuallyRecursiveTypeChecks(t *testing.T) {
 		},
 	})
 
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 import (
 	"pair"
 )

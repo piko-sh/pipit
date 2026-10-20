@@ -27,11 +27,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestRecoveryHostBindingSurvivesHostRestart(t *testing.T) {
@@ -48,8 +49,7 @@ func TestRecoveryHostBindingSurvivesHostRestart(t *testing.T) {
 		}
 		return
 	}
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestRecoveryHostBindingSurvivesHostRestart$")
-	command.Env = append(os.Environ(), "PIPIT_TEST_RECOVERY_BINDING_CHILD=1")
+	command := sandboxtest.Command(ctx, "TestRecoveryHostBindingSurvivesHostRestart", "PIPIT_TEST_RECOVERY_BINDING_CHILD=1")
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("replacement host failed: %v %s", err, output)

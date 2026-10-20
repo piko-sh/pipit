@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/debug"
+	"pipit.sh/pipit/internal/debug/debugtest"
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/symtab"
@@ -38,9 +39,9 @@ type debugRunResult struct {
 }
 
 type debugHarness struct {
-	dbg     *debug.Debugger
-	service *Service
-	done    chan debugRunResult
+	dbg       *debug.Debugger
+	service   *Service
+	execution *debugtest.Execution
 }
 
 func newDebugHarness(t *testing.T, source string, exports map[string]reflect.Value, setup func(*debug.Debugger)) *debugHarness {
@@ -50,46 +51,31 @@ func newDebugHarness(t *testing.T, source string, exports map[string]reflect.Val
 	if exports != nil {
 		service.UseSymbols(symtab.NewSymbolRegistry(symtab.SymbolExports{"host": exports}))
 	}
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
 	if setup != nil {
 		setup(dbg)
 	}
-	harness := &debugHarness{dbg: dbg, service: service, done: make(chan debugRunResult, 1)}
-	go func() {
-		value, runErr := service.ExecuteEntrypoint(context.Background(), cfs, "run")
-		harness.done <- debugRunResult{value: value, err: runErr}
-	}()
-	return harness
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return service.ExecuteEntrypoint(context.Background(), cfs, "run")
+	})
+	return &debugHarness{dbg: dbg, service: service, execution: execution}
 }
 
 func (h *debugHarness) pause(t *testing.T) debug.Event {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	event, err := h.dbg.WaitForPause(ctx)
-	require.NoError(t, err)
-	return event
+	return debugtest.WaitPause(t, h.dbg)
 }
 
 func (h *debugHarness) finish(t *testing.T) debugRunResult {
 	t.Helper()
-	select {
-	case result := <-h.done:
-		return result
-	case <-time.After(30 * time.Second):
-		t.Fatal("the debugged execution did not finish")
-		return debugRunResult{}
-	}
+	value, err := h.execution.Wait(t)
+	return debugRunResult{value: value, err: err}
 }
 
 func (h *debugHarness) waitLive(t *testing.T) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for !h.dbg.Session().Live() {
-		require.Less(t, time.Now(), deadline, "the execution never started")
-		time.Sleep(time.Millisecond)
-	}
+	require.Eventually(t, h.dbg.Session().Live, 10*time.Second, time.Millisecond, "the execution starts")
 }
 
 func TestDebuggerBreakpointInGoroutine(t *testing.T) {
@@ -227,16 +213,16 @@ func run() int {
 	h := newDebugHarness(t, source, nil, func(dbg *debug.Debugger) { dbg.SetBreakpoint("main.go", 21) })
 	event := h.pause(t)
 	require.Equal(t, uint64(1), event.GoroutineID)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	require.NoError(t, h.dbg.Session().WaitQuiescent(ctx), "the spinning goroutine parks at its next instruction")
 	threads := h.dbg.Threads()
 	for deadline := time.Now().Add(10 * time.Second); len(threads) < 2 && time.Now().Before(deadline); threads = h.dbg.Threads() {
-
 		time.Sleep(time.Millisecond)
-		require.NoError(t, h.dbg.Session().WaitQuiescent(ctx))
 	}
 	require.Len(t, threads, 2)
+	require.NoError(t, h.dbg.Session().WaitQuiescent(ctx), "a goroutine that registers during the stop parks at its first instruction")
+	threads = h.dbg.Threads()
 	for _, thread := range threads {
 		require.Equal(t, debug.ThreadPaused, thread.State, "thread %d", thread.ID)
 		frames, err := h.dbg.StackTrace(thread.ID)
@@ -480,7 +466,7 @@ func run() int { return 3 }
 	h := newDebugHarness(t, source, nil, nil)
 	result := h.finish(t)
 	require.NoError(t, result.err)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	var kinds []debug.EventKind
 	for {
@@ -494,7 +480,7 @@ func run() int { return 3 }
 	}
 	require.Equal(t, debug.EventThreadStarted, kinds[0])
 	require.Equal(t, debug.EventThreadExited, kinds[len(kinds)-2])
-	quiet, quietCancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	quiet, quietCancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
 	defer quietCancel()
 	_, err := h.dbg.WaitForPause(quiet)
 	require.ErrorIs(t, err, context.DeadlineExceeded, "nothing else is queued")
@@ -515,13 +501,13 @@ func run() int { return 1 }
 	dbg := debug.NewDebugger()
 	service := NewService(WithDebugger(dbg))
 	service.UseSymbols(symtab.NewSymbolRegistry(symtab.SymbolExports{"host": exports}))
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
-	require.NoError(t, service.ExecuteInits(context.Background(), cfs))
-	_, err = service.ExecuteEntrypoint(context.Background(), cfs, "run")
+	require.NoError(t, service.ExecuteInits(t.Context(), cfs))
+	_, err = service.ExecuteEntrypoint(t.Context(), cfs, "run")
 	require.NoError(t, err)
 	require.Equal(t, 1, calls, "ExecuteInits followed by ExecuteEntrypoint runs init once")
-	_, err = service.ExecuteEntrypoint(context.Background(), cfs, "run")
+	_, err = service.ExecuteEntrypoint(t.Context(), cfs, "run")
 	require.NoError(t, err)
 	require.Equal(t, 2, calls, "a later entrypoint run initialises again as before")
 }
@@ -537,16 +523,16 @@ func run() int {
 `
 	dbg := debug.NewDebugger()
 	service := NewService(WithDebugger(dbg))
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
 	dbg.SetBreakpoint("main.go", 4)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
 		_, runErr := service.ExecuteEntrypoint(ctx, cfs, "run")
 		done <- runErr
 	}()
-	waitCtx, waitCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	waitCtx, waitCancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer waitCancel()
 	_, err = dbg.WaitForPause(waitCtx)
 	require.NoError(t, err)
@@ -555,7 +541,7 @@ func run() int {
 	case runErr := <-done:
 		require.ErrorIs(t, runErr, fault.ErrExecutionCancelled)
 	case <-time.After(30 * time.Second):
-		t.Fatal("cancellation did not wake the paused VM")
+		require.FailNow(t, "cancellation wakes the paused VM")
 	}
 }
 

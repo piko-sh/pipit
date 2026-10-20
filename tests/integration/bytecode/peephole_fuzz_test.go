@@ -24,9 +24,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/compile/passes"
 	"pipit.sh/pipit/internal/engine/program"
-
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -38,9 +39,7 @@ func FuzzGvnDoesNotPanic(f *testing.F) {
 		body := decodeFuzzBody(raw)
 		compiledFunction := &program.CompiledFunction{Body: body}
 		_ = passes.RunFunctionGvn(context.Background(), compiledFunction)
-		if len(compiledFunction.Body) != len(body) {
-			t.Fatalf("GVN changed body length: got %d, want %d", len(compiledFunction.Body), len(body))
-		}
+		require.Len(t, compiledFunction.Body, len(body), "GVN keeps the body length")
 	})
 }
 
@@ -52,9 +51,7 @@ func FuzzBceDoesNotPanic(f *testing.F) {
 		body := decodeFuzzBody(raw)
 		compiledFunction := &program.CompiledFunction{Body: body}
 		passes.ElideRedundantBoundsChecks(compiledFunction, compiledFunction.Body)
-		if len(compiledFunction.Body) != len(body) {
-			t.Fatalf("BCE changed body length: got %d, want %d", len(compiledFunction.Body), len(body))
-		}
+		require.Len(t, compiledFunction.Body, len(body), "BCE keeps the body length")
 	})
 }
 
@@ -67,13 +64,9 @@ func FuzzPointerAliasDoesNotPanic(f *testing.F) {
 		compiledFunction := &program.CompiledFunction{Body: body}
 		original := append([]isa.Instruction(nil), compiledFunction.Body...)
 		_ = passes.RunPointerAliasAnalysis(context.Background(), compiledFunction)
-		if len(compiledFunction.Body) != len(original) {
-			t.Fatalf("alias analysis mutated body length: got %d, want %d", len(compiledFunction.Body), len(original))
-		}
+		require.Len(t, compiledFunction.Body, len(original), "alias analysis keeps the body length")
 		for i := range compiledFunction.Body {
-			if compiledFunction.Body[i] != original[i] {
-				t.Fatalf("alias analysis mutated body[%d]: got %#v, want %#v", i, compiledFunction.Body[i], original[i])
-			}
+			require.Equal(t, original[i], compiledFunction.Body[i], "alias analysis leaves body[%d] alone", i)
 		}
 	})
 }

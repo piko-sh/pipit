@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestTypedChannelFastPathCorrectness(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "chan_int_send_recv",
@@ -49,7 +49,7 @@ func TestTypedChannelFastPathCorrectness(t *testing.T) {
 	return a + b + c
 }
 run()`,
-			expect: 60,
+			want: 60,
 		},
 		{
 			name: "chan_string_send_recv",
@@ -62,7 +62,7 @@ run()`,
 	return a + " " + b
 }
 run()`,
-			expect: "hello world",
+			want: "hello world",
 		},
 		{
 			name: "chan_bool_send_recv",
@@ -75,7 +75,7 @@ run()`,
 	return a && !b
 }
 run()`,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "chan_float_send_recv",
@@ -88,7 +88,7 @@ run()`,
 	return a + b
 }
 run()`,
-			expect: 4.0,
+			want: 4.0,
 		},
 		{
 			name: "chan_int_loop_pingpong",
@@ -102,7 +102,7 @@ run()`,
 	return s
 }
 run()`,
-			expect: 4950,
+			want: 4950,
 		},
 		{
 			name: "chan_int_comma_ok_after_close",
@@ -120,7 +120,7 @@ run()`,
 	return a + b + c
 }
 run()`,
-			expect: 20,
+			want: 20,
 		},
 		{
 			name: "chan_int_range_over",
@@ -137,7 +137,7 @@ run()`,
 	return s
 }
 run()`,
-			expect: 6,
+			want: 6,
 		},
 		{
 			name: "chan_int_goroutine_pingpong",
@@ -156,7 +156,7 @@ run()`,
 	return s
 }
 run()`,
-			expect: 1225,
+			want: 1225,
 		},
 		{
 			name: "chan_string_unbuffered_goroutine",
@@ -175,7 +175,7 @@ run()`,
 	return result
 }
 run()`,
-			expect: "alphabetagamma",
+			want: "alphabetagamma",
 		},
 		{
 			name: "named_chan_int_type",
@@ -187,7 +187,7 @@ func run() int {
 	return <-ch + <-ch
 }
 run()`,
-			expect: 33,
+			want: 33,
 		},
 		{
 			name: "chan_int64_explicit_type",
@@ -197,7 +197,7 @@ run()`,
 	return <-ch
 }
 run()`,
-			expect: int64(99),
+			want: int64(99),
 		},
 	}
 
@@ -205,9 +205,9 @@ run()`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

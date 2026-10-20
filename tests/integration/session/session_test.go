@@ -21,13 +21,11 @@
 package session_test
 
 import (
-	"context"
 	"testing"
-
-	"pipit.sh/pipit/internal/app"
 
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
@@ -40,7 +38,7 @@ func newTestSession(t *testing.T, opts ...app.Option) *app.Session {
 
 func mustSubmit(t *testing.T, sess *app.Session, code string) any {
 	t.Helper()
-	result, err := sess.Submit(context.Background(), code)
+	result, err := sess.Submit(t.Context(), code)
 	require.NoError(t, err, "submit %q", code)
 	return result
 }

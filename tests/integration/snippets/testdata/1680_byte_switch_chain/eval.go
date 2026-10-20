@@ -2,9 +2,6 @@ package main
 
 import "strconv"
 
-// classify is a chain of byte comparisons against immediates, the shape a byte switch
-// compiles to, with arms that fall through to the loop head, arms that jump forward past
-// the chain, and a default that runs when no arm matches.
 func classify(source string) (int, int, int, int) {
 	letters, digits, spaces, others := 0, 0, 0, 0
 	for i := 0; i < len(source); i++ {
@@ -29,8 +26,6 @@ func classify(source string) (int, int, int, int) {
 	return letters, digits, spaces, others
 }
 
-// interpret mirrors a tiny bytecode interpreter: a switch on the current byte drives a
-// counter and a jump table, so taken and not-taken arms alternate on every step.
 func interpret(program string) int {
 	pointer, value, steps := 0, 0, 0
 	for pc := 0; pc < len(program) && steps < 10000; pc++ {

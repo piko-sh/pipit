@@ -94,23 +94,38 @@ func TestTier0FieldReadsLandInTheirOwnBank(t *testing.T) {
 	}{
 		{
 			name: "a signed field", handler: handleGetStructFieldIntT0, field: 0,
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(42), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), registers.Ints[0])
+			},
 		},
 		{
 			name: "a narrow signed field widens", handler: handleGetStructFieldIntT0, field: 4,
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(-7), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(-7), registers.Ints[0])
+			},
 		},
 		{
 			name: "an unsigned field", handler: handleGetStructFieldUintT0, field: 1,
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, uint64(7), registers.Uints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(7), registers.Uints[0])
+			},
 		},
 		{
 			name: "a float field", handler: handleGetStructFieldFloatT0, field: 2,
-			check: func(t *testing.T, registers *Registers) { require.InDelta(t, 1.5, registers.Floats[0], 0) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.InDelta(t, 1.5, registers.Floats[0], 0)
+			},
 		},
 		{
 			name: "a boolean field", handler: handleGetStructFieldBoolT0, field: 3,
-			check: func(t *testing.T, registers *Registers) { require.True(t, registers.Bools[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.True(t, registers.Bools[0])
+			},
 		},
 	}
 
@@ -149,28 +164,43 @@ func TestTier0FieldWritesReachTheReceiver(t *testing.T) {
 	}{
 		{
 			name: "a signed field", handler: handleSetStructFieldIntT0, field: 0,
-			seed:  func(registers *Registers) { registers.Ints[2] = 42 },
-			check: func(t *testing.T, target *tier0Fields) { require.Equal(t, int64(42), target.Signed) },
+			seed: func(registers *Registers) { registers.Ints[2] = 42 },
+			check: func(t *testing.T, target *tier0Fields) {
+				t.Helper()
+				require.Equal(t, int64(42), target.Signed)
+			},
 		},
 		{
 			name: "a narrow signed field", handler: handleSetStructFieldIntT0, field: 4,
-			seed:  func(registers *Registers) { registers.Ints[2] = -7 },
-			check: func(t *testing.T, target *tier0Fields) { require.Equal(t, int32(-7), target.Narrow) },
+			seed: func(registers *Registers) { registers.Ints[2] = -7 },
+			check: func(t *testing.T, target *tier0Fields) {
+				t.Helper()
+				require.Equal(t, int32(-7), target.Narrow)
+			},
 		},
 		{
 			name: "an unsigned field", handler: handleSetStructFieldUintT0, field: 1,
-			seed:  func(registers *Registers) { registers.Uints[2] = 7 },
-			check: func(t *testing.T, target *tier0Fields) { require.Equal(t, uint64(7), target.Unsigned) },
+			seed: func(registers *Registers) { registers.Uints[2] = 7 },
+			check: func(t *testing.T, target *tier0Fields) {
+				t.Helper()
+				require.Equal(t, uint64(7), target.Unsigned)
+			},
 		},
 		{
 			name: "a float field", handler: handleSetStructFieldFloatT0, field: 2,
-			seed:  func(registers *Registers) { registers.Floats[2] = 1.5 },
-			check: func(t *testing.T, target *tier0Fields) { require.InDelta(t, 1.5, target.Ratio, 0) },
+			seed: func(registers *Registers) { registers.Floats[2] = 1.5 },
+			check: func(t *testing.T, target *tier0Fields) {
+				t.Helper()
+				require.InDelta(t, 1.5, target.Ratio, 0)
+			},
 		},
 		{
 			name: "a boolean field", handler: handleSetStructFieldBoolT0, field: 3,
-			seed:  func(registers *Registers) { registers.Bools[2] = true },
-			check: func(t *testing.T, target *tier0Fields) { require.True(t, target.Flag) },
+			seed: func(registers *Registers) { registers.Bools[2] = true },
+			check: func(t *testing.T, target *tier0Fields) {
+				t.Helper()
+				require.True(t, target.Flag)
+			},
 		},
 	}
 

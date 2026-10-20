@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,23 +32,23 @@ func TestEvalBitwiseAndShiftOperators(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		code   string
-		expect int
+		name string
+		code string
+		want int
 	}{
-		{name: "and", code: `0xFF & 0x0F`, expect: 0x0F},
-		{name: "or", code: `0xF0 | 0x0F`, expect: 0xFF},
-		{name: "xor", code: `0xFF ^ 0x0F`, expect: 0xF0},
-		{name: "and not", code: `0xFF &^ 0x0F`, expect: 0xF0},
+		{name: "and", code: `0xFF & 0x0F`, want: 0x0F},
+		{name: "or", code: `0xF0 | 0x0F`, want: 0xFF},
+		{name: "xor", code: `0xFF ^ 0x0F`, want: 0xF0},
+		{name: "and not", code: `0xFF &^ 0x0F`, want: 0xF0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

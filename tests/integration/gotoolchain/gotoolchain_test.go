@@ -41,6 +41,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/sdk/stdlib/typeinfo"
@@ -104,20 +105,20 @@ func TestGoToolchainRunTests(t *testing.T) {
 		t.Skip("set PIPIT_GOTOOLCHAIN=1 (make test-gotoolchain) to run the Go toolchain's test directory against pipit")
 	}
 	config := loadConfig(t)
-	files := collectRunFiles(t, config.testDir)
+	tests := collectRunFiles(t, config.testDir)
 	skips := readSkips(t, filepath.Join("testdata", "skip.txt"))
 	registered := typeinfo.TypesPackages()
 
 	var mu sync.Mutex
-	results := make([]outcome, 0, len(files))
+	results := make([]outcome, 0, len(tests))
 	semaphore := make(chan struct{}, config.jobs)
 	t.Run("files", func(t *testing.T) {
-		for _, file := range files {
-			t.Run(file.name, func(t *testing.T) {
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				semaphore <- struct{}{}
 				defer func() { <-semaphore }()
-				result := judge(t, config, file, skips, registered)
+				result := judge(t, config, tt, skips, registered)
 				mu.Lock()
 				results = append(results, result)
 				mu.Unlock()
@@ -156,7 +157,7 @@ func loadConfig(t *testing.T) config {
 
 func goEnv(t *testing.T, key string) string {
 	t.Helper()
-	out, err := exec.CommandContext(context.Background(), "go", "env", key).Output()
+	out, err := exec.CommandContext(t.Context(), "go", "env", key).Output()
 	require.NoError(t, err, "go env %s", key)
 	return strings.TrimSpace(string(out))
 }
@@ -172,7 +173,7 @@ func majorMinor(version string) string {
 func buildPipit(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "pipit")
-	build := exec.CommandContext(context.Background(), "go", "build", "-o", bin, "pipit.sh/pipit/cmd/pipit")
+	build := exec.CommandContext(t.Context(), "go", "build", "-o", bin, "pipit.sh/pipit/cmd/pipit")
 	build.Dir = repoRoot(t)
 	out, err := build.CombinedOutput()
 	require.NoError(t, err, "building pipit: %s", out)
@@ -219,7 +220,7 @@ func envInt(t *testing.T, key string, fallback int) int {
 	}
 	value, err := strconv.Atoi(raw)
 	require.NoError(t, err, "%s", key)
-	require.Positive(t, value, "%s", key)
+	require.Positive(t, value)
 	return value
 }
 
@@ -369,7 +370,7 @@ func unregisteredImport(source []byte, registered map[string]*typesPackage) stri
 
 func runToolchainFile(t *testing.T, config config, file runFile, absolute string) outcome {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), config.timeout+5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), config.timeout+5*time.Second)
 	defer cancel()
 
 	args := []string{"run", "-timeout", config.timeout.String(), absolute}
@@ -576,8 +577,8 @@ func summarise(t *testing.T, config config, results []outcome) {
 func compareExpected(t *testing.T, results []outcome, expected, passing map[string]bool) {
 	t.Helper()
 	for _, result := range results {
-		if expected[result.file] && result.bucket != bucketPass {
-			t.Errorf("regression: %s was recorded as passing, now %s: %s", result.file, result.bucket, result.detail)
+		if expected[result.file] {
+			assert.Equal(t, bucketPass, result.bucket, "%s was recorded as passing: %s", result.file, result.detail)
 		}
 	}
 	var fresh []string

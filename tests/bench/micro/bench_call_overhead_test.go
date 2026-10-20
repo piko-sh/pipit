@@ -24,6 +24,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -33,8 +35,8 @@ func BenchmarkCallOverhead(b *testing.B) {
 		source string
 	}{
 		{
-			"no_args",
-			`package main
+			name: "no_args",
+			source: `package main
 
 func noop() int { return 1 }
 
@@ -48,8 +50,8 @@ func run() int {
 `,
 		},
 		{
-			"one_int_arg",
-			`package main
+			name: "one_int_arg",
+			source: `package main
 
 func inc(x int) int { return x + 1 }
 
@@ -63,8 +65,8 @@ func run() int {
 `,
 		},
 		{
-			"two_int_args",
-			`package main
+			name: "two_int_args",
+			source: `package main
 
 func add(a, b int) int { return a + b }
 
@@ -78,8 +80,8 @@ func run() int {
 `,
 		},
 		{
-			"four_int_args",
-			`package main
+			name: "four_int_args",
+			source: `package main
 
 func sum4(a, b, c, d int) int { return a + b + c + d }
 
@@ -93,8 +95,8 @@ func run() int {
 `,
 		},
 		{
-			"mixed_int_string",
-			`package main
+			name: "mixed_int_string",
+			source: `package main
 
 func mixed(x int, s string) int { return x + len(s) }
 
@@ -108,8 +110,8 @@ func run() int {
 `,
 		},
 		{
-			"mixed_int_string_float",
-			`package main
+			name: "mixed_int_string_float",
+			source: `package main
 
 func mixed3(x int, s string, f float64) int {
 	return x + len(s) + int(f)
@@ -125,8 +127,8 @@ func run() int {
 `,
 		},
 		{
-			"general_arg_slice",
-			`package main
+			name: "general_arg_slice",
+			source: `package main
 
 func withSlice(s []int) int { return len(s) }
 
@@ -141,8 +143,8 @@ func run() int {
 `,
 		},
 		{
-			"two_returns",
-			`package main
+			name: "two_returns",
+			source: `package main
 
 func divmod(a, b int) (int, int) { return a / b, a % b }
 
@@ -157,8 +159,8 @@ func run() int {
 `,
 		},
 		{
-			"general_arg_struct_value",
-			`package main
+			name: "general_arg_struct_value",
+			source: `package main
 
 type Box struct{ a, b, c int }
 
@@ -180,16 +182,14 @@ func run() int {
 		b.Run(bm.name, func(b *testing.B) {
 			service := app.NewService()
 			cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": bm.source})
-			if err != nil {
-				b.Fatal(err)
-			}
+			require.NoError(b, err)
 
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
 				_, err = service.ExecuteEntrypoint(context.Background(), cfs, "run")
 				if err != nil {
-					b.Fatal(err)
+					require.NoError(b, err)
 				}
 			}
 		})
@@ -202,8 +202,8 @@ func BenchmarkCallDepthExecOnly(b *testing.B) {
 		source string
 	}{
 		{
-			"depth_10",
-			`package main
+			name: "depth_10",
+			source: `package main
 
 func recurse(n int) int {
 	if n <= 0 { return 0 }
@@ -214,8 +214,8 @@ func run() int { return recurse(10) }
 `,
 		},
 		{
-			"depth_100",
-			`package main
+			name: "depth_100",
+			source: `package main
 
 func recurse(n int) int {
 	if n <= 0 { return 0 }
@@ -226,8 +226,8 @@ func run() int { return recurse(100) }
 `,
 		},
 		{
-			"depth_1000",
-			`package main
+			name: "depth_1000",
+			source: `package main
 
 func recurse(n int) int {
 	if n <= 0 { return 0 }
@@ -243,16 +243,14 @@ func run() int { return recurse(1000) }
 		b.Run(d.name, func(b *testing.B) {
 			service := app.NewService()
 			cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": d.source})
-			if err != nil {
-				b.Fatal(err)
-			}
+			require.NoError(b, err)
 
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
 				_, err = service.ExecuteEntrypoint(context.Background(), cfs, "run")
 				if err != nil {
-					b.Fatal(err)
+					require.NoError(b, err)
 				}
 			}
 		})

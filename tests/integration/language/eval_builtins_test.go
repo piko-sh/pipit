@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,19 +32,19 @@ func TestEvalBuiltinClear(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "clear_map",
-			code:   "m := map[string]int{\"a\": 1, \"b\": 2}\nclear(m)\nlen(m)",
-			expect: 0,
+			name: "clear_map",
+			code: "m := map[string]int{\"a\": 1, \"b\": 2}\nclear(m)\nlen(m)",
+			want: 0,
 		},
 		{
-			name:   "clear_slice",
-			code:   "s := []int{1, 2, 3}\nclear(s)\ns[0]",
-			expect: 0,
+			name: "clear_slice",
+			code: "s := []int{1, 2, 3}\nclear(s)\ns[0]",
+			want: 0,
 		},
 	}
 
@@ -52,9 +52,9 @@ func TestEvalBuiltinClear(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

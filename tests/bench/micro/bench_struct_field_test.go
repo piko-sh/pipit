@@ -30,8 +30,8 @@ func BenchmarkStructFieldRead(b *testing.B) {
 		source string
 	}{
 		{
-			"read_int64_field",
-			`package main
+			name: "read_int64_field",
+			source: `package main
 
 type T struct{ a, b, c, d int64 }
 
@@ -47,8 +47,8 @@ func run() int64 {
 `,
 		},
 		{
-			"read_int32_field",
-			`package main
+			name: "read_int32_field",
+			source: `package main
 
 type T struct{ a, b, c, d int32 }
 
@@ -64,8 +64,8 @@ func run() int32 {
 `,
 		},
 		{
-			"read_int8_field",
-			`package main
+			name: "read_int8_field",
+			source: `package main
 
 type T struct{ a, b, c, d int8 }
 
@@ -81,8 +81,8 @@ func run() int8 {
 `,
 		},
 		{
-			"read_uint64_field",
-			`package main
+			name: "read_uint64_field",
+			source: `package main
 
 type T struct{ a, b, c, d uint64 }
 
@@ -98,8 +98,8 @@ func run() uint64 {
 `,
 		},
 		{
-			"read_uint8_field",
-			`package main
+			name: "read_uint8_field",
+			source: `package main
 
 type T struct{ a, b, c, d uint8 }
 
@@ -115,8 +115,8 @@ func run() uint8 {
 `,
 		},
 		{
-			"read_float64_field",
-			`package main
+			name: "read_float64_field",
+			source: `package main
 
 type T struct{ a, b, c, d float64 }
 
@@ -132,8 +132,8 @@ func run() float64 {
 `,
 		},
 		{
-			"read_float32_field",
-			`package main
+			name: "read_float32_field",
+			source: `package main
 
 type T struct{ a, b, c, d float32 }
 
@@ -149,8 +149,8 @@ func run() float32 {
 `,
 		},
 		{
-			"read_bool_field",
-			`package main
+			name: "read_bool_field",
+			source: `package main
 
 type T struct{ a, b, c, d bool }
 
@@ -171,8 +171,8 @@ func run() int {
 `,
 		},
 		{
-			"read_string_field_short",
-			`package main
+			name: "read_string_field_short",
+			source: `package main
 
 type T struct{ a, b string }
 
@@ -188,8 +188,8 @@ func run() int {
 `,
 		},
 		{
-			"read_string_field_long",
-			`package main
+			name: "read_string_field_long",
+			source: `package main
 
 type T struct{ a, b string }
 
@@ -208,8 +208,8 @@ func run() int {
 `,
 		},
 		{
-			"read_via_pointer_receiver",
-			`package main
+			name: "read_via_pointer_receiver",
+			source: `package main
 
 type T struct{ a, b, c, d int64 }
 
@@ -225,8 +225,8 @@ func run() int64 {
 `,
 		},
 		{
-			"read_via_value_receiver",
-			`package main
+			name: "read_via_value_receiver",
+			source: `package main
 
 type T struct{ a, b, c, d int64 }
 
@@ -241,8 +241,8 @@ func run() int64 {
 `,
 		},
 		{
-			"read_from_map_value",
-			`package main
+			name: "read_from_map_value",
+			source: `package main
 
 type T struct{ a, b, c, d int64 }
 
@@ -259,8 +259,8 @@ func run() int64 {
 `,
 		},
 		{
-			"read_from_slice_element",
-			`package main
+			name: "read_from_slice_element",
+			source: `package main
 
 type T struct{ a, b, c, d int64 }
 
@@ -276,8 +276,8 @@ func run() int64 {
 `,
 		},
 		{
-			"read_after_type_assert",
-			`package main
+			name: "read_after_type_assert",
+			source: `package main
 
 type T struct{ a, b, c, d int64 }
 
@@ -303,8 +303,8 @@ func BenchmarkStructFieldWrite(b *testing.B) {
 		source string
 	}{
 		{
-			"write_int64_field",
-			`package main
+			name: "write_int64_field",
+			source: `package main
 
 type T struct{ a, b, c, d int64 }
 
@@ -319,8 +319,8 @@ func run() int64 {
 `,
 		},
 		{
-			"write_int32_field",
-			`package main
+			name: "write_int32_field",
+			source: `package main
 
 type T struct{ a, b, c, d int32 }
 
@@ -335,8 +335,8 @@ func run() int32 {
 `,
 		},
 		{
-			"write_int8_field",
-			`package main
+			name: "write_int8_field",
+			source: `package main
 
 type T struct{ a, b, c, d int8 }
 
@@ -351,8 +351,8 @@ func run() int8 {
 `,
 		},
 		{
-			"write_uint64_field",
-			`package main
+			name: "write_uint64_field",
+			source: `package main
 
 type T struct{ a, b, c, d uint64 }
 
@@ -367,8 +367,8 @@ func run() uint64 {
 `,
 		},
 		{
-			"write_float64_field",
-			`package main
+			name: "write_float64_field",
+			source: `package main
 
 type T struct{ a, b, c, d float64 }
 
@@ -383,8 +383,8 @@ func run() float64 {
 `,
 		},
 		{
-			"write_bool_field",
-			`package main
+			name: "write_bool_field",
+			source: `package main
 
 type T struct{ a, b, c, d bool }
 
@@ -399,8 +399,8 @@ func run() bool {
 `,
 		},
 		{
-			"write_string_field_short",
-			`package main
+			name: "write_string_field_short",
+			source: `package main
 
 type T struct{ a, b string }
 
@@ -415,8 +415,8 @@ func run() string {
 `,
 		},
 		{
-			"write_string_field_long",
-			`package main
+			name: "write_string_field_long",
+			source: `package main
 
 type T struct{ a, b string }
 
@@ -431,8 +431,8 @@ func run() string {
 `,
 		},
 		{
-			"write_via_pointer_receiver",
-			`package main
+			name: "write_via_pointer_receiver",
+			source: `package main
 
 type T struct{ a, b, c, d int64 }
 
@@ -447,8 +447,8 @@ func run() int64 {
 `,
 		},
 		{
-			"write_via_slice_element",
-			`package main
+			name: "write_via_slice_element",
+			source: `package main
 
 type T struct{ a, b, c, d int64 }
 
@@ -463,8 +463,8 @@ func run() int64 {
 `,
 		},
 		{
-			"write_pointer_field_to_nil",
-			`package main
+			name: "write_pointer_field_to_nil",
+			source: `package main
 
 type T struct{ next *T }
 
@@ -479,8 +479,8 @@ func run() bool {
 `,
 		},
 		{
-			"write_slice_field",
-			`package main
+			name: "write_slice_field",
+			source: `package main
 
 type T struct{ xs []int }
 
@@ -505,8 +505,8 @@ func BenchmarkStructFieldCompound(b *testing.B) {
 		source string
 	}{
 		{
-			"compound_int_add",
-			`package main
+			name: "compound_int_add",
+			source: `package main
 
 type T struct{ counter int64 }
 
@@ -521,8 +521,8 @@ func run() int64 {
 `,
 		},
 		{
-			"compound_int_sub",
-			`package main
+			name: "compound_int_sub",
+			source: `package main
 
 type T struct{ counter int64 }
 
@@ -537,8 +537,8 @@ func run() int64 {
 `,
 		},
 		{
-			"compound_int_mul",
-			`package main
+			name: "compound_int_mul",
+			source: `package main
 
 type T struct{ counter int64 }
 
@@ -553,8 +553,8 @@ func run() int64 {
 `,
 		},
 		{
-			"compound_float_add",
-			`package main
+			name: "compound_float_add",
+			source: `package main
 
 type T struct{ total float64 }
 
@@ -569,8 +569,8 @@ func run() float64 {
 `,
 		},
 		{
-			"compound_string_concat",
-			`package main
+			name: "compound_string_concat",
+			source: `package main
 
 type T struct{ label string }
 
@@ -586,8 +586,8 @@ func run() int {
 `,
 		},
 		{
-			"compound_via_slice_element",
-			`package main
+			name: "compound_via_slice_element",
+			source: `package main
 
 type T struct{ counter int64 }
 
@@ -611,8 +611,8 @@ func BenchmarkStructFieldNested(b *testing.B) {
 		source string
 	}{
 		{
-			"depth_2_value",
-			`package main
+			name: "depth_2_value",
+			source: `package main
 
 type Inner struct{ x int64 }
 type Outer struct{ inner Inner }
@@ -629,8 +629,8 @@ func run() int64 {
 `,
 		},
 		{
-			"depth_3_value",
-			`package main
+			name: "depth_3_value",
+			source: `package main
 
 type Inner struct{ x int64 }
 type Mid struct{ inner Inner }
@@ -648,8 +648,8 @@ func run() int64 {
 `,
 		},
 		{
-			"depth_2_pointer_inner",
-			`package main
+			name: "depth_2_pointer_inner",
+			source: `package main
 
 type Inner struct{ x int64 }
 type Outer struct{ inner *Inner }
@@ -666,8 +666,8 @@ func run() int64 {
 `,
 		},
 		{
-			"depth_3_pointer_chain",
-			`package main
+			name: "depth_3_pointer_chain",
+			source: `package main
 
 type Inner struct{ x int64 }
 type Mid struct{ inner *Inner }
@@ -685,8 +685,8 @@ func run() int64 {
 `,
 		},
 		{
-			"embedded_value_field",
-			`package main
+			name: "embedded_value_field",
+			source: `package main
 
 type Base struct{ n int64 }
 type Wrap struct{ Base }
@@ -703,8 +703,8 @@ func run() int64 {
 `,
 		},
 		{
-			"embedded_pointer_field",
-			`package main
+			name: "embedded_pointer_field",
+			source: `package main
 
 type Base struct{ n int64 }
 type Wrap struct{ *Base }
@@ -730,8 +730,8 @@ func BenchmarkStructFieldIteration(b *testing.B) {
 		source string
 	}{
 		{
-			"slice_sum_int_field",
-			`package main
+			name: "slice_sum_int_field",
+			source: `package main
 
 type Cell struct{ a, b, c, d int64 }
 
@@ -753,8 +753,8 @@ func run() int64 {
 `,
 		},
 		{
-			"slice_sum_two_fields",
-			`package main
+			name: "slice_sum_two_fields",
+			source: `package main
 
 type Cell struct{ a, b, c, d int64 }
 
@@ -776,8 +776,8 @@ func run() int64 {
 `,
 		},
 		{
-			"slice_write_field_in_loop",
-			`package main
+			name: "slice_write_field_in_loop",
+			source: `package main
 
 type Cell struct{ a, b, c, d int64 }
 
@@ -792,8 +792,8 @@ func run() int64 {
 `,
 		},
 		{
-			"slice_read_string_field",
-			`package main
+			name: "slice_read_string_field",
+			source: `package main
 
 type Row struct{ name, kind string }
 

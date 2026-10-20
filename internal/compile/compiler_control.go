@@ -387,16 +387,18 @@ func (c *Compiler) compileReturnExprs(ctx context.Context, statement *ast.Return
 		return c.compileReturnTupleCall(ctx, call)
 	}
 	locs := make([]program.VarLocation, len(statement.Results))
+	multiple := len(statement.Results) > 1
+	if multiple {
+		c.reserveReturnSlots()
+	}
 	for i, result := range statement.Results {
+		mark := c.Scopes.Alloc.Snapshot()
 		location, err := c.compileReturnValue(ctx, statement, i, named)
 		if err != nil {
 			return nil, err
 		}
-		if len(statement.Results) > 1 {
-			temp := c.Scopes.Alloc.AllocTemp(location.Kind)
-			tempLocation := program.VarLocation{Register: temp, Kind: location.Kind}
-			c.emitMoveTyped(ctx, tempLocation, location, c.staticTypeOf(result))
-			locs[i] = tempLocation
+		if multiple {
+			locs[i] = c.holdValue(ctx, mark, location, c.staticTypeOf(result))
 		} else {
 			locs[i] = location
 		}
@@ -490,7 +492,8 @@ func (c *Compiler) compileReturnTupleCall(ctx context.Context, call *ast.CallExp
 
 // snapshotReturnValueIfNeeded copies the return value when it is a heap-promoted captured
 // local, preventing deferred closures from mutating the caller's result through the
-// aliased cell.
+// aliased cell, or a slice or array element read in place (indexedReadNeedsDetach), which
+// would otherwise follow later writes to the element.
 //
 // Takes expression (ast.Expr) which is the return expression.
 // Takes location (VarLocation) which is the compiled value location.
@@ -500,7 +503,7 @@ func (c *Compiler) snapshotReturnValueIfNeeded(expression ast.Expr, location pro
 	if location.Kind != isa.RegisterGeneral {
 		return location
 	}
-	if !c.rhsReadsIndirectLocal(expression) {
+	if !c.rhsReadsIndirectLocal(expression) && !c.indexedReadNeedsDetach(expression, location) {
 		return location
 	}
 	dest := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
@@ -937,11 +940,13 @@ func (c *Compiler) compileRangeOverFunctionReturn(ctx context.Context, statement
 	rangeContext := c.rangeOverFunction
 
 	for i, result := range statement.Results {
+		watermark := c.Scopes.Alloc.Snapshot()
 		location, err := c.compileExpression(ctx, result)
 		if err != nil {
 			return program.VarLocation{}, err
 		}
 		program.Emit(c.Function, isa.OpSetUpvalue, location.Register, safeconv.MustIntToUint8(rangeContext.returnStashUpvalueIndices[i]), uint8(location.Kind))
+		c.Scopes.RestoreWatermark(watermark)
 	}
 
 	returnPendingIndex, err := program.AddIntConstant(c.Function, rangeOverFunctionReturnPendingFlag)
@@ -1038,6 +1043,7 @@ func (c *Compiler) compileSwitch(ctx context.Context, statement *ast.SwitchStmt)
 
 	var endJumps []int
 
+	clauseMark := c.Scopes.Alloc.Snapshot()
 	for i, cc := range allCases {
 		endJump, err := c.compileSwitchCaseClause(ctx, cc, hasTag, tagType, tagLocation, i == len(allCases)-1)
 		if err != nil {
@@ -1046,6 +1052,7 @@ func (c *Compiler) compileSwitch(ctx context.Context, statement *ast.SwitchStmt)
 		if endJump >= 0 {
 			endJumps = append(endJumps, endJump)
 		}
+		c.Scopes.RestoreWatermark(clauseMark)
 	}
 
 	for _, pc := range endJumps {
@@ -1080,10 +1087,14 @@ func (c *Compiler) compileSwitchCaseClause(ctx context.Context,
 	var nextCaseJump int
 	isDefault := cc.List == nil
 	if !isDefault {
+		var err error
 		if hasTag {
-			nextCaseJump = c.compileCaseMatch(ctx, tagType, tagLocation, cc.List)
+			nextCaseJump, err = c.compileCaseMatch(ctx, tagType, tagLocation, cc.List)
 		} else {
-			nextCaseJump = c.compileCaseCondition(ctx, cc.List)
+			nextCaseJump, err = c.compileCaseCondition(ctx, cc.List)
+		}
+		if err != nil {
+			return -1, err
 		}
 	}
 
@@ -1118,7 +1129,8 @@ func (c *Compiler) patchAndClearFallthroughJumps(_ context.Context) {
 	breakable.fallthroughJumps = breakable.fallthroughJumps[:0]
 }
 
-// compileScopedBody compiles a list of statements within a new scope.
+// compileScopedBody compiles a statement list in a new scope, reclaiming temporaries
+// and dead locals after each statement.
 //
 // Takes statements ([]ast.Stmt) which is the list of statement AST nodes to compile
 // within the new scope.
@@ -1126,74 +1138,97 @@ func (c *Compiler) patchAndClearFallthroughJumps(_ context.Context) {
 // Returns any error encountered during compilation.
 func (c *Compiler) compileScopedBody(ctx context.Context, statements []ast.Stmt) error {
 	c.Scopes.PushScope()
-	for _, bodyStmt := range statements {
-		if _, err := c.compileStmt(ctx, bodyStmt); err != nil {
-			c.Scopes.PopScope()
-			return err
-		}
-	}
-	c.Scopes.PopScope()
-	return nil
+	defer c.Scopes.PopScope()
+	_, err := c.compileStmtList(ctx, statements)
+	return err
 }
 
-// compileCaseMatch compiles the condition for a tagged switch case using OR logic. Each
-// tag-versus-case comparison is routed through emitStaticComparison so a switch over a
-// named integer type (its receiver banked general) compares the tag and case in the
-// scalar bank rather than as dynamic-type interface values.
+// compileCaseMatch compares each case value with the switch tag using OR logic. Named
+// integer types are compared in the scalar bank.
 //
 // Takes tagType (types.Type) which is the static type of the tag expression.
 // Takes tagLocation (VarLocation) which is the location of the compiled tag expression.
 // Takes exprs ([]ast.Expr) which is the list of case value expressions to compare
 // against.
 //
-// Returns the jump instruction offset to patch for the no-match path.
-func (c *Compiler) compileCaseMatch(ctx context.Context, tagType types.Type, tagLocation program.VarLocation, exprs []ast.Expr) int {
+// Returns int which is the jump instruction offset to patch for the no-match path.
+// Returns error when a case value or comparison cannot be compiled.
+func (c *Compiler) compileCaseMatch(ctx context.Context, tagType types.Type, tagLocation program.VarLocation, exprs []ast.Expr) (int, error) {
 	equalityOps, _ := comparisonOpcodes(token.EQL)
 	if len(exprs) == 1 {
-		valueLocation, _ := c.compileExpression(ctx, exprs[0])
-		cmpLocation, _ := c.emitStaticComparison(ctx, token.EQL, equalityOps,
-			tagType, c.staticTypeOf(exprs[0]), tagLocation, valueLocation,
-		)
-		return program.EmitJump(c.Function, isa.OpJumpIfFalse, cmpLocation.Register)
+		cmpLocation, err := c.compileCaseValueMatch(ctx, equalityOps, tagType, tagLocation, exprs[0])
+		if err != nil {
+			return 0, err
+		}
+		return program.EmitJump(c.Function, isa.OpJumpIfFalse, cmpLocation.Register), nil
 	}
 
 	resultRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt)
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLoadBool), resultRegister, 0)
 
 	for _, expression := range exprs {
-		valueLocation, _ := c.compileExpression(ctx, expression)
-		cmpLocation, _ := c.emitStaticComparison(ctx, token.EQL, equalityOps,
-			tagType, c.staticTypeOf(expression), tagLocation, valueLocation,
-		)
-
+		watermark := c.Scopes.Alloc.Snapshot()
+		cmpLocation, err := c.compileCaseValueMatch(ctx, equalityOps, tagType, tagLocation, expression)
+		if err != nil {
+			return 0, err
+		}
 		program.Emit(c.Function, isa.OpBitOr, resultRegister, resultRegister, cmpLocation.Register)
+		c.Scopes.RestoreWatermark(watermark)
 	}
 
-	return program.EmitJump(c.Function, isa.OpJumpIfFalse, resultRegister)
+	return program.EmitJump(c.Function, isa.OpJumpIfFalse, resultRegister), nil
+}
+
+// compileCaseValueMatch compiles one case value and compares it with the switch tag.
+//
+// Takes equalityOps (comparisonOpcodeSet) which are the == opcodes per bank.
+// Takes tagType (types.Type) which is the tag's static type.
+// Takes tagLocation (program.VarLocation) which holds the tag.
+// Takes expression (ast.Expr) which is the case value.
+//
+// Returns program.VarLocation which holds the comparison result.
+// Returns error when the value or the comparison cannot be compiled.
+func (c *Compiler) compileCaseValueMatch(ctx context.Context, equalityOps comparisonOpcodeSet, tagType types.Type, tagLocation program.VarLocation, expression ast.Expr) (program.VarLocation, error) {
+	valueLocation, err := c.compileExpression(ctx, expression)
+	if err != nil {
+		return program.VarLocation{}, err
+	}
+	return c.emitStaticComparison(ctx, token.EQL, equalityOps,
+		tagType, c.staticTypeOf(expression), tagLocation, valueLocation,
+	)
 }
 
 // compileCaseCondition compiles the condition for a tagless switch case.
 //
 // Takes exprs ([]ast.Expr) which is the list of boolean case expressions to evaluate.
 //
-// Returns the jump instruction offset to patch for the no-match path.
-func (c *Compiler) compileCaseCondition(ctx context.Context, exprs []ast.Expr) int {
+// Returns int which is the jump instruction offset to patch for the no-match path.
+// Returns error when a case expression cannot be compiled.
+func (c *Compiler) compileCaseCondition(ctx context.Context, exprs []ast.Expr) (int, error) {
 	if len(exprs) == 1 {
-		condLocation, _ := c.compileExpression(ctx, exprs[0])
+		condLocation, err := c.compileExpression(ctx, exprs[0])
+		if err != nil {
+			return 0, err
+		}
 		condLocation = c.ensureIntForBranch(ctx, condLocation)
-		return program.EmitJump(c.Function, isa.OpJumpIfFalse, condLocation.Register)
+		return program.EmitJump(c.Function, isa.OpJumpIfFalse, condLocation.Register), nil
 	}
 
 	resultRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt)
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLoadBool), resultRegister, 0)
 
 	for _, expression := range exprs {
-		condLocation, _ := c.compileExpression(ctx, expression)
+		watermark := c.Scopes.Alloc.Snapshot()
+		condLocation, err := c.compileExpression(ctx, expression)
+		if err != nil {
+			return 0, err
+		}
 		condLocation = c.ensureIntForBranch(ctx, condLocation)
 		program.Emit(c.Function, isa.OpBitOr, resultRegister, resultRegister, condLocation.Register)
+		c.Scopes.RestoreWatermark(watermark)
 	}
 
-	return program.EmitJump(c.Function, isa.OpJumpIfFalse, resultRegister)
+	return program.EmitJump(c.Function, isa.OpJumpIfFalse, resultRegister), nil
 }
 
 // collectSwitchCases separates the case clauses from the default clause in a switch body.

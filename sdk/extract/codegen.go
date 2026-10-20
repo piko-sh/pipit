@@ -166,6 +166,7 @@ func (g Generator) GenerateFile(extractedPackage ExtractedPackage, outputPackage
 		return nil, fmt.Errorf("building fallback helpers for %s: %w", extractedPackage.ImportPath, err)
 	}
 
+	symbols = append(buildPackageNameEntries(extractedPackage), symbols...)
 	mapEntries := buildMapEntries(symbols, wrapperMetas, append(linkedEntries, instantiationEntries...))
 	initFunc := buildInitFuncAST(extractedPackage.ImportPath, mapEntries)
 

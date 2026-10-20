@@ -25,6 +25,8 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsolatedTerminalOutputEscapesControls(t *testing.T) {
@@ -33,17 +35,16 @@ func TestIsolatedTerminalOutputEscapesControls(t *testing.T) {
 	writer := isolatedTerminalWriter{destination: &destination}
 	input := "hello 世界\n\t\x1b]52;c;clipboard\a\r\b\x00\x7f\u009b31m\u202ereversed\u2066hidden\u2069"
 	count, err := writer.Write([]byte(input))
-	if err != nil || count != len(input) {
-		t.Fatalf("unexpected write result: %d %v", count, err)
-	}
+	require.NoError(t, err)
+	require.Len(t, input, count)
 	output := destination.String()
-	if !strings.HasPrefix(output, "hello 世界\n\t") || !strings.Contains(output, "\\x1b") {
-		t.Fatalf("ordinary text or escape rendering changed: %q", output)
-	}
+	require.True(t, strings.HasPrefix(output, "hello 世界\n\t"), "ordinary text and escapes render as before")
+	require.Contains(t, output, "\\x1b")
 	for _, character := range output {
-		if character != '\n' && character != '\t' && (unicode.IsControl(character) || unicode.Is(unicode.Cf, character)) {
-			t.Fatalf("terminal control survived: %q", output)
+		if character == '\n' || character == '\t' {
+			continue
 		}
+		require.False(t, unicode.IsControl(character) || unicode.Is(unicode.Cf, character), "terminal control %q survives in %q", character, output)
 	}
 }
 
@@ -53,9 +54,9 @@ func TestIsolatedRedirectedOutputPreservesBytes(t *testing.T) {
 	writer := isolatedOutputWriter(&destination)
 	input := []byte("\x1b[31m\xff\r\n")
 	count, err := writer.Write(input)
-	if err != nil || count != len(input) || !bytes.Equal(input, destination.Bytes()) {
-		t.Fatalf("redirected output changed: %q %v", destination.Bytes(), err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, len(input), count)
+	require.Equal(t, input, destination.Bytes(), "redirected output keeps its bytes")
 }
 
 type isolatedFailingWriter struct {
@@ -78,8 +79,7 @@ func TestIsolatedTerminalOutputPropagatesWriteFailures(t *testing.T) {
 	} {
 		writer := isolatedTerminalWriter{destination: isolatedFailingWriter{failure: test.failure}}
 		count, err := writer.Write([]byte("\x1b"))
-		if count != 0 || !errors.Is(err, test.expected) {
-			t.Fatalf("output failure hidden: %d %v", count, err)
-		}
+		require.Equal(t, 0, count, "an output failure is reported")
+		require.ErrorIs(t, err, test.expected)
 	}
 }

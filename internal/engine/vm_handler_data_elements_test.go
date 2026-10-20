@@ -40,37 +40,55 @@ func TestIndexReadsFromSlicesArraysAndPointers(t *testing.T) {
 			name:  "a slice element",
 			build: func() reflect.Value { return reflect.ValueOf([]int{10, 20, 30}) },
 			index: 1,
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(20), registers.General[0].Int()) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(20), registers.General[0].Int())
+			},
 		},
 		{
 			name:  "the first slice element",
 			build: func() reflect.Value { return reflect.ValueOf([]int{10, 20}) },
 			index: 0,
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(10), registers.General[0].Int()) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(10), registers.General[0].Int())
+			},
 		},
 		{
 			name:  "the last slice element",
 			build: func() reflect.Value { return reflect.ValueOf([]int{10, 20}) },
 			index: 1,
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(20), registers.General[0].Int()) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(20), registers.General[0].Int())
+			},
 		},
 		{
 			name:  "an array element",
 			build: func() reflect.Value { return reflect.ValueOf([3]string{"a", "b", "c"}) },
 			index: 2,
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, "c", registers.General[0].String()) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, "c", registers.General[0].String())
+			},
 		},
 		{
 			name:  "a pointer to an array is followed",
 			build: func() reflect.Value { return reflect.ValueOf(&[2]int{7, 8}) },
 			index: 1,
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(8), registers.General[0].Int()) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(8), registers.General[0].Int())
+			},
 		},
 		{
 			name:  "an interface element is unwrapped to its dynamic value",
 			build: func() reflect.Value { return reflect.ValueOf([]any{42}) },
 			index: 0,
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, reflect.Int, registers.General[0].Kind()) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, reflect.Int, registers.General[0].Kind())
+			},
 		},
 	}
 
@@ -170,19 +188,26 @@ func TestMapIndexReturnsTheElementZeroValueOnAMiss(t *testing.T) {
 			name:  "a present string key",
 			build: func() reflect.Value { return reflect.ValueOf(map[string]int{"k": 42}) },
 			key:   reflect.ValueOf("k"),
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(42), registers.General[0].Int()) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), registers.General[0].Int())
+			},
 		},
 		{
 			name:  "an absent string key",
 			build: func() reflect.Value { return reflect.ValueOf(map[string]int{"k": 42}) },
 			key:   reflect.ValueOf("absent"),
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(0), registers.General[0].Int()) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(0), registers.General[0].Int())
+			},
 		},
 		{
 			name:  "an absent key in a map of slices yields a nil slice",
 			build: func() reflect.Value { return reflect.ValueOf(map[string][]int{}) },
 			key:   reflect.ValueOf("absent"),
 			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
 				require.Equal(t, reflect.Slice, registers.General[0].Kind())
 				require.True(t, registers.General[0].IsNil())
 			},
@@ -191,7 +216,10 @@ func TestMapIndexReturnsTheElementZeroValueOnAMiss(t *testing.T) {
 			name:  "a present integer key",
 			build: func() reflect.Value { return reflect.ValueOf(map[int]string{7: "v"}) },
 			key:   reflect.ValueOf(7),
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, "v", registers.General[0].String()) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, "v", registers.General[0].String())
+			},
 		},
 	}
 

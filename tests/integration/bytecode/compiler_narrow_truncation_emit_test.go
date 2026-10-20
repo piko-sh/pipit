@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 )
@@ -65,7 +66,6 @@ func TestEmitNarrowIntegerTruncationEmitsForNarrowInt(t *testing.T) {
 func TestEmitNarrowIntegerTruncationSkipsFullWidthTypes(t *testing.T) {
 	t.Parallel()
 
-	c := newTestCompiler(t)
 	tests := []struct {
 		t    types.Type
 		name string
@@ -81,10 +81,12 @@ func TestEmitNarrowIntegerTruncationSkipsFullWidthTypes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := newTestCompiler(t)
 			startLength := len(c.Function.Body)
 			c.EmitNarrowIntegerTruncation(program.VarLocation{Register: 0, Kind: isa.RegisterInt}, tt.t)
-			require.Equal(t, startLength, len(c.Function.Body),
-				"no instruction should be emitted for full-width or non-integer types")
+			require.Len(t, c.Function.Body, startLength,
+				"a full-width or non-integer type needs no truncation")
 		})
 	}
 }
@@ -95,7 +97,7 @@ func TestEmitNarrowIntegerTruncationSkipsWrongBank(t *testing.T) {
 	c := newTestCompiler(t)
 	startLength := len(c.Function.Body)
 	c.EmitNarrowIntegerTruncation(program.VarLocation{Register: 0, Kind: isa.RegisterGeneral}, types.Typ[types.Uint8])
-	require.Equal(t, startLength, len(c.Function.Body),
+	require.Len(t, c.Function.Body, startLength,
 		"truncation only applies to int and uint banks; general bank is left untouched because the cell-side wrap is handled by reflect.SetUint when the boxed value is unpacked")
 }
 
@@ -105,6 +107,6 @@ func TestEmitNarrowIntegerTruncationSkipsNilType(t *testing.T) {
 	c := newTestCompiler(t)
 	startLength := len(c.Function.Body)
 	c.EmitNarrowIntegerTruncation(program.VarLocation{Register: 0, Kind: isa.RegisterInt}, nil)
-	require.Equal(t, startLength, len(c.Function.Body),
+	require.Len(t, c.Function.Body, startLength,
 		"nil static type means the call site has no type info; skip the truncation rather than panic")
 }

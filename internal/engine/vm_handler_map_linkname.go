@@ -98,6 +98,9 @@ func runtimeMapaccess2Faststr(t unsafe.Pointer, m unsafe.Pointer, key string) (u
 //go:noescape
 func runtimeMapassignFaststr(t unsafe.Pointer, m unsafe.Pointer, key string) unsafe.Pointer
 
+// mapFastPathZeroElem supplies zero bytes for any element the map fast paths can store.
+var mapFastPathZeroElem [mapFastPathMaxElemBytes]byte
+
 // mapAccessFast64ToGeneral does a direct runtime.mapaccess2_fast64 against an int64-keyed
 // map, resolving the underlying *Map pointer from the reflect.Value.
 //
@@ -111,6 +114,7 @@ func mapAccessFast64ToGeneral(mapValue reflect.Value, key int64) (unsafe.Pointer
 	if !mapValue.IsValid() {
 		return nil, false
 	}
+	assertMapElemInline(mapValue)
 	rv := (*unsafeReflectValue)(unsafe.Pointer(&mapValue))
 	if rv.typ == nil {
 		return nil, false
@@ -142,6 +146,7 @@ func mapAccessFastStrToGeneral(mapValue reflect.Value, key string) (unsafe.Point
 	if !mapValue.IsValid() {
 		return nil, false
 	}
+	assertMapElemInline(mapValue)
 	rv := (*unsafeReflectValue)(unsafe.Pointer(&mapValue))
 	if rv.typ == nil {
 		return nil, false
@@ -173,6 +178,7 @@ func mapAssignFastStr(mapValue reflect.Value, key string) unsafe.Pointer {
 	if !mapValue.IsValid() {
 		return nil
 	}
+	assertMapElemInline(mapValue)
 	rv := (*unsafeReflectValue)(unsafe.Pointer(&mapValue))
 	if rv.typ == nil {
 		return nil
@@ -291,11 +297,9 @@ func mapSetStringStringProbeFirst(vm *VM, m reflect.Value, key, value string) bo
 	})
 }
 
-// mapSetStringGeneralProbeFirst stores a coerced element under a string key.
-//
-// Copies via runtime.typedmemmove so GC write barriers are emitted. The element must
-// carry the map's exact element type because the raw copy cannot box a concrete value
-// into an interface slot.
+// mapSetStringGeneralProbeFirst stores a coerced element under a string key using the
+// runtime write barrier. The value must have the map's exact element type and fit
+// inline.
 //
 // Takes vm (*VM) which owns the arena.
 // Takes m (reflect.Value) which is the map.
@@ -306,7 +310,7 @@ func mapSetStringStringProbeFirst(vm *VM, m reflect.Value, key, value string) bo
 func mapSetStringGeneralProbeFirst(vm *VM, m reflect.Value, key string, value reflect.Value) bool {
 	mapType := m.Type()
 	elemType := mapType.Elem()
-	if mapType.Key().Kind() != reflect.String || (value.IsValid() && value.Type() != elemType) {
+	if mapType.Key().Kind() != reflect.String || !mapElemStoredInline(elemType) || (value.IsValid() && value.Type() != elemType) {
 		return false
 	}
 	elemABIType := reflectValueABIType(elemType)
@@ -323,8 +327,7 @@ func mapSetStringGeneralProbeFirst(vm *VM, m reflect.Value, key string, value re
 // Takes value (reflect.Value) which is the element to copy.
 func writeReflectValueToSlot(elemABIType, slot unsafe.Pointer, value reflect.Value) {
 	if !value.IsValid() {
-		var zero [32]byte
-		runtimeTypedmemmove(elemABIType, slot, unsafe.Pointer(&zero[0]))
+		runtimeTypedmemmove(elemABIType, slot, unsafe.Pointer(&mapFastPathZeroElem[0]))
 		return
 	}
 	valueRaw := (*unsafeReflectValue)(unsafe.Pointer(&value))
@@ -333,4 +336,64 @@ func writeReflectValueToSlot(elemABIType, slot unsafe.Pointer, value reflect.Val
 		return
 	}
 	runtimeTypedmemmove(elemABIType, slot, unsafe.Pointer(&valueRaw.ptr))
+}
+
+// mapSetFast64PointerKeyed stores a pointer element using an extracted 64-bit key.
+//
+// Takes vm (*VM) which owns the arena for value materialisation.
+// Takes m (reflect.Value) which is the destination map.
+// Takes elemType (reflect.Type) which is the map's element type.
+// Takes key (int64) which is the 8-byte-kinded key value.
+// Takes rawValue (reflect.Value) which is the value to store.
+//
+// Only pointer elements qualify because runtime.mapassign_fast64 requires inline
+// storage.
+//
+// Returns true when the fast path stored the value, false to fall back.
+func mapSetFast64PointerKeyed(vm *VM, m reflect.Value, elemType reflect.Type, key int64, rawValue reflect.Value) bool {
+	if elemType.Kind() != reflect.Pointer {
+		return false
+	}
+	mapRaw := (*unsafeReflectValue)(unsafe.Pointer(&m))
+	mapPtr := dereferenceIndirectPointer(mapRaw)
+	if mapPtr == nil {
+		return false
+	}
+	valueValue := coerceValue(vm, rawValue, elemType)
+	if !valueValue.IsValid() || valueValue.Kind() != reflect.Pointer {
+		return false
+	}
+	valueValue = MaterialiseArenaValue(vm.Arena, valueValue)
+	valueRaw := (*unsafeReflectValue)(unsafe.Pointer(&valueValue))
+	ptrValue := dereferenceIndirectPointer(valueRaw)
+	assertMapElemInline(m)
+	slotPtr := runtimeMapassignFast64(mapRaw.typ, mapPtr, safeconv.Int64ToUint64Reinterpret(key))
+	if slotPtr == nil {
+		return true
+	}
+	runtimeTypedmemmove(reflectValueABIType(elemType), slotPtr, unsafe.Pointer(new(ptrValue)))
+	return true
+}
+
+// dereferenceIndirectPointer reads through a punned reflect.Value's flagIndir bit,
+// returning either the indirected pointer or the raw pointer slot.
+//
+// Takes raw (*unsafeReflectValue) which is the punned reflect.Value internals.
+//
+// Returns the resolved unsafe.Pointer.
+func dereferenceIndirectPointer(raw *unsafeReflectValue) unsafe.Pointer {
+	if raw.flag&flagIndir != 0 {
+		return *(*unsafe.Pointer)(raw.ptr)
+	}
+	return raw.ptr
+}
+
+// assertMapElemInline panics in paranoid arena builds if a map fast path is used with
+// an element stored indirectly.
+//
+// Takes mapValue (reflect.Value) which is the map about to be accessed.
+func assertMapElemInline(mapValue reflect.Value) {
+	if arenaParanoidEnabled && !mapElemStoredInline(mapValue.Type().Elem()) {
+		panic(newInvariantError("map fast path on %s, whose %d-byte element is stored indirectly", mapValue.Type(), mapValue.Type().Elem().Size()))
+	}
 }

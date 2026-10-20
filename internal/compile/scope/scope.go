@@ -20,7 +20,9 @@ package scope
 
 import (
 	"fmt"
+	"os"
 	"slices"
+	"strconv"
 	"strings"
 
 	"pipit.sh/pipit/internal/engine/program"
@@ -43,12 +45,36 @@ const (
 	// instead of receiving a real register.
 	spillThreshold uint32 = 246
 
+	// AddressableRegisters is how many registers of one bank an instruction can name.
+	AddressableRegisters = maxRegisterIndex + 1
+
+	// registerSetWordBits is how many registers one word of a RegisterSet holds.
+	registerSetWordBits = 64
+
+	// registerSetWords is how many words a RegisterSet holds per bank.
+	registerSetWords = AddressableRegisters / registerSetWordBits
+
 	// maxSpillSlotsPerBank caps the per-bank spill area at the uint16 limit. The runtime
 	// spillSlot field is uint16 and the physical register file index is 256 + spillSlot, so
 	// allocating beyond this would silently wrap the uint16 cast and alias two distinct
 	// logical slots onto the same runtime register, corrupting state.
 	maxSpillSlotsPerBank = 1 << 16
 )
+
+// forcedSpillLimit lowers the spill threshold of every spillable bank for testing
+// (PIPIT_FORCE_SPILL_LIMIT=N), so the whole corpus runs with most locals in the spill
+// area; zero leaves the threshold alone.
+var forcedSpillLimit = parseForcedSpillLimit(os.Getenv("PIPIT_FORCE_SPILL_LIMIT"))
+
+// LoweredLimit is a spill threshold for one bank below the default. The zero value keeps
+// the default, so a limit of register 0, which spills every local, can still be set.
+type LoweredLimit struct {
+	// Register is the register index from which new locals spill.
+	Register uint32
+
+	// Active reports whether the limit applies.
+	Active bool
+}
 
 // RegisterAllocator manages register allocation within a function, allocating
 // sequentially per bank and freeing when Scopes exit. Counters are uint32 because a full
@@ -86,6 +112,18 @@ type RegisterAllocator struct {
 	// capturedFloor is, per bank, one past the highest register a closure has captured in
 	// the function being compiled.
 	capturedFloor [isa.NumRegisterKinds]uint32
+
+	// refusedSpill records that a typed-slice bank needed a spill slot it cannot have, so
+	// compiling the body again with a lower spill threshold cannot help.
+	refusedSpill bool
+
+	// spillLimits lowers the spill threshold of a spillable bank where active; set for a
+	// body compiled again after it ran out of registers.
+	spillLimits [isa.NumRegisterKinds]LoweredLimit
+
+	// statementPeak is, per bank, the highest nextRegister reached since the innermost open
+	// statement began.
+	statementPeak [isa.NumRegisterKinds]uint32
 }
 
 // Alloc allocates a register in the given bank and returns its index.
@@ -96,16 +134,14 @@ type RegisterAllocator struct {
 func (r *RegisterAllocator) Alloc(kind isa.RegisterKind) uint8 {
 	register := r.nextRegister[kind]
 	r.nextRegister[kind]++
-	if r.nextRegister[kind] > r.peakRegister[kind] {
-		r.peakRegister[kind] = r.nextRegister[kind]
-	}
+	r.notePeak(kind)
 	if register > maxRegisterIndex && r.OverflowErr == nil {
 		r.OverflowErr = fmt.Errorf(
-			"register overflow in function %q: %s bank requires more than %d registers "+
+			"%w in function %q: %s bank requires more than %d registers "+
 				"(instruction encoding is limited to uint8 indices); "+
 				"peak registers: int=%d float=%d string=%d general=%d bool=%d uint=%d complex=%d; "+
 				"recycled pool lengths: int=%d float=%d string=%d general=%d bool=%d uint=%d complex=%d",
-			r.FunctionName, kind, maxRegisterIndex+1,
+			fault.ErrRegisterOverflow, r.FunctionName, kind, maxRegisterIndex+1,
 			r.peakRegister[isa.RegisterInt], r.peakRegister[isa.RegisterFloat], r.peakRegister[isa.RegisterString],
 			r.peakRegister[isa.RegisterGeneral], r.peakRegister[isa.RegisterBool], r.peakRegister[isa.RegisterUint],
 			r.peakRegister[isa.RegisterComplex],
@@ -173,6 +209,34 @@ func (r *RegisterAllocator) ReserveLow(kind isa.RegisterKind, count uint32) {
 	if count > r.peakRegister[kind] {
 		r.peakRegister[kind] = count
 	}
+	r.notePeak(kind)
+}
+
+// SetSpillLimits sets active spill thresholds for new locals. Typed-slice banks cannot
+// spill and retain their defaults.
+//
+// Takes limits ([isa.NumRegisterKinds]LoweredLimit) which holds a limit per bank.
+func (r *RegisterAllocator) SetSpillLimits(limits [isa.NumRegisterKinds]LoweredLimit) {
+	r.spillLimits = limits
+}
+
+// SpillLimit returns the register index from which new locals of kind's bank are spilled.
+//
+// Takes kind (isa.RegisterKind) which is the bank.
+//
+// Returns uint32 which is the effective limit.
+func (r *RegisterAllocator) SpillLimit(kind isa.RegisterKind) uint32 {
+	limit := spillThreshold
+	if isa.IsTypedSliceKind(kind) {
+		return limit
+	}
+	if lowered := r.spillLimits[kind]; lowered.Active {
+		limit = min(limit, lowered.Register)
+	}
+	if forcedSpillLimit != 0 {
+		limit = min(limit, forcedSpillLimit)
+	}
+	return limit
 }
 
 // Snapshot returns the current allocation state for all banks.
@@ -213,6 +277,36 @@ func (r *RegisterAllocator) ReserveCaptured(kind isa.RegisterKind, register uint
 	r.capturedFloor[kind] = max(r.capturedFloor[kind], uint32(register)+1)
 }
 
+// RefusedSpill reports whether a typed-slice bank needed a spill slot, which it cannot
+// have; lowering the spill threshold cannot fix such an overflow.
+//
+// Returns bool which is true once a spill was refused.
+func (r *RegisterAllocator) RefusedSpill() bool {
+	return r.refusedSpill
+}
+
+// keepBelow raises the next free register of kind's bank to end, so the registers below
+// it stay allocated.
+//
+// Takes kind (isa.RegisterKind) which is the bank.
+// Takes end (uint32) which is one past the highest register to keep.
+func (r *RegisterAllocator) keepBelow(kind isa.RegisterKind, end uint32) {
+	if end > r.nextRegister[kind] {
+		r.nextRegister[kind] = end
+		r.notePeak(kind)
+	}
+}
+
+// notePeak records nextRegister of kind's bank in the function's and the open statement's
+// peaks.
+//
+// Takes kind (isa.RegisterKind) which is the bank whose allocation grew.
+func (r *RegisterAllocator) notePeak(kind isa.RegisterKind) {
+	next := r.nextRegister[kind]
+	r.peakRegister[kind] = max(r.peakRegister[kind], next)
+	r.statementPeak[kind] = max(r.statementPeak[kind], next)
+}
+
 // allocOrRecycle returns a recycled register if one is available above baseFreeIndex,
 // otherwise allocates a fresh register sequentially.
 //
@@ -228,9 +322,7 @@ func (r *RegisterAllocator) allocOrRecycle(kind isa.RegisterKind, baseFreeIndex 
 
 		if register >= r.nextRegister[kind] {
 			r.nextRegister[kind] = register + 1
-			if r.nextRegister[kind] > r.peakRegister[kind] {
-				r.peakRegister[kind] = r.nextRegister[kind]
-			}
+			r.notePeak(kind)
 		}
 		return uint8(register) //nolint:gosec // recycled values are uint8
 	}
@@ -249,9 +341,10 @@ func (r *RegisterAllocator) allocOrRecycle(kind isa.RegisterKind, baseFreeIndex 
 // Panics if the per-bank spill area is exhausted (fault.ErrSpillAreaExhausted).
 func (r *RegisterAllocator) allocSpill(kind isa.RegisterKind) uint16 {
 	if isa.IsTypedSliceKind(kind) {
+		r.refusedSpill = true
 		if r.OverflowErr == nil {
-			r.OverflowErr = fmt.Errorf("%w: bank %s in function %q holds more than %d live locals",
-				fault.ErrSpillUnsupportedBank, kind, r.FunctionName, spillThreshold)
+			r.OverflowErr = fmt.Errorf("%w: %w: bank %s in function %q holds more than %d live locals",
+				fault.ErrRegisterOverflow, fault.ErrSpillUnsupportedBank, kind, r.FunctionName, spillThreshold)
 		}
 		return 0
 	}
@@ -295,7 +388,66 @@ func (r *RegisterAllocator) spillRestore(saved [isa.NumRegisterKinds]uint32) {
 //
 // Returns bool which is true when the next allocation would exceed the spill threshold.
 func (r *RegisterAllocator) needsSpill(kind isa.RegisterKind) bool {
-	return r.nextRegister[kind] >= spillThreshold
+	return r.nextRegister[kind] >= r.SpillLimit(kind)
+}
+
+// RegisterSet is a set of registers per bank.
+type RegisterSet [isa.NumRegisterKinds][registerSetWords]uint64
+
+// Contains reports whether register of kind's bank is in the set.
+//
+// Takes kind (isa.RegisterKind) which is the bank.
+// Takes register (uint32) which is the register; one past the bank's end is never in it.
+//
+// Returns bool which is true when the register is in the set.
+func (set *RegisterSet) Contains(kind isa.RegisterKind, register uint32) bool {
+	if register >= AddressableRegisters {
+		return false
+	}
+	return set[kind][register/registerSetWordBits]&(1<<(register%registerSetWordBits)) != 0
+}
+
+// add puts register of kind's bank in the set.
+//
+// Takes kind (isa.RegisterKind) which is the bank.
+// Takes register (uint8) which is the register.
+func (set *RegisterSet) add(kind isa.RegisterKind, register uint8) {
+	set[kind][register/registerSetWordBits] |= 1 << (register % registerSetWordBits)
+}
+
+// union adds every register of other to the set.
+//
+// Takes other (*RegisterSet) which is the set to add.
+func (set *RegisterSet) union(other *RegisterSet) {
+	for kind := range set {
+		for word := range set[kind] {
+			set[kind][word] |= other[kind][word]
+		}
+	}
+}
+
+// StatementMark is the allocation state saved when a statement begins.
+type StatementMark struct {
+	// start is nextRegister per bank when the statement began.
+	start [isa.NumRegisterKinds]uint32
+
+	// outerPeak is the enclosing statement's peak, restored when this one ends.
+	outerPeak [isa.NumRegisterKinds]uint32
+
+	// outerReads is the enclosing statement's read set, restored when this one ends.
+	outerReads RegisterSet
+}
+
+// StatementUsage is how one statement used the registers.
+type StatementUsage struct {
+	// Start is nextRegister per bank when the statement began.
+	Start [isa.NumRegisterKinds]uint32
+
+	// Peak is the highest nextRegister per bank while it ran.
+	Peak [isa.NumRegisterKinds]uint32
+
+	// Reads holds the registers of the variables it read.
+	Reads RegisterSet
 }
 
 // ScopeStack tracks nested lexical Scopes during compilation.
@@ -311,8 +463,16 @@ type ScopeStack struct {
 	// entries. Nil when debug is disabled.
 	DebugBodyLenFunc func() int
 
+	// unspillable names captured locals whose registers must remain valid along every
+	// control-flow path.
+	unspillable map[string]bool
+
 	// Scopes is the stack of active lexical Scopes.
 	Scopes []lexicalScope
+
+	// statementReads holds the registers of the variables looked up since the innermost open
+	// statement began.
+	statementReads RegisterSet
 }
 
 // NewScopeStack creates a scope stack with a fresh register allocator.
@@ -332,11 +492,50 @@ func NewScopeStack(functionName string) *ScopeStack {
 			nextSpillSlot:     [isa.NumRegisterKinds]uint32{},
 			peakSpillSlot:     [isa.NumRegisterKinds]uint32{},
 			capturedFloor:     [isa.NumRegisterKinds]uint32{},
+			refusedSpill:      false,
+			spillLimits:       [isa.NumRegisterKinds]LoweredLimit{},
+			statementPeak:     [isa.NumRegisterKinds]uint32{},
 		}),
 		DebugVarTable:    nil,
 		DebugBodyLenFunc: nil,
+		unspillable:      nil,
 		Scopes:           nil,
+		statementReads:   RegisterSet{},
 	})
+}
+
+// BeginStatement opens a measurement window for one statement; windows nest.
+//
+// Returns StatementMark which EndStatement takes.
+func (s *ScopeStack) BeginStatement() StatementMark {
+	mark := StatementMark{start: s.Alloc.nextRegister, outerPeak: s.Alloc.statementPeak, outerReads: s.statementReads}
+	s.Alloc.statementPeak = s.Alloc.nextRegister
+	s.statementReads = RegisterSet{}
+	return mark
+}
+
+// EndStatement closes the window BeginStatement opened, folding its usage into the
+// enclosing statement's.
+//
+// Takes mark (*StatementMark) which BeginStatement returned.
+//
+// Returns StatementUsage which is how the statement used the registers.
+func (s *ScopeStack) EndStatement(mark *StatementMark) StatementUsage {
+	usage := StatementUsage{Start: mark.start, Peak: s.Alloc.statementPeak, Reads: s.statementReads}
+	for kind := range s.Alloc.statementPeak {
+		s.Alloc.statementPeak[kind] = max(mark.outerPeak[kind], usage.Peak[kind])
+	}
+	s.statementReads = mark.outerReads
+	s.statementReads.union(&usage.Reads)
+	return usage
+}
+
+// SetUnspillableNames marks the locals that DeclareVar must keep in registers.
+//
+// Takes names (map[string]bool) which are the names closures in the body capture; nil
+// clears the set.
+func (s *ScopeStack) SetUnspillableNames(names map[string]bool) {
+	s.unspillable = names
 }
 
 // PushScope enters a new lexical scope.
@@ -349,6 +548,7 @@ func (s *ScopeStack) PushScope() {
 		Vars:                 make(map[string]program.VarLocation),
 		savedRegisters:       s.Alloc.Snapshot(),
 		savedSpillSlots:      s.Alloc.spillSnapshot(),
+		varRegisterEnd:       [isa.NumRegisterKinds]uint32{},
 		savedRecycledLengths: recycledLengths,
 	})
 }
@@ -391,35 +591,25 @@ func (s *ScopeStack) PopScope() {
 //
 // Returns the register location for the new variable.
 func (s *ScopeStack) DeclareVar(name string, kind isa.RegisterKind) program.VarLocation {
-	baseFreeIndex := 0
-	if len(s.Scopes) > 0 {
-		baseFreeIndex = s.Scopes[len(s.Scopes)-1].savedRecycledLengths[kind]
+	if s.spillsNewLocal(name, kind) {
+		return s.declare(name, program.VarLocation{Kind: kind, IsSpilled: true, SpillSlot: s.Alloc.allocSpill(kind)})
 	}
+	return s.declare(name, s.newRegisterLocation(kind))
+}
 
-	var location program.VarLocation
-
-	hasRecycled := len(s.Alloc.recycledRegisters[kind]) > baseFreeIndex
-	if hasRecycled || !s.Alloc.needsSpill(kind) {
-		register := s.Alloc.allocOrRecycle(kind, baseFreeIndex)
-		location = program.VarLocation{Register: register, Kind: kind}
-	} else {
-		slot := s.Alloc.allocSpill(kind)
-		location = program.VarLocation{Kind: kind, IsSpilled: true, SpillSlot: slot}
-	}
-
-	if len(s.Scopes) > 0 {
-		s.Scopes[len(s.Scopes)-1].Vars[name] = location
-	}
-	if s.DebugVarTable != nil && s.DebugBodyLenFunc != nil && name != "_" && !strings.HasPrefix(name, SyntheticNamePrefix) {
-		s.DebugVarTable.Entries = append(s.DebugVarTable.Entries, program.DebugVarEntry{Name: name,
-			Location: location,
-			StartPC:  s.DebugBodyLenFunc(), EndPC: 0})
-	}
-	return location
+// DeclareParameter allocates a register for a parameter, receiver or named result. It
+// never spills because the call sequence only addresses registers.
+//
+// Takes name (string) which is the parameter name.
+// Takes kind (isa.RegisterKind) which specifies the register bank to allocate from.
+//
+// Returns the register location for the new parameter.
+func (s *ScopeStack) DeclareParameter(name string, kind isa.RegisterKind) program.VarLocation {
+	return s.declare(name, s.newRegisterLocation(kind))
 }
 
 // LookupVar searches for a variable in the scope stack, starting from the innermost
-// scope.
+// scope. A variable held in a register is recorded in the open statement's read set.
 //
 // Takes name (string) which is the variable name to look up.
 //
@@ -427,6 +617,9 @@ func (s *ScopeStack) DeclareVar(name string, kind isa.RegisterKind) program.VarL
 func (s *ScopeStack) LookupVar(name string) (program.VarLocation, bool) {
 	for scopeIndex := range slices.Backward(s.Scopes) {
 		if location, ok := s.Scopes[scopeIndex].Vars[name]; ok {
+			if !location.IsSpilled {
+				s.statementReads.add(location.Kind, location.Register)
+			}
 			return location, true
 		}
 	}
@@ -441,7 +634,7 @@ func (s *ScopeStack) MarkCaptured(name string) {
 	for scopeIndex := range slices.Backward(s.Scopes) {
 		if loc, ok := s.Scopes[scopeIndex].Vars[name]; ok {
 			loc.IsCaptured = true
-			s.Scopes[scopeIndex].Vars[name] = loc
+			s.Scopes[scopeIndex].bind(name, loc)
 			if !loc.IsSpilled {
 				s.Alloc.ReserveCaptured(loc.Kind, loc.Register)
 			}
@@ -459,7 +652,7 @@ func (s *ScopeStack) MarkCaptured(name string) {
 func (s *ScopeStack) UpdateVar(name string, location program.VarLocation) bool {
 	for scopeIndex := range slices.Backward(s.Scopes) {
 		if _, ok := s.Scopes[scopeIndex].Vars[name]; ok {
-			s.Scopes[scopeIndex].Vars[name] = location
+			s.Scopes[scopeIndex].bind(name, location)
 			s.patchDebugVarLocation(name, location)
 			return true
 		}
@@ -478,19 +671,31 @@ func (s *ScopeStack) UpdateVar(name string, location program.VarLocation) bool {
 func (s *ScopeStack) RestoreWatermark(saved [isa.NumRegisterKinds]uint32) {
 	s.Alloc.Restore(saved)
 	for i := range s.Scopes {
-		scope := &s.Scopes[i]
-		for _, location := range scope.Vars {
-			if location.IsSpilled {
-				continue
-			}
-			needed := uint32(location.Register) + 1
-			if needed > s.Alloc.nextRegister[location.Kind] {
-				s.Alloc.nextRegister[location.Kind] = needed
-				if s.Alloc.peakRegister[location.Kind] < needed {
-					s.Alloc.peakRegister[location.Kind] = needed
-				}
-			}
+		for kind, end := range s.Scopes[i].varRegisterEnd {
+			s.Alloc.keepBelow(isa.RegisterKind(kind), end)
 		}
+	}
+}
+
+// KeepLocation keeps the register of location allocated after a watermark restore, for a
+// value the compiler tracks outside the scope stack. A spilled location needs nothing.
+//
+// Takes location (program.VarLocation) which must stay allocated.
+func (s *ScopeStack) KeepLocation(location program.VarLocation) {
+	if location.IsSpilled {
+		return
+	}
+	s.Alloc.keepBelow(location.Kind, uint32(location.Register)+1)
+}
+
+// BindVar binds name to location in the innermost scope, as a declaration does, for a
+// variable whose register the compiler chose itself.
+//
+// Takes name (string) which is the variable name.
+// Takes location (program.VarLocation) which is where it lives.
+func (s *ScopeStack) BindVar(name string, location program.VarLocation) {
+	if len(s.Scopes) > 0 {
+		s.Scopes[len(s.Scopes)-1].bind(name, location)
 	}
 }
 
@@ -522,6 +727,57 @@ func (s *ScopeStack) OverflowError() error {
 	return s.Alloc.OverflowErr
 }
 
+// spillsNewLocal reports whether a local must spill because its bank reached the
+// threshold and no recycled register is available.
+//
+// Takes name (string) which is the variable name.
+// Takes kind (isa.RegisterKind) which is the bank.
+//
+// Returns bool which is true when the local spills.
+func (s *ScopeStack) spillsNewLocal(name string, kind isa.RegisterKind) bool {
+	hasRecycled := len(s.Alloc.recycledRegisters[kind]) > s.recycledBase(kind)
+	return !hasRecycled && !s.unspillable[name] && s.Alloc.needsSpill(kind)
+}
+
+// newRegisterLocation allocates a register for a new variable, preferring one that
+// dead-variable analysis recycled in the current scope.
+//
+// Takes kind (isa.RegisterKind) which is the bank.
+//
+// Returns program.VarLocation which is the register.
+func (s *ScopeStack) newRegisterLocation(kind isa.RegisterKind) program.VarLocation {
+	return program.VarLocation{Register: s.Alloc.allocOrRecycle(kind, s.recycledBase(kind)), Kind: kind}
+}
+
+// recycledBase returns how many recycled registers of kind's bank belong to enclosing
+// scopes, which the current scope must not reuse.
+//
+// Takes kind (isa.RegisterKind) which is the bank.
+//
+// Returns int which is the length of the free list when the current scope began.
+func (s *ScopeStack) recycledBase(kind isa.RegisterKind) int {
+	if len(s.Scopes) == 0 {
+		return 0
+	}
+	return s.Scopes[len(s.Scopes)-1].savedRecycledLengths[kind]
+}
+
+// declare binds a new variable in the current scope and opens its debug entry.
+//
+// Takes name (string) which is the variable name.
+// Takes location (program.VarLocation) which is where it lives.
+//
+// Returns program.VarLocation which is location.
+func (s *ScopeStack) declare(name string, location program.VarLocation) program.VarLocation {
+	s.BindVar(name, location)
+	if s.DebugVarTable != nil && s.DebugBodyLenFunc != nil && name != "_" && !strings.HasPrefix(name, SyntheticNamePrefix) {
+		s.DebugVarTable.Entries = append(s.DebugVarTable.Entries, program.DebugVarEntry{Name: name,
+			Location: location,
+			StartPC:  s.DebugBodyLenFunc(), EndPC: 0})
+	}
+	return location
+}
+
 // lexicalScope represents a lexical scope during compilation. Variables declared in this
 // scope are freed when the scope exits.
 type lexicalScope struct {
@@ -536,10 +792,42 @@ type lexicalScope struct {
 	// allowing restoration on exit.
 	savedSpillSlots [isa.NumRegisterKinds]uint32
 
+	// varRegisterEnd records one past each bank's highest register holding a variable
+	// in this scope.
+	varRegisterEnd [isa.NumRegisterKinds]uint32
+
 	// savedRecycledLengths records the length of each recycled-register free list when this
 	// scope was entered, so scope exit can truncate back without discarding outer-scope
 	// entries.
 	savedRecycledLengths [isa.NumRegisterKinds]int
+}
+
+// bind sets a variable's location and updates varRegisterEnd.
+//
+// Takes name (string) which is the variable name.
+// Takes location (program.VarLocation) which is where it lives now.
+func (scope *lexicalScope) bind(name string, location program.VarLocation) {
+	previous, existed := scope.Vars[name]
+	scope.Vars[name] = location
+	if !location.IsSpilled {
+		scope.varRegisterEnd[location.Kind] = max(scope.varRegisterEnd[location.Kind], uint32(location.Register)+1)
+	}
+	if existed && setsRegisterEnd(scope, previous) && !sameRegister(previous, location) {
+		scope.recomputeRegisterEnd(previous.Kind)
+	}
+}
+
+// recomputeRegisterEnd works out varRegisterEnd of kind's bank from the variables.
+//
+// Takes kind (isa.RegisterKind) which is the bank.
+func (scope *lexicalScope) recomputeRegisterEnd(kind isa.RegisterKind) {
+	end := uint32(0)
+	for _, location := range scope.Vars {
+		if !location.IsSpilled && location.Kind == kind {
+			end = max(end, uint32(location.Register)+1)
+		}
+	}
+	scope.varRegisterEnd[kind] = end
 }
 
 // patchDebugVarLocation moves the newest open debug var-table entry of a variable to its
@@ -558,4 +846,38 @@ func (s *ScopeStack) patchDebugVarLocation(name string, location program.VarLoca
 			return
 		}
 	}
+}
+
+// parseForcedSpillLimit reads the PIPIT_FORCE_SPILL_LIMIT value.
+//
+// Takes value (string) which is the environment value.
+//
+// Returns uint32 which is the limit, or zero when the value is unset or invalid.
+func parseForcedSpillLimit(value string) uint32 {
+	limit, err := strconv.ParseUint(value, 10, 32)
+	if err != nil || limit >= uint64(spillThreshold) {
+		return 0
+	}
+	return uint32(limit)
+}
+
+// setsRegisterEnd reports whether location is a register variable at the top of its
+// bank's varRegisterEnd in scope.
+//
+// Takes scope (*lexicalScope) which holds the variable.
+// Takes location (program.VarLocation) which is where the variable was.
+//
+// Returns bool which is true when moving the variable may lower varRegisterEnd.
+func setsRegisterEnd(scope *lexicalScope, location program.VarLocation) bool {
+	return !location.IsSpilled && uint32(location.Register)+1 == scope.varRegisterEnd[location.Kind]
+}
+
+// sameRegister reports whether two locations name the same register.
+//
+// Takes first (program.VarLocation) which is one location.
+// Takes second (program.VarLocation) which is the other.
+//
+// Returns bool which is true when both are the same register of the same bank.
+func sameRegister(first, second program.VarLocation) bool {
+	return !first.IsSpilled && !second.IsSpilled && first.Kind == second.Kind && first.Register == second.Register
 }

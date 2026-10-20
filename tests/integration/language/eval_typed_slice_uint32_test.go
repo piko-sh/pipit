@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalSubIntSliceCallBoundary(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 
@@ -44,7 +44,7 @@ func TestEvalSubIntSliceCallBoundary(t *testing.T) {
 }
 xs := []uint32{42, 7}
 first(xs)`,
-			expect: uint32(42),
+			want: uint32(42),
 		},
 		{
 
@@ -54,7 +54,7 @@ first(xs)`,
 }
 xs := []int32{40, 2}
 sumPair(xs)`,
-			expect: int32(42),
+			want: int32(42),
 		},
 		{
 
@@ -67,7 +67,7 @@ func a(xs []uint16) []uint16 {
 }
 xs := []uint16{1, 2, 3, 4, 5}
 a(xs)[3]`,
-			expect: uint16(4),
+			want: uint16(4),
 		},
 		{
 
@@ -81,7 +81,7 @@ a(xs)[3]`,
 }
 xs := []int16{10, 20, 30}
 sumAll(xs)`,
-			expect: int16(60),
+			want: int16(60),
 		},
 		{
 
@@ -95,7 +95,7 @@ sumAll(xs)`,
 }
 xs := []uint32{100, 200, 300}
 gsum(xs)`,
-			expect: uint32(600),
+			want: uint32(600),
 		},
 	}
 
@@ -103,9 +103,9 @@ gsum(xs)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -114,9 +114,9 @@ func TestEvalSubIntSliceMutationPropagation(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "int32_mutate_first_propagates",
@@ -126,7 +126,7 @@ func TestEvalSubIntSliceMutationPropagation(t *testing.T) {
 xs := []int32{1, 2, 3}
 setFirst(xs, 99)
 xs[0]`,
-			expect: int32(99),
+			want: int32(99),
 		},
 		{
 			name: "uint32_mutate_index_propagates",
@@ -136,7 +136,7 @@ xs[0]`,
 xs := []uint32{10, 20, 30, 40}
 setAt(xs, 2, 777)
 xs[2]`,
-			expect: uint32(777),
+			want: uint32(777),
 		},
 		{
 			name: "int16_mutate_propagates",
@@ -146,7 +146,7 @@ xs[2]`,
 xs := []int16{5, 6, 7}
 write(xs, 42)
 xs[0]`,
-			expect: int16(42),
+			want: int16(42),
 		},
 		{
 			name: "uint16_mutate_propagates",
@@ -156,7 +156,7 @@ xs[0]`,
 xs := []uint16{1, 2, 3}
 write(xs, 65000)
 xs[0]`,
-			expect: uint16(65000),
+			want: uint16(65000),
 		},
 		{
 			name: "int32_two_callee_mutations_both_visible",
@@ -167,7 +167,7 @@ xs[0]`,
 xs := []int32{0, 0, 0, 0}
 setLoHi(xs, -7, 7)
 xs[0]*100 + xs[3]`,
-			expect: int32(-700 + 7),
+			want: int32(-700 + 7),
 		},
 	}
 
@@ -175,9 +175,9 @@ xs[0]*100 + xs[3]`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

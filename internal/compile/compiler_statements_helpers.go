@@ -26,6 +26,7 @@ import (
 	"go/types"
 	"slices"
 
+	"pipit.sh/pipit/internal/compile/appendlower"
 	"pipit.sh/pipit/internal/compile/escape"
 	"pipit.sh/pipit/internal/compile/isaselect"
 	"pipit.sh/pipit/internal/compile/typemap"
@@ -181,9 +182,10 @@ func (c *Compiler) compileRangeOverFunction(ctx context.Context, statement *ast.
 		yieldSignature, stateFlagReg, stashRegs, freeVarNames,
 	)
 
-	root := c.RootFunction
-	functionIndex := safeconv.MustIntToUint16(len(root.Functions))
-	root.Functions = append(root.Functions, compiledFunction)
+	functionIndex, err := c.registerCreatedFunction(compiledFunction)
+	if err != nil {
+		return program.VarLocation{}, err
+	}
 
 	outerLabels := c.collectOuterLabelTargets(ctx)
 
@@ -200,6 +202,7 @@ func (c *Compiler) compileRangeOverFunction(ctx context.Context, statement *ast.
 		return program.VarLocation{}, err
 	}
 
+	c.refreshYieldCaptures(compiledFunction)
 	yieldReg := c.emitIteratorCall(ctx, iterLocation, functionIndex)
 
 	program.EmitTier2(c.Function, isa.SubOpTier2SyncClosureUpvalues, yieldReg)
@@ -209,6 +212,19 @@ func (c *Compiler) compileRangeOverFunction(ctx context.Context, statement *ast.
 	c.emitOuterLabelDispatch(ctx, stateFlagReg, outerLabels)
 
 	return program.VarLocation{}, nil
+}
+
+// refreshYieldCaptures copies current register values into shared cells before creating
+// a yield closure. This prevents a loop iteration from capturing stale values left by
+// an earlier iteration.
+//
+// Takes compiledFunction (*program.CompiledFunction) which is the yield closure.
+func (c *Compiler) refreshYieldCaptures(compiledFunction *program.CompiledFunction) {
+	for _, descriptor := range compiledFunction.UpvalueDescriptors {
+		if descriptor.IsLocal && !descriptor.IsIndirect {
+			program.EmitTier1(c.Function, isa.SubOpWriteSharedCell, descriptor.Index, uint8(descriptor.Kind))
+		}
+	}
 }
 
 // allocReturnStash allocates registers for stashing return values when a return statement
@@ -354,31 +370,47 @@ func (c *Compiler) collectOuterLabelTargets(_ context.Context) []outerLabelTarge
 //
 // Returns an error if compilation of the yield body fails.
 func (c *Compiler) compileYieldBody(ctx context.Context, p yieldBodyParams) error {
-	sub := newFunctionCompiler(ctx, c.programContext, p.compiledFunction, functionOptions{
-		scopeName:         "<yield>",
-		upvalues:          p.upvalueMap,
-		substitutions:     c.typeSubstitutions,
-		substitutionCache: c.typeSubstitutionsCache,
-		rangeOverFunction: &rangeOverFunctionContext{
-			stateFlagUpvalueIndex:     p.stateFlagUpvalueIndex,
-			returnStashUpvalueIndices: p.stashUpvalueIndices,
-			returnKinds:               p.returnKinds,
-			outerLabels:               p.outerLabels,
-		},
-	})
-	sub.Scopes.PushScope()
+	attempt := func(settings registerSettings) (*Compiler, error) {
+		sub := newFunctionCompiler(ctx, c.programContext, p.compiledFunction, functionOptions{
+			scopeName:         "<yield>",
+			upvalues:          p.upvalueMap,
+			substitutions:     c.typeSubstitutions,
+			substitutionCache: c.typeSubstitutionsCache,
+			rangeOverFunction: &rangeOverFunctionContext{
+				stateFlagUpvalueIndex:     p.stateFlagUpvalueIndex,
+				returnStashUpvalueIndices: p.stashUpvalueIndices,
+				returnKinds:               p.returnKinds,
+				outerLabels:               p.outerLabels,
+			},
+		})
+		sub.Scopes.PushScope()
+		sub.closureCapturedNames = escape.CollectClosureCapturedNamesAll(p.statement.Body)
+		sub.writtenLocalNames = escape.CollectWrittenLocalNames(p.statement.Body)
+		sub.Scopes.SetUnspillableNames(sub.unspillableNames(p.statement.Body, sub.closureCapturedNames))
+		sub.inPlaceAppendAliases = appendlower.CollectAliases(sub.Info, appendlower.Body{
+			Receiver:   nil,
+			Parameters: nil,
+			Entry:      []ast.Expr{p.statement.Key, p.statement.Value},
+			Block:      p.statement.Body,
+			Repeats:    true,
+		})
 
-	if err := sub.declareYieldParams(ctx, p.statement, p.compiledFunction, p.numberOfYieldParameters); err != nil {
-		return err
+		if err := sub.declareYieldParams(ctx, p.statement, p.compiledFunction, p.numberOfYieldParameters); err != nil {
+			return sub, err
+		}
+		sub.applyRegisterSettings(settings)
+
+		if _, err := sub.compileStmtList(ctx, p.statement.Body.List); err != nil {
+			return sub, err
+		}
+		sub.emitYieldReturn(ctx, true)
+		return sub, nil
 	}
-
-	if _, err := sub.compileStmtList(ctx, p.statement.Body.List); err != nil {
-		return fmt.Errorf("compiling range-over-func body: %w", err)
+	finish := func(sub *Compiler) error {
+		return sub.finishBody(ctx, p.compiledFunction, p.statement.Body, finishFlags{tailCall: false, finaliseDefer: false, classifyEscapes: false})
 	}
-
-	sub.emitYieldReturn(ctx, true)
-
-	if err := sub.finishBody(ctx, p.compiledFunction, p.statement.Body, finishFlags{tailCall: false, finaliseDefer: false, classifyEscapes: false}); err != nil {
+	unit := retryUnit{function: p.compiledFunction, node: p.statement, substitutions: c.typeSubstitutions}
+	if err := c.compileNestedBodyWithRetry(ctx, unit, attempt, finish); err != nil {
 		return fmt.Errorf("compiling range-over-func body: %w", err)
 	}
 	return nil
@@ -405,7 +437,7 @@ func (c *Compiler) declareYieldParams(_ context.Context, statement *ast.RangeStm
 			if !ok {
 				return fmt.Errorf("range key is not an identifier: %T", statement.Key)
 			}
-			c.Scopes.DeclareVar(keyIdent.Name, parameterKind)
+			c.Scopes.DeclareParameter(keyIdent.Name, parameterKind)
 		} else {
 			c.Scopes.Alloc.Alloc(parameterKind)
 		}
@@ -417,7 +449,7 @@ func (c *Compiler) declareYieldParams(_ context.Context, statement *ast.RangeStm
 			if !ok {
 				return fmt.Errorf("range value is not an identifier: %T", statement.Value)
 			}
-			c.Scopes.DeclareVar(valueIdentifier.Name, parameterKind)
+			c.Scopes.DeclareParameter(valueIdentifier.Name, parameterKind)
 		} else {
 			c.Scopes.Alloc.Alloc(parameterKind)
 		}
@@ -669,9 +701,8 @@ func (c *Compiler) emitMove(ctx context.Context, dest, source program.VarLocatio
 	c.emitMoveTyped(ctx, dest, source, nil)
 }
 
-// emitMoveTyped is emitMove with the source operand's static type threaded through, so
-// general-bank moves can pick the alias-safe or always-snapshot mode at compile time and
-// elide the runtime kind switch in handleMoveGeneral.
+// emitMoveTyped emits a move using the source's static type, preserving value-copy
+// semantics when a general-bank value is spilled through a scratch register.
 //
 // Takes dest (VarLocation) which is the destination register location.
 // Takes source (VarLocation) which is the source register location.
@@ -689,8 +720,13 @@ func (c *Compiler) emitMoveTyped(ctx context.Context, dest, source program.VarLo
 			source = c.emitReloadIfSpilled(ctx, source)
 			defer c.Scopes.Alloc.FreeTemp(source.Kind, source.Register)
 		}
-		if source.Kind == dest.Kind {
+		if source.Kind == dest.Kind && dest.Kind != isa.RegisterGeneral {
 			c.emitSpillStore(ctx, source.Register, dest.Kind, dest.SpillSlot)
+		} else if source.Kind == dest.Kind {
+			scratch := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
+			c.emitSameKindMoveTyped(ctx, program.VarLocation{Register: scratch, Kind: isa.RegisterGeneral}, source, sourceType)
+			c.emitSpillStore(ctx, scratch, isa.RegisterGeneral, dest.SpillSlot)
+			c.Scopes.Alloc.FreeTemp(isa.RegisterGeneral, scratch)
 		} else {
 			scratch := c.Scopes.Alloc.AllocTemp(dest.Kind)
 			nonSpilledDest := program.VarLocation{Register: scratch, Kind: dest.Kind}
@@ -1199,7 +1235,7 @@ func (c *Compiler) bindSelectCaseVariables(ctx context.Context, selected selectC
 	}
 	location := program.VarLocation{Register: selected.destinationRegister, Kind: selected.assignmentKind}
 	if selected.isDefine && selected.assignmentName != "" && selected.assignmentName != typemap.BlankIdentName {
-		c.Scopes.Scopes[len(c.Scopes.Scopes)-1].Vars[selected.assignmentName] = location
+		c.Scopes.BindVar(selected.assignmentName, location)
 	}
 	if selected.valueTarget != nil {
 		if _, err := c.emitAssignTarget(ctx, selected.valueTarget, location); err != nil {
@@ -1213,7 +1249,7 @@ func (c *Compiler) bindSelectCaseVariables(ctx context.Context, selected selectC
 	okLocation := program.VarLocation{Register: c.Scopes.Alloc.Alloc(isa.RegisterBool), Kind: isa.RegisterBool}
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpIntToBool), okLocation.Register, selected.okRegister)
 	if selected.okName != "" {
-		c.Scopes.Scopes[len(c.Scopes.Scopes)-1].Vars[selected.okName] = okLocation
+		c.Scopes.BindVar(selected.okName, okLocation)
 	}
 	if selected.okTarget != nil {
 		if _, err := c.emitAssignTarget(ctx, selected.okTarget, okLocation); err != nil {
@@ -1223,19 +1259,15 @@ func (c *Compiler) bindSelectCaseVariables(ctx context.Context, selected selectC
 	return nil
 }
 
-// compileSelectCaseBody compiles each statement of a select case in sequence, surfacing
-// the first compilation error encountered.
+// compileSelectCaseBody compiles a select case's statement list, reclaiming temporaries
+// and dead locals after each statement.
 //
 // Takes body ([]ast.Stmt) which are the statements forming the select case body.
 //
 // Returns the first compilation error encountered, or nil on success.
 func (c *Compiler) compileSelectCaseBody(ctx context.Context, body []ast.Stmt) error {
-	for _, bodyStmt := range body {
-		if _, err := c.compileStmt(ctx, bodyStmt); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err := c.compileStmtList(ctx, body)
+	return err
 }
 
 // compileSend compiles a channel send statement (ch <- v).

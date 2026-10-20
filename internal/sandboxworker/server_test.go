@@ -21,10 +21,11 @@ package sandboxworker
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/sandboxwire"
 )
@@ -55,7 +56,7 @@ func (stream *fixtureTransport) ChargeOutput(count int) error {
 
 func TestServeSource(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct {
+	tests := []struct {
 		name    string
 		request Request
 		code    string
@@ -64,56 +65,47 @@ func TestServeSource(t *testing.T) {
 		{name: "compiled math", request: Request{Kind: "expression", Source: "import \"math\"\nmath.Sqrt(49)", Entrypoint: ""}, code: "ok", value: "7"},
 		{name: "file", request: Request{Kind: "file", Source: "package main\nfunc answer() int { return 42 }", Entrypoint: "answer"}, code: "ok", value: "42"},
 		{name: "denied import", request: Request{Kind: "expression", Source: "import \"os\"\nos.Getpid()", Entrypoint: ""}, code: "evaluation_failed", value: ""},
-	} {
-		t.Run(test.name, func(t *testing.T) {
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			stream := sourceFixture(t,
 				fixtureMessage(t, sandboxwire.Configure, 0, Configuration{Profile: Profile, Imports: []string{"math"}}),
-				fixtureMessage(t, sandboxwire.Run, 1, test.request),
+				fixtureMessage(t, sandboxwire.Run, 1, tt.request),
 				fixtureMessage(t, sandboxwire.Run, 2, Request{Kind: "execute", Source: "", Entrypoint: ""}),
 			)
-			if err := Serve(stream); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, Serve(stream))
 			codec, err := sandboxwire.New(bytes.NewReader(stream.output.Bytes()), io.Discard, sandboxwire.Limits{})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			kinds := []sandboxwire.Kind{sandboxwire.Hello, sandboxwire.Ready, sandboxwire.Result}
-			if test.code == "ok" {
+			if tt.code == "ok" {
 				kinds = append(kinds, sandboxwire.Result)
 			}
 			for index, kind := range kinds {
 				message, err := codec.Read()
-				if err != nil || message.Kind != kind {
-					t.Fatalf("unexpected response: %+v: %v", message, err)
-				}
+				require.NoError(t, err, "unexpected response: %+v", message)
+				require.Equal(t, kind, message.Kind)
 				if kind != sandboxwire.Result {
 					continue
 				}
 				var response Response
-				if err := message.DecodePayload(&response); err != nil {
-					t.Fatal(err)
-				}
-				if test.code == "ok" && index == 2 {
-					if message.ID != 1 || response.Code != "compiled" {
-						t.Fatalf("unexpected compilation result: %+v", response)
-					}
+				require.NoError(t, message.DecodePayload(&response))
+				if tt.code == "ok" && index == 2 {
+					require.Equal(t, uint64(1), message.ID, "unexpected compilation result: %+v", response)
+					require.Equal(t, "compiled", response.Code)
 					continue
 				}
 				identity := uint64(1)
-				if test.code == "ok" {
+				if tt.code == "ok" {
 					identity = 2
 				}
-				if message.ID != identity || response.Code != test.code {
-					t.Fatalf("unexpected execution result: %+v", response)
-				}
-				if test.value != "" && string(response.Value) != test.value {
-					t.Fatalf("unexpected scalar result: %s", response.Value)
+				require.Equal(t, identity, message.ID, "unexpected execution result: %+v", response)
+				require.Equal(t, tt.code, response.Code)
+				if tt.value != "" {
+					require.Equal(t, tt.value, string(response.Value), "scalar result")
 				}
 			}
-			if stream.deadline.IsZero() {
-				t.Fatal("worker I/O lacks a deadline")
-			}
+			require.False(t, stream.deadline.IsZero(), "worker I/O lacks a deadline")
 		})
 	}
 }
@@ -130,29 +122,21 @@ func TestServeRejectsInvalidProtocol(t *testing.T) {
 		{config, fixtureMessage(t, sandboxwire.Run, 1, Request{Kind: "expression", Source: "1", Entrypoint: "main"})},
 		{config, fixtureMessage(t, sandboxwire.Run, 1, Request{Kind: "file", Source: "package main", Entrypoint: ""})},
 	} {
-		if err := Serve(sourceFixture(t, messages...)); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatalf("invalid protocol accepted: %v", err)
-		}
+		require.ErrorIs(t, Serve(sourceFixture(t, messages...)), sandboxwire.ErrProtocol, "invalid protocol accepted")
 	}
 }
 
 func TestServeClosesBeforeSource(t *testing.T) {
 	t.Parallel()
 	stream := sourceFixture(t, fixtureMessage(t, sandboxwire.Close, 0, struct{}{}))
-	if err := Serve(stream); err != nil {
-		t.Fatal(err)
-	}
-	if err := Serve(nil); !errors.Is(err, sandboxwire.ErrProtocol) {
-		t.Fatalf("nil transport accepted: %v", err)
-	}
+	require.NoError(t, Serve(stream))
+	require.ErrorIs(t, Serve(nil), sandboxwire.ErrProtocol, "nil transport accepted")
 }
 
 func fixtureMessage(t *testing.T, kind sandboxwire.Kind, identity uint64, payload any) sandboxwire.Message {
 	t.Helper()
 	encoded, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return sandboxwire.Message{Kind: kind, ID: identity, Payload: encoded}
 }
 
@@ -160,13 +144,9 @@ func sourceFixture(t *testing.T, messages ...sandboxwire.Message) *fixtureTransp
 	t.Helper()
 	var buffer bytes.Buffer
 	codec, err := sandboxwire.New(bytes.NewReader(nil), &buffer, sandboxwire.Limits{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, message := range messages {
-		if err := codec.Write(message); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, codec.Write(message))
 	}
 	return &fixtureTransport{account: &accountingFixture{transport: nil, charged: 0, err: nil}, input: bytes.NewReader(buffer.Bytes()), output: bytes.Buffer{}, deadline: time.Time{}}
 }

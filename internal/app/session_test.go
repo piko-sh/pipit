@@ -20,7 +20,6 @@ package app
 
 import (
 	"bytes"
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -49,7 +48,7 @@ func TestSession_InspectInitialState(t *testing.T) {
 func TestSession_SubmitConstExpression(t *testing.T) {
 	t.Parallel()
 	session := NewService().NewSession()
-	result, err := session.Submit(context.Background(), "1 + 2")
+	result, err := session.Submit(t.Context(), "1 + 2")
 	require.NoError(t, err)
 	require.Equal(t, 3, result)
 }
@@ -58,10 +57,10 @@ func TestSession_SubmitDeclThenUseAcrossSubmits(t *testing.T) {
 	t.Parallel()
 	session := NewService().NewSession()
 
-	_, err := session.Submit(context.Background(), `var x = 10`)
+	_, err := session.Submit(t.Context(), `var x = 10`)
 	require.NoError(t, err)
 
-	result, err := session.Submit(context.Background(), `x * 2`)
+	result, err := session.Submit(t.Context(), `x * 2`)
 	require.NoError(t, err)
 	require.Equal(t, 20, result)
 }
@@ -70,7 +69,7 @@ func TestSession_InspectAfterSubmitTracksDecl(t *testing.T) {
 	t.Parallel()
 	session := NewService().NewSession()
 
-	_, err := session.Submit(context.Background(), `var counter = 0`)
+	_, err := session.Submit(t.Context(), `var counter = 0`)
 	require.NoError(t, err)
 
 	state := session.Inspect()
@@ -82,7 +81,7 @@ func TestSession_InspectAfterSubmitTracksDecl(t *testing.T) {
 func TestSession_ResetClearsAllState(t *testing.T) {
 	t.Parallel()
 	session := NewService().NewSession()
-	_, err := session.Submit(context.Background(), `var v = 1`)
+	_, err := session.Submit(t.Context(), `var v = 1`)
 	require.NoError(t, err)
 	require.Len(t, session.Inspect().Declarations, 1)
 
@@ -100,10 +99,10 @@ func TestSession_RedeclareSameNameIsError(t *testing.T) {
 	t.Parallel()
 	session := NewService().NewSession()
 
-	_, err := session.Submit(context.Background(), `var v = 1`)
+	_, err := session.Submit(t.Context(), `var v = 1`)
 	require.NoError(t, err)
 
-	_, err = session.Submit(context.Background(), `var v = 2`)
+	_, err = session.Submit(t.Context(), `var v = 2`)
 	require.Error(t, err, "redeclaring v in a subsequent submit should fail")
 }
 
@@ -111,12 +110,12 @@ func TestSession_RedeclareAfterResetSucceeds(t *testing.T) {
 	t.Parallel()
 	session := NewService().NewSession()
 
-	_, err := session.Submit(context.Background(), `var v = 1`)
+	_, err := session.Submit(t.Context(), `var v = 1`)
 	require.NoError(t, err)
 
 	session.Reset()
 
-	_, err = session.Submit(context.Background(), `var v = 2`)
+	_, err = session.Submit(t.Context(), `var v = 2`)
 	require.NoError(t, err, "after Reset, v should be declarable again")
 }
 
@@ -124,7 +123,7 @@ func TestSession_ShortVarAtTopLevelIsLifted(t *testing.T) {
 	t.Parallel()
 	session := NewService().NewSession()
 
-	_, err := session.Submit(context.Background(), `x := 5`)
+	_, err := session.Submit(t.Context(), `x := 5`)
 	require.NoError(t, err)
 
 	state := session.Inspect()
@@ -144,10 +143,10 @@ func TestSession_FunctionDeclVisibleAcrossSubmits(t *testing.T) {
 	t.Parallel()
 	session := NewService().NewSession()
 
-	_, err := session.Submit(context.Background(), `func double(x int) int { return x * 2 }`)
+	_, err := session.Submit(t.Context(), `func double(x int) int { return x * 2 }`)
 	require.NoError(t, err)
 
-	result, err := session.Submit(context.Background(), `double(21)`)
+	result, err := session.Submit(t.Context(), `double(21)`)
 	require.NoError(t, err)
 	require.Equal(t, 42, result)
 }
@@ -156,7 +155,7 @@ func TestSession_TypeDeclVisibleAcrossSubmits(t *testing.T) {
 	t.Parallel()
 	session := NewService().NewSession()
 
-	_, err := session.Submit(context.Background(), `type Point struct { X, Y int }`)
+	_, err := session.Submit(t.Context(), `type Point struct { X, Y int }`)
 	require.NoError(t, err)
 
 	state := session.Inspect()
@@ -168,11 +167,11 @@ func TestSession_MultipleSubmitsIncrementCount(t *testing.T) {
 	t.Parallel()
 	session := NewService().NewSession()
 
-	_, err := session.Submit(context.Background(), `var a = 1`)
+	_, err := session.Submit(t.Context(), `var a = 1`)
 	require.NoError(t, err)
-	_, err = session.Submit(context.Background(), `var b = 2`)
+	_, err = session.Submit(t.Context(), `var b = 2`)
 	require.NoError(t, err)
-	_, err = session.Submit(context.Background(), `a + b`)
+	_, err = session.Submit(t.Context(), `a + b`)
 	require.NoError(t, err)
 
 	require.Equal(t, 3, session.Inspect().SubmitCount)

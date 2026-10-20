@@ -217,17 +217,35 @@ func TestSnapshotVarReadsTheSlotInItsOwnType(t *testing.T) {
 		slot  program.GlobalVariableInfo
 	}{
 		{name: "an integer slot", slot: program.GlobalVariableInfo{Index: intIndex, Kind: isa.RegisterInt},
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, int64(42), got.Int()) }},
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, int64(42), got.Int())
+			}},
 		{name: "a float slot", slot: program.GlobalVariableInfo{Index: floatIndex, Kind: isa.RegisterFloat},
-			check: func(t *testing.T, got reflect.Value) { require.InDelta(t, 1.5, got.Float(), 0) }},
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.InDelta(t, 1.5, got.Float(), 0)
+			}},
 		{name: "a string slot", slot: program.GlobalVariableInfo{Index: stringIndex, Kind: isa.RegisterString},
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, "pipit", got.String()) }},
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, "pipit", got.String())
+			}},
 		{name: "a boolean slot", slot: program.GlobalVariableInfo{Index: boolIndex, Kind: isa.RegisterBool},
-			check: func(t *testing.T, got reflect.Value) { require.True(t, got.Bool()) }},
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.True(t, got.Bool())
+			}},
 		{name: "an unsigned slot", slot: program.GlobalVariableInfo{Index: uintIndex, Kind: isa.RegisterUint},
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, uint64(7), got.Uint()) }},
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, uint64(7), got.Uint())
+			}},
 		{name: "a general slot", slot: program.GlobalVariableInfo{Index: generalIndex, Kind: isa.RegisterGeneral},
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, 1, got.Len()) }},
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, 1, got.Len())
+			}},
 	}
 
 	for _, tt := range tests {
@@ -564,7 +582,7 @@ func TestSnapshotVarAsFollowsAnIndirectSlot(t *testing.T) {
 func TestSnapshotGeneralSlotAsTypesTheZeroSlot(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "", snapshotGeneralSlotAs(reflect.Value{}, reflect.TypeFor[string]()).Interface(),
+	require.Empty(t, snapshotGeneralSlotAs(reflect.Value{}, reflect.TypeFor[string]()).Interface(),
 		"a slot that was allocated but never written still has to answer with a usable value")
 	require.Equal(t, int64(4), snapshotGeneralSlotAs(reflect.ValueOf(int32(4)), reflect.TypeFor[int64]()).Interface())
 	require.Equal(t, "s", snapshotGeneralSlotAs(reflect.ValueOf("s"), reflect.TypeFor[string]()).Interface())

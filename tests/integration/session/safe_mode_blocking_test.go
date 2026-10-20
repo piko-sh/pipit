@@ -25,16 +25,15 @@ import (
 	"testing"
 	"time"
 
-	"pipit.sh/pipit/internal/app"
-
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
 func evalSafeModeFile(t *testing.T, source string) (any, error) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	s := app.NewService(app.WithSafeMode())
 	s.UseSymbolProviders(stdlib.Providers()...)

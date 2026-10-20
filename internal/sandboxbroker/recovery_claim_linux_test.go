@@ -23,32 +23,29 @@ package sandboxbroker
 import (
 	"bytes"
 	"crypto/sha256"
-	"errors"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRecoveryClaimExclusiveOwnership(t *testing.T) {
+	t.Parallel()
 	directories, binding := recoveryClaimFixture(t)
 	claim, err := OpenLinuxRecoveryClaim(directories[0], directories[1], directories[2], binding)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer claim.Close()
 	encoded, approved, err := claim.Checkpoint()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := ValidateRecoveryCheckpoint(encoded, approved, binding); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, ValidateRecoveryCheckpoint(encoded, approved, binding))
 	encoded[0] ^= 1
 	fresh, captured, err := claim.Checkpoint()
-	if err != nil || captured != approved || bytes.Equal(fresh, encoded) {
-		t.Fatal("checkpoint aliases caller bytes:", err)
-	}
+	require.NoError(t, err, "checkpoint aliases caller bytes")
+	require.Equal(t, approved, captured)
+	require.False(t, bytes.Equal(fresh, encoded))
 	var contenders sync.WaitGroup
 	for range 8 {
 		contenders.Go(func() {
@@ -56,78 +53,56 @@ func TestRecoveryClaimExclusiveOwnership(t *testing.T) {
 			if competing != nil {
 				_ = competing.Close()
 			}
-			if err == nil {
-				t.Error("simultaneous recovery claim accepted")
-			}
+			assert.Error(t, err, "simultaneous recovery claim accepted")
 		})
 	}
 	contenders.Wait()
 	for _, directory := range directories {
 		var storage LinuxRecoveryJournal
 		err := storage.open(directory)
-		if closeErr := storage.Close(); closeErr != nil {
-			t.Fatal(closeErr)
-		}
-		if err == nil {
-			t.Fatal("claim did not retain every store lease")
-		}
+		require.NoError(t, storage.Close())
+		require.Error(t, err, "the claim keeps every store lease")
 	}
-	if err := claim.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if encoded, approved, err := claim.Checkpoint(); !errors.Is(err, ErrClosed) || encoded != nil || approved != ([sha256.Size]byte{}) {
-		t.Fatal("released claim exposed authority:", err)
-	}
+	require.NoError(t, claim.Close())
+	encoded, approved, err = claim.Checkpoint()
+	require.ErrorIs(t, err, ErrClosed, "released claim exposed authority")
+	require.Nil(t, encoded)
+	require.Zero(t, approved)
 	replacement, err := OpenLinuxRecoveryClaim(directories[0], directories[1], directories[2], binding)
-	if err != nil {
-		t.Fatal("released claim kept leases:", err)
-	}
-	if err := replacement.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "released claim kept leases")
+	require.NoError(t, replacement.Close())
 }
 
 func TestRecoveryClaimRejectsChangedStorage(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"binding", "checkpoint", "approval", "journal", "missing-checkpoint", "missing-approval"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			directories, binding := recoveryClaimFixture(t)
 			switch mode {
 			case "binding":
 				binding[1] = 1
 			case "checkpoint":
-				if err := os.WriteFile(filepath.Join(directories[1], recoveryCheckpointName), []byte("{}"), 0600); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.WriteFile(filepath.Join(directories[1], recoveryCheckpointName), []byte("{}"), 0600))
 			case "approval":
-				if err := os.WriteFile(filepath.Join(directories[2], recoveryApprovalName), []byte("invalid"), 0600); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.WriteFile(filepath.Join(directories[2], recoveryApprovalName), []byte("invalid"), 0600))
 			case "journal":
 				directories[0] = testRecoveryDirectory(t)
 			case "missing-checkpoint":
-				if err := os.Remove(filepath.Join(directories[1], recoveryCheckpointName)); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Remove(filepath.Join(directories[1], recoveryCheckpointName)))
 			case "missing-approval":
-				if err := os.Remove(filepath.Join(directories[2], recoveryApprovalName)); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Remove(filepath.Join(directories[2], recoveryApprovalName)))
 			}
 			claim, err := OpenLinuxRecoveryClaim(directories[0], directories[1], directories[2], binding)
 			if claim != nil {
 				_ = claim.Close()
 			}
-			if err == nil || claim != nil {
-				t.Fatal("changed authority accepted:", err)
-			}
+			require.Error(t, err, "changed authority accepted")
+			require.Nil(t, claim)
 			for _, directory := range directories {
 				var storage LinuxRecoveryJournal
-				if err := storage.open(directory); err != nil {
-					t.Fatal("failed claim retained a partial lease:", err)
-				}
-				if err := storage.Close(); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, storage.open(directory), "a failed claim keeps no partial lease")
+				require.NoError(t, storage.Close())
 			}
 		})
 	}
@@ -138,23 +113,16 @@ func recoveryClaimFixture(t *testing.T) ([3]string, [sha256.Size]byte) {
 	directories := [3]string{testRecoveryDirectory(t), testRecoveryDirectory(t), testRecoveryDirectory(t)}
 	authority := testRecoveryAuthority(t, Read|Write)
 	journal, err := OpenLinuxRecoveryJournal(directories[0], authority.namespace)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer journal.Close()
 	checkpoint, err := OpenLinuxRecoveryCheckpointStore(directories[1])
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer checkpoint.Close()
 	approval, err := OpenLinuxRecoveryApprovalStore(directories[2])
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer approval.Close()
 	binding := [sha256.Size]byte{1}
-	if _, err := authority.PersistApprovedCheckpoint(journal, checkpoint, approval, binding); err != nil {
-		t.Fatal(err)
-	}
+	_, err = authority.PersistApprovedCheckpoint(journal, checkpoint, approval, binding)
+	require.NoError(t, err)
 	return directories, binding
 }

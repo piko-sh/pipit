@@ -43,7 +43,7 @@ func TestLicmHoistsLoopInvariantRead(t *testing.T) {
 	}
 	compiledFunction := &program.CompiledFunction{Body: body}
 	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
-	require.Equal(t, 4, len(compiledFunction.Body), "the body keeps its length: nothing is left at the original site")
+	require.Len(t, compiledFunction.Body, 4, "the body keeps its length: nothing is left at the original site")
 	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[1].Op, "read stays at the loop header, now the pre-header")
 	require.Equal(t, uint8(5), compiledFunction.Body[1].A)
 	require.Equal(t, uint8(4), compiledFunction.Body[1].B)
@@ -65,7 +65,7 @@ func TestLicmRefusesWhenReceiverWrittenInLoop(t *testing.T) {
 	originalLen := len(body)
 	compiledFunction := &program.CompiledFunction{Body: body}
 	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
-	require.Equal(t, originalLen, len(compiledFunction.Body), "no hoist when receiver mutated in loop")
+	require.Len(t, compiledFunction.Body, originalLen, "no hoist when receiver mutated in loop")
 	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[1].Op, "read unchanged")
 }
 
@@ -80,7 +80,7 @@ func TestLicmRefusesWhenDestRewrittenInLoop(t *testing.T) {
 	originalLen := len(body)
 	compiledFunction := &program.CompiledFunction{Body: body}
 	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
-	require.Equal(t, originalLen, len(compiledFunction.Body), "no hoist when dest reg clobbered in loop")
+	require.Len(t, compiledFunction.Body, originalLen, "no hoist when dest reg clobbered in loop")
 }
 
 func TestLicmRefusesWhenCallInLoop(t *testing.T) {
@@ -94,7 +94,7 @@ func TestLicmRefusesWhenCallInLoop(t *testing.T) {
 	originalLen := len(body)
 	compiledFunction := &program.CompiledFunction{Body: body}
 	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
-	require.Equal(t, originalLen, len(compiledFunction.Body), "no hoist when call in loop")
+	require.Len(t, compiledFunction.Body, originalLen, "no hoist when call in loop")
 }
 
 func TestLicmRefusesWhenSetSameFieldInLoop(t *testing.T) {
@@ -108,7 +108,7 @@ func TestLicmRefusesWhenSetSameFieldInLoop(t *testing.T) {
 	originalLen := len(body)
 	compiledFunction := &program.CompiledFunction{Body: body}
 	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
-	require.Equal(t, originalLen, len(compiledFunction.Body), "no hoist when same struct field written in loop")
+	require.Len(t, compiledFunction.Body, originalLen, "no hoist when same struct field written in loop")
 }
 
 func TestLicmIgnoresForwardJumpsAsNonLoops(t *testing.T) {
@@ -121,7 +121,7 @@ func TestLicmIgnoresForwardJumpsAsNonLoops(t *testing.T) {
 	originalLen := len(body)
 	compiledFunction := &program.CompiledFunction{Body: body}
 	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
-	require.Equal(t, originalLen, len(compiledFunction.Body), "forward jump is not a loop; no hoist")
+	require.Len(t, compiledFunction.Body, originalLen, "forward jump is not a loop; no hoist")
 }
 
 func TestLicmEntryJumpLandsOnHoistedRead(t *testing.T) {
@@ -135,7 +135,7 @@ func TestLicmEntryJumpLandsOnHoistedRead(t *testing.T) {
 	}
 	compiledFunction := &program.CompiledFunction{Body: body}
 	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
-	require.Equal(t, 4, len(compiledFunction.Body))
+	require.Len(t, compiledFunction.Body, 4)
 	require.Equal(t, isa.OpJumpIfFalse, compiledFunction.Body[0].Op)
 	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[1].Op, "hoisted read at the old header")
 	require.Equal(t, isa.OpLoadIntConst, compiledFunction.Body[2].Op, "the word that led the loop follows the read")
@@ -159,7 +159,7 @@ func TestLicmHoistsDominatingReadAfterConditional(t *testing.T) {
 	}
 	compiledFunction := &program.CompiledFunction{Body: body}
 	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
-	require.Equal(t, 5, len(compiledFunction.Body))
+	require.Len(t, compiledFunction.Body, 5)
 	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[1].Op, "dominating read moved to the pre-header (the old loop header)")
 	require.Equal(t, isa.OpJumpIfTrue, compiledFunction.Body[2].Op)
 	skip, isJump := program.JumpTargetAt(compiledFunction.Body, 2)
@@ -181,7 +181,7 @@ func TestLicmRefusesHoistWhenPreHeaderUnconditionallyJumps(t *testing.T) {
 	originalLen := len(body)
 	compiledFunction := &program.CompiledFunction{Body: body}
 	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
-	require.Equal(t, originalLen, len(compiledFunction.Body), "no hoist when the slot preceding the loop header unconditionally jumps elsewhere")
+	require.Len(t, compiledFunction.Body, originalLen, "no hoist when the slot preceding the loop header unconditionally jumps elsewhere")
 	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[1].Op)
 }
 
@@ -196,7 +196,7 @@ func TestLicmPreservesBackEdgeTargetAfterShift(t *testing.T) {
 	}
 	compiledFunction := &program.CompiledFunction{Body: body}
 	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
-	require.Equal(t, 5, len(compiledFunction.Body))
+	require.Len(t, compiledFunction.Body, 5)
 	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[1].Op)
 	require.Equal(t, uint8(2), compiledFunction.Body[2].A, "the header's word shifted down by the read's width")
 	target, isJump := program.JumpTargetAt(compiledFunction.Body, 4)

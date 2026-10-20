@@ -44,7 +44,7 @@ func parseLoop(t *testing.T, source string) *ast.ForStmt {
 			return loop
 		}
 	}
-	t.Fatal("the fixture must contain a for statement")
+	require.FailNow(t, "the fixture must contain a for statement")
 	return nil
 }
 

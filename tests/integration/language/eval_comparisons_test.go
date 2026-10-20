@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,7 +32,7 @@ func TestEvalGenericComparisons(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -46,7 +46,7 @@ func run() bool { return less(uint(10), uint(20)) }
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     true,
+			want:       true,
 		},
 		{
 			name: "generic_uint_ge",
@@ -57,7 +57,7 @@ func run() bool { return ge(uint(20), uint(10)) }
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     true,
+			want:       true,
 		},
 		{
 			name: "generic_float_lt",
@@ -68,7 +68,7 @@ func run() bool { return less(3.14, 2.71) }
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     false,
+			want:       false,
 		},
 		{
 			name: "generic_float_ge",
@@ -79,7 +79,7 @@ func run() bool { return ge(1.0, 1.0) }
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     true,
+			want:       true,
 		},
 		{
 			name: "generic_string_lt",
@@ -90,7 +90,7 @@ func run() bool { return less("abc", "abd") }
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     true,
+			want:       true,
 		},
 		{
 			name: "generic_string_ge",
@@ -101,7 +101,7 @@ func run() bool { return ge("xyz", "abc") }
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     true,
+			want:       true,
 		},
 	}
 
@@ -109,9 +109,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -120,7 +120,7 @@ func TestEvalBoolComparisonBoxedAsAny(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
+		want   any
 		name   string
 		source string
 	}{
@@ -135,7 +135,7 @@ func run() bool {
 }
 func main() {}
 `,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "bool_compare_stored_as_any",
@@ -147,7 +147,7 @@ func run() bool {
 }
 func main() {}
 `,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "bool_compare_in_slice_any",
@@ -159,7 +159,7 @@ func run() bool {
 }
 func main() {}
 `,
-			expect: true,
+			want: true,
 		},
 	}
 
@@ -167,9 +167,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, "run")
+			result, err := service.EvalFile(t.Context(), tt.source, "run")
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

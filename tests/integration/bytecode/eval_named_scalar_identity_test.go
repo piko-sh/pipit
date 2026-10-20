@@ -21,22 +21,23 @@
 package bytecode_test
 
 import (
-	"context"
 	"go/token"
 	"go/types"
 	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/symtab/typemodel"
 )
 
 func TestEvalNamedScalarAssertIdentity(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name   string
-		code   string
-		expect string
+		name string
+		code string
+		want string
 	}{
 		{
 			name: "string_named_vs_plain",
@@ -51,7 +52,7 @@ func check() string {
 	return "leak"
 }
 check()`,
-			expect: "exact",
+			want: "exact",
 		},
 		{
 			name: "bool_named_vs_plain",
@@ -67,7 +68,7 @@ func check() string {
 	return "leak"
 }
 check()`,
-			expect: "exact",
+			want: "exact",
 		},
 		{
 			name: "float_named_vs_plain",
@@ -82,7 +83,7 @@ func check() string {
 	return "leak"
 }
 check()`,
-			expect: "exact",
+			want: "exact",
 		},
 		{
 			name: "plain_never_satisfies_named",
@@ -97,7 +98,7 @@ func check() string {
 	return "leak"
 }
 check()`,
-			expect: "exact",
+			want: "exact",
 		},
 		{
 			name: "interface_equality_named_vs_plain",
@@ -113,16 +114,17 @@ func check() string {
 	return "lost"
 }
 check()`,
-			expect: "exact",
+			want: "exact",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

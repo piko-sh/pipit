@@ -19,7 +19,6 @@
 package passes
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -34,29 +33,30 @@ func TestGlobalSliceFieldReusePreservesMemoryBarriers(t *testing.T) {
 		isa.NewTier1Instruction(isa.SubOpGetStructFieldSliceByte, 2, 1),
 		isa.NewInstruction(isa.OpExt, 3, 0, 0),
 	}
-	cases := []struct {
+	tests := []struct {
 		name    string
 		between []isa.Instruction
 		reuse   bool
 	}{
-		{"byte element", []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSliceSetByteDirect, 2, 0), isa.NewInstruction(isa.OpExt, 0, 0, 0)}, true},
-		{"call", []isa.Instruction{isa.NewTier1Instruction(isa.SubOpCall, 0, 0)}, false},
-		{"global assignment", []isa.Instruction{isa.NewInstruction(isa.OpSetGlobal, 1, 7, uint8(isa.RegisterGeneral))}, false},
-		{"receiver overwrite", []isa.Instruction{isa.NewInstruction(isa.OpMoveGeneral, 1, 4, 1)}, false},
-		{"slice overwrite", []isa.Instruction{isa.NewTier1Instruction(isa.SubOpMoveSliceByte, 2, 4)}, false},
-		{"field assignment", []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSetStructFieldSliceByte, 1, 2), isa.NewInstruction(isa.OpExt, 3, 0, 0)}, false},
-		{"indirect store", []isa.Instruction{isa.NewInstruction(isa.OpIndexSet, 1, 0, 3)}, false},
+		{name: "byte element", between: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSliceSetByteDirect, 2, 0), isa.NewInstruction(isa.OpExt, 0, 0, 0)}, reuse: true},
+		{name: "call", between: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpCall, 0, 0)}, reuse: false},
+		{name: "global assignment", between: []isa.Instruction{isa.NewInstruction(isa.OpSetGlobal, 1, 7, uint8(isa.RegisterGeneral))}, reuse: false},
+		{name: "receiver overwrite", between: []isa.Instruction{isa.NewInstruction(isa.OpMoveGeneral, 1, 4, 1)}, reuse: false},
+		{name: "slice overwrite", between: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpMoveSliceByte, 2, 4)}, reuse: false},
+		{name: "field assignment", between: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSetStructFieldSliceByte, 1, 2), isa.NewInstruction(isa.OpExt, 3, 0, 0)}, reuse: false},
+		{name: "indirect store", between: []isa.Instruction{isa.NewInstruction(isa.OpIndexSet, 1, 0, 3)}, reuse: false},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			body := append([]isa.Instruction{}, chain...)
-			body = append(body, tc.between...)
+			body = append(body, tt.between...)
 			second := len(body)
 			body = append(body, chain...)
 			cf := &program.CompiledFunction{Body: body}
-			require.NoError(t, ElideRedundantStructFieldRead(context.Background(), cf, body))
+			require.NoError(t, ElideRedundantStructFieldRead(t.Context(), cf, body))
 			reused := isCanonicalNop(body[second]) && isCanonicalNop(body[second+1]) && isCanonicalNop(body[second+2])
-			require.Equal(t, tc.reuse, reused)
+			require.Equal(t, tt.reuse, reused)
 		})
 	}
 }

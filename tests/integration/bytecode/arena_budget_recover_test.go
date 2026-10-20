@@ -21,14 +21,13 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/fault"
-
-	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -54,7 +53,7 @@ func run() int {
 func TestArenaBudgetDuringVarInitSurfacesAsError(t *testing.T) {
 	t.Parallel()
 	const tinyBudget = 1 << 20
-	ctx := context.Background()
+	ctx := t.Context()
 
 	compile := func(t *testing.T) (*app.Service, *program.CompiledFileSet) {
 		t.Helper()

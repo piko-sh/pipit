@@ -123,5 +123,5 @@ func TestTypesExportManifestMatchesDescriptor(t *testing.T) {
 	require.Equal(t, manifestFiles, embeddedFiles, "every embedded blob must be listed and vice versa")
 
 	require.True(t, strings.HasPrefix(typesExportGoVersion, "go"), typesExportGoVersion)
-	require.Equal(t, len(TypesPackages()), len(typesExportManifest))
+	require.Len(t, typesExportManifest, len(TypesPackages()))
 }

@@ -158,7 +158,6 @@ var callSiteNotSerialised = map[string]string{
 	"MethodICVictim":             "runtime cache or dispatch state rebuilt at first execution; unexported until the program-package split and never serialised",
 	"NativeFastPath":             "runtime cache or dispatch state rebuilt at first execution; unexported until the program-package split and never serialised",
 	"NativeFunctionPath":         "runtime cache or dispatch state rebuilt at first execution; unexported until the program-package split and never serialised",
-	"VariadicArgumentsBuffer":    "runtime cache or dispatch state rebuilt at first execution; unexported until the program-package split and never serialised",
 }
 
 var unreviewedNotSerialisedFields = map[string]bool{

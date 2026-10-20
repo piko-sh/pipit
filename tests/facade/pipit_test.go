@@ -20,10 +20,11 @@ package facade_test
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit"
 	"pipit.sh/pipit/sdk/stdlib"
@@ -33,13 +34,9 @@ func TestInterpreterEvalArithmetic(t *testing.T) {
 	t.Parallel()
 
 	interpreter := pipit.NewInterpreter(stdlib.WithStandardLibrary(), pipit.WithMaxExecutionTime(5*time.Second))
-	result, err := interpreter.Eval(context.Background(), "1 + 2 * 3")
-	if err != nil {
-		t.Fatalf("eval returned error: %v", err)
-	}
-	if got, ok := result.(int); !ok || got != 7 {
-		t.Fatalf("expected 7, got %v (%T)", result, result)
-	}
+	result, err := interpreter.Eval(t.Context(), "1 + 2 * 3")
+	require.NoError(t, err)
+	require.Equal(t, 7, result)
 }
 
 func TestInterpreterEvalImport(t *testing.T) {
@@ -50,37 +47,27 @@ func TestInterpreterEvalImport(t *testing.T) {
 import "strings"
 strings.ToUpper("pipit")
 `
-	result, err := interpreter.Eval(context.Background(), source)
-	if err != nil {
-		t.Fatalf("eval returned error: %v", err)
-	}
-	if result != "PIPIT" {
-		t.Fatalf("expected PIPIT, got %v", result)
-	}
+	result, err := interpreter.Eval(t.Context(), source)
+	require.NoError(t, err)
+	require.Equal(t, "PIPIT", result)
 }
 
 func TestStandardLibraryExportsPopulated(t *testing.T) {
 	t.Parallel()
 
 	exports := stdlib.Exports()
-	if len(exports) == 0 {
-		t.Fatal("expected at least one package in the standard library")
-	}
-	if _, ok := exports["strings"]; !ok {
-		t.Fatal("expected the strings package to be exported")
-	}
+	require.NotEmpty(t, exports, "the standard library exports at least one package")
+	_, ok := exports["strings"]
+	require.True(t, ok, "the standard library exports strings")
 }
 
 func TestBareInterpreterRegistersNothing(t *testing.T) {
 	t.Parallel()
 
 	interpreter := pipit.NewInterpreter()
-	if interpreter.HasRegisteredPackage("strings") {
-		t.Fatal("expected a bare interpreter to register no packages")
-	}
-	if _, err := interpreter.Eval(context.Background(), "import \"strings\"\nstrings.ToUpper(\"x\")"); err == nil {
-		t.Fatal("expected an unregistered import to fail")
-	}
+	require.False(t, interpreter.HasRegisteredPackage("strings"), "a bare interpreter registers no packages")
+	_, err := interpreter.Eval(t.Context(), "import \"strings\"\nstrings.ToUpper(\"x\")")
+	require.Error(t, err, "an unregistered import fails")
 }
 
 func TestPooledInterpretersEvaluateIndependently(t *testing.T) {
@@ -90,17 +77,11 @@ func TestPooledInterpretersEvaluateIndependently(t *testing.T) {
 
 	for _, expression := range []string{"21 * 2", "6 * 7", "84 / 2"} {
 		interpreter, ok := pool.Get().(*pipit.Interpreter)
-		if !ok {
-			t.Fatal("pool returned an unexpected type")
-		}
+		require.True(t, ok, "the pool holds interpreters")
 
-		result, err := interpreter.Eval(context.Background(), expression)
-		if err != nil {
-			t.Fatalf("eval %q: %v", expression, err)
-		}
-		if got, isInt := result.(int); !isInt || got != 42 {
-			t.Fatalf("eval %q: expected 42, got %v (%T)", expression, result, result)
-		}
+		result, err := interpreter.Eval(t.Context(), expression)
+		require.NoError(t, err, "eval %q", expression)
+		require.Equal(t, 42, result)
 
 		pool.Put(interpreter)
 	}
@@ -109,30 +90,28 @@ func TestPooledInterpretersEvaluateIndependently(t *testing.T) {
 func TestFacadeErrorsAreIsAble(t *testing.T) {
 	t.Parallel()
 
-	cancelled, cancel := context.WithCancel(context.Background())
+	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	cases := []struct {
+	tests := []struct {
 		name    string
 		options []pipit.Option
 		ctx     context.Context
 		source  string
 		want    error
 	}{
-		{name: "parse", options: nil, ctx: context.Background(), source: "func(", want: pipit.ErrParse},
-		{name: "typecheck", options: nil, ctx: context.Background(), source: `var x int = "s"; x`, want: pipit.ErrTypeCheck},
+		{name: "parse", options: nil, ctx: t.Context(), source: "func(", want: pipit.ErrParse},
+		{name: "typecheck", options: nil, ctx: t.Context(), source: `var x int = "s"; x`, want: pipit.ErrTypeCheck},
 		{name: "cancelled", options: nil, ctx: cancelled, source: "1 + 1", want: pipit.ErrExecutionCancelled},
-		{name: "cost budget", options: []pipit.Option{pipit.WithCostBudget(1)}, ctx: context.Background(), source: "s := 0; for i := 0; i < 1000000; i++ { s += i }; s", want: pipit.ErrCostBudgetExceeded},
+		{name: "cost budget", options: []pipit.Option{pipit.WithCostBudget(1)}, ctx: t.Context(), source: "s := 0; for i := 0; i < 1000000; i++ { s += i }; s", want: pipit.ErrCostBudgetExceeded},
 	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			options := append([]pipit.Option{stdlib.WithStandardLibrary()}, testCase.options...)
+			options := append([]pipit.Option{stdlib.WithStandardLibrary()}, tt.options...)
 			interpreter := pipit.NewInterpreter(options...)
-			_, err := interpreter.Eval(testCase.ctx, testCase.source)
-			if !errors.Is(err, testCase.want) {
-				t.Fatalf("errors.Is(%v, %v) is false", err, testCase.want)
-			}
+			_, err := interpreter.Eval(tt.ctx, tt.source)
+			require.ErrorIs(t, err, tt.want)
 		})
 	}
 }

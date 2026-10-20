@@ -34,7 +34,7 @@ import (
 
 func TestParseRunDirective(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	tests := []struct {
 		name     string
 		source   string
 		wantOK   bool
@@ -55,13 +55,13 @@ func TestParseRunDirective(t *testing.T) {
 		{name: "code before comment", source: "package main\n// run\n", wantOK: false, wantArgs: nil, wantSkip: ""},
 		{name: "empty file", source: "", wantOK: false, wantArgs: nil, wantSkip: ""},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			directive, ok := parseRunDirective(bufio.NewScanner(strings.NewReader(tc.source)))
-			require.Equal(t, tc.wantOK, ok)
-			assert.Equal(t, tc.wantArgs, directive.args)
-			assert.Equal(t, tc.wantSkip, directive.skip)
+			directive, ok := parseRunDirective(bufio.NewScanner(strings.NewReader(tt.source)))
+			require.Equal(t, tt.wantOK, ok)
+			assert.Equal(t, tt.wantArgs, directive.args)
+			assert.Equal(t, tt.wantSkip, directive.skip)
 		})
 	}
 }
@@ -69,7 +69,7 @@ func TestParseRunDirective(t *testing.T) {
 func TestClassifyFailure(t *testing.T) {
 	t.Parallel()
 	generic := errors.New("exit status 1")
-	cases := []struct {
+	tests := []struct {
 		name       string
 		output     string
 		err        error
@@ -89,13 +89,20 @@ func TestClassifyFailure(t *testing.T) {
 		{name: "program output precedes failure", output: "Ones: 1 1 1\npipit: evaluating file: panic: bad\n", err: generic, wantBucket: bucketRuntime, wantDetail: "pipit: evaluating file: panic: bad"},
 		{name: "diagnostic line stripped", output: "2026/09/17 06:00:00 WARN Type cycle detected\npipit: evaluating file: panic: bad\n", err: generic, wantBucket: bucketRuntime, wantDetail: "pipit: evaluating file: panic: bad"},
 		{name: "no output falls back to error", output: "", err: generic, wantBucket: bucketRuntime, wantDetail: "exit status 1"},
+		{
+			name: "several problems are classified by the first",
+			output: "pipit: compiling program: type check failed: example.com/m/a: a.go:3:22: undefined: missing\n\n" +
+				"compilation failed: example.com/m/b: //go:embed is not supported at b.go:3:1\n\nhint: move it\n",
+			err: generic, wantBucket: bucketUnsupported,
+			wantDetail: "pipit: compiling program: type check failed: example.com/m/a: a.go:3:22: undefined: missing",
+		},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := classifyFailure("f.go", tc.output, tc.err)
-			assert.Equal(t, tc.wantBucket, result.bucket)
-			assert.Equal(t, tc.wantDetail, result.detail)
+			result := classifyFailure("f.go", tt.output, tt.err)
+			assert.Equal(t, tt.wantBucket, result.bucket)
+			assert.Equal(t, tt.wantDetail, result.detail)
 		})
 	}
 }

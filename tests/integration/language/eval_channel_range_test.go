@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalChannelRange(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "buffered_channel",
@@ -51,7 +51,7 @@ func TestEvalChannelRange(t *testing.T) {
 	return total
 }
 sum()`,
-			expect: 60,
+			want: 60,
 		},
 		{
 			name: "closed_after_sends_via_goroutine",
@@ -70,7 +70,7 @@ sum()`,
 	return sum
 }
 collect()`,
-			expect: 15,
+			want: 15,
 		},
 		{
 			name: "empty_channel",
@@ -84,7 +84,7 @@ collect()`,
 	return count
 }
 empty()`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "string_channel",
@@ -100,7 +100,7 @@ empty()`,
 	return result
 }
 concat()`,
-			expect: "hello world",
+			want: "hello world",
 		},
 	}
 
@@ -108,9 +108,9 @@ concat()`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

@@ -45,23 +45,24 @@ func newNamedAliasBasicType(t *testing.T, name, alias string) *types.Named {
 
 func TestNamedScalarPoolUnifiesAliasBasicSpellings(t *testing.T) {
 	t.Parallel()
-	for _, probe := range []struct {
+	tests := []struct {
 		alias string
 		kind  types.BasicKind
 	}{
 		{alias: "rune", kind: types.Int32},
 		{alias: "byte", kind: types.Uint8},
-	} {
-		t.Run(probe.alias, func(t *testing.T) {
+	}
+	for _, tt := range tests {
+		t.Run(tt.alias, func(t *testing.T) {
 			t.Parallel()
 			registry := newNamedScalarPoolRegistry()
 
-			fromSource := registry.typeFor(newNamedAliasBasicType(t, "Operator", probe.alias), maxNamedScalarPoolKeys, false)
-			fromDescriptor := registry.typeFor(newNamedBasicType("Operator", probe.kind), maxNamedScalarPoolKeys, true)
+			fromSource := registry.typeFor(newNamedAliasBasicType(t, "Operator", tt.alias), maxNamedScalarPoolKeys, false)
+			fromDescriptor := registry.typeFor(newNamedBasicType("Operator", tt.kind), maxNamedScalarPoolKeys, true)
 
 			require.NotNil(t, fromSource)
 			require.Equal(t, fromSource, fromDescriptor,
-				"%s and %s spell one source type and must share a pool column", probe.alias, types.Typ[probe.kind].Name())
+				"%s and %s spell one source type and must share a pool column", tt.alias, types.Typ[tt.kind].Name())
 			require.Len(t, registry.byKey, 1)
 		})
 	}

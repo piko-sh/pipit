@@ -24,6 +24,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestStoreUpsertAndLookup(t *testing.T) {
@@ -31,18 +33,12 @@ func TestStoreUpsertAndLookup(t *testing.T) {
 	store := NewStore(filepath.Join(t.TempDir(), LockfileName))
 	store.Upsert(LockedModule{Path: "example.com/mod", Version: "v1", BundleDigest: "sha256:aaa"})
 	got, ok := store.Lookup("example.com/mod", "v1")
-	if !ok {
-		t.Fatalf("Lookup after Upsert returned not-found")
-	}
-	if got.BundleDigest != "sha256:aaa" {
-		t.Fatalf("BundleDigest mismatch: %q", got.BundleDigest)
-	}
+	require.True(t, ok, "a lookup after an upsert finds the entry")
+	require.Equal(t, "sha256:aaa", got.BundleDigest, "the bundle digest matches")
 
 	store.Upsert(LockedModule{Path: "example.com/mod", Version: "v1", BundleDigest: "sha256:bbb"})
 	got, _ = store.Lookup("example.com/mod", "v1")
-	if got.BundleDigest != "sha256:bbb" {
-		t.Fatalf("Upsert did not replace prior entry")
-	}
+	require.Equal(t, "sha256:bbb", got.BundleDigest, "an upsert replaces the prior entry")
 }
 
 func TestStoreSaveLoadRoundTrip(t *testing.T) {
@@ -57,46 +53,31 @@ func TestStoreSaveLoadRoundTrip(t *testing.T) {
 		ApprovedCapabilities: []string{"network.dial(*:443)"},
 		ApprovedVia:          "interactive",
 	})
-	if err := store.Save(); err != nil {
-		t.Fatalf("Save error: %v", err)
-	}
+	require.NoError(t, store.Save())
 
 	reloaded := NewStore(path)
-	if err := reloaded.Load(); err != nil {
-		t.Fatalf("Load error: %v", err)
-	}
+	require.NoError(t, reloaded.Load())
 	got, ok := reloaded.Lookup("example.com/mod", "v1")
-	if !ok {
-		t.Fatalf("reloaded store missing module")
-	}
-	if got.BundleDigest != "sha256:bundle" {
-		t.Fatalf("BundleDigest mismatch after reload: %q", got.BundleDigest)
-	}
-	if len(got.ApprovedCapabilities) != 1 || got.ApprovedCapabilities[0] != "network.dial(*:443)" {
-		t.Fatalf("ApprovedCapabilities lost across reload: %v", got.ApprovedCapabilities)
-	}
+	require.True(t, ok, "the reloaded store holds the module")
+	require.Equal(t, "sha256:bundle", got.BundleDigest, "the bundle digest survives a reload")
+	require.Len(t, got.ApprovedCapabilities, 1, "approved capabilities survive a reload")
+	require.Equal(t, "network.dial(*:443)", got.ApprovedCapabilities[0])
 }
 
 func TestStoreLoadMissingFileIsNoop(t *testing.T) {
 	t.Parallel()
 	store := NewStore(filepath.Join(t.TempDir(), "absent.lock"))
-	if err := store.Load(); err != nil {
-		t.Fatalf("Load of missing file should return nil, got %v", err)
-	}
+	require.NoError(t, store.Load(), "loading a missing file returns nil")
 }
 
 func TestStoreLoadRejectsFutureSchema(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), LockfileName)
 	future := `{"schema": 99999, "modules": []}`
-	if err := os.WriteFile(path, []byte(future), 0o600); err != nil {
-		t.Fatalf("WriteFile error: %v", err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(future), 0o600))
 	store := NewStore(path)
 	err := store.Load()
-	if err == nil {
-		t.Fatalf("expected error for future schema")
-	}
+	require.Error(t, err, "a future schema is rejected")
 }
 
 type mockPrompter struct {
@@ -113,22 +94,16 @@ func (m *mockPrompter) Confirm(_ context.Context, _, _, _ string) (bool, error) 
 func TestHookPermissiveModeAllowsAll(t *testing.T) {
 	t.Parallel()
 	hook := NewHook(HookModePermissive, nil, nil)
-	if err := hook.CheckFileOpen(context.Background(), "", "/etc/passwd", 0, 0); err != nil {
-		t.Fatalf("permissive CheckFileOpen returned %v", err)
-	}
-	if err := hook.CheckExec(context.Background(), "", "ls", nil); err != nil {
-		t.Fatalf("permissive CheckExec returned %v", err)
-	}
+	require.NoError(t, hook.CheckFileOpen(t.Context(), "", "/etc/passwd", 0, 0))
+	require.NoError(t, hook.CheckExec(t.Context(), "", "ls", nil))
 }
 
 func TestHookFrozenModeRejectsUnapproved(t *testing.T) {
 	t.Parallel()
 	store := NewStore(filepath.Join(t.TempDir(), LockfileName))
 	hook := NewHook(HookModeFrozen, store, nil)
-	err := hook.CheckFileOpen(context.Background(), "example.com/mod", "/etc/passwd", 0, 0)
-	if err == nil {
-		t.Fatalf("frozen mode should reject unapproved claim")
-	}
+	err := hook.CheckFileOpen(t.Context(), "example.com/mod", "/etc/passwd", 0, 0)
+	require.Error(t, err, "frozen mode rejects an unapproved claim")
 }
 
 func TestHookFrozenModeAcceptsApproved(t *testing.T) {
@@ -140,9 +115,7 @@ func TestHookFrozenModeAcceptsApproved(t *testing.T) {
 		ApprovedCapabilities: []string{"filesystem.read(/etc/passwd)"},
 	})
 	hook := NewHook(HookModeFrozen, store, nil)
-	if err := hook.CheckFileOpen(context.Background(), "example.com/mod", "/etc/passwd", 0, 0); err != nil {
-		t.Fatalf("frozen mode rejected approved claim: %v", err)
-	}
+	require.NoError(t, hook.CheckFileOpen(t.Context(), "example.com/mod", "/etc/passwd", 0, 0), "frozen mode accepts an approved claim")
 }
 
 func TestHookInteractivePromptsAndPersists(t *testing.T) {
@@ -151,19 +124,11 @@ func TestHookInteractivePromptsAndPersists(t *testing.T) {
 	prompter := &mockPrompter{approve: true}
 	hook := NewHook(HookModeInteractive, store, prompter)
 
-	if err := hook.CheckFileOpen(context.Background(), "example.com/mod", "/tmp/x", 0, 0); err != nil {
-		t.Fatalf("interactive approval returned %v", err)
-	}
-	if prompter.calls != 1 {
-		t.Fatalf("expected 1 prompter call, got %d", prompter.calls)
-	}
+	require.NoError(t, hook.CheckFileOpen(t.Context(), "example.com/mod", "/tmp/x", 0, 0))
+	require.Equal(t, 1, prompter.calls)
 
-	if err := hook.CheckFileOpen(context.Background(), "example.com/mod", "/tmp/x", 0, 0); err != nil {
-		t.Fatalf("second call rejected: %v", err)
-	}
-	if prompter.calls != 1 {
-		t.Fatalf("approval not cached; prompter calls = %d", prompter.calls)
-	}
+	require.NoError(t, hook.CheckFileOpen(t.Context(), "example.com/mod", "/tmp/x", 0, 0), "a second call is accepted")
+	require.Equal(t, 1, prompter.calls, "the approval is cached")
 }
 
 func TestHookInteractiveDenialPropagates(t *testing.T) {
@@ -171,10 +136,8 @@ func TestHookInteractiveDenialPropagates(t *testing.T) {
 	store := NewStore(filepath.Join(t.TempDir(), LockfileName))
 	prompter := &mockPrompter{approve: false}
 	hook := NewHook(HookModeInteractive, store, prompter)
-	err := hook.CheckFileOpen(context.Background(), "example.com/mod", "/tmp/x", 0, 0)
-	if err == nil {
-		t.Fatalf("expected error for operator denial")
-	}
+	err := hook.CheckFileOpen(t.Context(), "example.com/mod", "/tmp/x", 0, 0)
+	require.Error(t, err, "an operator denial fails")
 }
 
 func TestHookInteractivePromptErrorBubbles(t *testing.T) {
@@ -183,8 +146,6 @@ func TestHookInteractivePromptErrorBubbles(t *testing.T) {
 	promptErr := errors.New("operator closed stdin")
 	prompter := &mockPrompter{err: promptErr}
 	hook := NewHook(HookModeInteractive, store, prompter)
-	err := hook.CheckFileOpen(context.Background(), "x", "y", 0, 0)
-	if err == nil || !errors.Is(err, promptErr) {
-		t.Fatalf("prompt error did not propagate: %v", err)
-	}
+	err := hook.CheckFileOpen(t.Context(), "x", "y", 0, 0)
+	require.ErrorIs(t, err, promptErr, "a prompt error propagates")
 }

@@ -20,6 +20,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"unsafe"
@@ -193,10 +194,53 @@ func makeClosureWrapperFunc(vm *VM, closure *RuntimeClosure, functionType reflec
 			if callbackVM.panicValue != nil && spec.globals.dispatchDepth.Load() > 0 {
 				panic(wrapCallbackPanic(callbackVM))
 			}
-			return buildClosureErrorReturns(spec.ctx, functionType, callbackVM.evalError)
+			failOnCallbackStop(spec.link, functionType, callbackVM.evalError)
+			return buildClosureErrorReturns(spec.link.detached, functionType, callbackVM.evalError)
 		}
 		return result
 	})
+}
+
+// failOnCallbackStop fails a live execution when a callback stops without a trailing
+// error result to report it. Callbacks whose execution ended return only zero results.
+//
+// Takes link (*executionLink) which is the execution the callback ran in.
+// Takes functionType (reflect.Type) which is the callback's signature.
+// Takes err (error) which is why the callback stopped.
+func failOnCallbackStop(link *executionLink, functionType reflect.Type, err error) {
+	if lastResultIsError(functionType) {
+		return
+	}
+	failOnStop(link, err)
+}
+
+// failOnStop fails a live execution when err reports cancellation or a callback
+// timeout.
+//
+// Takes link (*executionLink) which is the execution the run belonged to.
+// Takes err (error) which is why the run stopped.
+//
+// Returns bool which is true when err was a stop.
+func failOnStop(link *executionLink, err error) bool {
+	switch {
+	case errors.Is(err, fault.ErrCallbackTimeout):
+		link.fail(fault.ErrCallbackTimeout)
+	case errors.Is(err, fault.ErrExecutionCancelled):
+		link.fail(err)
+	default:
+		return false
+	}
+	return true
+}
+
+// lastResultIsError reports whether functionType's last result is the error interface.
+//
+// Takes functionType (reflect.Type) which is a function type.
+//
+// Returns bool which is true when the function can report a failure as its error result.
+func lastResultIsError(functionType reflect.Type) bool {
+	numOut := functionType.NumOut()
+	return numOut > 0 && functionType.Out(numOut-1) == errorInterfaceType
 }
 
 // buildClosureErrorReturns builds the zero-value return slots a failed reflect.MakeFunc

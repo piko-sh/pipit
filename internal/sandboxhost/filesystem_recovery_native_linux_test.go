@@ -25,16 +25,17 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/sandboxhost"
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func testIsolatedFilesystemRecoveryNative(t *testing.T, worker sandboxhost.IsolatedConfig) {
@@ -46,123 +47,80 @@ func testIsolatedFilesystemRecoveryNative(t *testing.T, worker sandboxhost.Isola
 	defer cancel()
 	crashPublicFilesystemHost(t, ctx, config)
 	records := launchRecords(t, config.Worker.StateDirectory)
-	if len(records) != 1 {
-		t.Fatal("dead host did not leave exactly one launch record:", records)
-	}
+	require.Len(t, records, 1, "a dead host leaves exactly one launch record")
 	images := filepath.Join(records[0], "images")
-	if entries, err := os.ReadDir(images); err != nil || len(entries) == 0 {
-		t.Fatal("original host left no images to recover:", err)
-	}
+	imageEntries, err := os.ReadDir(images)
+	require.NoError(t, err, "the original host leaves images to recover")
+	require.NotEmpty(t, imageEntries)
 	intents, err := os.ReadDir(filepath.Join(records[0], "journal"))
-	if err != nil || len(intents) != 1 {
-		t.Fatal("original write did not leave one durable intent:", err)
-	}
+	require.NoError(t, err, "original write did not leave one durable intent")
+	require.Len(t, intents, 1)
 	staging := filepath.Join(root, strings.TrimSuffix(intents[0].Name(), ".json"))
-	if err := os.Rename(filepath.Join(root, "file"), staging); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "file"), []byte("published"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Rename(filepath.Join(root, "file"), staging))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), []byte("published"), 0600))
 	changed := config
 	changed.Limits.Calls = 32
 	rejected, err := sandboxhost.NewIsolatedFilesystemRecovery(ctx, changed)
 	if rejected != nil {
 		_ = rejected.Close()
 	}
-	if err == nil || rejected != nil {
-		t.Fatal("changed public recovery policy accepted:", err)
-	}
+	require.Error(t, err, "changed public recovery policy accepted")
+	require.Nil(t, rejected)
 	changed = config
 	changed.Worker.MemoryBytes = 256 << 20
 	rejected, err = sandboxhost.NewIsolatedFilesystemRecovery(ctx, changed)
 	if rejected != nil {
 		_ = rejected.Close()
 	}
-	if err == nil || rejected != nil {
-		t.Fatal("changed worker policy accepted:", err)
-	}
+	require.Error(t, err, "changed worker policy accepted")
+	require.Nil(t, rejected)
 	crashPublicRecoveryAttempts(t, ctx, config, staging, images)
 	recovery, err := sandboxhost.NewIsolatedFilesystemRecovery(ctx, config)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer recovery.Close()
 	assertLeasedRecordUntouched(t, ctx, config, records[0])
-	if err := os.Rename(config.BrokerPath, config.BrokerPath+".held"); err != nil {
-		t.Fatal(err)
-	}
-	if err := recovery.Recover(ctx); err == nil {
-		t.Fatal("missing recovery helper accepted")
-	}
-	if err := recovery.Close(); err == nil {
-		t.Fatal("unfinished public recovery dropped ownership")
-	}
-	if err := os.Rename(config.BrokerPath+".held", config.BrokerPath); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Rename(config.BrokerPath, config.BrokerPath+".held"))
+	require.Error(t, recovery.Recover(ctx), "missing recovery helper accepted")
+	require.Error(t, recovery.Close(), "unfinished public recovery dropped ownership")
+	require.NoError(t, os.Rename(config.BrokerPath+".held", config.BrokerPath))
 	saved := config.Roots[0]
 	config.Roots[0].HostPath = t.TempDir()
-	if err := recovery.Recover(ctx); err != nil {
-		t.Fatal("public recovery retry failed:", err)
-	}
+	require.NoError(t, recovery.Recover(ctx), "the public recovery retry succeeds")
 	config.Roots[0] = saved
-	if err := recovery.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := recovery.Recover(ctx); err != nil {
-		t.Fatal("completed recovery was not idempotent:", err)
-	}
+	require.NoError(t, recovery.Close())
+	require.NoError(t, recovery.Recover(ctx), "a completed recovery is idempotent")
 	assertFilesystemGroupsClean(t, worker.LinuxCgroupParent, before)
 	assertLaunchRecordsClean(t, config.Worker.StateDirectory)
 	entries, err := os.ReadDir(root)
-	if err != nil || len(entries) != 1 || entries[0].Name() != "file" {
-		t.Fatal("public restart left staging data:", err)
-	}
+	require.NoError(t, err, "public restart left staging data")
+	require.Len(t, entries, 1)
+	require.Equal(t, "file", entries[0].Name())
 	data, err := os.ReadFile(filepath.Join(root, "file"))
-	if err != nil || string(data) != "published" {
-		t.Fatal("public recovery changed the published destination:", err)
-	}
+	require.NoError(t, err, "public recovery changed the published destination")
+	require.Equal(t, "published", string(data))
 	resumed, err := sandboxhost.NewIsolatedFilesystemRecovery(ctx, config)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer resumed.Close()
-	if err := resumed.Recover(ctx); err != nil {
-		t.Fatal("fresh public claim over a clean tenant failed:", err)
-	}
-	if err := resumed.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, resumed.Recover(ctx), "a fresh public claim over a clean tenant succeeds")
+	require.NoError(t, resumed.Close())
 }
 
 func assertLeasedRecordUntouched(t *testing.T, ctx context.Context, config sandboxhost.IsolatedFilesystemConfig, record string) {
 	t.Helper()
 	competing, err := sandboxhost.NewIsolatedFilesystemRecovery(ctx, config)
-	if err != nil {
-		t.Fatal("recovery over a leased record failed instead of skipping it:", err)
-	}
-	if err := competing.Recover(ctx); err != nil {
-		t.Fatal("recovery over a leased record reported work:", err)
-	}
-	if err := competing.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(record, "images")); err != nil {
-		t.Fatal("recovery over a leased record removed it:", err)
-	}
+	require.NoError(t, err, "recovery skips a leased record")
+	require.NoError(t, competing.Recover(ctx), "recovery over a leased record reported work")
+	require.NoError(t, competing.Close())
+	_, err = os.Stat(filepath.Join(record, "images"))
+	require.NoError(t, err, "recovery over a leased record removed it")
 }
 
 func publicRecoveryConfig(t *testing.T, worker sandboxhost.IsolatedConfig) sandboxhost.IsolatedFilesystemConfig {
 	t.Helper()
 	image, err := os.ReadFile(os.Getenv("PIPIT_TEST_FILESYSTEM_BROKER_BINARY"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	executable := filepath.Join(t.TempDir(), "broker")
-	if err := os.WriteFile(executable, image, 0500); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(executable, image, 0500))
 	config := sandboxhost.IsolatedFilesystemConfig{
 		Worker: worker, BrokerPath: executable, BrokerSHA256: sha256.Sum256(image),
 		Roots:  []sandboxhost.FilesystemRoot{{Name: "data", HostPath: t.TempDir(), Rights: sandboxhost.FilesystemRead | sandboxhost.FilesystemWrite}},
@@ -175,29 +133,17 @@ func publicRecoveryConfig(t *testing.T, worker sandboxhost.IsolatedConfig) sandb
 func crashPublicFilesystemHost(t *testing.T, ctx context.Context, config sandboxhost.IsolatedFilesystemConfig) {
 	t.Helper()
 	encoded, err := json.Marshal(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestPublicFilesystemRecoveryHostChild$")
-	command.Env = append(os.Environ(), "PIPIT_TEST_PUBLIC_RECOVERY="+string(encoded))
+	require.NoError(t, err)
+	command := sandboxtest.Command(ctx, "TestPublicFilesystemRecoveryHostChild", "PIPIT_TEST_PUBLIC_RECOVERY="+string(encoded))
 	command.Stderr = os.Stderr
 	output, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer output.Close()
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, command.Start())
 	defer func() { _ = command.Process.Kill(); _ = command.Wait() }()
-	ready, err := bufio.NewReader(output).ReadString('\n')
-	if err != nil || ready != "ready\n" {
-		t.Fatal("original public worker did not start:", ready, err)
-	}
+	sandboxtest.WaitForLine(t, bufio.NewReader(output), "ready", "the original public worker starts")
 	live := launchRecords(t, config.Worker.StateDirectory)
-	if len(live) != 1 {
-		t.Fatal("live host has no launch record:", live)
-	}
+	require.Len(t, live, 1, "live host has no launch record")
 	assertLeasedRecordUntouched(t, ctx, config, live[0])
 	ticker := time.NewTicker(time.Millisecond)
 	defer ticker.Stop()
@@ -206,21 +152,17 @@ func crashPublicFilesystemHost(t *testing.T, ctx context.Context, config sandbox
 		if err == nil && string(data) == "new" {
 			break
 		}
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			t.Fatal(err)
+		if err != nil {
+			require.ErrorIs(t, err, os.ErrNotExist)
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatal("original write did not complete:", ctx.Err())
+			require.FailNow(t, "the original write completes", "%v", ctx.Err())
 		case <-ticker.C:
 		}
 	}
-	if err := command.Process.Kill(); err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Wait(); err == nil {
-		t.Fatal("original public host survived SIGKILL")
-	}
+	require.NoError(t, command.Process.Kill())
+	require.Error(t, command.Wait(), "original public host survived SIGKILL")
 }
 
 func TestPublicFilesystemRecoveryHostChild(t *testing.T) {
@@ -229,18 +171,14 @@ func TestPublicFilesystemRecoveryHostChild(t *testing.T) {
 		return
 	}
 	var config sandboxhost.IsolatedFilesystemConfig
-	if err := json.Unmarshal([]byte(encoded), &config); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(encoded), &config))
 	worker, err := sandboxhost.NewIsolatedFilesystemWorker(context.Background(), config)
-	if err != nil {
-		if worker != nil {
-			_ = worker.Close()
-		}
-		t.Fatal(err)
+	if err != nil && worker != nil {
+		_ = worker.Close()
 	}
+	require.NoError(t, err)
 	defer worker.Close()
 	fmt.Println("ready")
 	_, err = worker.EvalFile("package main\nimport \"pipit/fs\"\nfunc main() { fs.Write(\"data\", \"file\", []byte(\"new\")); for {} }", "main")
-	t.Fatal("original host returned before SIGKILL:", err)
+	require.FailNow(t, "the original host is killed before it returns", "%v", err)
 }

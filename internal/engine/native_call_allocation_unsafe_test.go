@@ -21,6 +21,7 @@
 package engine
 
 import (
+	"context"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -201,4 +202,9 @@ func TestMapSetStringMissClonesArenaKey(t *testing.T) {
 		require.Equal(t, "arena value", value.label)
 		require.False(t, vm.Arena.OwnsString(value.label), "general values must be materialised")
 	}
+}
+
+func (vm *VM) setExecutionContext(ctx context.Context) {
+	vm.ctx = ctx
+	vm.ctxDone = ctx.Done()
 }

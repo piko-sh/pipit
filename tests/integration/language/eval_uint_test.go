@@ -21,11 +21,11 @@
 package language_test
 
 import (
-	"context"
 	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -33,24 +33,24 @@ func TestEvalUintBitwise(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		code   string
-		expect uint
+		name string
+		code string
+		want uint
 	}{
-		{name: "and", code: "var a uint = 0xFF; var b uint = 0x0F; a & b", expect: 0x0F},
-		{name: "or", code: "var a uint = 0xF0; var b uint = 0x0F; a | b", expect: 0xFF},
-		{name: "xor", code: "var a uint = 0xFF; var b uint = 0x0F; a ^ b", expect: 0xF0},
-		{name: "and not", code: "var a uint = 0xFF; var b uint = 0x0F; a &^ b", expect: 0xF0},
-		{name: "not", code: "var a uint = 0; ^a", expect: math.MaxUint64},
+		{name: "and", code: "var a uint = 0xFF; var b uint = 0x0F; a & b", want: 0x0F},
+		{name: "or", code: "var a uint = 0xF0; var b uint = 0x0F; a | b", want: 0xFF},
+		{name: "xor", code: "var a uint = 0xFF; var b uint = 0x0F; a ^ b", want: 0xF0},
+		{name: "and not", code: "var a uint = 0xFF; var b uint = 0x0F; a &^ b", want: 0xF0},
+		{name: "not", code: "var a uint = 0; ^a", want: math.MaxUint64},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -59,22 +59,22 @@ func TestEvalUintCompound(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		code   string
-		expect uint
+		name string
+		code string
+		want uint
 	}{
-		{name: "and assign", code: "var a uint = 0xFF; a &= 0x0F; a", expect: 0x0F},
-		{name: "or assign", code: "var a uint = 0xF0; a |= 0x0F; a", expect: 0xFF},
-		{name: "xor assign", code: "var a uint = 0xFF; a ^= 0x0F; a", expect: 0xF0},
+		{name: "and assign", code: "var a uint = 0xFF; a &= 0x0F; a", want: 0x0F},
+		{name: "or assign", code: "var a uint = 0xF0; a |= 0x0F; a", want: 0xFF},
+		{name: "xor assign", code: "var a uint = 0xFF; a ^= 0x0F; a", want: 0xF0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -83,29 +83,29 @@ func TestEvalUintGlobal(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "global uint set and get",
-			code:   "var g uint = 0\nfunc set() { g = 99 }\nset()\ng",
-			expect: uint(99),
+			name: "global uint set and get",
+			code: "var g uint = 0\nfunc set() { g = 99 }\nset()\ng",
+			want: uint(99),
 		},
 		{
-			name:   "global uint default",
-			code:   "var g uint\ng",
-			expect: uint(0),
+			name: "global uint default",
+			code: "var g uint\ng",
+			want: uint(0),
 		},
 		{
-			name:   "global uint increment",
-			code:   "var g uint = 5\nfunc inc() { g++ }\ninc()\ninc()\ng",
-			expect: uint(7),
+			name: "global uint increment",
+			code: "var g uint = 5\nfunc inc() { g++ }\ninc()\ninc()\ng",
+			want: uint(7),
 		},
 		{
-			name:   "global uint compound assign",
-			code:   "var g uint = 10\nfunc add(n uint) { g += n }\nadd(5)\ng",
-			expect: uint(15),
+			name: "global uint compound assign",
+			code: "var g uint = 10\nfunc add(n uint) { g += n }\nadd(5)\ng",
+			want: uint(15),
 		},
 	}
 
@@ -113,9 +113,9 @@ func TestEvalUintGlobal(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

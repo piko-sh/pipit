@@ -315,24 +315,6 @@ type nativeFastPathTag uint8
 // handling exactly one tag case.
 type fastPathDispatcher func(vm *VM, cached any, site *program.CallSite, registers *Registers)
 
-// reuseVarArgsBuf returns a []any slice of length n, reusing the pre-allocated buffer on
-// the CallSite when possible.
-//
-// Takes cs (*CallSite) which owns the reusable buffer.
-// Takes n (int) which is the required slice length.
-//
-// Returns a []any slice of the requested length, either resliced from the existing buffer
-// or freshly allocated if the buffer capacity is insufficient.
-func reuseVarArgsBuf(cs *program.CallSite, n int) []any {
-	if cap(cs.VariadicArgumentsBuffer) >= n {
-		return cs.VariadicArgumentsBuffer[:n]
-	}
-
-	cs.VariadicArgumentsBuffer = make([]any, n)
-
-	return cs.VariadicArgumentsBuffer
-}
-
 // classifyNativeFastPath determines the fast-path tag for a given function value by
 // looking up its reflect.Type in the dispatch map.
 //
@@ -887,7 +869,7 @@ func fpDispatchSprintfString(vm *VM, cached any, site *program.CallSite, registe
 
 	format := readStringArg(registers, site.Arguments[0])
 	nVarArgs := len(site.Arguments) - 1
-	varArgs := reuseVarArgsBuf(site, nVarArgs)
+	varArgs := make([]any, nVarArgs)
 
 	verbs := fmtArgumentVerbs(format, nVarArgs)
 	for i := range nVarArgs {
@@ -923,7 +905,7 @@ func fpDispatchSprintfError(vm *VM, cached any, site *program.CallSite, register
 
 	format := readStringArg(registers, site.Arguments[0])
 	nVarArgs := len(site.Arguments) - 1
-	varArgs := reuseVarArgsBuf(site, nVarArgs)
+	varArgs := make([]any, nVarArgs)
 
 	verbs := fmtArgumentVerbs(format, nVarArgs)
 	for i := range nVarArgs {
@@ -962,13 +944,13 @@ func fpDispatchSprintVarargs(vm *VM, cached any, site *program.CallSite, registe
 		return
 	}
 
-	varArgs := reuseVarArgsBuf(site, len(site.Arguments))
+	varArgs := make([]any, len(site.Arguments))
 	for i := range site.Arguments {
 		raw := readAnyArg(registers, site.Arguments[i])
 		if i < len(site.ArgumentStaticTypeStrings) {
 			raw = restoreNamedTypeForFmt(vm, raw, site.ArgumentStaticTypeStrings[i])
 		}
-		varArgs[i] = wrapPipitSynthesisedFmtArg(vm, raw, siteStaticTypeName(site, i))
+		varArgs[i] = wrapPipitSynthesisedFmtArgForVerb(vm, raw, 'v', siteStaticTypeName(site, i))
 	}
 
 	registers.Strings[site.Returns[0].Register] = f(varArgs...)

@@ -21,14 +21,16 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/debug"
 )
 
 func TestDumpFibUintBytecode(t *testing.T) {
+	t.Parallel()
 	const source = `
 package main
 
@@ -51,17 +53,16 @@ func EntrypointRun() uint64 {
 }
 `
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{
 		"main.go": source,
 	})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	require.NoError(t, err)
 	dump := debug.DisassembleAssembly(compiled)
 	t.Logf("\n=== UINT64 fib bytecode ===\n%s", dump)
 }
 
 func TestDumpFibIntBytecode(t *testing.T) {
+	t.Parallel()
 	const source = `
 package main
 
@@ -83,17 +84,16 @@ func EntrypointRun() int64 {
 }
 `
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{
 		"main.go": source,
 	})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	require.NoError(t, err)
 	dump := debug.DisassembleAssembly(compiled)
 	t.Logf("\n=== INT64 fib bytecode ===\n%s", dump)
 }
 
 func TestDumpArithIntBytecode(t *testing.T) {
+	t.Parallel()
 	const source = `
 package main
 
@@ -106,12 +106,10 @@ func EntrypointRun() int64 {
 }
 `
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{
 		"main.go": source,
 	})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	require.NoError(t, err)
 	dump := debug.DisassembleAssembly(compiled)
 	t.Logf("\n=== Pure int64 arithmetic bytecode ===\n%s", dump)
 }

@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,33 +32,33 @@ func TestEvalVariableDeclaration(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "short var decl int",
 			code: `x := 42
 x`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "short var decl string",
 			code: `s := "hello"
 s`,
-			expect: "hello",
+			want: "hello",
 		},
 		{
 			name: "short var decl float",
 			code: `f := 3.14
 f`,
-			expect: 3.14,
+			want: 3.14,
 		},
 		{
 			name: "var decl with value",
 			code: `var x int = 10
 x`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "multiple assignments",
@@ -66,28 +66,28 @@ x`,
 x = x + 1
 x = x * 3
 x`,
-			expect: 6,
+			want: 6,
 		},
 		{
 			name: "variable in expression",
 			code: `a := 10
 b := 20
 a + b`,
-			expect: 30,
+			want: 30,
 		},
 		{
 			name: "variable reassignment",
 			code: `x := "hello"
 x = "world"
 x`,
-			expect: "world",
+			want: "world",
 		},
 		{
 			name: "string variable concatenation",
 			code: `greeting := "hello"
 name := "world"
 greeting + " " + name`,
-			expect: "hello world",
+			want: "hello world",
 		},
 	}
 
@@ -95,9 +95,9 @@ greeting + " " + name`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -106,54 +106,54 @@ func TestEvalGlobalVariables(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "global int",
-			code:   "var g int = 0\nfunc set() { g = 42 }\nset()\ng",
-			expect: 42,
+			name: "global int",
+			code: "var g int = 0\nfunc set() { g = 42 }\nset()\ng",
+			want: 42,
 		},
 		{
-			name:   "global int default",
-			code:   "var g int\ng",
-			expect: 0,
+			name: "global int default",
+			code: "var g int\ng",
+			want: 0,
 		},
 		{
-			name:   "global float",
-			code:   "var g float64 = 0.0\nfunc set() { g = 3.14 }\nset()\ng",
-			expect: float64(3.14),
+			name: "global float",
+			code: "var g float64 = 0.0\nfunc set() { g = 3.14 }\nset()\ng",
+			want: float64(3.14),
 		},
 		{
-			name:   "global string",
-			code:   "var g string\nfunc set() { g = \"hello\" }\nset()\ng",
-			expect: "hello",
+			name: "global string",
+			code: "var g string\nfunc set() { g = \"hello\" }\nset()\ng",
+			want: "hello",
 		},
 		{
-			name:   "global bool",
-			code:   "var g bool\nfunc set() { g = true }\nset()\ng",
-			expect: true,
+			name: "global bool",
+			code: "var g bool\nfunc set() { g = true }\nset()\ng",
+			want: true,
 		},
 		{
-			name:   "global int increment",
-			code:   "var counter int\nfunc inc() { counter++ }\ninc()\ninc()\ninc()\ncounter",
-			expect: 3,
+			name: "global int increment",
+			code: "var counter int\nfunc inc() { counter++ }\ninc()\ninc()\ninc()\ncounter",
+			want: 3,
 		},
 		{
-			name:   "global int compound assign",
-			code:   "var total int = 10\nfunc add(n int) { total += n }\nadd(5)\nadd(3)\ntotal",
-			expect: 18,
+			name: "global int compound assign",
+			code: "var total int = 10\nfunc add(n int) { total += n }\nadd(5)\nadd(3)\ntotal",
+			want: 18,
 		},
 		{
-			name:   "global with initialiser",
-			code:   "var g int = 42\nfunc get() int { return g }\nget()",
-			expect: 42,
+			name: "global with initialiser",
+			code: "var g int = 42\nfunc get() int { return g }\nget()",
+			want: 42,
 		},
 		{
-			name:   "multiple globals",
-			code:   "var x int = 10\nvar y int = 20\nfunc sum() int { return x + y }\nsum()",
-			expect: 30,
+			name: "multiple globals",
+			code: "var x int = 10\nvar y int = 20\nfunc sum() int { return x + y }\nsum()",
+			want: 30,
 		},
 	}
 
@@ -161,9 +161,9 @@ func TestEvalGlobalVariables(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -172,9 +172,9 @@ func TestEvalControlFlow(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "if true branch",
@@ -183,7 +183,7 @@ if true {
 	x = 1
 }
 x`,
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "if false branch",
@@ -192,7 +192,7 @@ if false {
 	x = 1
 }
 x`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "if else true",
@@ -203,7 +203,7 @@ if true {
 	x = 2
 }
 x`,
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "if else false",
@@ -214,7 +214,7 @@ if false {
 	x = 2
 }
 x`,
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "if with condition",
@@ -226,7 +226,7 @@ if x > 5 {
 	y = 2
 }
 y`,
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "for loop sum",
@@ -235,7 +235,7 @@ for i := 0; i < 10; i++ {
 	sum = sum + i
 }
 sum`,
-			expect: 45,
+			want: 45,
 		},
 		{
 			name: "for loop countdown",
@@ -244,7 +244,7 @@ for n > 0 {
 	n = n - 1
 }
 n`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "nested if",
@@ -260,7 +260,7 @@ if x > 10 {
 	result = 1
 }
 result`,
-			expect: 2,
+			want: 2,
 		},
 	}
 
@@ -268,9 +268,9 @@ result`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

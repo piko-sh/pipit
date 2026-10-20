@@ -123,10 +123,7 @@ func (l *launcher) start(ctx context.Context, s *server) error {
 	limits := runner.Limits{
 		Symbols:       s.opts.Symbols,
 		BytecodeStore: nil, Logger: nil, Timeout: 0, MaxAlloc: 0, MaxCallDepth: 0, MaxOutputSize: 0, CostBudget: 0, MaxGoroutines: 0}
-	extras := []pipit.Option{pipit.WithDebugger(debugger)}
-	if len(l.args.Args) > 0 {
-		extras = append(extras, pipit.WithEnv(buildScriptEnv(l.args.Args)))
-	}
+	extras := []pipit.Option{pipit.WithDebugger(debugger), pipit.WithEnv(runner.ScriptEnv(l.args.Program, l.args.Args))}
 	interpreter := runner.New(limits, extras...)
 
 	external, err := scriptHasExternalImports(l.args.Program, source)
@@ -403,23 +400,6 @@ func pumpStdio(s *server, category string, r io.ReadCloser, wg *sync.WaitGroup) 
 	for scanner.Scan() {
 		s.writeOutput(category, scanner.Text()+"\n")
 	}
-}
-
-// buildScriptEnv mirrors cmd_run.go's helper of the same name.
-//
-// It is duplicated here rather than exported from the cli package to avoid a cli <->
-// internal/dap import cycle.
-//
-// Takes scriptArgs ([]string) which are the positional script arguments.
-//
-// Returns map[string]string which holds the PIPIT_ARGC and PIPIT_ARG_N vars.
-func buildScriptEnv(scriptArgs []string) map[string]string {
-	env := make(map[string]string, len(scriptArgs)+1)
-	env["PIPIT_ARGC"] = fmt.Sprintf("%d", len(scriptArgs))
-	for index, value := range scriptArgs {
-		env[fmt.Sprintf("PIPIT_ARG_%d", index)] = value
-	}
-	return env
 }
 
 // scriptHasExternalImports mirrors cmd_run.go's helper of the same name.

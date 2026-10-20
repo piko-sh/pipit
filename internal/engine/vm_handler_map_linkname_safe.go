@@ -32,17 +32,6 @@ import (
 var errMapLinknameSafeStubInvoked = errors.New(
 	"safe-build linkname stub invoked: caller must gate via useMapFastLinkname")
 
-// runtimeMapassignFast64 is the safe-build stub for the linkname trampoline, panicking
-// unconditionally with errMapLinknameSafeStubInvoked.
-//
-// Returns unsafe.Pointer which is never reached because the function always panics.
-//
-// Panics unconditionally with errMapLinknameSafeStubInvoked to signal a build-tag
-// misconfiguration.
-func runtimeMapassignFast64(_, _ unsafe.Pointer, _ uint64) unsafe.Pointer {
-	panic(errMapLinknameSafeStubInvoked)
-}
-
 // runtimeTypedmemmove is the safe-build stub for the linkname trampoline. It panics
 // unconditionally with errMapLinknameSafeStubInvoked.
 func runtimeTypedmemmove(_, _, _ unsafe.Pointer) {
@@ -102,5 +91,18 @@ func mapSetStringStringProbeFirst(_ *VM, _ reflect.Value, _, _ string) bool {
 //
 // Returns false unconditionally on the safe build.
 func mapSetStringGeneralProbeFirst(_ *VM, _ reflect.Value, _ string, _ reflect.Value) bool {
+	return false
+}
+
+// mapSetFast64PointerKeyed reports false so callers take the reflect path.
+//
+// Takes vm (*VM) which owns the arena; ignored in this build.
+// Takes m (reflect.Value) which is the destination map; ignored in this build.
+// Takes elemType (reflect.Type) which is the map's element type; ignored in this build.
+// Takes key (int64) which is the key value; ignored in this build.
+// Takes rawValue (reflect.Value) which is the value to store; ignored in this build.
+//
+// Returns false unconditionally on the safe build.
+func mapSetFast64PointerKeyed(*VM, reflect.Value, reflect.Type, int64, reflect.Value) bool {
 	return false
 }

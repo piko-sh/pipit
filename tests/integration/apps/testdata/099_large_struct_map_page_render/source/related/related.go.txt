@@ -1,0 +1,66 @@
+package related
+
+import (
+	"sort"
+
+	"testpkg/posts"
+)
+
+func Related(slug string, n int) []posts.Post {
+	all := posts.All()
+	visible := make(map[string]posts.Post, len(all))
+	for _, post := range all {
+		if !post.Draft {
+			visible[post.Slug] = post
+		}
+	}
+	self, ok := visible[slug]
+	if !ok {
+		return nil
+	}
+	chosen := map[string]bool{slug: true}
+	var out []posts.Post
+	for _, link := range self.Related {
+		if post, ok := visible[link]; ok && !chosen[link] {
+			chosen[link] = true
+			out = append(out, post)
+		}
+	}
+	type scored struct {
+		post  posts.Post
+		score int
+	}
+	var candidates []scored
+	for candidateSlug, post := range visible {
+		if chosen[candidateSlug] {
+			continue
+		}
+		score := 0
+		for _, tag := range post.Tags {
+			for _, own := range self.Tags {
+				if tag == own {
+					score++
+				}
+			}
+		}
+		if score > 0 {
+			candidates = append(candidates, scored{post: post, score: score})
+		}
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].score != candidates[j].score {
+			return candidates[i].score > candidates[j].score
+		}
+		return candidates[i].post.Order < candidates[j].post.Order
+	})
+	for _, candidate := range candidates {
+		if len(out) == n {
+			break
+		}
+		out = append(out, candidate.post)
+	}
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out
+}

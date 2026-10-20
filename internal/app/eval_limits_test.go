@@ -28,69 +28,37 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/fault"
-
 	"pipit.sh/pipit/internal/symtab"
 )
 
-func TestMaxAllocSizeSlice(t *testing.T) {
+func TestMaxAllocSize(t *testing.T) {
 	t.Parallel()
-	service := NewService(WithMaxAllocSize(100))
-
-	_, err := service.Eval(context.Background(), `make([]int, 1000)`)
-	if err == nil {
-		t.Fatal("expected error for oversized slice allocation")
+	tests := []struct {
+		name    string
+		options []Option
+		code    string
+		want    any
+		wantErr error
+	}{
+		{name: "a slice above the limit", options: []Option{WithMaxAllocSize(100)}, code: `make([]int, 1000)`, wantErr: fault.ErrAllocationLimit},
+		{name: "a slice below the limit", options: []Option{WithMaxAllocSize(100)}, code: `len(make([]int, 50))`, want: 50},
+		{name: "a channel above the limit", options: []Option{WithMaxAllocSize(100)}, code: `make(chan int, 1000)`, wantErr: fault.ErrAllocationLimit},
+		{name: "no limit", code: `len(make([]int, 10000))`, want: 10000},
 	}
-	if !errors.Is(err, fault.ErrAllocationLimit) {
-		t.Fatalf("expected errAllocationLimit, got: %v", err)
-	}
-}
-
-func TestMaxAllocSizeSliceBelowLimit(t *testing.T) {
-	t.Parallel()
-	service := NewService(WithMaxAllocSize(100))
-
-	result, err := service.Eval(context.Background(), `len(make([]int, 50))`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, ok := result.(int)
-	if !ok {
-		t.Fatalf("expected int, got %T", result)
-	}
-	if got != 50 {
-		t.Fatalf("expected 50, got %v", got)
-	}
-}
-
-func TestMaxAllocSizeChan(t *testing.T) {
-	t.Parallel()
-	service := NewService(WithMaxAllocSize(100))
-
-	_, err := service.Eval(context.Background(), `make(chan int, 1000)`)
-	if err == nil {
-		t.Fatal("expected error for oversized chan allocation")
-	}
-	if !errors.Is(err, fault.ErrAllocationLimit) {
-		t.Fatalf("expected errAllocationLimit, got: %v", err)
-	}
-}
-
-func TestMaxAllocSizeUnlimited(t *testing.T) {
-	t.Parallel()
-	service := NewService()
-
-	result, err := service.Eval(context.Background(), `len(make([]int, 10000))`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, ok := result.(int)
-	if !ok {
-		t.Fatalf("expected int, got %T", result)
-	}
-	if got != 10000 {
-		t.Fatalf("expected 10000, got %v", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := NewService(tt.options...).Eval(t.Context(), tt.code)
+			require.ErrorIs(t, err, tt.wantErr)
+			if tt.wantErr != nil {
+				return
+			}
+			require.Equal(t, tt.want, result)
+		})
 	}
 }
 
@@ -98,17 +66,12 @@ func TestMaxGoroutines(t *testing.T) {
 	t.Parallel()
 	service := NewService(WithMaxGoroutines(3))
 
-	_, err := service.Eval(context.Background(), `
+	_, err := service.Eval(t.Context(), `
 for i := 0; i < 10; i++ {
 	go func() {}()
 }
 `)
-	if err == nil {
-		t.Fatal("expected error for goroutine limit")
-	}
-	if !errors.Is(err, fault.ErrGoroutineLimit) {
-		t.Fatalf("expected errGoroutineLimit, got: %v", err)
-	}
+	require.ErrorIs(t, err, fault.ErrGoroutineLimit, "the goroutine limit applies")
 
 	runtime.Gosched()
 }
@@ -117,49 +80,40 @@ func TestMaxGoroutinesUnlimited(t *testing.T) {
 	t.Parallel()
 	service := NewService()
 
-	_, err := service.Eval(context.Background(), `
+	_, err := service.Eval(t.Context(), `
 func noop() {}
 for i := 0; i < 10; i++ {
 	go noop()
 }
 `)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 }
 
 func TestMaxCallDepth(t *testing.T) {
 	t.Parallel()
 	service := NewService(WithMaxCallDepth(50))
 
-	_, err := service.Eval(context.Background(), `
+	_, err := service.Eval(t.Context(), `
 func recurse(n int) int {
 	return 1 + recurse(n + 1)
 }
 recurse(0)
 `)
-	if err == nil {
-		t.Fatal("expected stack overflow error")
-	}
-	if !errors.Is(err, fault.ErrStackOverflow) {
-		t.Fatalf("expected errStackOverflow, got: %v", err)
-	}
+	require.ErrorIs(t, err, fault.ErrStackOverflow, "deep recursion overflows the stack")
 }
 
 func TestMaxCallDepthDefault(t *testing.T) {
 	t.Parallel()
 	service := NewService()
 
-	_, err := service.Eval(context.Background(), `
+	_, err := service.Eval(t.Context(), `
 func recurse(n int) int {
 	if n <= 0 { return 0 }
 	return recurse(n - 1)
 }
 recurse(100)
 `)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 }
 
 func TestMaxOutputSize(t *testing.T) {
@@ -167,26 +121,19 @@ func TestMaxOutputSize(t *testing.T) {
 	service := NewService(WithMaxOutputSize(50))
 
 	var buffer bytes.Buffer
-	svcVM := engine.NewVM(context.Background(), service.globals, service.symbols)
+	svcVM := engine.NewVM(t.Context(), service.globals, service.symbols)
 	svcVM.StderrWriter = &buffer
 	svcVM.Limits = service.limits
 
-	compiledFunction, err := service.Compile(context.Background(), `
+	compiledFunction, err := service.Compile(t.Context(), `
 for i := 0; i < 1000; i++ {
 	println("hello world")
 }
 `)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	_, err = svcVM.Execute(compiledFunction)
-	if err == nil {
-		t.Fatal("expected error for output limit")
-	}
-	if !errors.Is(err, fault.ErrOutputLimit) {
-		t.Fatalf("expected errOutputLimit, got: %v", err)
-	}
+	require.ErrorIs(t, err, fault.ErrOutputLimit, "the output limit applies")
 }
 
 func TestMaxOutputSizeUnlimited(t *testing.T) {
@@ -194,34 +141,26 @@ func TestMaxOutputSizeUnlimited(t *testing.T) {
 	service := NewService()
 
 	var buffer bytes.Buffer
-	svcVM := engine.NewVM(context.Background(), service.globals, service.symbols)
+	svcVM := engine.NewVM(t.Context(), service.globals, service.symbols)
 	svcVM.StderrWriter = &buffer
 	svcVM.Limits = service.limits
 
-	compiledFunction, err := service.Compile(context.Background(), `
+	compiledFunction, err := service.Compile(t.Context(), `
 for i := 0; i < 10; i++ {
 	println("hello")
 }
 `)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	_, err = svcVM.Execute(compiledFunction)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if buffer.Len() == 0 {
-		t.Fatal("expected some output")
-	}
+	require.NoError(t, err)
+	require.NotEqual(t, 0, buffer.Len(), "the program prints before the limit")
 }
 
 func TestAtomicCancellationBackgroundCtx(t *testing.T) {
 	t.Parallel()
 	vm := engine.NewVM(context.Background(), engine.NewGlobalStore(), symtab.NewSymbolRegistry(nil))
-	if vm.Cancelled.Load() != 0 {
-		t.Fatal("expected cancelled flag to be 0 for background context")
-	}
+	require.Equal(t, uint32(0), vm.Cancelled.Load(), "a background context leaves the cancelled flag clear")
 }
 
 func TestAtomicCancellationTimeout(t *testing.T) {
@@ -229,7 +168,7 @@ func TestAtomicCancellationTimeout(t *testing.T) {
 	service := NewService(WithMaxExecutionTime(100 * time.Millisecond))
 	service.UseSymbols(newOSSymbols())
 
-	_, err := service.Eval(context.Background(), `
+	_, err := service.Eval(t.Context(), `
 import (
 	"os"
 )
@@ -239,32 +178,19 @@ for {
 	os.Getenv("PATH")
 }
 `)
-	if err == nil {
-		t.Fatal("expected timeout error")
-	}
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("expected context.DeadlineExceeded, got: %v", err)
-	}
+	require.ErrorIs(t, err, context.DeadlineExceeded, "the deadline stops execution")
 }
 
 func TestAtomicCancellationFlagSet(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithCancelCause(context.Background())
+	ctx, cancel := context.WithCancelCause(t.Context())
 	vm := engine.NewVM(ctx, engine.NewGlobalStore(), symtab.NewSymbolRegistry(nil))
 
-	if vm.Cancelled.Load() != 0 {
-		t.Fatal("expected cancelled flag to be 0 before cancel")
-	}
+	require.Equal(t, uint32(0), vm.Cancelled.Load(), "the cancelled flag is clear before cancellation")
 
 	cancel(errors.New("test: cancellation flag propagation"))
-	deadline := time.After(time.Second)
-	for vm.Cancelled.Load() == 0 {
-		select {
-		case <-deadline:
-			t.Fatal("timed out waiting for cancelled flag")
-		default:
-		}
-	}
+	require.Eventually(t, func() bool { return vm.Cancelled.Load() != 0 }, time.Second, time.Millisecond,
+		"cancelling the context sets the VM's cancelled flag")
 }
 
 func TestWideGlobalVariables(t *testing.T) {
@@ -288,13 +214,9 @@ func TestWideGlobalVariables(t *testing.T) {
 		source.WriteString("}\nfunc main() {}\n")
 
 		service := NewService()
-		result, err := service.EvalFile(context.Background(), source.String(), "run")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result != 600 {
-			t.Fatalf("expected 600, got %v", result)
-		}
+		result, err := service.EvalFile(t.Context(), source.String(), "run")
+		require.NoError(t, err)
+		require.Equal(t, 600, result)
 	})
 
 	t.Run("string globals exceed uint8 boundary", func(t *testing.T) {
@@ -312,13 +234,9 @@ func TestWideGlobalVariables(t *testing.T) {
 		source.WriteString("}\nfunc main() {}\n")
 
 		service := NewService()
-		result, err := service.EvalFile(context.Background(), source.String(), "run")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result != "hello world" {
-			t.Fatalf("expected \"hello world\", got %v", result)
-		}
+		result, err := service.EvalFile(t.Context(), source.String(), "run")
+		require.NoError(t, err)
+		require.Equal(t, "hello world", result)
 	})
 
 	t.Run("bool globals exceed uint8 boundary", func(t *testing.T) {
@@ -335,13 +253,9 @@ func TestWideGlobalVariables(t *testing.T) {
 		source.WriteString("}\nfunc main() {}\n")
 
 		service := NewService()
-		result, err := service.EvalFile(context.Background(), source.String(), "run")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result != true {
-			t.Fatalf("expected true, got %v", result)
-		}
+		result, err := service.EvalFile(t.Context(), source.String(), "run")
+		require.NoError(t, err)
+		require.Equal(t, true, result)
 	})
 
 	t.Run("global initialiser with wide index", func(t *testing.T) {
@@ -360,13 +274,9 @@ func TestWideGlobalVariables(t *testing.T) {
 		source.WriteString("func main() {}\n")
 
 		service := NewService()
-		result, err := service.EvalFile(context.Background(), source.String(), "run")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result != 42 {
-			t.Fatalf("expected 42, got %v", result)
-		}
+		result, err := service.EvalFile(t.Context(), source.String(), "run")
+		require.NoError(t, err)
+		require.Equal(t, 42, result)
 	})
 }
 
@@ -375,7 +285,5 @@ func TestGoroutineTrackerDecrement(t *testing.T) {
 	tracker := &engine.ResourceTracker{}
 	tracker.GoroutineCount.Store(5)
 	tracker.GoroutineCount.Add(-1)
-	if tracker.GoroutineCount.Load() != 4 {
-		t.Fatalf("expected 4, got %d", tracker.GoroutineCount.Load())
-	}
+	require.Equal(t, int32(4), tracker.GoroutineCount.Load())
 }

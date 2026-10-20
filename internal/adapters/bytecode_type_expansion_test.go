@@ -20,12 +20,11 @@ package adapters
 
 import (
 	"context"
-	"errors"
 	"reflect"
-	"strings"
 	"testing"
 
 	flatbuffers "github.com/google/flatbuffers/go"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/schema/schemagen"
 	"pipit.sh/pipit/internal/symtab"
@@ -121,15 +120,12 @@ func TestBytecodeSharedTypeGraphExpandsOnce(t *testing.T) {
 	for _, source := range []string{"table", "constants", "names", "variables"} {
 		for _, edge := range []string{"direct", "fields", "params", "results"} {
 			t.Run(source+"/"+edge, func(t *testing.T) {
-
+				t.Parallel()
 				payload := typeExpansionPayload(100, edge, source, false)
-				if len(payload) > 8192 {
-					t.Fatal("fixture no longer represents compact expansion")
-				}
-				_, err := decodeCompiledFileSet(context.Background(), payload, symtab.NewSymbolRegistry(nil))
-
-				if err != nil && strings.Contains(err.Error(), "type expansion exceeds") {
-					t.Fatal("shared type graph charged per reference:", err)
+				require.LessOrEqual(t, len(payload), 8192, "the fixture stays compact")
+				_, err := decodeCompiledFileSet(t.Context(), payload, symtab.NewSymbolRegistry(nil))
+				if err != nil {
+					require.NotContains(t, err.Error(), "type expansion exceeds", "a shared type graph is charged once, not per reference")
 				}
 			})
 		}
@@ -140,10 +136,10 @@ func TestBytecodeRejectsDistinctTypeExpansion(t *testing.T) {
 	t.Parallel()
 
 	payload := distinctTypePayload(maximumDecodedTypeUnits + 1024)
-	loaded, err := decodeCompiledFileSet(context.Background(), payload, symtab.NewSymbolRegistry(nil))
-	if loaded != nil || !errors.Is(err, errCorruptBytecodePayload) || !strings.Contains(err.Error(), "type expansion exceeds") {
-		t.Fatal("distinct type expansion reached reconstruction:", err)
-	}
+	loaded, err := decodeCompiledFileSet(t.Context(), payload, symtab.NewSymbolRegistry(nil))
+	require.Nil(t, loaded, "distinct type expansion stops before reconstruction")
+	require.ErrorIs(t, err, errCorruptBytecodePayload)
+	require.Contains(t, err.Error(), "type expansion exceeds")
 }
 
 func distinctTypePayload(count int) []byte {
@@ -172,13 +168,20 @@ func distinctTypePayload(count int) []byte {
 
 func TestBytecodeTypeExpansionSharesFunctionBudget(t *testing.T) {
 	t.Parallel()
-
-	for _, bothRoots := range []bool{false, true} {
-		payload := typeExpansionPayload(14, "params", "table", bothRoots)
-		fileSet := schemagen.GetRootAsCompiledFileSet(payload, 0)
-		if err := validateFunctionExpansion(context.Background(), fileSet, len(payload)); err != nil {
-			t.Fatal("shared type references rejected:", err)
-		}
+	tests := []struct {
+		name      string
+		bothRoots bool
+	}{
+		{name: "one root", bothRoots: false},
+		{name: "both roots", bothRoots: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			payload := typeExpansionPayload(14, "params", "table", tt.bothRoots)
+			fileSet := schemagen.GetRootAsCompiledFileSet(payload, 0)
+			require.NoError(t, validateFunctionExpansion(t.Context(), fileSet, len(payload)), "shared type references are accepted")
+		})
 	}
 }
 
@@ -186,12 +189,9 @@ func TestBytecodeTypeExpansionChargesAbsentSlots(t *testing.T) {
 	t.Parallel()
 	budget := bytecodeExpansionBudget{functions: 1, types: 3}
 	getter := func(int) *schemagen.TypeDescriptor { return nil }
-	if err := validateTypeEntries(context.Background(), 3, getter, 0, 100, &budget); err != nil {
-		t.Fatal(err)
-	}
-	if err := validateTypeEntries(context.Background(), 1, getter, 0, 100, &budget); !errors.Is(err, errCorruptBytecodePayload) {
-		t.Fatal("absent descriptors refunded vector storage:", err)
-	}
+	require.NoError(t, validateTypeEntries(t.Context(), 3, getter, 0, 100, &budget))
+	err := validateTypeEntries(t.Context(), 1, getter, 0, 100, &budget)
+	require.ErrorIs(t, err, errCorruptBytecodePayload, "absent descriptors do not refund vector storage")
 }
 
 func TestBytecodeTypeExpansionCancellation(t *testing.T) {
@@ -200,30 +200,26 @@ func TestBytecodeTypeExpansionCancellation(t *testing.T) {
 	root := repeatedTypeGraph(builder, 20, "fields")
 	builder.Finish(root)
 	payload := builder.FinishedBytes()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	budget := bytecodeExpansionBudget{functions: 1, types: maximumDecodedTypeUnits, typeAllowance: maximumDecodedTypeUnits}
-	if err := validateTypeTree(ctx, schemagen.GetRootAsTypeDescriptor(payload, 0), 0, len(payload), &budget); !errors.Is(err, context.Canceled) {
-		t.Fatal("type expansion ignored cancellation:", err)
-	}
+	require.ErrorIs(t, validateTypeTree(ctx, schemagen.GetRootAsTypeDescriptor(payload, 0), 0, len(payload), &budget), context.Canceled, "type expansion honours cancellation")
 }
 
 func TestBytecodeTypeExpansionRetainsDepthLimit(t *testing.T) {
 	t.Parallel()
 	payload := typeExpansionPayload(maxBytecodeTypeDescriptorDepth+1, "direct", "table", false)
-	loaded, err := decodeCompiledFileSet(context.Background(), payload, symtab.NewSymbolRegistry(nil))
-	if loaded != nil || !errors.Is(err, errBytecodeRecursionDepthExceeded) {
-		t.Fatal("deep descriptors bypassed preflight depth limit:", err)
-	}
+	loaded, err := decodeCompiledFileSet(t.Context(), payload, symtab.NewSymbolRegistry(nil))
+	require.Nil(t, loaded, "the preflight depth limit applies to deep descriptors")
+	require.ErrorIs(t, err, errBytecodeRecursionDepthExceeded)
 }
 
 func TestBytecodeBoundedTypeAliasesStillDecode(t *testing.T) {
 	t.Parallel()
 	payload := typeExpansionPayload(3, "params", "table", true)
-	loaded, err := decodeCompiledFileSet(context.Background(), payload, symtab.NewSymbolRegistry(nil))
-	if loaded == nil || err != nil {
-		t.Fatal("bounded type aliases no longer decode:", err)
-	}
+	loaded, err := decodeCompiledFileSet(t.Context(), payload, symtab.NewSymbolRegistry(nil))
+	require.NotNil(t, loaded, "bounded type aliases decode")
+	require.NoError(t, err)
 }
 
 func TestBytecodeRejectsOversizedArrayLayout(t *testing.T) {
@@ -248,8 +244,7 @@ func TestBytecodeRejectsOversizedArrayLayout(t *testing.T) {
 	schemagen.CompiledFileSetAddRoot(builder, function)
 	root := schemagen.CompiledFileSetEnd(builder)
 	builder.Finish(root)
-	loaded, err := decodeCompiledFileSet(context.Background(), builder.FinishedBytes(), symtab.NewSymbolRegistry(nil))
-	if loaded != nil || err == nil || !strings.Contains(err.Error(), "array layout exceeds") {
-		t.Fatal("oversized decoded array reached runtime reconstruction:", err)
-	}
+	loaded, err := decodeCompiledFileSet(t.Context(), builder.FinishedBytes(), symtab.NewSymbolRegistry(nil))
+	require.Nil(t, loaded, "an oversized decoded array stops before runtime reconstruction")
+	require.ErrorContains(t, err, "array layout exceeds")
 }

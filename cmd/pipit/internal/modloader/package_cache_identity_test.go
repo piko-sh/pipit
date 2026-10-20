@@ -18,7 +18,11 @@
 
 package modloader
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestResolvedCacheIdentityIncludesEveryInput(t *testing.T) {
 	t.Parallel()
@@ -33,32 +37,33 @@ func TestResolvedCacheIdentityIncludesEveryInput(t *testing.T) {
 		}}
 	}
 	original := ResolvedCacheIdentity(fixture())
-	for _, mutate := range []func([]ResolvedModule){
-		func(modules []ResolvedModule) { modules[0].Path = "example.com/other" },
-		func(modules []ResolvedModule) { modules[0].Version = "v2" },
-		func(modules []ResolvedModule) { modules[0].Packages[""]["helper.go"] = "package module; const Value=2" },
-		func(modules []ResolvedModule) {
-			modules[0].Packages["child"]["child.go"] = "package child; const Value=2"
-		},
-		func(modules []ResolvedModule) {
-			modules[0].Packages["extra"] = map[string]string{"extra.go": "package extra"}
-		},
-		func(modules []ResolvedModule) { modules[0].PackageOrder = []string{"", "child"} },
-		func(modules []ResolvedModule) { delete(modules[0].Packages[""], "helper.go") },
-	} {
-		changed := fixture()
-		mutate(changed)
-		if ResolvedCacheIdentity(changed) == original {
-			t.Fatal("changed dependency input retained cache identity")
-		}
-	}
 	same := fixture()
 	same[0].Packages[""] = map[string]string{"helper.go": "package module; const Value=1", "main.go": "package module"}
-	if ResolvedCacheIdentity(same) != original {
-		t.Fatal("source map insertion order changed identity")
+	require.Equal(t, original, ResolvedCacheIdentity(same), "source map insertion order does not change the identity")
+	require.NotEqual(t, original, ResolvedCacheIdentity(append(fixture(), fixture()...)), "the module set size is bounded")
+	tests := []struct {
+		name   string
+		mutate func([]ResolvedModule)
+	}{
+		{name: "module path", mutate: func(modules []ResolvedModule) { modules[0].Path = "example.com/other" }},
+		{name: "version", mutate: func(modules []ResolvedModule) { modules[0].Version = "v2" }},
+		{name: "package source", mutate: func(modules []ResolvedModule) { modules[0].Packages[""]["helper.go"] = "package module; const Value=2" }},
+		{name: "child package source", mutate: func(modules []ResolvedModule) {
+			modules[0].Packages["child"]["child.go"] = "package child; const Value=2"
+		}},
+		{name: "extra package", mutate: func(modules []ResolvedModule) {
+			modules[0].Packages["extra"] = map[string]string{"extra.go": "package extra"}
+		}},
+		{name: "package order", mutate: func(modules []ResolvedModule) { modules[0].PackageOrder = []string{"", "child"} }},
+		{name: "removed file", mutate: func(modules []ResolvedModule) { delete(modules[0].Packages[""], "helper.go") }},
 	}
-	if ResolvedCacheIdentity(append(fixture(), fixture()...)) == original {
-		t.Fatal("module set cardinality was not bound")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			changed := fixture()
+			tt.mutate(changed)
+			require.NotEqual(t, original, ResolvedCacheIdentity(changed), "a changed dependency input changes the cache identity")
+		})
 	}
 }
 
@@ -67,19 +72,16 @@ func TestBytecodeCacheScopesComposeWithoutMutation(t *testing.T) {
 	cache := NewBytecodeCache(t.TempDir())
 	first := cache.WithIdentity("first").WithIdentity("dependencies")
 	second := cache.WithIdentity("second").WithIdentity("dependencies")
-	if first.path("module", "version") == second.path("module", "version") {
-		t.Fatal("dependency scope erased its parent identity")
-	}
-	if err := first.Put("module", "version", BytecodeCacheEntry{Bytecode: []byte("first")}); err != nil {
-		t.Fatal(err)
-	}
+	require.NotEqual(t, first.path("module", "version"), second.path("module", "version"), "a dependency scope keeps its parent identity")
+	require.NoError(t, first.Put("module", "version", BytecodeCacheEntry{Bytecode: []byte("first")}))
 	for _, other := range []*BytecodeCache{cache, second} {
-		if _, hit, err := other.Get("module", "version"); err != nil || hit {
-			t.Fatalf("scope leaked entries: hit=%v error=%v", hit, err)
-		}
+		_, hit, err := other.Get("module", "version")
+		require.NoError(t, err, "the scope holds only its own entries")
+		require.False(t, hit)
 	}
 	again := cache.WithIdentity("first").WithIdentity("dependencies")
-	if entry, hit, err := again.Get("module", "version"); err != nil || !hit || string(entry.Bytecode) != "first" {
-		t.Fatalf("same context did not reuse cache: hit=%v error=%v", hit, err)
-	}
+	entry, hit, err := again.Get("module", "version")
+	require.NoError(t, err, "the same context reuses the cache")
+	require.True(t, hit)
+	require.Equal(t, "first", string(entry.Bytecode))
 }

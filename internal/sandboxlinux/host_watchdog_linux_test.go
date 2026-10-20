@@ -33,6 +33,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestHostWatchdogLifetimeValidation(t *testing.T) {
@@ -80,10 +82,7 @@ func TestHostWatchdogRejectsOrdinaryFiles(t *testing.T) {
 }
 
 func TestNativeHostWatchdog(t *testing.T) {
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	for _, mode := range []string{"host-death", "namespaced-host-death", "already-dead", "deadline", "invalid-host", "invalid-lifetime"} {
 		t.Run(mode, func(t *testing.T) { exerciseHostWatchdog(t, parent, mode) })
 	}
@@ -162,9 +161,7 @@ func exerciseHostWatchdog(t *testing.T, parent, mode string) {
 	}
 	defer func() { _ = watchdog.Process.Kill(); _ = watchdog.Wait() }()
 	reader := bufio.NewReader(output)
-	if line, err := reader.ReadString('\n'); err != nil || line != "ready\n" {
-		t.Fatalf("watchdog did not start: %q %v", line, err)
-	}
+	sandboxtest.WaitForLine(t, reader, "ready", "the watchdog starts")
 	if mode == "host-death" || mode == "namespaced-host-death" {
 		if err := host.Process.Kill(); err != nil {
 			t.Fatal(err)
@@ -243,8 +240,7 @@ func TestNativeHostWatchdogChild(t *testing.T) {
 }
 
 func watchdogFixtureCommand(ctx context.Context, mode string) *exec.Cmd {
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestNativeHostWatchdogChild$")
-	command.Env = append(os.Environ(), "PIPIT_HOST_WATCHDOG_CHILD="+mode)
+	command := sandboxtest.Command(ctx, "TestNativeHostWatchdogChild", "PIPIT_HOST_WATCHDOG_CHILD="+mode)
 	return command
 }
 

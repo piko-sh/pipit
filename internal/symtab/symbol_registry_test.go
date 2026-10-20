@@ -87,6 +87,49 @@ func TestSymbolRegistryZeroValueForType(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestSymbolRegistryZeroValueForTypeKeepsNamedSliceZerosOutOfReach(t *testing.T) {
+	t.Parallel()
+
+	type Names []string
+
+	reg := NewSymbolRegistry(SymbolExports{
+		"mypkg": {"Names": reflect.ValueOf((*Names)(nil))},
+	})
+
+	value, ok := reg.ZeroValueForType("mypkg", "Names")
+	require.True(t, ok)
+	require.Equal(t, reflect.TypeFor[Names](), value.Type())
+	require.True(t, value.IsNil())
+	require.False(t, value.CanSet(), "an in-place append must not be able to grow the shared zero constant")
+}
+
+func TestZeroConstantIsAddressableOnlyForStructsAndArrays(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		typ         reflect.Type
+		addressable bool
+	}{
+		{typ: reflect.TypeFor[struct{ X int }](), addressable: true},
+		{typ: reflect.TypeFor[[4]int](), addressable: true},
+		{typ: reflect.TypeFor[[]int](), addressable: false},
+		{typ: reflect.TypeFor[[]string](), addressable: false},
+		{typ: reflect.TypeFor[map[string]int](), addressable: false},
+		{typ: reflect.TypeFor[*int](), addressable: false},
+		{typ: reflect.TypeFor[string](), addressable: false},
+		{typ: reflect.TypeFor[chan int](), addressable: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.typ.String(), func(t *testing.T) {
+			t.Parallel()
+			zero := ZeroConstant(tt.typ)
+			require.Equal(t, tt.typ, zero.Type())
+			require.True(t, zero.IsZero())
+			require.Equal(t, tt.addressable, zero.CanSet())
+		})
+	}
+}
+
 func TestSymbolRegistryZeroValueForTypeNonPointer(t *testing.T) {
 	t.Parallel()
 	reg := NewSymbolRegistry(SymbolExports{

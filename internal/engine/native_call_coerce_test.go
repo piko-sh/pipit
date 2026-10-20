@@ -159,6 +159,41 @@ func TestCoerceVariadicSpreadSliceFitsTheDeclaredElementType(t *testing.T) {
 	}
 }
 
+func TestAdaptSpreadElementsCopiesOnlyWhenAnElementChanges(t *testing.T) {
+	t.Parallel()
+
+	printing := nativeArgShaping{fmtArguments: true, fmtPrinting: true, fmtFormat: "%v %v"}
+
+	t.Run("host elements keep the script's slice", func(t *testing.T) {
+		t.Parallel()
+
+		spread := reflect.ValueOf([]any{1, nil, "two"})
+		adapted := printing.adaptSpreadElements(newTestVM(t), spread)
+		require.Equal(t, spread.Pointer(), adapted.Pointer())
+	})
+
+	t.Run("a slice of concrete elements is handed back", func(t *testing.T) {
+		t.Parallel()
+
+		spread := reflect.ValueOf([]int{1, 2})
+		require.Equal(t, spread.Pointer(), printing.adaptSpreadElements(newTestVM(t), spread).Pointer())
+	})
+
+	t.Run("a synthesised element is wrapped in a copy", func(t *testing.T) {
+		t.Parallel()
+
+		vm := adapterHostVM(t, "at.String", stringReturningMethod(t, "String", "rendered"))
+		source := []any{1, identityTrailing{}}
+		adapted := printing.adaptSpreadElements(vm, reflect.ValueOf(source))
+
+		require.NotEqual(t, reflect.ValueOf(source).Pointer(), adapted.Pointer())
+		require.Equal(t, 1, adapted.Index(0).Interface())
+		require.NotEqual(t, reflect.TypeFor[identityTrailing](), adapted.Index(1).Elem().Type(),
+			"the element reaches fmt through a wrapper")
+		require.Equal(t, identityTrailing{}, source[1], "the script's slice is not written")
+	})
+}
+
 func TestCoerceConcreteArgumentBridgesTheRegisterRepresentation(t *testing.T) {
 	t.Parallel()
 

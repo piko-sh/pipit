@@ -79,10 +79,25 @@ func TestWorkerAttributesRejectUnsafeRoot(t *testing.T) {
 	if err := os.Mkdir(public, 0755); err != nil {
 		t.Fatal(err)
 	}
-	for _, root := range []string{"", "/", ".", "relative", private + "/..", link, file, public, filepath.Join(parent, "missing")} {
-		t.Run(root, func(t *testing.T) {
-			if _, err := WorkerAttributes(root); !errors.Is(err, ErrUnavailable) {
-				t.Fatalf("unsafe root %q accepted: %v", root, err)
+	tests := []struct {
+		name string
+		root string
+	}{
+		{name: "empty", root: ""},
+		{name: "filesystem root", root: "/"},
+		{name: "dot", root: "."},
+		{name: "relative", root: "relative"},
+		{name: "parent traversal", root: private + "/.."},
+		{name: "symlink", root: link},
+		{name: "regular file", root: file},
+		{name: "public directory", root: public},
+		{name: "missing", root: filepath.Join(parent, "missing")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := WorkerAttributes(tt.root); !errors.Is(err, ErrUnavailable) {
+				t.Fatalf("WorkerAttributes(%q) = %v, want ErrUnavailable", tt.root, err)
 			}
 		})
 	}
@@ -102,6 +117,7 @@ func TestWorkerRootContents(t *testing.T) {
 	t.Parallel()
 	for _, variant := range []string{"regular", "empty", "extra", "directory", "symlink"} {
 		t.Run(variant, func(t *testing.T) {
+			t.Parallel()
 			root := t.TempDir()
 			worker := filepath.Join(root, "worker")
 			var err error

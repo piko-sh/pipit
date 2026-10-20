@@ -27,11 +27,15 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestPersistCheckpointSeparatesStorage(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"disjoint", "store-in-root", "root-in-store", "same-root", "store-in-journal", "journal-in-store"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			base := t.TempDir()
 			root, directory, checkpoint := filepath.Join(base, "root"), filepath.Join(base, "journal"), filepath.Join(base, "checkpoint")
 			switch mode {
@@ -48,39 +52,25 @@ func TestPersistCheckpointSeparatesStorage(t *testing.T) {
 			}
 			var store *LinuxRecoveryCheckpointStore
 			openStore := func() {
-				if err := os.MkdirAll(checkpoint, 0700); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.MkdirAll(checkpoint, 0700))
 				var err error
 				store, err = OpenLinuxRecoveryCheckpointStore(checkpoint)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				t.Cleanup(func() { _ = store.Close() })
 			}
 			if mode != "store-in-journal" {
 				openStore()
 			}
-			if err := os.MkdirAll(root, 0700); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.MkdirAll(root, 0700))
 			bootstrap, err := PrepareLinuxBootstrap([]LinuxRootGrant{{Name: "data", Path: root, Rights: Read | Write}}, FilesystemLimits{})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer bootstrap.Close()
 			authority, err := bootstrap.RecoveryAuthority()
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer authority.Close()
-			if err := os.MkdirAll(directory, 0700); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.MkdirAll(directory, 0700))
 			journal, err := OpenLinuxRecoveryJournal(directory, authority.namespace)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer journal.Close()
 			if mode == "store-in-journal" {
 				openStore()
@@ -88,35 +78,27 @@ func TestPersistCheckpointSeparatesStorage(t *testing.T) {
 			binding := [sha256.Size]byte{1}
 			approved, err := authority.persistCheckpoint(journal, store, binding)
 			if mode == "disjoint" {
-				if err != nil || approved == ([sha256.Size]byte{}) {
-					t.Fatal("disjoint persistence failed:", err)
-				}
+				require.NoError(t, err, "disjoint persistence failed")
+				require.NotZero(t, approved)
 				data, err := store.Load(approved, binding)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := ValidateCheckpointJournal(data, approved, binding, journal); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
+				require.NoError(t, ValidateCheckpointJournal(data, approved, binding, journal))
 			} else {
-				if err == nil || approved != ([sha256.Size]byte{}) {
-					t.Fatal("overlapping checkpoint storage accepted:", err)
-				}
-				if _, err := os.Lstat(filepath.Join(checkpoint, recoveryCheckpointName)); !os.IsNotExist(err) {
-					t.Fatal("rejected persistence published metadata:", err)
-				}
+				require.Error(t, err, "overlapping checkpoint storage accepted")
+				require.Zero(t, approved)
+				_, err := os.Lstat(filepath.Join(checkpoint, recoveryCheckpointName))
+				require.True(t, os.IsNotExist(err), "rejected persistence published metadata: %v", err)
 			}
 		})
 	}
 }
 
 func TestPersistCheckpointSerialisesAdmission(t *testing.T) {
+	t.Parallel()
 	authority := testRecoveryAuthority(t, Read|Write)
 	journal := testRecoveryAuthorityJournal(t, authority)
 	store, err := OpenLinuxRecoveryCheckpointStore(testRecoveryDirectory(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer store.Close()
 	store.storage.mutex.Lock()
 	locked := true
@@ -133,9 +115,7 @@ func TestPersistCheckpointSerialisesAdmission(t *testing.T) {
 	deadline := time.Now().Add(time.Second)
 	for authority.mutex.TryLock() {
 		authority.mutex.Unlock()
-		if time.Now().After(deadline) {
-			t.Fatal("persistence did not acquire admission ownership")
-		}
+		require.False(t, time.Now().After(deadline), "persistence acquires admission ownership")
 		time.Sleep(time.Millisecond)
 	}
 	admitted := make(chan error, 1)
@@ -148,74 +128,61 @@ func TestPersistCheckpointSerialisesAdmission(t *testing.T) {
 	}()
 	select {
 	case err := <-admitted:
-		t.Fatal("operation admitted before durable checkpoint:", err)
+		require.FailNow(t, "the operation waits for a durable checkpoint", "%v", err)
 	case <-time.After(20 * time.Millisecond):
 	}
 	store.storage.mutex.Unlock()
 	locked = false
-	if err := <-persisted; err != nil {
-		t.Fatal(err)
-	}
-	if err := <-admitted; err != nil {
-		t.Fatal(err)
-	}
-	if _, err := authority.persistCheckpoint(journal, store, [sha256.Size]byte{1}); err == nil {
-		t.Fatal("checkpoint persisted after admission")
-	}
+	require.NoError(t, <-persisted)
+	require.NoError(t, <-admitted)
+	_, err = authority.persistCheckpoint(journal, store, [sha256.Size]byte{1})
+	require.Error(t, err, "checkpoint persisted after admission")
 }
 
 func TestPersistCheckpointPublicationFailureClosesAdmission(t *testing.T) {
+	t.Parallel()
 	authority := testRecoveryAuthority(t, Read|Write)
 	journal := testRecoveryAuthorityJournal(t, authority)
 	store, err := OpenLinuxRecoveryCheckpointStore(testRecoveryDirectory(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer store.Close()
 	binding := [sha256.Size]byte{1}
 	expected, err := authority.persistCheckpoint(journal, store, binding)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	approved, err := authority.persistCheckpoint(journal, store, binding)
-	if !errors.Is(err, ErrDenied) || approved != expected {
-		t.Fatal("collision lost captured approval:", err)
-	}
-	if call, err := authority.admit(brokerMessage(1, recoveryWritePayload)); call != nil || !errors.Is(err, ErrClosed) {
-		t.Fatal("failed persistence left admission open:", err)
-	}
-	if _, err := store.Load(approved, binding); err != nil {
-		t.Fatal("failed publication prevented inspection:", err)
-	}
+	require.ErrorIs(t, err, ErrDenied, "collision lost captured approval")
+	require.Equal(t, expected, approved)
+	call, err := authority.admit(brokerMessage(1, recoveryWritePayload))
+	require.Nil(t, call, "failed persistence left admission open")
+	require.ErrorIs(t, err, ErrClosed)
+	_, err = store.Load(approved, binding)
+	require.NoError(t, err, "failed publication prevented inspection")
 }
 
 func TestPersistCheckpointMissingAndAliasedOwners(t *testing.T) {
+	t.Parallel()
 	authority := testRecoveryAuthority(t, Read|Write)
 	journal := testRecoveryAuthorityJournal(t, authority)
 	binding := [sha256.Size]byte{1}
 	store, err := OpenLinuxRecoveryCheckpointStore(testRecoveryDirectory(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer store.Close()
 	var absent *LinuxRecoveryAuthority
-	if approved, err := absent.persistCheckpoint(journal, store, binding); !errors.Is(err, ErrClosed) || approved != ([sha256.Size]byte{}) {
-		t.Fatal("nil authority produced approval:", err)
-	}
-	if approved, err := authority.persistCheckpoint(nil, store, binding); !errors.Is(err, ErrClosed) || approved != ([sha256.Size]byte{}) {
-		t.Fatal("nil journal produced approval:", err)
-	}
-	if approved, err := authority.persistCheckpoint(journal, nil, binding); !errors.Is(err, ErrClosed) || approved != ([sha256.Size]byte{}) {
-		t.Fatal("nil checkpoint store produced approval:", err)
-	}
+	approved, err := absent.persistCheckpoint(journal, store, binding)
+	require.ErrorIs(t, err, ErrClosed, "nil authority produced approval")
+	require.Zero(t, approved)
+	approved, err = authority.persistCheckpoint(nil, store, binding)
+	require.ErrorIs(t, err, ErrClosed, "nil journal produced approval")
+	require.Zero(t, approved)
+	approved, err = authority.persistCheckpoint(journal, nil, binding)
+	require.ErrorIs(t, err, ErrClosed, "nil checkpoint store produced approval")
+	require.Zero(t, approved)
 	alias := &LinuxRecoveryCheckpointStore{storage: journal}
-	if approved, err := authority.persistCheckpoint(journal, alias, binding); !errors.Is(err, ErrDenied) || approved != ([sha256.Size]byte{}) {
-		t.Fatal("same storage owner accepted:", err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if approved, err := authority.persistCheckpoint(journal, store, binding); !errors.Is(err, ErrClosed) || approved != ([sha256.Size]byte{}) {
-		t.Fatal("closed checkpoint store produced approval:", err)
-	}
+	approved, err = authority.persistCheckpoint(journal, alias, binding)
+	require.ErrorIs(t, err, ErrDenied, "same storage owner accepted")
+	require.Zero(t, approved)
+	require.NoError(t, store.Close())
+	approved, err = authority.persistCheckpoint(journal, store, binding)
+	require.ErrorIs(t, err, ErrClosed, "closed checkpoint store produced approval")
+	require.Zero(t, approved)
 }

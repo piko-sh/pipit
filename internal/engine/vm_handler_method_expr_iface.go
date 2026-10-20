@@ -109,7 +109,7 @@ func invokeInterfaceMethodExpr(vm *VM, receiver reflect.Value, methodName, stati
 		return results
 	}
 	if funcIndex, ok := lookupMethodTableForReceiver(vm, receiver, methodName); ok && int(funcIndex) < len(vm.functions) {
-		own := &boundMethodVM{vm: vm, callee: vm.functions[funcIndex], limits: vm.Limits, rootFunctionOverride: nil}
+		own := newBoundMethodVM(vm, vm.functions[funcIndex], nil)
 		return shapeBoundMethodResults(own.invoke(receiver, arguments, identityArg), outTypes)
 	}
 	if bound := boundNativeMethodExpr(vm, receiver, methodName, staticTypeName); bound.IsValid() {
@@ -119,7 +119,7 @@ func invokeInterfaceMethodExpr(vm *VM, receiver reflect.Value, methodName, stati
 	if !ok || int(funcIndex) >= len(vm.functions) {
 		panic(newInvariantError("undefined method %s.%s", receiver.Type(), methodName))
 	}
-	promoted := &boundMethodVM{vm: vm, callee: vm.functions[funcIndex], limits: vm.Limits, rootFunctionOverride: nil}
+	promoted := newBoundMethodVM(vm, vm.functions[funcIndex], nil)
 	return shapeBoundMethodResults(promoted.invoke(promotedReceiver, arguments, identityArg), outTypes)
 }
 

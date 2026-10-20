@@ -24,132 +24,170 @@ import (
 	"strings"
 	"syscall/js"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestBrowserRestrictedPolicy(t *testing.T) {
-	for _, test := range []struct {
-		name   string
-		source string
-		ok     bool
-		output string
-		value  string
+	tests := []struct {
+		name       string
+		source     string
+		wantOutput string
+		wantOK     bool
 	}{
-		{name: "print", source: "package main\nfunc main() { println(42) }", ok: true, output: "42\n"},
-		{name: "reviewed helper", source: "package main\nimport \"math\"\nfunc main() { println(int(math.Sqrt(49))) }", ok: true, output: "7\n"},
+		{name: "print", source: "package main\nfunc main() { println(42) }", wantOutput: "42\n", wantOK: true},
+		{name: "reviewed helper", source: "package main\nimport \"math\"\nfunc main() { println(int(math.Sqrt(49))) }", wantOutput: "7\n", wantOK: true},
 		{name: "unreviewed import", source: "package main\nimport \"os\"\nfunc main() { os.Exit(0) }"},
 		{name: "global registry", source: "package main\nimport \"fmt\"\nfunc main() { fmt.Println(42) }"},
 		{name: "goroutine", source: "package main\nfunc main() { go println(42) }"},
 		{name: "channel", source: "package main\nfunc main() { channel := make(chan int); _ = channel }"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			result := runSource(test.source, "untrusted")
-			if result[resultKeyOK] != test.ok || result["stdout"] != test.output || result["result"] != test.value {
-				t.Fatalf("unexpected result: %+v", result)
-			}
-			if !test.ok && result[resultKeyError] == "" {
-				t.Fatal("denial has no error")
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := runSource(tt.source, "untrusted")
+			require.Subset(t, result, map[string]any{resultKeyOK: tt.wantOK, "stdout": tt.wantOutput, "result": ""})
+			if !tt.wantOK {
+				require.NotEmpty(t, result[resultKeyError], "a denial carries an error")
 			}
 		})
 	}
 }
 
 func TestBrowserModesFailClosed(t *testing.T) {
+	t.Parallel()
 	source := js.ValueOf("package main\nfunc main() {}")
-	for _, arguments := range [][]js.Value{
-		nil,
-		{js.ValueOf(12)},
-		{source, js.Null()},
-		{source, js.ValueOf("untrusted")},
-		{source, js.ValueOf(map[string]any{"mode": "untrustd"})},
-		{source, js.ValueOf(map[string]any{"mode": ""})},
-		{source, js.ValueOf(map[string]any{"mode": false})},
-		{source, js.ValueOf(map[string]any{}), source},
-	} {
-		if _, _, err := parseRunArgs(arguments); err == nil {
-			t.Fatalf("accepted invalid arguments: %v", arguments)
-		}
+	tests := []struct {
+		name      string
+		arguments []js.Value
+	}{
+		{name: "no arguments", arguments: nil},
+		{name: "source is not a string", arguments: []js.Value{js.ValueOf(12)}},
+		{name: "null options", arguments: []js.Value{source, js.Null()}},
+		{name: "options are a string", arguments: []js.Value{source, js.ValueOf("untrusted")}},
+		{name: "misspelt mode", arguments: []js.Value{source, js.ValueOf(map[string]any{"mode": "untrustd"})}},
+		{name: "empty mode", arguments: []js.Value{source, js.ValueOf(map[string]any{"mode": ""})}},
+		{name: "mode is not a string", arguments: []js.Value{source, js.ValueOf(map[string]any{"mode": false})}},
+		{name: "extra argument", arguments: []js.Value{source, js.ValueOf(map[string]any{}), source}},
 	}
-	for _, mode := range []string{"dev", "untrusted"} {
-		if _, parsed, err := parseRunArgs([]js.Value{source, js.ValueOf(map[string]any{"mode": mode})}); err != nil || parsed != mode {
-			t.Fatalf("valid mode rejected: mode=%q error=%v", parsed, err)
-		}
-	}
-	if _, mode, err := parseRunArgs([]js.Value{source}); err != nil || mode != "dev" {
-		t.Fatalf("omitted mode rejected: mode=%q error=%v", mode, err)
-	}
-	if result := runSource("package main\nfunc main() { println(42) }", "unknown"); result[resultKeyOK] != false || result["stdout"] != "" {
-		t.Fatalf("unknown mode executed: %+v", result)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := parseRunArgs(tt.arguments)
+			require.Error(t, err)
+		})
 	}
 }
 
+func TestBrowserModesAcceptValidModes(t *testing.T) {
+	t.Parallel()
+	source := js.ValueOf("package main\nfunc main() {}")
+	tests := []struct {
+		name      string
+		arguments []js.Value
+		wantMode  string
+	}{
+		{name: "dev", arguments: []js.Value{source, js.ValueOf(map[string]any{"mode": "dev"})}, wantMode: "dev"},
+		{name: "untrusted", arguments: []js.Value{source, js.ValueOf(map[string]any{"mode": "untrusted"})}, wantMode: "untrusted"},
+		{name: "omitted mode means dev", arguments: []js.Value{source}, wantMode: "dev"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, mode, err := parseRunArgs(tt.arguments)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantMode, mode)
+		})
+	}
+}
+
+func TestBrowserRefusesUnknownMode(t *testing.T) {
+	result := runSource("package main\nfunc main() { println(42) }", "unknown")
+	require.Subset(t, result, map[string]any{resultKeyOK: false, "stdout": ""}, "an unknown mode runs nothing")
+}
+
 func TestBrowserSourceBounds(t *testing.T) {
-	source := strings.Repeat(" ", browserSourceLimit+1)
-	for _, mode := range []string{"dev", "untrusted"} {
-		if result := runSource(source, mode); result[resultKeyOK] != false || result[resultKeyError] != "browser source exceeds 1 MiB" {
-			t.Fatalf("oversized source accepted: %+v", result)
-		}
+	oversized := strings.Repeat(" ", browserSourceLimit+1)
+	tests := []struct {
+		name      string
+		operation func(string) map[string]any
+	}{
+		{name: "dev run", operation: func(source string) map[string]any { return runSource(source, "dev") }},
+		{name: "untrusted run", operation: func(source string) map[string]any { return runSource(source, "untrusted") }},
+		{name: "format", operation: formatSource},
+		{name: "disassemble", operation: disassembleSource},
 	}
-	if result := formatSource(source); result[resultKeyOK] != false || result[resultKeyError] != "browser source exceeds 1 MiB" {
-		t.Fatalf("oversized formatting accepted: %+v", result)
-	}
-	if result := disassembleSource(source); result[resultKeyOK] != false || result[resultKeyError] != "browser source exceeds 1 MiB" {
-		t.Fatalf("oversized disassembly accepted: %+v", result)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.operation(oversized)
+			require.Subset(t, result, map[string]any{resultKeyOK: false, resultKeyError: "browser source exceeds 1 MiB"})
+		})
 	}
 }
 
 func TestBrowserDisassemble(t *testing.T) {
 	result := disassembleSource("package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"hi\")\n}\n")
-	assembly, _ := result["assembly"].(string)
-	if result[resultKeyOK] != true || result[resultKeyError] != "" || result["truncated"] != false {
-		t.Fatalf("disassembly failed: %+v", result)
-	}
+	require.Subset(t, result, map[string]any{resultKeyOK: true, resultKeyError: "", "truncated": false})
+	assembly, ok := result["assembly"].(string)
+	require.True(t, ok, "the result holds the listing")
 	for _, want := range []string{"; pkasm - pipit bytecode assembly", "; function main", "; main.go:6", "CALL_NATIVE"} {
-		if !strings.Contains(assembly, want) {
-			t.Fatalf("listing lacks %q:\n%s", want, assembly)
-		}
+		require.Contains(t, assembly, want)
 	}
+
 	failed := disassembleSource("package main\nfunc main() { undefined() }")
-	if failed[resultKeyOK] != false || failed[resultKeyError] == "" || failed["assembly"] != "" {
-		t.Fatalf("compile error not reported: %+v", failed)
-	}
+	require.Subset(t, failed, map[string]any{resultKeyOK: false, "assembly": ""})
+	require.NotEmpty(t, failed[resultKeyError], "a compile error is reported")
 }
 
 func TestClipListing(t *testing.T) {
-	for _, test := range []struct {
-		listing, want string
+	t.Parallel()
+	tests := []struct {
+		name          string
+		listing       string
+		want          string
 		limit         int
-		truncated     bool
+		wantTruncated bool
 	}{
-		{listing: "a\nb\n", limit: 4, want: "a\nb\n"},
-		{listing: "a\nbc\n", limit: 4, want: "a\n", truncated: true},
-		{listing: "abcdef", limit: 4, want: "", truncated: true},
-	} {
-		if got, truncated := clipListing(test.listing, test.limit); got != test.want || truncated != test.truncated {
-			t.Fatalf("clipListing(%q, %d) = %q, %v", test.listing, test.limit, got, truncated)
-		}
+		{name: "fits the limit", listing: "a\nb\n", limit: 4, want: "a\nb\n"},
+		{name: "cut at a line end", listing: "a\nbc\n", limit: 4, want: "a\n", wantTruncated: true},
+		{name: "no complete line fits", listing: "abcdef", limit: 4, want: "", wantTruncated: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, truncated := clipListing(tt.listing, tt.limit)
+			require.Equal(t, tt.want, got)
+			require.Equal(t, tt.wantTruncated, truncated)
+		})
 	}
 }
 
 func TestBrowserRejectsConcurrentOperations(t *testing.T) {
 	browserBusy.Store(true)
-	defer browserBusy.Store(false)
-	for _, operation := range []func(js.Value, []js.Value) any{jsRun, jsFormat, jsDisassemble} {
-		completed := make(chan js.Value, 1)
-		callback := js.FuncOf(func(_ js.Value, arguments []js.Value) any {
-			completed <- arguments[0]
-			return nil
+	t.Cleanup(func() { browserBusy.Store(false) })
+	tests := []struct {
+		name      string
+		operation func(js.Value, []js.Value) any
+	}{
+		{name: "run", operation: jsRun},
+		{name: "format", operation: jsFormat},
+		{name: "disassemble", operation: jsDisassemble},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			completed := make(chan js.Value, 1)
+			callback := js.FuncOf(func(_ js.Value, arguments []js.Value) any {
+				completed <- arguments[0]
+				return nil
+			})
+			t.Cleanup(callback.Release)
+			promise, ok := tt.operation(js.Undefined(), []js.Value{js.ValueOf("package main\nfunc main() { println(42) }")}).(js.Value)
+			require.True(t, ok, "the operation returns a promise")
+			promise.Call("then", callback)
+			result := <-completed
+			require.False(t, result.Get(resultKeyOK).Bool(), "a concurrent operation is refused")
+			require.Equal(t, "browser interpreter is busy", result.Get(resultKeyError).String())
+			require.True(t, browserBusy.Load(), "a refused operation keeps the other operation's admission")
 		})
-		promise, ok := operation(js.Undefined(), []js.Value{js.ValueOf("package main\nfunc main() { println(42) }")}).(js.Value)
-		if !ok {
-			callback.Release()
-			t.Fatal("operation did not return a promise")
-		}
-		promise.Call("then", callback)
-		result := <-completed
-		callback.Release()
-		if result.Get(resultKeyOK).Bool() || result.Get(resultKeyError).String() != "browser interpreter is busy" || !browserBusy.Load() {
-			t.Fatal("concurrent operation executed or released another operation's admission")
-		}
 	}
 }
 
@@ -169,10 +207,9 @@ func TestBrowserCaptureCombinedBound(t *testing.T) {
 		fs.Call("writeSync", 2, buffer)
 		fs.Call("writeSync", 1, buffer)
 	})
-	if string(stdout) != "cde" || string(stderr) != "ab" || !truncated || acknowledged != 3 {
-		t.Fatalf("capture escaped combined bound or ignored offsets: stdout=%q stderr=%q truncated=%v acknowledged=%d", stdout, stderr, truncated, acknowledged)
-	}
-	if !fs.Get("write").Equal(original) {
-		t.Fatal("capture did not restore the host writer")
-	}
+	require.Equal(t, "cde", string(stdout), "stdout honours the write offsets")
+	require.Equal(t, "ab", string(stderr), "stderr gets what is left of the combined bound")
+	require.True(t, truncated, "the combined bound truncates the capture")
+	require.Equal(t, 3, acknowledged, "the asynchronous write acknowledges its bytes")
+	require.True(t, fs.Get("write").Equal(original), "the capture restores the host writer")
 }

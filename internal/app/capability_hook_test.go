@@ -27,9 +27,11 @@ import (
 	"sync"
 	"testing"
 
-	"pipit.sh/pipit/internal/symtab"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/policy"
+	"pipit.sh/pipit/internal/symtab"
 )
 
 type recordingHook struct {
@@ -112,39 +114,27 @@ func TestCapabilityHookOption(t *testing.T) {
 	hook := &recordingHook{}
 	service := NewService(WithCapabilityHook(hook))
 
-	if got := service.CapabilityHook(); got != hook {
-		t.Fatalf("Service.CapabilityHook() = %v, want recordingHook", got)
-	}
-	if service.limits.CapabilityHook != hook {
-		t.Fatalf("Service.limits.capabilityHook = %v, want recordingHook", service.limits.CapabilityHook)
-	}
+	require.Same(t, hook, service.CapabilityHook())
+	require.Same(t, hook, service.limits.CapabilityHook)
 }
 
 func TestCapabilityHookSetter(t *testing.T) {
 	t.Parallel()
 	service := NewService()
-	if service.CapabilityHook() != nil {
-		t.Fatalf("default Service.CapabilityHook() = %v, want nil", service.CapabilityHook())
-	}
+	require.Nil(t, service.CapabilityHook(), "a service has no hook by default")
 
 	hook := &recordingHook{}
 	service.SetCapabilityHook(hook)
-	if service.CapabilityHook() != hook {
-		t.Fatalf("after SetCapabilityHook, Service.CapabilityHook() = %v, want recordingHook", service.CapabilityHook())
-	}
-	if service.limits.CapabilityHook != hook {
-		t.Fatalf("after SetCapabilityHook, limits.capabilityHook = %v, want recordingHook", service.limits.CapabilityHook)
-	}
+	require.Same(t, hook, service.CapabilityHook())
+	require.Same(t, hook, service.limits.CapabilityHook)
 
 	service.SetCapabilityHook(nil)
-	if service.CapabilityHook() != nil {
-		t.Fatalf("after SetCapabilityHook(nil), Service.CapabilityHook() = %v, want nil", service.CapabilityHook())
-	}
+	require.Nil(t, service.CapabilityHook(), "setting a nil hook clears it")
 }
 
 func TestPermissiveHookAllowsEverything(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := t.Context()
 	h := policy.PermissiveHook
 	type checkFn func() error
 	checks := []checkFn{
@@ -159,21 +149,15 @@ func TestPermissiveHookAllowsEverything(t *testing.T) {
 		func() error { return h.CheckSubprocess(ctx, "", "sh", []string{"sh", "-c", "echo"}) },
 	}
 	for i, check := range checks {
-		if err := check(); err != nil {
-			t.Errorf("permissive hook check %d returned %v, want nil", i, err)
-		}
+		assert.NoError(t, check(), "permissive hook check %d allows the call", i)
 	}
 }
 
 func TestEffectiveCapabilityHook(t *testing.T) {
 	t.Parallel()
-	if got := policy.EffectiveCapabilityHook(nil); got != policy.PermissiveHook {
-		t.Fatalf("effectiveCapabilityHook(nil) = %v, want permissiveHook", got)
-	}
+	require.Equal(t, policy.PermissiveHook, policy.EffectiveCapabilityHook(nil), "a nil hook falls back to the permissive hook")
 	hook := &recordingHook{}
-	if got := policy.EffectiveCapabilityHook(hook); got != hook {
-		t.Fatalf("effectiveCapabilityHook(hook) = %v, want supplied hook", got)
-	}
+	require.Same(t, hook, policy.EffectiveCapabilityHook(hook))
 }
 
 func TestWrapNativeFunctionAllows(t *testing.T) {
@@ -181,9 +165,8 @@ func TestWrapNativeFunctionAllows(t *testing.T) {
 	fn := func(s string) string { return strings.ToUpper(s) }
 	wrapped := policy.WrapNativeFunction(nil, reflect.ValueOf(fn), "test.ToUpper", nil)
 	results := wrapped.Call([]reflect.Value{reflect.ValueOf("hello")})
-	if len(results) != 1 || results[0].String() != "HELLO" {
-		t.Fatalf("wrapped function returned %v, want [HELLO]", results)
-	}
+	require.Len(t, results, 1)
+	require.Equal(t, "HELLO", results[0].String())
 }
 
 func TestWrapNativeFunctionDeniesWithErrorReturn(t *testing.T) {
@@ -200,16 +183,12 @@ func TestWrapNativeFunctionDeniesWithErrorReturn(t *testing.T) {
 	wrapped := policy.WrapNativeFunction(provider, reflect.ValueOf(fn), "os.ReadFile", gate)
 
 	results := wrapped.Call([]reflect.Value{reflect.ValueOf("/etc/passwd")})
-	if len(results) != 2 {
-		t.Fatalf("wrapped call returned %d results, want 2", len(results))
-	}
-	if !results[0].IsZero() || results[0].Len() != 0 {
-		t.Fatalf("denied call leaked non-zero first result %v", results[0])
-	}
+	require.Len(t, results, 2)
+	require.True(t, results[0].IsZero(), "a denied call returns a zero first result")
+	require.Zero(t, results[0].Len())
 	gotErr, ok := reflect.TypeAssert[error](results[1])
-	if !ok || !errors.Is(gotErr, denial) {
-		t.Fatalf("denied call returned err %v, want %v", gotErr, denial)
-	}
+	require.True(t, ok)
+	require.ErrorIs(t, gotErr, denial)
 }
 
 func TestWrapNativeFunctionPanicsWithoutErrorReturn(t *testing.T) {
@@ -223,17 +202,15 @@ func TestWrapNativeFunctionPanicsWithoutErrorReturn(t *testing.T) {
 	provider := policy.NewStaticHookProvider(hook, "")
 	wrapped := policy.WrapNativeFunction(provider, reflect.ValueOf(fn), "no.errret", gate)
 
-	defer func() {
-		recovered := recover()
-		if recovered == nil {
-			t.Fatalf("expected panic for gated function without error return")
-		}
-		err, ok := recovered.(error)
-		if !ok || !errors.Is(err, denial) {
-			t.Fatalf("panic value %v does not wrap denial %v", recovered, denial)
-		}
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		wrapped.Call([]reflect.Value{reflect.ValueOf("x")})
 	}()
-	wrapped.Call([]reflect.Value{reflect.ValueOf("x")})
+	require.NotNil(t, recovered, "a gated function without an error result panics")
+	err, ok := recovered.(error)
+	require.True(t, ok, "the panic value is an error")
+	require.ErrorIs(t, err, denial)
 }
 
 func TestWrapNativeFunctionGenericGateRecordsCall(t *testing.T) {
@@ -246,18 +223,10 @@ func TestWrapNativeFunctionGenericGateRecordsCall(t *testing.T) {
 	wrapped.Call([]reflect.Value{reflect.ValueOf("x")})
 
 	calls := hook.snapshot()
-	if len(calls) != 1 {
-		t.Fatalf("got %d hook calls, want 1: %#v", len(calls), calls)
-	}
-	if calls[0].Method != "CheckFunctionCall" {
-		t.Fatalf("hook method %q, want CheckFunctionCall", calls[0].Method)
-	}
-	if calls[0].ModulePath != "mod/foo" {
-		t.Fatalf("hook modulePath %q, want mod/foo", calls[0].ModulePath)
-	}
-	if calls[0].Fields["fnPath"] != "fmt.Sprintln" {
-		t.Fatalf("hook fnPath %q, want fmt.Sprintln", calls[0].Fields["fnPath"])
-	}
+	require.Len(t, calls, 1)
+	require.Equal(t, "CheckFunctionCall", calls[0].Method)
+	require.Equal(t, "mod/foo", calls[0].ModulePath)
+	require.Equal(t, "fmt.Sprintln", calls[0].Fields["fnPath"])
 }
 
 func hookTestSymbols() *symtab.SymbolRegistry {
@@ -275,21 +244,15 @@ func TestCapabilityHookFiresOnNativeCall(t *testing.T) {
 	service := NewService(WithCapabilityHook(hook), WithForceGoDispatch())
 	service.UseSymbols(hookTestSymbols())
 
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 		import "hooktest"
 		hooktest.Upper("hello")
 	`)
-	if err != nil {
-		t.Fatalf("Eval failed: %v", err)
-	}
-	if result != "HELLO" {
-		t.Fatalf("Eval returned %v, want HELLO", result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "HELLO", result)
 
 	calls := hook.snapshot()
-	if len(calls) == 0 {
-		t.Fatalf("expected at least one hook call, got none")
-	}
+	require.NotEmpty(t, calls, "the hook is consulted")
 	var foundUpper bool
 	for _, call := range calls {
 		if call.Method != "CheckFunctionCall" {
@@ -304,9 +267,7 @@ func TestCapabilityHookFiresOnNativeCall(t *testing.T) {
 			foundUpper = true
 		}
 	}
-	if !foundUpper {
-		t.Fatalf("did not see CheckFunctionCall with resolved fnPath; got %d calls: %#v", len(calls), calls)
-	}
+	require.True(t, foundUpper, "the hook sees CheckFunctionCall with the resolved path (%d calls: %#v)", len(calls), calls)
 }
 
 func TestCapabilityHookDeniesNativeCall(t *testing.T) {
@@ -322,16 +283,12 @@ func TestCapabilityHookDeniesNativeCall(t *testing.T) {
 	service := NewService(WithCapabilityHook(hook), WithForceGoDispatch())
 	service.UseSymbols(hookTestSymbols())
 
-	_, err := service.Eval(context.Background(), `
+	_, err := service.Eval(t.Context(), `
 		import "hooktest"
 		hooktest.Upper("hello")
 	`)
-	if err == nil {
-		t.Fatalf("expected Eval to fail when hook denies, got nil")
-	}
-	if !strings.Contains(err.Error(), "denied by policy") {
-		t.Fatalf("error %q does not contain denial message", err.Error())
-	}
+	require.Error(t, err, "a denying hook fails the evaluation")
+	require.Contains(t, err.Error(), "denied by policy", "the error carries the denial message")
 }
 
 func TestWrapNativeFunctionDeniesViaSpecificGate(t *testing.T) {
@@ -353,25 +310,18 @@ func TestWrapNativeFunctionDeniesViaSpecificGate(t *testing.T) {
 
 	results := wrapped.Call([]reflect.Value{reflect.ValueOf("/etc/shadow")})
 	err, ok := reflect.TypeAssert[error](results[1])
-	if !ok || err == nil {
-		t.Fatalf("expected error for denied path, got nil")
-	}
+	require.True(t, ok, "a denied path fails the call")
+	require.Error(t, err)
 
 	results = wrapped.Call([]reflect.Value{reflect.ValueOf("/tmp/allowed")})
-	if err, ok := reflect.TypeAssert[error](results[1]); ok && err != nil {
-		t.Fatalf("unexpected error for allowed path: %v", err)
+	if allowedErr, ok := reflect.TypeAssert[error](results[1]); ok {
+		require.NoError(t, allowedErr, "an allowed path passes the gate")
 	}
 
 	calls := hook.snapshot()
-	if len(calls) != 2 {
-		t.Fatalf("expected 2 hook calls, got %d", len(calls))
-	}
+	require.Len(t, calls, 2)
 	for _, call := range calls {
-		if call.Method != "CheckFileOpen" {
-			t.Errorf("unexpected hook method %q", call.Method)
-		}
-		if call.ModulePath != "mod/secret" {
-			t.Errorf("unexpected hook modulePath %q", call.ModulePath)
-		}
+		assert.Equal(t, "CheckFileOpen", call.Method)
+		assert.Equal(t, "mod/secret", call.ModulePath)
 	}
 }

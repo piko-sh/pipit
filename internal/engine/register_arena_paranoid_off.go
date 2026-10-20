@@ -32,6 +32,10 @@ const (
 // Takes _ (*ArenaSavePoint) which is unused in the default build.
 func (*RegisterArena) poisonReleasedPrimitives(*ArenaSavePoint) {}
 
+// poisonReleasedStringBytes is a no-op in the default build; the paranoid twin overwrites
+// the string byte slab and its retired generations with canary bytes at Reset.
+func (*RegisterArena) poisonReleasedStringBytes() {}
+
 // poisonReleasedGenericBytes is a no-op in the default build; the paranoid twin
 // overwrites the generic byte slab and its retired generations with canary bytes at
 // Reset, so a value that outlived the arena reads loud garbage rather than plausible

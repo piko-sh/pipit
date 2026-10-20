@@ -19,7 +19,6 @@
 package engine
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -385,7 +384,8 @@ func TestReaderAdapterStopsWhenTheMethodNeverAdvances(t *testing.T) {
 	}
 
 	_, err := reader.Read(buffer)
-	require.ErrorIs(t, err, io.EOF, "a Read that never advances must not spin forever")
+	require.ErrorIs(t, err, errReaderStalled, "a Read that never advances must not spin forever")
+	require.NotErrorIs(t, err, io.EOF, "the reader is stopped, not ended")
 }
 
 func TestReaderAdapterReportsWhatTheMethodFilled(t *testing.T) {
@@ -431,12 +431,13 @@ func TestAdapterMethodsReportAnUnavailableCallee(t *testing.T) {
 		require.Zero(t, count)
 	})
 
-	t.Run("the reader adapter reports end of file", func(t *testing.T) {
+	t.Run("the reader adapter reports the missing method", func(t *testing.T) {
 		t.Parallel()
 		vm := newTestVM(t)
 
 		count, err := (&pipitReaderAdapter{vm: vm, methodIndex: 9}).Read(make([]byte, 4))
-		require.ErrorIs(t, err, io.EOF)
+		require.ErrorIs(t, err, errAdapterMethodUnavailable)
+		require.NotErrorIs(t, err, io.EOF)
 		require.Zero(t, count)
 	})
 
@@ -559,8 +560,6 @@ func TestUnwrapPipitNamedTypeReachesTheConcreteType(t *testing.T) {
 func TestExtractResultHelpersReadTheirSlot(t *testing.T) {
 	t.Parallel()
 
-	failure := errors.New("failed")
-
 	t.Run("bytes come from the first result", func(t *testing.T) {
 		t.Parallel()
 
@@ -568,16 +567,6 @@ func TestExtractResultHelpersReadTheirSlot(t *testing.T) {
 		require.Nil(t, extractBytesResult(nil))
 		require.Nil(t, extractBytesResult([]reflect.Value{reflect.Value{}}))
 		require.Nil(t, extractBytesResult([]reflect.Value{reflect.ValueOf(3)}))
-	})
-
-	t.Run("the error comes from the second result", func(t *testing.T) {
-		t.Parallel()
-
-		results := []reflect.Value{reflect.ValueOf([]byte("raw")), reflect.ValueOf(failure)}
-		require.ErrorIs(t, extractErrorResult(results), failure)
-		require.NoError(t, extractErrorResult([]reflect.Value{reflect.ValueOf(3)}))
-		require.NoError(t, extractErrorResult([]reflect.Value{reflect.ValueOf(3), reflect.Value{}}))
-		require.NoError(t, extractErrorResult([]reflect.Value{reflect.ValueOf(3), reflect.ValueOf(4)}))
 	})
 }
 

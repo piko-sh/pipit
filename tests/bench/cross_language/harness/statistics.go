@@ -22,8 +22,11 @@ package harness
 
 import (
 	"math"
-	"sort"
+	"slices"
 )
+
+// p95Fraction selects the 95th percentile.
+const p95Fraction = 0.95
 
 // Summarise reduces a slice of nanosecond samples into a single Aggregate record. The
 // caller must filter to only successful runs. Returns Aggregate with Runs=0 if samples is
@@ -38,10 +41,23 @@ func Summarise(
 	kInner int,
 ) Aggregate {
 	if len(samples) == 0 {
-		return Aggregate{Benchmark: benchmark, Runner: runner, Mode: mode}
+		return Aggregate{
+			Benchmark:          benchmark,
+			Runner:             runner,
+			Mode:               mode,
+			Runs:               0,
+			MedianNanos:        0,
+			MeanNanos:          0,
+			StddevNanos:        0,
+			MinNanos:           0,
+			P95Nanos:           0,
+			PeakRSSKB:          0,
+			MedianCompileNanos: 0,
+			ColdStartNanos:     0,
+		}
 	}
 	sorted := append([]int64(nil), samples...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	slices.Sort(sorted)
 	medianCompile := medianInt64Unsorted(compileSamples)
 	median := medianInt64(sorted)
 	coldStart := medianCompile
@@ -59,7 +75,7 @@ func Summarise(
 		MeanNanos:          meanInt64(sorted),
 		StddevNanos:        stddevInt64(sorted),
 		MinNanos:           sorted[0],
-		P95Nanos:           percentileInt64(sorted, 0.95),
+		P95Nanos:           percentileInt64(sorted, p95Fraction),
 		PeakRSSKB:          medianInt64Unsorted(rssSamples),
 		MedianCompileNanos: medianCompile,
 		ColdStartNanos:     coldStart,
@@ -85,7 +101,7 @@ func medianInt64Unsorted(samples []int64) int64 {
 		return 0
 	}
 	sorted := append([]int64(nil), samples...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	slices.Sort(sorted)
 	return medianInt64(sorted)
 }
 
@@ -130,12 +146,6 @@ func percentileInt64(sorted []int64, p float64) int64 {
 	if p >= 1 {
 		return sorted[count-1]
 	}
-	rank := int(math.Ceil(p * float64(count)))
-	if rank < 1 {
-		rank = 1
-	}
-	if rank > count {
-		rank = count
-	}
+	rank := min(max(int(math.Ceil(p*float64(count))), 1), count)
 	return sorted[rank-1]
 }

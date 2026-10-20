@@ -20,139 +20,401 @@ package appendlower
 
 import (
 	"go/ast"
+	"go/token"
 	"go/types"
+
+	"pipit.sh/pipit/internal/compile/sliceshare"
 )
 
 const (
 	// blankIdentifier is the Go blank identifier, which never names a slice worth tracking.
 	blankIdentifier = "_"
+
+	// nilIdentifier is the predeclared nil, which names no variable.
+	nilIdentifier = "nil"
 )
 
-// CollectAliases returns the names of slice values in body whose header may be shared
-// with another handle, so an append through them must not be lowered to the in-place
-// form.
+// Body is the code one alias analysis covers.
+type Body struct {
+	// Receiver is the method's receiver list; nil for a function.
+	Receiver *ast.FieldList
+
+	// Parameters is the parameter list; nil for none.
+	Parameters *ast.FieldList
+
+	// Block is the body itself; nil for none.
+	Block *ast.BlockStmt
+
+	// Entry names further variables whose header is shared on entry, such as the key and
+	// value of a range-over-func body.
+	Entry []ast.Expr
+
+	// Repeats makes sharing events count from entry because an enclosing loop repeats
+	// the body.
+	Repeats bool
+}
+
+// Aliases records when each slice variable's header may become shared, preventing
+// unsafe in-place appends. A nil *Aliases treats every variable as shared.
 //
-// Takes info (*types.Info) which resolves parameter types; nil falls back to the syntax.
-// Takes parameters (*ast.FieldList) which is the function's parameter list; nil for none.
-// Takes body (*ast.BlockStmt) which is the function body; nil for none.
+// Sharing events in loops count from the outermost loop's start because later
+// iterations repeat them. Events in function literals or bodies using goto count from
+// entry.
+type Aliases struct {
+	// info resolves identifiers to the variables they denote.
+	info *types.Info
+
+	// objects maps each shared variable to the position from which it is shared; token.NoPos
+	// means from entry.
+	objects map[types.Object]token.Pos
+
+	// names holds the same for identifiers that resolve to no object, keyed by name.
+	names map[string]token.Pos
+}
+
+// CollectAliases runs the alias analysis over body.
 //
-// Returns map[string]bool which is the aliased name set, or nil when nothing is aliased.
-func CollectAliases(info *types.Info, parameters *ast.FieldList, body *ast.BlockStmt) map[string]bool {
-	aliased := make(map[string]bool)
-	collectAliasesFromParameters(info, parameters, aliased)
-	if body != nil {
-		ast.Inspect(body, func(node ast.Node) bool {
-			collectAliasesFromNode(node, aliased)
-			return true
-		})
-	}
-	if len(aliased) == 0 {
+// Takes info (*types.Info) which resolves identifiers, builtins and conversions; nil
+// makes every variable shared.
+// Takes body (Body) which is the code to analyse.
+//
+// Returns *Aliases which answers Shared, or nil when info is nil.
+func CollectAliases(info *types.Info, body Body) *Aliases {
+	if info == nil {
 		return nil
 	}
-	return aliased
+	aliases := &Aliases{
+		info:    info,
+		objects: make(map[types.Object]token.Pos),
+		names:   make(map[string]token.Pos),
+	}
+	aliases.recordFields(body.Receiver)
+	aliases.recordFields(body.Parameters)
+	for _, entry := range body.Entry {
+		aliases.record(entry, token.NoPos)
+	}
+	if body.Block == nil {
+		return aliases
+	}
+	walker := &aliasWalker{
+		aliases:   aliases,
+		fromEntry: body.Repeats || containsGoto(body.Block),
+		stack:     nil,
+	}
+	ast.Inspect(body.Block, walker.visit)
+	return aliases
 }
 
-// collectAliasesFromParameters records every slice-typed parameter name.
+// Shared reports whether an append to target that ends at until may run while another
+// handle shares target's header.
 //
-// Takes info (*types.Info) which resolves the parameter types.
-// Takes parameters (*ast.FieldList) which is the parameter list.
-// Takes aliased (map[string]bool) which receives the names.
-func collectAliasesFromParameters(info *types.Info, parameters *ast.FieldList, aliased map[string]bool) {
-	if parameters == nil {
-		return
-	}
-	for _, field := range parameters.List {
-		if !fieldIsSlice(info, field) {
-			continue
-		}
-		for _, name := range field.Names {
-			if name == nil || name.Name == blankIdentifier {
-				continue
-			}
-			aliased[name.Name] = true
-		}
-	}
-}
-
-// fieldIsSlice reports whether a parameter field has slice type, by go/types when info
-// covers the field and by syntax otherwise.
+// Takes target (*ast.Ident) which is the appended-to variable.
+// Takes until (token.Pos) which is the end of the append expression; events inside it run
+// before the append does.
 //
-// Takes info (*types.Info) which resolves the field type; may be nil.
-// Takes field (*ast.Field) which is the parameter field.
-//
-// Returns bool which is true for a slice-typed field.
-func fieldIsSlice(info *types.Info, field *ast.Field) bool {
-	if info != nil && field.Type != nil {
-		if typeInfo, ok := info.Types[field.Type]; ok && typeInfo.Type != nil {
-			_, isSlice := typeInfo.Type.Underlying().(*types.Slice)
-			return isSlice
-		}
+// Returns bool which is true when the append must not grow the header in place.
+func (a *Aliases) Shared(target *ast.Ident, until token.Pos) bool {
+	if a == nil {
+		return true
 	}
-	arrayType, ok := field.Type.(*ast.ArrayType)
-	if !ok {
+	if from, found := a.names[target.Name]; found && from < until {
+		return true
+	}
+	object := a.info.ObjectOf(target)
+	if object == nil {
 		return false
 	}
-	return arrayType.Len == nil
+	from, found := a.objects[object]
+	return found && from < until
 }
 
-// collectAliasesFromNode records the aliasing forms one AST node can introduce.
+// recordFields records every named receiver or parameter as shared from entry.
 //
-// Takes node (ast.Node) which is the node under inspection.
-// Takes aliased (map[string]bool) which receives the names.
-func collectAliasesFromNode(node ast.Node, aliased map[string]bool) {
-	switch typed := node.(type) {
-	case *ast.AssignStmt:
-		recordAssignRHS(typed, aliased)
-	case *ast.UnaryExpr:
-		recordAddressOf(typed, aliased)
-	case *ast.ValueSpec:
-		recordVarDeclValues(typed, aliased)
-	}
-}
-
-// recordAssignRHS records every identifier on the right-hand side of an assignment: its
-// header is now shared with the left-hand side.
-//
-// Takes statement (*ast.AssignStmt) which is the assignment.
-// Takes aliased (map[string]bool) which receives the names.
-func recordAssignRHS(statement *ast.AssignStmt, aliased map[string]bool) {
-	for _, expression := range statement.Rhs {
-		recordIdent(expression, aliased)
-	}
-}
-
-// recordAddressOf records the operand of a unary & expression.
-//
-// Takes expression (*ast.UnaryExpr) which is the unary expression.
-// Takes aliased (map[string]bool) which receives the name.
-func recordAddressOf(expression *ast.UnaryExpr, aliased map[string]bool) {
-	if expression.Op.String() != "&" {
+// Takes fields (*ast.FieldList) which is a receiver or parameter list; may be nil.
+func (a *Aliases) recordFields(fields *ast.FieldList) {
+	if fields == nil {
 		return
 	}
-	recordIdent(expression.X, aliased)
-}
-
-// recordVarDeclValues records every identifier used as a var declaration's value.
-//
-// Takes spec (*ast.ValueSpec) which is the declaration.
-// Takes aliased (map[string]bool) which receives the names.
-func recordVarDeclValues(spec *ast.ValueSpec, aliased map[string]bool) {
-	for _, value := range spec.Values {
-		recordIdent(value, aliased)
+	for _, field := range fields.List {
+		for _, name := range field.Names {
+			a.record(name, token.NoPos)
+		}
 	}
 }
 
-// recordIdent records expression when it is a named, non-blank identifier.
+// record marks the variable expression names, after parentheses and sharing conversions,
+// as shared from position, keeping an earlier position already recorded.
 //
-// Takes expression (ast.Expr) which is the candidate.
-// Takes aliased (map[string]bool) which receives the name.
-func recordIdent(expression ast.Expr, aliased map[string]bool) {
-	ident, ok := expression.(*ast.Ident)
+// Takes expression (ast.Expr) which is the candidate; anything but a named variable is
+// ignored.
+// Takes position (token.Pos) which is the event's effective position.
+func (a *Aliases) record(expression ast.Expr, position token.Pos) {
+	if expression == nil {
+		return
+	}
+	ident, ok := sliceshare.StripSharing(a.info, expression).(*ast.Ident)
+	if !ok || ident.Name == "" || ident.Name == blankIdentifier || isNil(a.info, ident) {
+		return
+	}
+	object := a.info.ObjectOf(ident)
+	if object == nil {
+		if _, declared := a.info.Defs[ident]; declared {
+			return
+		}
+		a.names[ident.Name] = earlier(a.names, ident.Name, position)
+		return
+	}
+	if _, isVariable := object.(*types.Var); !isVariable {
+		return
+	}
+	a.objects[object] = earlier(a.objects, object, position)
+}
+
+// recordObject marks object as shared from position, keeping an earlier position already
+// recorded.
+//
+// Takes object (types.Object) which is the variable; nil is ignored.
+// Takes position (token.Pos) which is the event's effective position.
+func (a *Aliases) recordObject(object types.Object, position token.Pos) {
+	if object == nil {
+		return
+	}
+	a.objects[object] = earlier(a.objects, object, position)
+}
+
+// earlier returns the smaller of position and the position already recorded for key.
+//
+// Takes recorded (map[K]token.Pos) which holds the positions so far.
+// Takes key (K) which is the variable.
+// Takes position (token.Pos) which is the new event's position.
+//
+// Returns token.Pos which is the earliest position for key.
+func earlier[K comparable](recorded map[K]token.Pos, key K, position token.Pos) token.Pos {
+	if previous, found := recorded[key]; found && previous < position {
+		return previous
+	}
+	return position
+}
+
+// aliasWalker walks one body, recording each event at its effective position.
+type aliasWalker struct {
+	// aliases receives the events.
+	aliases *Aliases
+
+	// stack holds the nodes from the body down to the node being visited.
+	stack []ast.Node
+
+	// fromEntry makes every event count from entry.
+	fromEntry bool
+}
+
+// visit maintains the node stack and records sharing events during ast.Inspect.
+//
+// Takes node (ast.Node) which is the node entered, or nil when the last one is left.
+//
+// Returns bool which is always true, so every node is entered and left.
+func (w *aliasWalker) visit(node ast.Node) bool {
+	if node == nil {
+		w.stack = w.stack[:len(w.stack)-1]
+		return true
+	}
+	w.stack = append(w.stack, node)
+	w.recordEvents(node)
+	return true
+}
+
+// recordEvents records the sharing events one node introduces.
+//
+// Takes node (ast.Node) which is the node under inspection.
+func (w *aliasWalker) recordEvents(node ast.Node) {
+	info := w.aliases.info
+	switch typed := node.(type) {
+	case *ast.AssignStmt:
+		position := w.position(typed)
+		for _, value := range typed.Rhs {
+			w.aliases.record(value, position)
+		}
+		w.recordTargets(typed.Lhs, typed.Rhs, position)
+	case *ast.ValueSpec:
+		position := w.position(typed)
+		for _, value := range typed.Values {
+			w.aliases.record(value, position)
+		}
+		if len(typed.Values) > 0 {
+			w.recordTargets(identExpressions(typed.Names), typed.Values, position)
+		}
+	case *ast.UnaryExpr:
+		if typed.Op == token.AND {
+			w.aliases.record(typed.X, w.position(typed))
+		}
+	case *ast.RangeStmt:
+		position := w.position(typed)
+		w.aliases.record(typed.Key, position)
+		w.aliases.record(typed.Value, position)
+	case *ast.SendStmt:
+		w.aliases.record(typed.Value, w.position(typed))
+	case *ast.SelectorExpr:
+		if selection, found := info.Selections[typed]; found && selection.Kind() == types.MethodVal {
+			w.aliases.record(typed.X, w.position(typed))
+		}
+	case *ast.CallExpr:
+		w.recordCallArguments(typed)
+	case *ast.TypeSwitchStmt:
+		w.recordTypeSwitchBindings(typed)
+	}
+}
+
+// recordTargets records every assigned variable whose new value may already have another
+// handle. When the counts differ the values come from one multi-valued expression, which
+// may hand on anything.
+//
+// Takes targets ([]ast.Expr) which are the assigned variables.
+// Takes values ([]ast.Expr) which are the assigned values.
+// Takes position (token.Pos) which is the event's effective position.
+func (w *aliasWalker) recordTargets(targets, values []ast.Expr, position token.Pos) {
+	for index, target := range targets {
+		if len(targets) != len(values) || !buildsFreshHeader(w.aliases.info, values[index]) {
+			w.aliases.record(target, position)
+		}
+	}
+}
+
+// recordCallArguments records every argument of a call to a function. A builtin keeps
+// nothing (append copies the headers it is given, and its result is a new header), and a
+// conversion is not a call; a sharing conversion is seen through where its result is
+// used.
+//
+// Takes call (*ast.CallExpr) which is the call.
+func (w *aliasWalker) recordCallArguments(call *ast.CallExpr) {
+	info := w.aliases.info
+	if _, builtin := sliceshare.BuiltinName(info, call); builtin {
+		return
+	}
+	if typeAndValue, found := info.Types[call.Fun]; found && typeAndValue.IsType() {
+		return
+	}
+	position := w.position(call)
+	for _, argument := range call.Args {
+		w.aliases.record(argument, position)
+	}
+}
+
+// recordTypeSwitchBindings records each clause variable as sharing the switched value.
+// The variables are found through their uses because the compiler keeps no implicit
+// objects for them.
+//
+// Takes statement (*ast.TypeSwitchStmt) which is the type switch.
+func (w *aliasWalker) recordTypeSwitchBindings(statement *ast.TypeSwitchStmt) {
+	assignment, binds := statement.Assign.(*ast.AssignStmt)
+	if !binds || len(assignment.Lhs) != 1 {
+		return
+	}
+	binding, ok := assignment.Lhs[0].(*ast.Ident)
 	if !ok {
 		return
 	}
-	if ident.Name == "" || ident.Name == blankIdentifier {
-		return
+	position := w.position(statement)
+	ast.Inspect(statement.Body, func(node ast.Node) bool {
+		ident, isIdent := node.(*ast.Ident)
+		if !isIdent || ident.Name != binding.Name {
+			return true
+		}
+		if object := w.aliases.info.Uses[ident]; object != nil && object.Pos() == binding.Pos() {
+			w.aliases.recordObject(object, position)
+		}
+		return true
+	})
+}
+
+// position returns the position from which an event at node counts: entry inside a
+// function literal or when the whole body counts from entry, the start of the outermost
+// enclosing loop inside a loop, and node's own position otherwise.
+//
+// Takes node (ast.Node) which is the event's node.
+//
+// Returns token.Pos which is the effective position.
+func (w *aliasWalker) position(node ast.Node) token.Pos {
+	if w.fromEntry {
+		return token.NoPos
 	}
-	aliased[ident.Name] = true
+	for _, enclosing := range w.stack {
+		if _, literal := enclosing.(*ast.FuncLit); literal {
+			return token.NoPos
+		}
+	}
+	for _, enclosing := range w.stack {
+		switch enclosing.(type) {
+		case *ast.ForStmt, *ast.RangeStmt:
+			return enclosing.Pos()
+		}
+	}
+	return node.Pos()
+}
+
+// containsGoto reports whether block uses goto, which can run an event again after a
+// later append and so defeats the positional rule.
+//
+// Takes block (*ast.BlockStmt) which is the body.
+//
+// Returns bool which is true when a goto appears anywhere in block.
+func containsGoto(block *ast.BlockStmt) bool {
+	found := false
+	ast.Inspect(block, func(node ast.Node) bool {
+		if branch, ok := node.(*ast.BranchStmt); ok && branch.Tok == token.GOTO {
+			found = true
+		}
+		return !found
+	})
+	return found
+}
+
+// identExpressions returns names as expressions.
+//
+// Takes names ([]*ast.Ident) which are the declared names.
+//
+// Returns []ast.Expr which holds the same identifiers.
+func identExpressions(names []*ast.Ident) []ast.Expr {
+	expressions := make([]ast.Expr, len(names))
+	for index, name := range names {
+		expressions[index] = name
+	}
+	return expressions
+}
+
+// buildsFreshHeader reports whether expression yields a slice header that no other handle
+// can reach yet: a composite literal, nil, a slice expression, a conversion that copies,
+// or a call to make or append, after any parentheses and sharing conversions.
+//
+// Takes info (*types.Info) which identifies builtins, conversions and nil.
+// Takes expression (ast.Expr) which is the assigned value.
+//
+// Returns bool which is true for a fresh header.
+func buildsFreshHeader(info *types.Info, expression ast.Expr) bool {
+	switch typed := sliceshare.StripSharing(info, expression).(type) {
+	case *ast.CompositeLit, *ast.SliceExpr:
+		return true
+	case *ast.Ident:
+		return isNil(info, typed)
+	case *ast.CallExpr:
+		if typeAndValue, found := info.Types[typed.Fun]; found && typeAndValue.IsType() {
+			return true
+		}
+		name, builtin := sliceshare.BuiltinName(info, typed)
+		return builtin && (name == "make" || name == "append")
+	}
+	return false
+}
+
+// isNil reports whether ident is the predeclared nil.
+//
+// Takes info (*types.Info) which resolves ident; the name decides when it does not.
+// Takes ident (*ast.Ident) which is the candidate.
+//
+// Returns bool which is true for nil.
+func isNil(info *types.Info, ident *ast.Ident) bool {
+	if object, found := info.Uses[ident]; found {
+		_, isNilObject := object.(*types.Nil)
+		return isNilObject
+	}
+	return ident.Name == nilIdentifier
 }

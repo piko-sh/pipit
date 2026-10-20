@@ -21,12 +21,13 @@
 package language_test
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -57,7 +58,7 @@ run()`
 
 	for iteration := range 64 {
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), code)
+		result, err := service.Eval(t.Context(), code)
 		require.NoErrorf(t, err, "iteration %d", iteration)
 		require.Equalf(t, expected, result, "iteration %d", iteration)
 	}
@@ -98,7 +99,7 @@ run()`
 
 	for iteration := range 64 {
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), code)
+		result, err := service.Eval(t.Context(), code)
 		require.NoErrorf(t, err, "iteration %d", iteration)
 		require.Equalf(t, expected, result, "iteration %d", iteration)
 	}
@@ -142,7 +143,7 @@ run()`
 
 	for iteration := range 32 {
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), code)
+		result, err := service.Eval(t.Context(), code)
 		require.NoErrorf(t, err, "iteration %d", iteration)
 		require.Equalf(t, expected, result, "iteration %d", iteration)
 	}
@@ -179,7 +180,7 @@ run()`
 	for worker := range workers {
 		wg.Go(func() {
 			for iteration := range iterationsPerWorker {
-				result, err := service.Eval(context.Background(), code)
+				result, err := service.Eval(t.Context(), code)
 				if err != nil {
 					errors <- err
 					continue
@@ -193,7 +194,7 @@ run()`
 	wg.Wait()
 	close(errors)
 	for err := range errors {
-		t.Error(err)
+		assert.NoError(t, err)
 	}
 }
 

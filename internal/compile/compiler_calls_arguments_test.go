@@ -32,18 +32,18 @@ func TestIsBlockingStdlibMethod(t *testing.T) {
 		method   string
 		want     bool
 	}{
-		{"sync.WaitGroup", "Wait", true},
-		{"sync.WaitGroup", "Add", false},
-		{"sync.WaitGroup", "Done", false},
-		{"sync.Mutex", "Lock", true},
-		{"sync.Mutex", "Unlock", false},
-		{"sync.RWMutex", "Lock", true},
-		{"sync.RWMutex", "RLock", true},
-		{"sync.RWMutex", "RUnlock", false},
-		{"sync.Cond", "Wait", true},
-		{"sync.Cond", "Signal", false},
-		{"bytes.Buffer", "Write", false},
-		{"", "Lock", false},
+		{receiver: "sync.WaitGroup", method: "Wait", want: true},
+		{receiver: "sync.WaitGroup", method: "Add", want: false},
+		{receiver: "sync.WaitGroup", method: "Done", want: false},
+		{receiver: "sync.Mutex", method: "Lock", want: true},
+		{receiver: "sync.Mutex", method: "Unlock", want: false},
+		{receiver: "sync.RWMutex", method: "Lock", want: true},
+		{receiver: "sync.RWMutex", method: "RLock", want: true},
+		{receiver: "sync.RWMutex", method: "RUnlock", want: false},
+		{receiver: "sync.Cond", method: "Wait", want: true},
+		{receiver: "sync.Cond", method: "Signal", want: false},
+		{receiver: "bytes.Buffer", method: "Write", want: false},
+		{receiver: "", method: "Lock", want: false},
 	}
 	for _, c := range cases {
 		require.Equalf(t, c.want, isBlockingStdlibMethod(c.receiver, c.method),

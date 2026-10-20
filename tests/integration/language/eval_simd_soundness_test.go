@@ -21,17 +21,17 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
 func TestSimdKernelBoundCorrectSlice(t *testing.T) {
 	t.Parallel()
 
-	result, err := app.NewService().Eval(context.Background(), `a := []float64{1, 2, 3, 4}
+	result, err := app.NewService().Eval(t.Context(), `a := []float64{1, 2, 3, 4}
 b := []float64{1, 2}
 sum := 0.0
 for i := 0; i < len(b); i++ {
@@ -39,13 +39,13 @@ for i := 0; i < len(b); i++ {
 }
 sum`)
 	require.NoError(t, err)
-	require.Equal(t, 5.0, result)
+	require.InDelta(t, 5.0, result, 0)
 }
 
 func TestSimdKernelBoundLongerSlicePanics(t *testing.T) {
 	t.Parallel()
 
-	_, err := app.NewService().Eval(context.Background(), `a := []float64{1, 2}
+	_, err := app.NewService().Eval(t.Context(), `a := []float64{1, 2}
 b := []float64{1, 2, 3, 4}
 sum := 0.0
 for i := 0; i < len(b); i++ {
@@ -58,7 +58,7 @@ sum`)
 func TestSimdAddShiftedOverlap(t *testing.T) {
 	t.Parallel()
 
-	result, err := app.NewService().Eval(context.Background(), `base := make([]float64, 10)
+	result, err := app.NewService().Eval(t.Context(), `base := make([]float64, 10)
 for i := 0; i < len(base); i++ {
 	base[i] = float64(i + 1)
 }
@@ -73,39 +73,40 @@ for i := 0; i < len(a); i++ {
 }
 d[8]`)
 	require.NoError(t, err)
-	require.Equal(t, 901.0, result)
+	require.InDelta(t, 901.0, result, 0)
 }
 
 func TestSimdPreDeclaredLoopVarWriteback(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		code   string
-		expect int64
+		name string
+		code string
+		want int64
 	}{
 		{
-			name:   "unroller_const_bound",
-			code:   "var i int\ntotal := 0\nfor i = 0; i < 4; i++ {\n\ttotal += i\n}\ni",
-			expect: 4,
+			name: "unroller_const_bound",
+			code: "var i int\ntotal := 0\nfor i = 0; i < 4; i++ {\n\ttotal += i\n}\ni",
+			want: 4,
 		},
 		{
-			name:   "kernel_len_bound",
-			code:   "a := make([]float64, 4)\na[0]=1.0\na[1]=2.0\na[2]=3.0\na[3]=4.0\nvar i int\nsum := 0.0\nfor i = 0; i < len(a); i++ {\n\tsum += a[i]\n}\ni",
-			expect: 4,
+			name: "kernel_len_bound",
+			code: "a := make([]float64, 4)\na[0]=1.0\na[1]=2.0\na[2]=3.0\na[3]=4.0\nvar i int\nsum := 0.0\nfor i = 0; i < len(a); i++ {\n\tsum += a[i]\n}\ni",
+			want: 4,
 		},
 		{
-			name:   "kernel_const_bound",
-			code:   "a := make([]float64, 8)\nvar i int\nsum := 0.0\nfor i = 0; i < 8; i++ {\n\tsum += a[i]\n}\ni",
-			expect: 8,
+			name: "kernel_const_bound",
+			code: "a := make([]float64, 8)\nvar i int\nsum := 0.0\nfor i = 0; i < 8; i++ {\n\tsum += a[i]\n}\ni",
+			want: 8,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := app.NewService().Eval(context.Background(), tt.code)
+			t.Parallel()
+			result, err := app.NewService().Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.EqualValues(t, tt.expect, result)
+			require.EqualValues(t, tt.want, result)
 		})
 	}
 }

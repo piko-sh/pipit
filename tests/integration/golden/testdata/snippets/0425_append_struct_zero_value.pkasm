@@ -80,7 +80,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=22 string=1 general=5 bool=1 uint=5
-;   dispatch:  asm=66 shim=14 exit=3 go=14
+;   dispatch:  asm=65 shim=14 exit=3 go=14
 ;   params:    (none)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -153,7 +153,7 @@
 0061 S 1:RANGE_NEXT               143   2   1
 0062   0:EXT                        3   0   2
 0063   0:EXT                        0   2   0
-0064 A 0:JUMP_IF_FALSE              1  38   0    ; if ints[1] == 0 goto +38
+0064 A 0:JUMP_IF_FALSE              1  37   0    ; if ints[1] == 0 goto +37
 0065 G 2:MAKE_MAP                   0  12   3
 0066   0:EXT                        3   0   0
 0067 G 1:SET_STRUCT_FIELD_STRING   95   3   0
@@ -174,34 +174,33 @@
 0082   0:EXT                        3   0   0
 0083 X 0:APPEND                     0   0   4
 0084 G 1:LEN                       70   4   0
-0085 A 0:SUB_INT_CONST              6   4   4    ; const = 1
-0086 A 1:MOVE_INT                  35   4   6
-0087 A 1:GT_INT_JUMP_FALSE        118   4   3
-0088   0:EXT                        5   0   0
-0089 A 0:SUB_INT_CONST              7   4   4    ; const = 1
-0090 S 0:INDEX                      4   0   7
-0091 S 0:INDEX_SET                  0   4   4
-0092 A 2:TIER2_DEC_INT              0   2   4
-0093 A 1:JUMP                      74 249 255    ; goto -7
-0094 S 0:INDEX_SET                  0   3   3
-0095 G 1:LEN                       70   4   0
-0096 A 1:GT_INT_CONST_JUMP_FALSE  127   4   6
-0097   0:EXT                      219 255   0
-0098 A 1:LOAD_INT_CONST_SMALL      75   4   3    ; ints[4] = 3
-0099 S 1:SLICE_OP                 141   4   0
-0100   0:EXT                        2   0   4
-0101 A 0:MOVE_GENERAL               0   4   1
-0102 A 1:JUMP                      74 214 255    ; goto -42
-0103 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0104 A 1:MOVE_INT                  35   0   1
-0105 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0106 G 1:LEN                       70   2   0
-0107 A 1:LT_INT_JUMP_FALSE        116   1   2
-0108   0:EXT                        6   0   0
-0109 A 0:SLICE_INDEX_STRUCT_FIELD_INT   4   0   1
-0110   0:EXT                        1   0   0
-0111 A 0:ADD_INT                    5   0   4
-0112 A 1:MOVE_INT                  35   0   5
-0113 A 2:TIER2_INC_INT              0   1   1
-0114 A 1:JUMP                      74 247 255    ; goto -9
-0115 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0085 A 0:SUB_INT_CONST              4   4   4    ; const = 1
+0086 A 1:GT_INT_JUMP_FALSE        118   4   3
+0087   0:EXT                        5   0   0
+0088 A 0:SUB_INT_CONST              7   4   4    ; const = 1
+0089 S 0:INDEX                      4   0   7
+0090 S 0:INDEX_SET                  0   4   4
+0091 A 2:TIER2_DEC_INT              0   2   4
+0092 A 1:JUMP                      74 249 255    ; goto -7
+0093 S 0:INDEX_SET                  0   3   3
+0094 G 1:LEN                       70   4   0
+0095 A 1:GT_INT_CONST_JUMP_FALSE  127   4   6
+0096   0:EXT                      220 255   0
+0097 A 1:LOAD_INT_CONST_SMALL      75   4   3    ; ints[4] = 3
+0098 S 1:SLICE_OP                 141   4   0
+0099   0:EXT                        2   0   4
+0100 A 0:MOVE_GENERAL               0   4   1
+0101 A 1:JUMP                      74 215 255    ; goto -41
+0102 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0103 A 1:MOVE_INT                  35   0   1
+0104 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0105 G 1:LEN                       70   2   0
+0106 A 1:LT_INT_JUMP_FALSE        116   1   2
+0107   0:EXT                        6   0   0
+0108 A 0:SLICE_INDEX_STRUCT_FIELD_INT   4   0   1
+0109   0:EXT                        1   0   0
+0110 A 0:ADD_INT                    5   0   4
+0111 A 1:MOVE_INT                  35   0   5
+0112 A 2:TIER2_INC_INT              0   1   1
+0113 A 1:JUMP                      74 247 255    ; goto -9
+0114 A 2:TIER2_RETURN               0  10   1    ; 1 values

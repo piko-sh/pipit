@@ -56,6 +56,7 @@ func TestTypedMapReadsReturnTheZeroValueOnAMiss(t *testing.T) {
 			build:   func() reflect.Value { return reflect.ValueOf(map[int]int{7: 42}) },
 			seedKey: func(registers *Registers) { registers.Ints[2] = 7 },
 			check: func(t *testing.T, registers *Registers, hit bool) {
+				t.Helper()
 				require.Equal(t, map[bool]int64{true: 42, false: 0}[hit], registers.Ints[0])
 			},
 		},
@@ -65,6 +66,7 @@ func TestTypedMapReadsReturnTheZeroValueOnAMiss(t *testing.T) {
 			build:   func() reflect.Value { return reflect.ValueOf(map[namedMapKey]int64{7: 42}) },
 			seedKey: func(registers *Registers) { registers.Ints[2] = 7 },
 			check: func(t *testing.T, registers *Registers, hit bool) {
+				t.Helper()
 				require.Equal(t, map[bool]int64{true: 42, false: 0}[hit], registers.Ints[0])
 			},
 		},
@@ -74,6 +76,7 @@ func TestTypedMapReadsReturnTheZeroValueOnAMiss(t *testing.T) {
 			build:   func() reflect.Value { return reflect.ValueOf(map[string]int{"k": 42}) },
 			seedKey: func(registers *Registers) { registers.Strings[2] = "k" },
 			check: func(t *testing.T, registers *Registers, hit bool) {
+				t.Helper()
 				require.Equal(t, map[bool]int64{true: 42, false: 0}[hit], registers.Ints[0])
 			},
 		},
@@ -83,6 +86,7 @@ func TestTypedMapReadsReturnTheZeroValueOnAMiss(t *testing.T) {
 			build:   func() reflect.Value { return reflect.ValueOf(map[string]string{"k": "v"}) },
 			seedKey: func(registers *Registers) { registers.Strings[2] = "k" },
 			check: func(t *testing.T, registers *Registers, hit bool) {
+				t.Helper()
 				require.Equal(t, map[bool]string{true: "v", false: ""}[hit], registers.Strings[0])
 			},
 		},
@@ -92,6 +96,7 @@ func TestTypedMapReadsReturnTheZeroValueOnAMiss(t *testing.T) {
 			build:   func() reflect.Value { return reflect.ValueOf(map[int]string{7: "v"}) },
 			seedKey: func(registers *Registers) { registers.Ints[2] = 7 },
 			check: func(t *testing.T, registers *Registers, hit bool) {
+				t.Helper()
 				require.Equal(t, map[bool]string{true: "v", false: ""}[hit], registers.Strings[0])
 			},
 		},
@@ -101,6 +106,7 @@ func TestTypedMapReadsReturnTheZeroValueOnAMiss(t *testing.T) {
 			build:   func() reflect.Value { return reflect.ValueOf(map[int][]string{7: {"v"}}) },
 			seedKey: func(registers *Registers) { registers.Ints[2] = 7 },
 			check: func(t *testing.T, registers *Registers, hit bool) {
+				t.Helper()
 				require.True(t, registers.General[0].IsValid())
 				require.Equal(t, map[bool]int{true: 1, false: 0}[hit], registers.General[0].Len())
 			},
@@ -111,6 +117,7 @@ func TestTypedMapReadsReturnTheZeroValueOnAMiss(t *testing.T) {
 			build:   func() reflect.Value { return reflect.ValueOf(map[string][]string{"k": {"v"}}) },
 			seedKey: func(registers *Registers) { registers.Strings[2] = "k" },
 			check: func(t *testing.T, registers *Registers, hit bool) {
+				t.Helper()
 				require.True(t, registers.General[0].IsValid())
 				require.Equal(t, map[bool]int{true: 1, false: 0}[hit], registers.General[0].Len())
 			},

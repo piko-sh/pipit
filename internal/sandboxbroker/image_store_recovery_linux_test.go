@@ -22,12 +22,12 @@ package sandboxbroker
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 )
 
@@ -35,115 +35,83 @@ func orphanStoreFixture(t *testing.T) (string, LinuxImageStoreIdentity) {
 	t.Helper()
 	directory := testRecoveryDirectory(t)
 	store, err := OpenLinuxImageStore(directory, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	identity, err := store.InitialIdentity()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.CleanupOrphans(context.Background()); !errors.Is(err, ErrDenied) {
-		t.Fatal("fresh store acquired recovery authority:", err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.ErrorIs(t, store.CleanupOrphans(t.Context()), ErrDenied, "fresh store acquired recovery authority")
+	require.NoError(t, store.Close())
 	return directory, identity
 }
 
 func writeOrphanImage(t *testing.T, directory, suffix string, executable bool) string {
 	t.Helper()
 	root := filepath.Join(directory, orphanImagePrefix+strings.Repeat("A", orphanImageTokenBytes-1)+suffix)
-	if err := os.Mkdir(root, 0700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(root, 0700))
 	if executable {
-		if err := os.WriteFile(filepath.Join(root, orphanImageExecutable), []byte("partial"), 0600); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.WriteFile(filepath.Join(root, orphanImageExecutable), []byte("partial"), 0600))
 	}
 	return root
 }
 
 func TestImageStoreReopensApprovedOriginal(t *testing.T) {
+	t.Parallel()
 	directory, identity := orphanStoreFixture(t)
 	writeOrphanImage(t, directory, "A", true)
 	writeOrphanImage(t, directory, "B", false)
 	altered := identity
 	altered.Inode ^= 1
-	if owner, err := ReopenLinuxImageStore(directory, altered, nil, nil); owner != nil || err == nil {
-		t.Fatal("changed image-store identity accepted:", err)
-	}
-	if owner, err := ReopenLinuxImageStore(directory, identity, []LinuxRootGrant{{Name: "exposed", Path: directory, Rights: Read}}, nil); owner != nil || err == nil {
-		t.Fatal("exposed orphan storage accepted:", err)
-	}
+	owner, err := ReopenLinuxImageStore(directory, altered, nil, nil)
+	require.Nil(t, owner, "changed image-store identity accepted")
+	require.Error(t, err)
+	owner, err = ReopenLinuxImageStore(directory, identity, []LinuxRootGrant{{Name: "exposed", Path: directory, Rights: Read}}, nil)
+	require.Nil(t, owner, "exposed orphan storage accepted")
+	require.Error(t, err)
 	store, err := ReopenLinuxImageStore(directory, identity, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer store.closeHandles()
-	if file, _, err := store.AcquireDirectory(); file != nil || !errors.Is(err, ErrDenied) {
-		t.Fatal("orphan storage admitted new staging:", err)
-	}
-	if _, err := store.InitialIdentity(); !errors.Is(err, ErrDenied) {
-		t.Fatal("recovery store captured fresh initial authority:", err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
+	staging, _, err := store.AcquireDirectory()
+	require.Nil(t, staging, "orphan storage admits no new staging")
+	require.ErrorIs(t, err, ErrDenied)
+	_, err = store.InitialIdentity()
+	require.ErrorIs(t, err, ErrDenied, "recovery store captured fresh initial authority")
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err := store.CleanupOrphans(ctx); !errors.Is(err, context.Canceled) {
-		t.Fatal("cancelled cleanup accepted:", err)
-	}
-	if entries, err := os.ReadDir(directory); err != nil || len(entries) != 2 {
-		t.Fatal("cancelled cleanup mutated storage:", err)
-	}
-	if err := store.CleanupOrphans(context.Background()); err != nil {
-		t.Fatal("orphan cleanup failed:", err)
-	}
-	if err := store.CleanupOrphans(context.Background()); err != nil {
-		t.Fatal("repeated cleanup failed:", err)
-	}
+	require.ErrorIs(t, store.CleanupOrphans(ctx), context.Canceled, "cancelled cleanup accepted")
+	remaining, err := os.ReadDir(directory)
+	require.NoError(t, err, "a cancelled cleanup leaves the storage unchanged")
+	require.Len(t, remaining, 2)
+	require.NoError(t, store.CleanupOrphans(t.Context()), "orphan cleanup succeeds")
+	require.NoError(t, store.CleanupOrphans(t.Context()), "a repeated cleanup succeeds")
 	file, _, err := store.AcquireDirectory()
-	if err != nil {
-		t.Fatal("cleaned store did not reopen helper admission:", err)
-	}
-	if err := store.CleanupOrphans(context.Background()); !errors.Is(err, ErrDenied) {
-		t.Fatal("borrowed image handle allowed cleanup:", err)
-	}
-	if err := store.ReleaseDirectory(file); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if entries, err := os.ReadDir(directory); err != nil || len(entries) != 0 {
-		t.Fatal("orphan entries survived cleanup:", err)
-	}
+	require.NoError(t, err, "a cleaned store reopens helper admission")
+	require.ErrorIs(t, store.CleanupOrphans(t.Context()), ErrDenied, "borrowed image handle allowed cleanup")
+	require.NoError(t, store.ReleaseDirectory(file))
+	require.NoError(t, store.Close())
+	entries, err := os.ReadDir(directory)
+	require.NoError(t, err, "orphan entries survived cleanup")
+	require.Empty(t, entries)
 }
 
 func TestOrphanImagePlanningRejectsUnsafeEntries(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"name", "extra", "directory", "symlink", "fifo", "hardlink", "mode", "root-mode", "oversize"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			directory, identity := orphanStoreFixture(t)
 			original := writeOrphanImage(t, directory, "A", true)
 			bad := writeOrphanImage(t, directory, "B", true)
 			corruptOrphanImage(t, directory, bad, mode)
 			store, err := ReopenLinuxImageStore(directory, identity, nil, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer store.closeHandles()
-			if err := store.CleanupOrphans(context.Background()); err == nil {
-				t.Fatal("unsafe orphan layout accepted")
-			}
-			if data, err := os.ReadFile(filepath.Join(original, orphanImageExecutable)); err != nil || string(data) != "partial" {
-				t.Fatal("planning failure deleted an earlier valid image:", err)
-			}
-			if file, _, err := store.AcquireDirectory(); file != nil || err == nil {
-				t.Fatal("failed cleanup opened helper admission")
-			}
-			if err := store.Close(); err == nil {
-				t.Fatal("failed cleanup discarded private storage ownership")
-			}
+			require.Error(t, store.CleanupOrphans(t.Context()), "unsafe orphan layout accepted")
+			data, err := os.ReadFile(filepath.Join(original, orphanImageExecutable))
+			require.NoError(t, err, "planning failure deleted an earlier valid image")
+			require.Equal(t, "partial", string(data))
+			file, _, err := store.AcquireDirectory()
+			require.Nil(t, file, "failed cleanup opened helper admission")
+			require.Error(t, err)
+			require.Error(t, store.Close(), "a failed cleanup keeps private storage ownership")
 		})
 	}
 }
@@ -166,9 +134,7 @@ func corruptOrphanImage(t *testing.T, directory, root, mode string) {
 	case "oversize":
 		err = os.Truncate(executable, maximumOrphanImageBytes+1)
 	case "directory", "symlink", "fifo":
-		if err := os.Remove(executable); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.Remove(executable))
 		switch mode {
 		case "directory":
 			err = os.Mkdir(executable, 0700)
@@ -178,88 +144,62 @@ func corruptOrphanImage(t *testing.T, directory, root, mode string) {
 			err = unix.Mkfifo(executable, 0600)
 		}
 	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 }
 
 func TestOrphanImageCountBound(t *testing.T) {
+	t.Parallel()
 	directory, identity := orphanStoreFixture(t)
 	for index := range maximumImageStoreLeases + 1 {
 		writeOrphanImage(t, directory, string(rune('A'+index)), false)
 	}
 	store, err := ReopenLinuxImageStore(directory, identity, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer store.closeHandles()
-	if err := store.CleanupOrphans(context.Background()); !errors.Is(err, errLimit) {
-		t.Fatal("oversized orphan plan accepted:", err)
-	}
+	err = store.CleanupOrphans(t.Context())
+	require.ErrorIs(t, err, errLimit, "oversized orphan plan accepted")
 	entries, err := os.ReadDir(directory)
-	if err != nil || len(entries) != maximumImageStoreLeases+1 {
-		t.Fatal("oversized planning mutated storage:", err)
-	}
-	if err := os.Remove(filepath.Join(directory, entries[0].Name())); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.CleanupOrphans(context.Background()); err != nil {
-		t.Fatal("bounded retry failed:", err)
-	}
+	require.NoError(t, err, "oversized planning mutated storage")
+	require.Len(t, entries, maximumImageStoreLeases+1)
+	require.NoError(t, os.Remove(filepath.Join(directory, entries[0].Name())))
+	require.NoError(t, store.CleanupOrphans(t.Context()), "the bounded retry succeeds")
 }
 
 func TestOrphanImagePlanRejectsReplacement(t *testing.T) {
+	t.Parallel()
 	for _, target := range []string{"root", "executable"} {
 		t.Run(target, func(t *testing.T) {
+			t.Parallel()
 			directory, identity := orphanStoreFixture(t)
 			root := writeOrphanImage(t, directory, "A", true)
 			store, err := ReopenLinuxImageStore(directory, identity, nil, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer store.closeHandles()
-			plan, err := store.orphanPlan(context.Background())
-			if err != nil || len(plan) != 1 {
-				t.Fatal(err)
-			}
+			plan, err := store.orphanPlan(t.Context())
+			require.NoError(t, err)
+			require.Len(t, plan, 1)
 			defer plan[0].close()
 			selected := root
 			if target == "executable" {
 				selected = filepath.Join(root, orphanImageExecutable)
 			}
 			held := filepath.Join(t.TempDir(), "held")
-			if err := os.Rename(selected, held); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.Rename(selected, held))
 			if target == "root" {
-				if err := os.Mkdir(root, 0700); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Mkdir(root, 0700))
 			}
 			replacement := filepath.Join(root, orphanImageExecutable)
-			if err := os.WriteFile(replacement, []byte("replacement"), 0600); err != nil {
-				t.Fatal(err)
-			}
-			if err := store.removeOrphan(plan[0]); !errors.Is(err, ErrDenied) {
-				t.Fatal("stale plan accepted replacement:", err)
-			}
-			if data, err := os.ReadFile(replacement); err != nil || string(data) != "replacement" {
-				t.Fatal("stale plan changed replacement:", err)
-			}
-			if err := os.Remove(replacement); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.WriteFile(replacement, []byte("replacement"), 0600))
+			require.ErrorIs(t, store.removeOrphan(plan[0]), ErrDenied, "stale plan accepted replacement")
+			data, err := os.ReadFile(replacement)
+			require.NoError(t, err, "stale plan changed replacement")
+			require.Equal(t, "replacement", string(data))
+			require.NoError(t, os.Remove(replacement))
 			if target == "root" {
-				if err := os.Remove(root); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Remove(root))
 			}
-			if err := os.Rename(held, selected); err != nil {
-				t.Fatal(err)
-			}
-			if err := store.CleanupOrphans(context.Background()); err != nil {
-				t.Fatal("restored original cleanup failed:", err)
-			}
+			require.NoError(t, os.Rename(held, selected))
+			require.NoError(t, store.CleanupOrphans(t.Context()), "the restored original cleanup succeeds")
 		})
 	}
 }

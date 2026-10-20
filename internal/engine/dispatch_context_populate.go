@@ -16,12 +16,20 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build !safe
+
 package engine
 
 import (
 	"unsafe"
 
 	"pipit.sh/pipit/internal/engine/program"
+)
+
+const (
+	// opcodeTableSize is the number of entries in the opcode dispatch table (one per
+	// possible uint8 opcode value).
+	opcodeTableSize = 256
 )
 
 // buildDispatchContext populates a dispatchContext from the current VM frame state. The
@@ -227,22 +235,6 @@ func (vm *VM) applyPoppedFrameSnapshots(newFp int) {
 	}
 }
 
-// publishCallInfoRoot republishes to ctx whether the VM's current root is the one the
-// per-function call-info base array was built for, together with that array, after a
-// Go-side step may have swapped or restored the root.
-//
-// Takes ctx (*dispatchContext) which is the live dispatch context.
-func (vm *VM) publishCallInfoRoot(ctx *dispatchContext) {
-	if len(vm.asmCallInfoBasesByFunction) > 0 {
-		ctx.callInfoBasesByFunction = uintptr(unsafe.Pointer(&vm.asmCallInfoBasesByFunction[0]))
-	}
-	if vm.rootFunction == vm.asmCallInfoRoot {
-		ctx.callInfoBasesRootMatch = 1
-	} else {
-		ctx.callInfoBasesRootMatch = 0
-	}
-}
-
 // refreshCallContext updates the call-related fields in the dispatchContext after a
 // Go-side frame change (push/pop).
 //
@@ -427,4 +419,14 @@ func populateAuxiliaryTableBases(ctx *dispatchContext, function *program.Compile
 		ctx.typeTableBase = uintptr(unsafe.Pointer(&function.TypeTable[0]))
 	}
 	ctx.typeTableLength = int64(len(function.TypeTable))
+}
+
+// populateGenericBytesContext publishes the arena's slab-header and cursor addresses
+// for assembly allocation. vm.arena keeps the arena alive.
+//
+// Takes ctx (*dispatchContext) which receives the addresses.
+// Takes arena (*RegisterArena) which owns the slab.
+func populateGenericBytesContext(ctx *dispatchContext, arena *RegisterArena) {
+	ctx.arenaGenericBytesSlabHeader = uintptr(unsafe.Pointer(&arena.genericBytesSlab))
+	ctx.arenaGenericBytesIndexPointer = uintptr(unsafe.Pointer(&arena.genericBytesIndex))
 }

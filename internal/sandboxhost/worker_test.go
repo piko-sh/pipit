@@ -19,13 +19,15 @@
 package sandboxhost
 
 import (
-	"context"
 	"errors"
 	"net"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/sandboxworker"
 )
@@ -66,6 +68,7 @@ func TestIsolatedWatchdogApprovalRequired(t *testing.T) {
 	t.Parallel()
 	for _, mode := range []string{"missing-path", "relative-path", "missing-digest"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			var config IsolatedConfig
 			config.WorkerPath = filepath.Join(t.TempDir(), "worker")
 			config.WorkerSHA256[0] = 1
@@ -79,16 +82,16 @@ func TestIsolatedWatchdogApprovalRequired(t *testing.T) {
 			case "missing-digest":
 				config.WatchdogSHA256[0] = 0
 			}
-			if worker, err := NewIsolatedWorker(context.Background(), config); worker != nil || !errors.Is(err, ErrInvalidIsolatedConfig) {
-				t.Fatalf("worker accepted incomplete supervisor approval: %v %v", worker, err)
-			}
-			if session, err := NewIsolatedSession(context.Background(), config); session != nil || !errors.Is(err, ErrInvalidIsolatedConfig) {
-				t.Fatalf("session accepted incomplete supervisor approval: %v %v", session, err)
-			}
-			images, err := PrepareIsolatedImages(context.Background(), config)
-			if images != nil || (!errors.Is(err, ErrInvalidIsolatedConfig) && !errors.Is(err, ErrIsolatedUnavailable)) {
-				t.Fatalf("image staging accepted incomplete supervisor approval: %v %v", images, err)
-			}
+			worker, err := NewIsolatedWorker(t.Context(), config)
+			require.Nil(t, worker, "worker accepted incomplete supervisor approval")
+			require.ErrorIs(t, err, ErrInvalidIsolatedConfig)
+			session, err := NewIsolatedSession(t.Context(), config)
+			require.Nil(t, session, "session accepted incomplete supervisor approval")
+			require.ErrorIs(t, err, ErrInvalidIsolatedConfig)
+			images, err := PrepareIsolatedImages(t.Context(), config)
+			require.Nil(t, images, "image staging refuses incomplete supervisor approval")
+			require.True(t, errors.Is(err, ErrInvalidIsolatedConfig) || errors.Is(err, ErrIsolatedUnavailable),
+				"image staging refuses incomplete supervisor approval: %v", err)
 		})
 	}
 }
@@ -97,12 +100,10 @@ func TestIsolatedWorkerSingleSubmission(t *testing.T) {
 	t.Parallel()
 	worker, _ := isolatedWorkerFixture(t)
 	result, err := worker.EvalFile("package main\nfunc answer() int { return 42 }", "answer")
-	if err != nil || string(result.Value) != "42" {
-		t.Fatalf("result=%+v error=%v", result, err)
-	}
-	if _, err := worker.Eval("1"); !errors.Is(err, ErrIsolatedUsed) {
-		t.Fatalf("worker reuse accepted: %v", err)
-	}
+	require.NoError(t, err, "result=%+v", result)
+	require.Equal(t, "42", string(result.Value))
+	_, err = worker.Eval("1")
+	require.ErrorIs(t, err, ErrIsolatedUsed, "worker reuse accepted")
 }
 
 func TestIsolatedWorkerConcurrentAdmission(t *testing.T) {
@@ -120,14 +121,13 @@ func TestIsolatedWorkerConcurrentAdmission(t *testing.T) {
 			case errors.Is(err, ErrIsolatedUsed):
 				rejected.Add(1)
 			default:
-				t.Errorf("unexpected result: %v", err)
+				assert.Failf(t, "the call succeeds or reports ErrIsolatedUsed", "%v", err)
 			}
 		})
 	}
 	calls.Wait()
-	if accepted.Load() != 1 || rejected.Load() != 15 {
-		t.Fatalf("accepted=%d rejected=%d", accepted.Load(), rejected.Load())
-	}
+	require.Equal(t, int32(1), accepted.Load())
+	require.Equal(t, int32(15), rejected.Load())
 }
 
 func TestIsolatedWorkerSuppressesUnreapedResults(t *testing.T) {
@@ -141,31 +141,27 @@ func TestIsolatedWorkerSuppressesUnreapedResults(t *testing.T) {
 			process.waitErr = failure
 		}
 		result, err := worker.Eval("42")
-		if !errors.Is(err, failure) || result.Value != nil || result.Output != "" || process.closes.Load() == 0 {
-			t.Fatalf("unverified result escaped: %+v error=%v", result, err)
-		}
+		require.ErrorIs(t, err, failure, "unverified result escaped: %+v", result)
+		require.Nil(t, result.Value)
+		require.Empty(t, result.Output)
+		require.NotEqual(t, int32(0), process.closes.Load())
 	}
 }
 
 func TestIsolatedWorkerCloseAndInvalidConfiguration(t *testing.T) {
 	t.Parallel()
 	worker, _ := isolatedWorkerFixture(t)
-	if err := worker.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := worker.Eval("1"); !errors.Is(err, ErrIsolatedUsed) {
-		t.Fatal("closed worker accepted source")
-	}
-	if worker, err := NewIsolatedWorker(context.Background(), IsolatedConfig{Tenant: "test-tenant"}); worker != nil || !errors.Is(err, ErrInvalidIsolatedConfig) {
-		t.Fatalf("missing approval accepted: worker=%v error=%v", worker, err)
-	}
+	require.NoError(t, worker.Close())
+	_, err := worker.Eval("1")
+	require.ErrorIs(t, err, ErrIsolatedUsed, "closed worker accepted source")
+	worker, err = NewIsolatedWorker(t.Context(), IsolatedConfig{Tenant: "test-tenant"})
+	require.Nil(t, worker, "missing approval accepted")
+	require.ErrorIs(t, err, ErrInvalidIsolatedConfig)
 	var absent *IsolatedWorker
-	if absent.Close() != nil || absent.Diagnostics() != "" {
-		t.Fatal("nil worker cleanup is not safe")
-	}
-	if _, err := absent.Eval("1"); !errors.Is(err, ErrIsolatedUsed) {
-		t.Fatal("nil worker accepted source")
-	}
+	require.NoError(t, absent.Close(), "nil worker cleanup is not safe")
+	require.Empty(t, absent.Diagnostics())
+	_, err = absent.Eval("1")
+	require.ErrorIs(t, err, ErrIsolatedUsed, "nil worker accepted source")
 }
 
 func isolatedWorkerFixture(t *testing.T) (*IsolatedWorker, *isolatedFixture) {

@@ -143,6 +143,9 @@ nes_done_arm:
 
 // handlerSliceString sets strings[A] = strings[B][low:high].
 TEXT ·handlerSliceString(SB), NOSPLIT|NOFRAME, $0
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, wb_fallback
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -191,6 +194,8 @@ sl_bounds_fail_arm:
 	MOVD R0, CTX_EXIT_REASON(R19)
 	MOVD R20, CTX_EXIT_PC(R19)
 	RET
+wb_fallback:
+	B    ·pathBFallback(SB)
 
 // handlerStringIndexToInt sets ints[A] = int64(strings[B][ints[C]]).
 TEXT ·handlerStringIndexToInt(SB), NOSPLIT|NOFRAME, $0

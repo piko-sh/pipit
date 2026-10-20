@@ -26,6 +26,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"pipit.sh/pipit/internal/buildfilter"
 	"pipit.sh/pipit/internal/clock"
 	"pipit.sh/pipit/internal/compile/passes"
 	"pipit.sh/pipit/internal/engine/program"
@@ -162,6 +163,7 @@ func NewService(opts ...Option) *Service {
 	for _, opt := range opts {
 		opt(config)
 	}
+	config.fileMatcher = buildfilter.New(config.buildTags)
 
 	symbols := symtab.NewSymbolRegistry(nil)
 	symbols.ProtectPackage(policy.PkgUnsafe)
@@ -193,6 +195,7 @@ func NewService(opts ...Option) *Service {
 			MaxGoroutines:            0,
 			YieldInterval:            0,
 			DeadlockGrace:            0,
+			CallbackTimeout:          0,
 			ForceGoDispatch:          false,
 			SafeMode:                 false}, lastCostUsed: atomic.Int64{},
 	}
@@ -244,6 +247,7 @@ func (s *Service) Clone() *Service {
 			MaxGoroutines:            0,
 			YieldInterval:            0,
 			DeadlockGrace:            0,
+			CallbackTimeout:          0,
 			ForceGoDispatch:          false,
 			SafeMode:                 false}, lastCostUsed: atomic.Int64{},
 	}
@@ -354,6 +358,9 @@ type serviceConfig struct {
 	// envOnce guards one-time application of environment overrides.
 	envOnce *sync.Once
 
+	// fileMatcher selects source files using the configured build tags.
+	fileMatcher *buildfilter.Matcher
+
 	// buildTags holds additional build tags for constraint evaluation.
 	buildTags []string
 
@@ -425,6 +432,10 @@ type serviceConfig struct {
 	// See engine/deadlock.go.
 	deadlockGrace time.Duration
 
+	// callbackTimeout bounds each run of an interpreted closure native code calls; zero
+	// leaves callbacks unbounded beyond the wrapping execution's context.
+	callbackTimeout time.Duration
+
 	// features controls which Go language constructs are allowed during compilation. Zero
 	// value means InterpFeaturesAll.
 	features policy.InterpFeature
@@ -489,6 +500,7 @@ func newServiceConfig() *serviceConfig {
 		logger:                       nil,
 		envOnce:                      nil,
 		buildTags:                    nil,
+		fileMatcher:                  nil,
 		maxLiteralElements:           0,
 		maxExecutionTime:             0,
 		maxOutputSize:                0,
@@ -507,6 +519,7 @@ func newServiceConfig() *serviceConfig {
 		maxGoroutines:                0,
 		yieldInterval:                0,
 		deadlockGrace:                defaultDeadlockGrace,
+		callbackTimeout:              0,
 		features:                     0,
 		optimisations:                passes.DefaultOptions(),
 		bytecodeVerificationDisabled: false,

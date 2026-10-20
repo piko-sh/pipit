@@ -22,9 +22,10 @@ package sandboxworker
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/sandboxlinux"
 )
@@ -44,52 +45,36 @@ func testNativeSession(t *testing.T, config sandboxlinux.WorkerConfig) {
 			if process != nil {
 				t.Cleanup(func() { _ = process.Close() })
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			session, err := OpenSession(process, Configuration{Profile: SessionProfile, Imports: nil})
-			if err != nil {
-				t.Fatalf("open: %v; diagnostics: %s", err, process.Output())
-			}
+			requireWorkerOK(t, err, process, "open")
 			switch scenario {
 			case "retained state":
-				if _, err := session.Submit("var value = 40"); err != nil {
-					t.Fatal(err)
-				}
+				_, err = session.Submit("var value = 40")
+				require.NoError(t, err)
 				result, err := session.Submit("value + 2")
-				if err != nil || string(result.Value) != "42" {
-					t.Fatalf("result=%+v error=%v", result, err)
-				}
-				if err := session.Close(); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err, "result=%+v", result)
+				require.Equal(t, "42", string(result.Value))
+				require.NoError(t, session.Close())
 			case "idle expiry":
 				session.expires = time.Now().Add(50 * time.Millisecond)
-				if err := session.armIdle(); err != nil {
-					t.Fatal(err)
-				}
-				if err := process.Wait(); !errors.Is(err, context.DeadlineExceeded) {
-					t.Fatalf("idle process survived: %v", err)
-				}
-				if _, err := session.Submit("42"); err == nil {
-					t.Fatal("expired worker was reused")
-				}
+				require.NoError(t, session.armIdle())
+				require.ErrorIs(t, process.Wait(), context.DeadlineExceeded, "idle process survived")
+				_, err = session.Submit("42")
+				require.Error(t, err, "an expired worker is not reused")
 			case "output budget":
-				if _, err := session.Submit("print(\"abcd\")"); err != nil {
-					t.Fatal(err)
-				}
-				if result, err := session.Submit("print(\"abcd\")"); !errors.Is(err, sandboxlinux.ErrWorkerOutput) || result.Value != nil {
-					t.Fatalf("native output budget reset: %+v %v", result, err)
-				}
+				_, err = session.Submit("print(\"abcd\")")
+				require.NoError(t, err)
+				result, err := session.Submit("print(\"abcd\")")
+				require.ErrorIs(t, err, sandboxlinux.ErrWorkerOutput, "the native output budget does not reset")
+				require.Nil(t, result.Value)
 			case "cancel active":
 				gate := gateSessionRead(t, session)
 				done := make(chan error, 1)
 				go func() { _, err := session.Submit("for {}"); done <- err }()
 				<-gate.entered
 				_ = session.Close()
-				if err := <-done; err == nil {
-					t.Fatal("active close allowed success")
-				}
+				require.Error(t, <-done, "active close allowed success")
 			}
 		})
 	}

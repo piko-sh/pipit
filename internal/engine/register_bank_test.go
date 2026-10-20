@@ -38,36 +38,66 @@ func TestZeroTypedRegisterDirect(t *testing.T) {
 		name  string
 		kind  isa.RegisterKind
 	}{
-		{name: "int", kind: isa.RegisterInt, check: func(t *testing.T, regs *Registers) {
-			regs.Ints[0] = 42
-			zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterInt})
-			require.Equal(t, int64(0), regs.Ints[0])
-		}},
-		{name: "float", kind: isa.RegisterFloat, check: func(t *testing.T, regs *Registers) {
-			regs.Floats[0] = 3.14
-			zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterFloat})
-			require.Equal(t, float64(0), regs.Floats[0])
-		}},
-		{name: "string", kind: isa.RegisterString, check: func(t *testing.T, regs *Registers) {
-			regs.Strings[0] = "hello"
-			zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterString})
-			require.Equal(t, "", regs.Strings[0])
-		}},
-		{name: "bool", kind: isa.RegisterBool, check: func(t *testing.T, regs *Registers) {
-			regs.Bools[0] = true
-			zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterBool})
-			require.Equal(t, false, regs.Bools[0])
-		}},
-		{name: "uint", kind: isa.RegisterUint, check: func(t *testing.T, regs *Registers) {
-			regs.Uints[0] = 42
-			zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterUint})
-			require.Equal(t, uint64(0), regs.Uints[0])
-		}},
-		{name: "complex", kind: isa.RegisterComplex, check: func(t *testing.T, regs *Registers) {
-			regs.Complex[0] = 1 + 2i
-			zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterComplex})
-			require.Equal(t, complex128(0), regs.Complex[0])
-		}},
+		{
+			name: "int",
+			kind: isa.RegisterInt,
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				regs.Ints[0] = 42
+				zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterInt})
+				require.Equal(t, int64(0), regs.Ints[0])
+			},
+		},
+		{
+			name: "float",
+			kind: isa.RegisterFloat,
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				regs.Floats[0] = 3.14
+				zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterFloat})
+				require.Zero(t, regs.Floats[0])
+			},
+		},
+		{
+			name: "string",
+			kind: isa.RegisterString,
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				regs.Strings[0] = "hello"
+				zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterString})
+				require.Empty(t, regs.Strings[0])
+			},
+		},
+		{
+			name: "bool",
+			kind: isa.RegisterBool,
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				regs.Bools[0] = true
+				zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterBool})
+				require.False(t, regs.Bools[0])
+			},
+		},
+		{
+			name: "uint",
+			kind: isa.RegisterUint,
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				regs.Uints[0] = 42
+				zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterUint})
+				require.Equal(t, uint64(0), regs.Uints[0])
+			},
+		},
+		{
+			name: "complex",
+			kind: isa.RegisterComplex,
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				regs.Complex[0] = 1 + 2i
+				zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterComplex})
+				require.Equal(t, complex128(0), regs.Complex[0])
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -119,15 +149,69 @@ func TestCopyRegisterSlot(t *testing.T) {
 		name  string
 		kind  isa.RegisterKind
 	}{
-		{name: "int", kind: isa.RegisterInt, setup: func(regs *Registers) { regs.Ints[0] = 42 }, check: func(t *testing.T, regs *Registers) { require.Equal(t, int64(42), regs.Ints[1]) }},
-		{name: "float", kind: isa.RegisterFloat, setup: func(regs *Registers) { regs.Floats[0] = 2.5 }, check: func(t *testing.T, regs *Registers) { require.Equal(t, float64(2.5), regs.Floats[1]) }},
-		{name: "string", kind: isa.RegisterString, setup: func(regs *Registers) { regs.Strings[0] = "hi" }, check: func(t *testing.T, regs *Registers) { require.Equal(t, "hi", regs.Strings[1]) }},
-		{name: "bool", kind: isa.RegisterBool, setup: func(regs *Registers) { regs.Bools[0] = true }, check: func(t *testing.T, regs *Registers) { require.Equal(t, true, regs.Bools[1]) }},
-		{name: "uint", kind: isa.RegisterUint, setup: func(regs *Registers) { regs.Uints[0] = 99 }, check: func(t *testing.T, regs *Registers) { require.Equal(t, uint64(99), regs.Uints[1]) }},
-		{name: "complex", kind: isa.RegisterComplex, setup: func(regs *Registers) { regs.Complex[0] = 1 + 2i }, check: func(t *testing.T, regs *Registers) { require.Equal(t, complex128(1+2i), regs.Complex[1]) }},
-		{name: "general", kind: isa.RegisterGeneral, setup: func(regs *Registers) { regs.General[0] = reflect.ValueOf("val") }, check: func(t *testing.T, regs *Registers) {
-			require.Equal(t, "val", regs.General[1].Interface())
-		}},
+		{
+			name:  "int",
+			kind:  isa.RegisterInt,
+			setup: func(regs *Registers) { regs.Ints[0] = 42 },
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), regs.Ints[1])
+			},
+		},
+		{
+			name:  "float",
+			kind:  isa.RegisterFloat,
+			setup: func(regs *Registers) { regs.Floats[0] = 2.5 },
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.InDelta(t, 2.5, regs.Floats[1], 0)
+			},
+		},
+		{
+			name:  "string",
+			kind:  isa.RegisterString,
+			setup: func(regs *Registers) { regs.Strings[0] = "hi" },
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, "hi", regs.Strings[1])
+			},
+		},
+		{
+			name:  "bool",
+			kind:  isa.RegisterBool,
+			setup: func(regs *Registers) { regs.Bools[0] = true },
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.True(t, regs.Bools[1])
+			},
+		},
+		{
+			name:  "uint",
+			kind:  isa.RegisterUint,
+			setup: func(regs *Registers) { regs.Uints[0] = 99 },
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(99), regs.Uints[1])
+			},
+		},
+		{
+			name:  "complex",
+			kind:  isa.RegisterComplex,
+			setup: func(regs *Registers) { regs.Complex[0] = 1 + 2i },
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, complex128(1+2i), regs.Complex[1])
+			},
+		},
+		{
+			name:  "general",
+			kind:  isa.RegisterGeneral,
+			setup: func(regs *Registers) { regs.General[0] = reflect.ValueOf("val") },
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, "val", regs.General[1].Interface())
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -150,12 +234,60 @@ func TestUnboxGeneralToScalar(t *testing.T) {
 		name  string
 		kind  isa.RegisterKind
 	}{
-		{name: "int", value: reflect.ValueOf(42), kind: isa.RegisterInt, check: func(t *testing.T, regs *Registers) { require.Equal(t, int64(42), regs.Ints[0]) }},
-		{name: "float", value: reflect.ValueOf(float64(3.14)), kind: isa.RegisterFloat, check: func(t *testing.T, regs *Registers) { require.Equal(t, float64(3.14), regs.Floats[0]) }},
-		{name: "string", value: reflect.ValueOf("hello"), kind: isa.RegisterString, check: func(t *testing.T, regs *Registers) { require.Equal(t, "hello", regs.Strings[0]) }},
-		{name: "bool", value: reflect.ValueOf(true), kind: isa.RegisterBool, check: func(t *testing.T, regs *Registers) { require.Equal(t, true, regs.Bools[0]) }},
-		{name: "uint", value: reflect.ValueOf(uint64(99)), kind: isa.RegisterUint, check: func(t *testing.T, regs *Registers) { require.Equal(t, uint64(99), regs.Uints[0]) }},
-		{name: "complex", value: reflect.ValueOf(complex128(1 + 2i)), kind: isa.RegisterComplex, check: func(t *testing.T, regs *Registers) { require.Equal(t, complex128(1+2i), regs.Complex[0]) }},
+		{
+			name:  "int",
+			value: reflect.ValueOf(42),
+			kind:  isa.RegisterInt,
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), regs.Ints[0])
+			},
+		},
+		{
+			name:  "float",
+			value: reflect.ValueOf(float64(3.14)),
+			kind:  isa.RegisterFloat,
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.InDelta(t, 3.14, regs.Floats[0], 0)
+			},
+		},
+		{
+			name:  "string",
+			value: reflect.ValueOf("hello"),
+			kind:  isa.RegisterString,
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, "hello", regs.Strings[0])
+			},
+		},
+		{
+			name:  "bool",
+			value: reflect.ValueOf(true),
+			kind:  isa.RegisterBool,
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.True(t, regs.Bools[0])
+			},
+		},
+		{
+			name:  "uint",
+			value: reflect.ValueOf(uint64(99)),
+			kind:  isa.RegisterUint,
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(99), regs.Uints[0])
+			},
+		},
+		{
+			name:  "complex",
+			value: reflect.ValueOf(complex128(1 + 2i)),
+			kind:  isa.RegisterComplex,
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, complex128(1+2i), regs.Complex[0])
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -176,9 +308,30 @@ func TestCopyReturnFromGeneralInvalid(t *testing.T) {
 		name  string
 		kind  isa.RegisterKind
 	}{
-		{name: "int_zero", kind: isa.RegisterInt, check: func(t *testing.T, regs *Registers) { require.Equal(t, int64(0), regs.Ints[0]) }},
-		{name: "string_zero", kind: isa.RegisterString, check: func(t *testing.T, regs *Registers) { require.Equal(t, "", regs.Strings[0]) }},
-		{name: "bool_zero", kind: isa.RegisterBool, check: func(t *testing.T, regs *Registers) { require.Equal(t, false, regs.Bools[0]) }},
+		{
+			name: "int_zero",
+			kind: isa.RegisterInt,
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, int64(0), regs.Ints[0])
+			},
+		},
+		{
+			name: "string_zero",
+			kind: isa.RegisterString,
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Empty(t, regs.Strings[0])
+			},
+		},
+		{
+			name: "bool_zero",
+			kind: isa.RegisterBool,
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.False(t, regs.Bools[0])
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -215,13 +368,69 @@ func TestUnpackGeneralToTyped(t *testing.T) {
 		name  string
 		dest  program.VarLocation
 	}{
-		{name: "int", value: reflect.ValueOf(42), dest: program.VarLocation{Register: 0, Kind: isa.RegisterInt}, check: func(t *testing.T, regs *Registers) { require.Equal(t, int64(42), regs.Ints[0]) }},
-		{name: "float", value: reflect.ValueOf(float64(3.14)), dest: program.VarLocation{Register: 0, Kind: isa.RegisterFloat}, check: func(t *testing.T, regs *Registers) { require.Equal(t, float64(3.14), regs.Floats[0]) }},
-		{name: "string", value: reflect.ValueOf("hi"), dest: program.VarLocation{Register: 0, Kind: isa.RegisterString}, check: func(t *testing.T, regs *Registers) { require.Equal(t, "hi", regs.Strings[0]) }},
-		{name: "bool", value: reflect.ValueOf(true), dest: program.VarLocation{Register: 0, Kind: isa.RegisterBool}, check: func(t *testing.T, regs *Registers) { require.Equal(t, true, regs.Bools[0]) }},
-		{name: "uint", value: reflect.ValueOf(uint64(99)), dest: program.VarLocation{Register: 0, Kind: isa.RegisterUint}, check: func(t *testing.T, regs *Registers) { require.Equal(t, uint64(99), regs.Uints[0]) }},
-		{name: "complex", value: reflect.ValueOf(complex128(1 + 2i)), dest: program.VarLocation{Register: 0, Kind: isa.RegisterComplex}, check: func(t *testing.T, regs *Registers) { require.Equal(t, complex128(1+2i), regs.Complex[0]) }},
-		{name: "bool_to_int", value: reflect.ValueOf(true), dest: program.VarLocation{Register: 0, Kind: isa.RegisterInt}, check: func(t *testing.T, regs *Registers) { require.Equal(t, int64(1), regs.Ints[0]) }},
+		{
+			name:  "int",
+			value: reflect.ValueOf(42),
+			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterInt},
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), regs.Ints[0])
+			},
+		},
+		{
+			name:  "float",
+			value: reflect.ValueOf(float64(3.14)),
+			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterFloat},
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.InDelta(t, 3.14, regs.Floats[0], 0)
+			},
+		},
+		{
+			name:  "string",
+			value: reflect.ValueOf("hi"),
+			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterString},
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, "hi", regs.Strings[0])
+			},
+		},
+		{
+			name:  "bool",
+			value: reflect.ValueOf(true),
+			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterBool},
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.True(t, regs.Bools[0])
+			},
+		},
+		{
+			name:  "uint",
+			value: reflect.ValueOf(uint64(99)),
+			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterUint},
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(99), regs.Uints[0])
+			},
+		},
+		{
+			name:  "complex",
+			value: reflect.ValueOf(complex128(1 + 2i)),
+			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterComplex},
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, complex128(1+2i), regs.Complex[0])
+			},
+		},
+		{
+			name:  "bool_to_int",
+			value: reflect.ValueOf(true),
+			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterInt},
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, int64(1), regs.Ints[0])
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -272,7 +481,7 @@ func TestGrowCallStack(t *testing.T) {
 
 	vm.growCallStack()
 
-	require.Equal(t, originalCap*2, len(vm.CallStack))
+	require.Len(t, vm.CallStack, originalCap*2)
 }
 
 func TestGrowCallStackWithASMArrays(t *testing.T) {
@@ -286,9 +495,9 @@ func TestGrowCallStackWithASMArrays(t *testing.T) {
 
 	vm.growCallStack()
 
-	require.Equal(t, 4, len(vm.CallStack))
-	require.Equal(t, 4, len(vm.asmCallInfoBases))
-	require.Equal(t, 4, len(vm.asmDispatchSaves))
+	require.Len(t, vm.CallStack, 4)
+	require.Len(t, vm.asmCallInfoBases, 4)
+	require.Len(t, vm.asmDispatchSaves, 4)
 }
 
 func TestKindDefaultReflectType(t *testing.T) {
@@ -326,15 +535,69 @@ func TestWriteRegisterValue(t *testing.T) {
 		name  string
 		kind  isa.RegisterKind
 	}{
-		{name: "int", kind: isa.RegisterInt, value: reflect.ValueOf(42), check: func(t *testing.T, regs *Registers) { require.Equal(t, int64(42), regs.Ints[0]) }},
-		{name: "float", kind: isa.RegisterFloat, value: reflect.ValueOf(float64(3.14)), check: func(t *testing.T, regs *Registers) { require.Equal(t, float64(3.14), regs.Floats[0]) }},
-		{name: "string", kind: isa.RegisterString, value: reflect.ValueOf("hello"), check: func(t *testing.T, regs *Registers) { require.Equal(t, "hello", regs.Strings[0]) }},
-		{name: "bool", kind: isa.RegisterBool, value: reflect.ValueOf(true), check: func(t *testing.T, regs *Registers) { require.Equal(t, true, regs.Bools[0]) }},
-		{name: "uint", kind: isa.RegisterUint, value: reflect.ValueOf(uint64(99)), check: func(t *testing.T, regs *Registers) { require.Equal(t, uint64(99), regs.Uints[0]) }},
-		{name: "complex", kind: isa.RegisterComplex, value: reflect.ValueOf(complex128(1 + 2i)), check: func(t *testing.T, regs *Registers) { require.Equal(t, complex128(1+2i), regs.Complex[0]) }},
-		{name: "general", kind: isa.RegisterGeneral, value: reflect.ValueOf("general_val"), check: func(t *testing.T, regs *Registers) {
-			require.Equal(t, "general_val", regs.General[0].Interface())
-		}},
+		{
+			name:  "int",
+			kind:  isa.RegisterInt,
+			value: reflect.ValueOf(42),
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), regs.Ints[0])
+			},
+		},
+		{
+			name:  "float",
+			kind:  isa.RegisterFloat,
+			value: reflect.ValueOf(float64(3.14)),
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.InDelta(t, 3.14, regs.Floats[0], 0)
+			},
+		},
+		{
+			name:  "string",
+			kind:  isa.RegisterString,
+			value: reflect.ValueOf("hello"),
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, "hello", regs.Strings[0])
+			},
+		},
+		{
+			name:  "bool",
+			kind:  isa.RegisterBool,
+			value: reflect.ValueOf(true),
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.True(t, regs.Bools[0])
+			},
+		},
+		{
+			name:  "uint",
+			kind:  isa.RegisterUint,
+			value: reflect.ValueOf(uint64(99)),
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(99), regs.Uints[0])
+			},
+		},
+		{
+			name:  "complex",
+			kind:  isa.RegisterComplex,
+			value: reflect.ValueOf(complex128(1 + 2i)),
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, complex128(1+2i), regs.Complex[0])
+			},
+		},
+		{
+			name:  "general",
+			kind:  isa.RegisterGeneral,
+			value: reflect.ValueOf("general_val"),
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, "general_val", regs.General[0].Interface())
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -385,12 +648,60 @@ func TestSyncCellToRegister(t *testing.T) {
 		cell  program.UpvalueCell
 		kind  isa.RegisterKind
 	}{
-		{name: "int", kind: isa.RegisterInt, cell: program.UpvalueCell{IntValue: 42}, check: func(t *testing.T, regs *Registers) { require.Equal(t, int64(42), regs.Ints[0]) }},
-		{name: "float", kind: isa.RegisterFloat, cell: program.UpvalueCell{FloatValue: 3.14}, check: func(t *testing.T, regs *Registers) { require.Equal(t, float64(3.14), regs.Floats[0]) }},
-		{name: "string", kind: isa.RegisterString, cell: program.UpvalueCell{StringValue: "hi"}, check: func(t *testing.T, regs *Registers) { require.Equal(t, "hi", regs.Strings[0]) }},
-		{name: "bool", kind: isa.RegisterBool, cell: program.UpvalueCell{BoolValue: true}, check: func(t *testing.T, regs *Registers) { require.Equal(t, true, regs.Bools[0]) }},
-		{name: "uint", kind: isa.RegisterUint, cell: program.UpvalueCell{UintValue: 99}, check: func(t *testing.T, regs *Registers) { require.Equal(t, uint64(99), regs.Uints[0]) }},
-		{name: "complex", kind: isa.RegisterComplex, cell: program.UpvalueCell{ComplexValue: 1 + 2i}, check: func(t *testing.T, regs *Registers) { require.Equal(t, complex128(1+2i), regs.Complex[0]) }},
+		{
+			name: "int",
+			kind: isa.RegisterInt,
+			cell: program.UpvalueCell{IntValue: 42},
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), regs.Ints[0])
+			},
+		},
+		{
+			name: "float",
+			kind: isa.RegisterFloat,
+			cell: program.UpvalueCell{FloatValue: 3.14},
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.InDelta(t, 3.14, regs.Floats[0], 0)
+			},
+		},
+		{
+			name: "string",
+			kind: isa.RegisterString,
+			cell: program.UpvalueCell{StringValue: "hi"},
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, "hi", regs.Strings[0])
+			},
+		},
+		{
+			name: "bool",
+			kind: isa.RegisterBool,
+			cell: program.UpvalueCell{BoolValue: true},
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.True(t, regs.Bools[0])
+			},
+		},
+		{
+			name: "uint",
+			kind: isa.RegisterUint,
+			cell: program.UpvalueCell{UintValue: 99},
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(99), regs.Uints[0])
+			},
+		},
+		{
+			name: "complex",
+			kind: isa.RegisterComplex,
+			cell: program.UpvalueCell{ComplexValue: 1 + 2i},
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, complex128(1+2i), regs.Complex[0])
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -412,15 +723,69 @@ func TestAssignReflectArg(t *testing.T) {
 		name  string
 		kind  isa.RegisterKind
 	}{
-		{name: "int", kind: isa.RegisterInt, value: reflect.ValueOf(int64(42)), check: func(t *testing.T, regs *Registers) { require.Equal(t, int64(42), regs.Ints[0]) }},
-		{name: "float", kind: isa.RegisterFloat, value: reflect.ValueOf(float64(3.14)), check: func(t *testing.T, regs *Registers) { require.Equal(t, float64(3.14), regs.Floats[0]) }},
-		{name: "string", kind: isa.RegisterString, value: reflect.ValueOf("hi"), check: func(t *testing.T, regs *Registers) { require.Equal(t, "hi", regs.Strings[0]) }},
-		{name: "bool", kind: isa.RegisterBool, value: reflect.ValueOf(true), check: func(t *testing.T, regs *Registers) { require.Equal(t, true, regs.Bools[0]) }},
-		{name: "uint", kind: isa.RegisterUint, value: reflect.ValueOf(uint64(99)), check: func(t *testing.T, regs *Registers) { require.Equal(t, uint64(99), regs.Uints[0]) }},
-		{name: "complex", kind: isa.RegisterComplex, value: reflect.ValueOf(complex128(1 + 2i)), check: func(t *testing.T, regs *Registers) { require.Equal(t, complex128(1+2i), regs.Complex[0]) }},
-		{name: "general", kind: isa.RegisterGeneral, value: reflect.ValueOf("gen_val"), check: func(t *testing.T, regs *Registers) {
-			require.Equal(t, "gen_val", regs.General[0].Interface())
-		}},
+		{
+			name:  "int",
+			kind:  isa.RegisterInt,
+			value: reflect.ValueOf(int64(42)),
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), regs.Ints[0])
+			},
+		},
+		{
+			name:  "float",
+			kind:  isa.RegisterFloat,
+			value: reflect.ValueOf(float64(3.14)),
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.InDelta(t, 3.14, regs.Floats[0], 0)
+			},
+		},
+		{
+			name:  "string",
+			kind:  isa.RegisterString,
+			value: reflect.ValueOf("hi"),
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, "hi", regs.Strings[0])
+			},
+		},
+		{
+			name:  "bool",
+			kind:  isa.RegisterBool,
+			value: reflect.ValueOf(true),
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.True(t, regs.Bools[0])
+			},
+		},
+		{
+			name:  "uint",
+			kind:  isa.RegisterUint,
+			value: reflect.ValueOf(uint64(99)),
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(99), regs.Uints[0])
+			},
+		},
+		{
+			name:  "complex",
+			kind:  isa.RegisterComplex,
+			value: reflect.ValueOf(complex128(1 + 2i)),
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, complex128(1+2i), regs.Complex[0])
+			},
+		},
+		{
+			name:  "general",
+			kind:  isa.RegisterGeneral,
+			value: reflect.ValueOf("gen_val"),
+			check: func(t *testing.T, regs *Registers) {
+				t.Helper()
+				require.Equal(t, "gen_val", regs.General[0].Interface())
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -483,7 +848,7 @@ func TestHandleOpResult(t *testing.T) {
 		require.Nil(t, result)
 		require.True(t, terminal)
 		require.ErrorIs(t, err, testErr)
-		require.Nil(t, vm.evalError)
+		require.NoError(t, vm.evalError)
 	})
 
 	t.Run("unknown opResult returns non-terminal", func(t *testing.T) {
@@ -601,7 +966,7 @@ func TestCopyReturnValueAt(t *testing.T) {
 			isa.RegisterFloat, 0,
 			program.VarLocation{Register: 1, Kind: isa.RegisterBool},
 		)
-		require.Equal(t, true, vm.CallStack[0].Registers.Bools[1])
+		require.True(t, vm.CallStack[0].Registers.Bools[1])
 	})
 }
 

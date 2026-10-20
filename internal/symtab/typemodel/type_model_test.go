@@ -54,7 +54,7 @@ func TestTypePointerToInterface(t *testing.T) {
 	inner := NewNamedInterfaceType("main", "myiface", []string{"Foo"})
 	ptr := TypeOfPointer(inner)
 	require.Equal(t, "*main.myiface", ptr.String())
-	require.Equal(t, "", ptr.name(), "pointer types have empty Name (Go convention)")
+	require.Empty(t, ptr.name(), "pointer types have an empty name, as in Go")
 	require.Equal(t, reflect.Pointer, ptr.Kind())
 	require.Equal(t, "main.myiface", ptr.Elem().String())
 	require.Equal(t, reflect.Interface, ptr.Elem().Kind())
@@ -191,9 +191,9 @@ func TestTypeOverflow(t *testing.T) {
 func TestTypeNilSafety(t *testing.T) {
 	t.Parallel()
 	var pt *Type
-	require.Equal(t, "", pt.name())
-	require.Equal(t, "", pt.String())
-	require.Equal(t, "", pt.PkgPath())
+	require.Empty(t, pt.name())
+	require.Empty(t, pt.String())
+	require.Empty(t, pt.PkgPath())
 	require.Equal(t, reflect.Invalid, pt.Kind())
 	require.Equal(t, 0, pt.numMethod())
 	require.Equal(t, 0, pt.numField())
@@ -206,16 +206,41 @@ func TestTypeNilSafety(t *testing.T) {
 
 func TestMethodSetSatisfies(t *testing.T) {
 	t.Parallel()
-	require.True(t, methodSetSatisfies([]string{"A", "B", "C"}, []string{"A", "C"}))
-	require.True(t, methodSetSatisfies([]string{"A", "B"}, nil))
-	require.False(t, methodSetSatisfies([]string{"A", "C"}, []string{"A", "B"}))
-	require.False(t, methodSetSatisfies(nil, []string{"A"}))
+	tests := []struct {
+		name      string
+		available []string
+		required  []string
+		want      bool
+	}{
+		{name: "superset", available: []string{"A", "B", "C"}, required: []string{"A", "C"}, want: true},
+		{name: "nothing required", available: []string{"A", "B"}, required: nil, want: true},
+		{name: "one method missing", available: []string{"A", "C"}, required: []string{"A", "B"}, want: false},
+		{name: "empty method set", available: nil, required: []string{"A"}, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, methodSetSatisfies(tt.available, tt.required))
+		})
+	}
 }
 
 func TestShortPackageName(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, "main", shortPackageName("main"))
-	require.Equal(t, "bar", shortPackageName("github.com/foo/bar"))
-	require.Equal(t, "", shortPackageName(""))
-	require.Equal(t, "v1", shortPackageName("k8s.io/api/core/v1"))
+	tests := []struct {
+		name       string
+		importPath string
+		want       string
+	}{
+		{name: "one element", importPath: "main", want: "main"},
+		{name: "last element", importPath: "github.com/foo/bar", want: "bar"},
+		{name: "empty", importPath: "", want: ""},
+		{name: "major version suffix is kept", importPath: "k8s.io/api/core/v1", want: "v1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, shortPackageName(tt.importPath))
+		})
+	}
 }

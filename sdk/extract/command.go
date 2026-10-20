@@ -20,9 +20,12 @@ package extract
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -59,6 +62,10 @@ const (
 	// defaultInitDirectory is the output directory init records when Config.InitDirectory is
 	// empty.
 	defaultInitDirectory = "symbols"
+
+	// includeProjectFlag includes the project's packages as required imports for one
+	// run.
+	includeProjectFlag = "--include-project"
 )
 
 // Config adapts RunCommand to the command-line tool that embeds it.
@@ -87,12 +94,20 @@ type Config struct {
 	// root.
 	SourceDirs []string
 
+	// FileFilter decides which Go files the interpreter compiles, as
+	// DiscoverOptions.FileFilter does. Nil selects DefaultFileFilter.
+	FileFilter FileFilter
+
 	// Scanners read the imports of project source files. Empty selects GoFileScanner.
 	Scanners []SourceScanner
 
 	// IgnoreProjectModule drops imports of the project's own module from discovery, for a
 	// host that compiles those packages from source instead of registering them.
 	IgnoreProjectModule bool
+
+	// FollowProjectImports discovers imports used by the project's own packages. See
+	// DiscoverOptions.FollowProjectImports for traversal rules.
+	FollowProjectImports bool
 }
 
 // extractSubcommandHandler is the contract implemented by every extract subcommand: parse
@@ -160,43 +175,72 @@ func (config Config) withDefaults() Config {
 //
 // Returns DiscoverOptions which applies the configured directories, scanners and provided
 // set.
-func (config Config) discoverOptions(root string, extraIgnored []string) DiscoverOptions {
+// Returns error when the project module must be ignored but go.mod cannot be read. A
+// missing go.mod, or one without a module path, leaves nothing to ignore.
+func (config Config) discoverOptions(root string, extraIgnored []string) (DiscoverOptions, error) {
 	options := DiscoverOptions{
-		Root:            root,
-		SourceDirs:      config.SourceDirs,
-		Scanners:        config.Scanners,
-		ExtraIgnored:    extraIgnored,
-		IgnoredPrefixes: nil,
-		AlreadyProvided: nil,
-		BuildTags:       nil,
+		Root:                 root,
+		SourceDirs:           config.SourceDirs,
+		Scanners:             config.Scanners,
+		ExtraIgnored:         extraIgnored,
+		IgnoredPrefixes:      nil,
+		AlreadyProvided:      nil,
+		FileFilter:           config.FileFilter,
+		BuildTags:            nil,
+		FollowProjectImports: config.FollowProjectImports,
 	}
 	if config.AlreadyProvided != nil {
 		options.AlreadyProvided = config.AlreadyProvided()
 	}
-	if config.IgnoreProjectModule {
-		if modulePath := projectModulePath(root); modulePath != "" {
-			options.IgnoredPrefixes = []string{modulePath}
-		}
+	if !config.IgnoreProjectModule {
+		return options, nil
 	}
-	return options
+	modulePath, err := projectModulePath(root)
+	switch {
+	case errors.Is(err, fs.ErrNotExist), errors.Is(err, errNoModulePath):
+		return options, nil
+	case err != nil:
+		return DiscoverOptions{}, err
+	}
+	options.IgnoredPrefixes = []string{modulePath}
+	return options, nil
+}
+
+// includingProject returns the configuration for a run that reports the project's own
+// packages as required and does not follow their imports, as --include-project asks.
+//
+// Returns Config which neither ignores nor follows the project module.
+func (config Config) includingProject() Config {
+	config.IgnoreProjectModule = false
+	config.FollowProjectImports = false
+	return config
 }
 
 // projectModulePath returns the module path declared by root/go.mod.
 //
 // Takes root (string) which is the project root.
 //
-// Returns string which is the module path, or empty when there is no readable go.mod.
-func projectModulePath(root string) string {
+// Returns string which is the module path.
+// Returns error when go.mod cannot be read, is too large, or declares no module path.
+func projectModulePath(root string) (modulePath string, err error) {
 	projectRoot, err := os.OpenRoot(root)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("opening project root %s: %w", root, err)
 	}
-	defer func() { _ = projectRoot.Close() }()
-	data, err := projectRoot.ReadFile("go.mod")
+	defer func() {
+		if closeErr := projectRoot.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
+	data, err := readBoundedFile(projectRoot, goModFileName, maxGoModSizeBytes)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("reading %s: %w", filepath.Join(root, goModFileName), err)
 	}
-	return modfile.ModulePath(data)
+	modulePath = modfile.ModulePath(data)
+	if modulePath == "" {
+		return "", fmt.Errorf("%w: %s", errNoModulePath, filepath.Join(root, goModFileName))
+	}
+	return modulePath, nil
 }
 
 // commandUsage writes the usage information for the extract command, listing the
@@ -267,4 +311,38 @@ func flagValue(arguments []string, index *int, stderr io.Writer) (string, bool) 
 	}
 	*index++
 	return arguments[*index], true
+}
+
+// includeProjectUsage returns the help line for --include-project, which depends on how
+// the configuration treats the project module, or nothing when it neither ignores nor
+// follows it, so the flag changes nothing.
+//
+// Takes config (Config) which says how the project module is treated.
+//
+// Returns string which is the help line with its trailing newline, or empty.
+func includeProjectUsage(config Config) string {
+	switch {
+	case config.FollowProjectImports:
+		return "  " + includeProjectFlag + "    Report the project's own packages as required instead of\n" +
+			"                       compiling them from source and following their imports\n"
+	case config.IgnoreProjectModule:
+		return "  " + includeProjectFlag + "    Report the project's own packages as required instead of\n" +
+			"                       leaving them out because they are compiled from source\n"
+	default:
+		return ""
+	}
+}
+
+// reportDiscoverWarnings writes the unresolved imports and general warnings of a
+// discovery to stderr.
+//
+// Takes stderr (io.Writer) which receives the warnings.
+// Takes result (DiscoverResult) which carries them.
+func reportDiscoverWarnings(stderr io.Writer, result DiscoverResult) {
+	for _, unresolved := range result.Unresolved {
+		_, _ = fmt.Fprintf(stderr, "warning: %s cannot be extracted: %s\n", unresolved.ImportPath, unresolved.Reason)
+	}
+	for _, warning := range result.Warnings {
+		_, _ = fmt.Fprintf(stderr, "warning: %s\n", warning)
+	}
 }

@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"time"
 
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
@@ -70,7 +71,8 @@ func (vm *VM) RunDispatchedGuarded(baseFramePointer int) (result any, err error)
 	}
 	defer func() { vm.handleRecoveredHandlerPanic(recover(), baseFramePointer, &result, &err) }()
 	vm.DispatchEntries++
-	return vm.runDispatched(baseFramePointer)
+	result, err = vm.runDispatched(baseFramePointer)
+	return vm.reportFailedExecution(baseFramePointer, result, err)
 }
 
 // RunGuarded wraps the pure-Go run loop with the same handler-panic recovery as
@@ -86,7 +88,27 @@ func (vm *VM) RunGuarded(baseFramePointer int) (result any, err error) {
 		defer vm.unlockInterpreter()
 	}
 	defer func() { vm.handleRecoveredHandlerPanic(recover(), baseFramePointer, &result, &err) }()
-	return vm.run(baseFramePointer)
+	result, err = vm.run(baseFramePointer)
+	return vm.reportFailedExecution(baseFramePointer, result, err)
+}
+
+// reportFailedExecution turns a successful run of the execution's main frame into the
+// execution's failure when a callback failed it (executionLink.fail) and the run returned
+// before it polled the cancelled context.
+//
+// Takes baseFramePointer (int) which is the frame the run returned at.
+// Takes result (any) which is the run's result.
+// Takes err (error) which is the run's error.
+//
+// Returns the run's result and error, or the execution's failure.
+func (vm *VM) reportFailedExecution(baseFramePointer int, result any, err error) (any, error) {
+	if err != nil || baseFramePointer != 0 || !vm.ownsLink || vm.link == nil {
+		return result, err
+	}
+	if failure := vm.link.failedError(); failure != nil {
+		return nil, failure
+	}
+	return result, err
 }
 
 // AccountForInstructionCost charges the per-opcode cost against the VM's local cost
@@ -447,8 +469,8 @@ func (vm *VM) maybeYield() {
 // Returns result (any) which is the propagated result value to surface from run.
 // Returns err (error) which is any error encountered during the periodic checks.
 func (vm *VM) runPeriodicChecks() (done bool, result any, err error) {
-	if vm.Cancelled.Load() != 0 {
-		return true, nil, cancellationError(vm.ctx)
+	if vm.Cancelled.Load() != 0 || vm.pollContext() {
+		return true, nil, vm.stopError()
 	}
 	if info := vm.Globals.goroutinePanic.Load(); info != nil {
 		return true, nil, newGoroutinePanicError(info.value)
@@ -531,6 +553,43 @@ func (vm *VM) handleOpResult(rc OpResult) (result any, terminal bool, err error)
 		return nil, false, nil
 	}
 	return outcome.result, true, outcome.err
+}
+
+// pollContext checks cancellation and the callback deadline, yielding the processor
+// every pollYieldMask+1 polls.
+//
+// Returns true when the run must stop, with Cancelled set and pollCause naming a cause
+// the context does not carry.
+func (vm *VM) pollContext() bool {
+	vm.pollsSinceYield++
+	if vm.pollsSinceYield&pollYieldMask == 0 {
+		runtime.Gosched()
+	}
+	if vm.ctxDone != nil {
+		select {
+		case <-vm.ctxDone:
+			vm.Cancelled.Store(1)
+			return true
+		default:
+		}
+	}
+	if !vm.callbackDeadline.IsZero() && time.Now().After(vm.callbackDeadline) {
+		vm.pollCause = fault.ErrCallbackTimeout
+		vm.Cancelled.Store(1)
+		return true
+	}
+	return false
+}
+
+// stopError returns the recorded poll cause or, if none was recorded, the context's
+// cancellation cause.
+//
+// Returns error which satisfies errors.Is against fault.ErrExecutionCancelled.
+func (vm *VM) stopError() error {
+	if vm.pollCause != nil {
+		return fmt.Errorf(fault.ErrChainFmt, fault.ErrExecutionCancelled, vm.pollCause)
+	}
+	return cancellationError(vm.ctx)
 }
 
 // cancellationError reports why ctx ended as a fault.ErrExecutionCancelled error whose

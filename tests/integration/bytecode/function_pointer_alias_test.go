@@ -21,13 +21,12 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/compile/passes"
 	"pipit.sh/pipit/internal/engine/program"
-
-	"github.com/stretchr/testify/require"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -40,7 +39,7 @@ func TestAliasAnalysisAllocsAreDistinct(t *testing.T) {
 			mk(isa.OpMoveGeneral, 2, 0, 0),
 		},
 	}
-	_ = passes.RunPointerAliasAnalysis(context.Background(), compiledFunction)
+	_ = passes.RunPointerAliasAnalysis(t.Context(), compiledFunction)
 	require.NotNil(t, compiledFunction.AliasInfo)
 	require.False(t, compiledFunction.AliasInfo.MayAlias(2, 0, 1),
 		"two distinct opAllocIndirect produce different alias classes")
@@ -53,7 +52,7 @@ func TestAliasAnalysisSameRegisterAlwaysAliases(t *testing.T) {
 			mk(isa.OpAllocIndirect, 0, 0, 0),
 		},
 	}
-	_ = passes.RunPointerAliasAnalysis(context.Background(), compiledFunction)
+	_ = passes.RunPointerAliasAnalysis(t.Context(), compiledFunction)
 	require.True(t, compiledFunction.AliasInfo.MayAlias(0, 0, 0),
 		"a register always aliases itself")
 }
@@ -68,7 +67,7 @@ func TestAliasAnalysisWildOnCall(t *testing.T) {
 			mk(isa.OpMoveGeneral, 2, 0, 0),
 		},
 	}
-	_ = passes.RunPointerAliasAnalysis(context.Background(), compiledFunction)
+	_ = passes.RunPointerAliasAnalysis(t.Context(), compiledFunction)
 	require.True(t, compiledFunction.AliasInfo.MayAlias(3, 0, 1),
 		"call wildens all general registers; everything may-aliases everything")
 }
@@ -82,7 +81,7 @@ func TestAliasAnalysisMovePropagatesClass(t *testing.T) {
 			mk(isa.OpAllocIndirect, 2, 0, 0),
 		},
 	}
-	_ = passes.RunPointerAliasAnalysis(context.Background(), compiledFunction)
+	_ = passes.RunPointerAliasAnalysis(t.Context(), compiledFunction)
 	require.True(t, compiledFunction.AliasInfo.MayAlias(2, 0, 1),
 		"reg 1 received reg 0 via move; same class; may-aliases")
 	require.False(t, compiledFunction.AliasInfo.MayAlias(2, 0, 2),
@@ -97,7 +96,7 @@ func TestAliasAnalysisParametersAreDistinct(t *testing.T) {
 			mk(isa.OpMoveGeneral, 2, 0, 0),
 		},
 	}
-	_ = passes.RunPointerAliasAnalysis(context.Background(), compiledFunction)
+	_ = passes.RunPointerAliasAnalysis(t.Context(), compiledFunction)
 	require.False(t, compiledFunction.AliasInfo.MayAlias(0, 0, 1),
 		"two general-bank parameters seeded with distinct classes")
 }
@@ -114,7 +113,7 @@ func TestAliasAnalysisMergeAtJumpTargetWidensToWild(t *testing.T) {
 			mk(isa.OpMoveGeneral, 2, 0, 0),
 		},
 	}
-	_ = passes.RunPointerAliasAnalysis(context.Background(), compiledFunction)
+	_ = passes.RunPointerAliasAnalysis(t.Context(), compiledFunction)
 	require.True(t, compiledFunction.AliasInfo.MayAlias(4, 0, 1),
 		"reg 0 has different classes on the two paths reaching PC 4; merge widens to wild")
 }
@@ -122,7 +121,7 @@ func TestAliasAnalysisMergeAtJumpTargetWidensToWild(t *testing.T) {
 func TestAliasAnalysisEmptyFunctionHandled(t *testing.T) {
 	t.Parallel()
 	compiledFunction := &program.CompiledFunction{}
-	_ = passes.RunPointerAliasAnalysis(context.Background(), compiledFunction)
+	_ = passes.RunPointerAliasAnalysis(t.Context(), compiledFunction)
 	require.Nil(t, compiledFunction.AliasInfo, "empty function does not allocate alias info")
 }
 
@@ -140,7 +139,7 @@ func TestMayAliasOutOfRangePCReturnsTrue(t *testing.T) {
 			mk(isa.OpAllocIndirect, 0, 0, 0),
 		},
 	}
-	_ = passes.RunPointerAliasAnalysis(context.Background(), compiledFunction)
+	_ = passes.RunPointerAliasAnalysis(t.Context(), compiledFunction)
 	require.True(t, compiledFunction.AliasInfo.MayAlias(999, 0, 1),
 		"PC outside body: conservative may-alias")
 }

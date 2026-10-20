@@ -21,13 +21,12 @@
 package bytecode_test
 
 import (
-	"context"
 	"strings"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/app"
 )
 
 func TestTypedSliceLocalStoredIntoContainerUsesHeapMake(t *testing.T) {
@@ -101,7 +100,7 @@ func EntrypointRun() int {
 
 func TestHeapMakeSliceBanksRoundTripThroughContainers(t *testing.T) {
 	t.Parallel()
-	result, err := app.NewService().Eval(context.Background(), `
+	result, err := app.NewService().Eval(t.Context(), `
 ints := make([][]int64, 2)
 floats := make([][]float64, 2)
 strs := make([][]string, 2)

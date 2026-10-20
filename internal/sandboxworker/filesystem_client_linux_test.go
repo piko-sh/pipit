@@ -21,16 +21,17 @@
 package sandboxworker
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/sandboxbroker"
 	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 func TestFilesystemRelayRejectsCompilationCalls(t *testing.T) {
+	t.Parallel()
 	config := FilesystemConfiguration{
 		Profile: FilesystemProfile, Imports: []string{"pipit/fs"}, Roots: []sandboxbroker.RootGrant{},
 		Limits: &sandboxbroker.FilesystemLimits{},
@@ -45,39 +46,32 @@ func TestFilesystemRelayRejectsCompilationCalls(t *testing.T) {
 			message,
 		)
 		session, err := filesystemHandshake(stream, config)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := session.exchangeFilesystem(context.Background(), stream, Request{Kind: "expression", Source: "1", Entrypoint: ""}, nil); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatal("premature capability or execution result accepted:", err)
-		}
+		require.NoError(t, err)
+		_, err = session.exchangeFilesystem(t.Context(), stream, Request{Kind: "expression", Source: "1", Entrypoint: ""}, nil)
+		require.ErrorIs(t, err, sandboxwire.ErrProtocol, "premature capability or execution result accepted")
 	}
 }
 
 func TestFilesystemRelayRejectsResultWithOutstandingCall(t *testing.T) {
+	t.Parallel()
 	stream := sourceFixture(t,
 		fixtureMessage(t, sandboxwire.Result, 2, Response{Output: "", Error: "", Code: "ok", Value: json.RawMessage("1"), CostUsed: 0, OutputTruncated: false}),
 	)
 	session, err := newConnection(stream)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, event := range []struct {
 		direction sandboxwire.Direction
 		kind      sandboxwire.Kind
 		identity  uint64
 	}{
-		{sandboxwire.WorkerToHost, sandboxwire.Hello, 0},
-		{sandboxwire.HostToWorker, sandboxwire.Configure, 0},
-		{sandboxwire.WorkerToHost, sandboxwire.Ready, 0},
-		{sandboxwire.HostToWorker, sandboxwire.Run, 2},
-		{sandboxwire.WorkerToHost, sandboxwire.Call, 1},
+		{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Hello, identity: 0},
+		{direction: sandboxwire.HostToWorker, kind: sandboxwire.Configure, identity: 0},
+		{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Ready, identity: 0},
+		{direction: sandboxwire.HostToWorker, kind: sandboxwire.Run, identity: 2},
+		{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Call, identity: 1},
 	} {
-		if err := session.machine.Observe(event.direction, fixtureMessage(t, event.kind, event.identity, struct{}{})); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, session.machine.Observe(event.direction, fixtureMessage(t, event.kind, event.identity, struct{}{})))
 	}
-	if _, err := session.relayFilesystem(context.Background(), nil); !errors.Is(err, sandboxwire.ErrProtocol) {
-		t.Fatal("result with outstanding call accepted:", err)
-	}
+	_, err = session.relayFilesystem(t.Context(), nil)
+	require.ErrorIs(t, err, sandboxwire.ErrProtocol, "result with outstanding call accepted")
 }

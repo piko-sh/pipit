@@ -824,7 +824,7 @@ func collectModuleZipSources(zip fs.FS) (map[string]map[string]string, error) {
 		}
 		dir, name := splitDirFile(path)
 		content := buffer.String()
-		if !compilableForHost(dir, name, content) {
+		if !compilableForHost(name, content) {
 			return nil
 		}
 		bucket, ok := out[dir]
@@ -838,7 +838,27 @@ func collectModuleZipSources(zip fs.FS) (map[string]map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	maps.DeleteFunc(out, func(_ string, files map[string]string) bool { return isCommandPackage(files) })
 	return out, nil
+}
+
+// isCommandPackage reports whether every file of a package declares package main.
+//
+// Takes files (map[string]string) which maps file names to sources.
+//
+// Returns bool which is true for a command; a file that does not parse counts as not one,
+// so the compiler reports it.
+func isCommandPackage(files map[string]string) bool {
+	if len(files) == 0 {
+		return false
+	}
+	for name, content := range files {
+		parsed, err := parser.ParseFile(token.NewFileSet(), name, content, parser.PackageClauseOnly)
+		if err != nil || parsed.Name.Name != "main" {
+			return false
+		}
+	}
+	return true
 }
 
 // skipNonCompilableDir reports whether a directory in a module zip should be walked.

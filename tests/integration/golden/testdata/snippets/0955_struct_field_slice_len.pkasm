@@ -16,7 +16,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=8 string=2 general=6 sliceInt=3 sliceByte=2
-;   dispatch:  asm=49 shim=18 exit=7 go=20
+;   dispatch:  asm=48 shim=18 exit=7 go=20
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -107,30 +107,29 @@
 0079 G 1:LEN                       70   5   1
 0080 A 0:MOVE_GENERAL               2   1   1    ; CSE'd from PC 78
 0081 A 1:CALL                     128   0   0    ; call (site 0)
-0082 A 0:ADD_INT                    7   5   6
-0083 A 1:MOVE_INT                  35   5   7
-0084 A 0:MOVE_GENERAL               1   0   2
-0085 S 0:ADDR                       2   0   1
-0086 S 0:DEREF                      3   2   0
-0087 X 0:GET_FIELD                  3   3   0
-0088 S 0:ADDR                       4   3   1
-0089 X 0:GET_FIELD                  5   0   0
-0090 G 1:GET_STRUCT_FIELD_SLICE_INT 190   0   5
-0091   0:EXT                        2   0   0
-0092 A 1:LOAD_INT_CONST_SMALL      75   6   9    ; ints[6] = 9
-0093 A 1:APPEND_SLICE_INT_DIRECT  171   1   0
-0094   0:EXT                        6   0   0
-0095 A 1:LOAD_INT_CONST_SMALL      75   7  10    ; ints[7] = 10
-0096 A 1:APPEND_SLICE_INT_DIRECT  171   2   1
-0097   0:EXT                        7   0   0
-0098 G 1:SET_STRUCT_FIELD_SLICE_INT 196   4   2
-0099   0:EXT                        2   0   0
-0100 X 0:GET_FIELD                  2   1   0
-0101 A 0:GET_STRUCT_FIELD_SLICE_LEN   6   2   2
-0102 X 0:GET_FIELD                  2   0   0
-0103 A 0:GET_STRUCT_FIELD_SLICE_LEN   7   2   2
-0104 S 0:LOAD_GENERAL_CONST         2   0   0
-0105 A 0:LOAD_STRING_CONST          0   2   0    ; strings[0] = "%d %d %d %d %d %d %d %d"
-0106 G 1:CALL_NATIVE              130   1   0    ; call native general[2] (site 1)
-0107 A 1:MOVE_STRING               37   0   1
-0108 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0082 A 0:ADD_INT                    5   5   6
+0083 A 0:MOVE_GENERAL               1   0   2
+0084 S 0:ADDR                       2   0   1
+0085 S 0:DEREF                      3   2   0
+0086 X 0:GET_FIELD                  3   3   0
+0087 S 0:ADDR                       4   3   1
+0088 X 0:GET_FIELD                  5   0   0
+0089 G 1:GET_STRUCT_FIELD_SLICE_INT 190   0   5
+0090   0:EXT                        2   0   0
+0091 A 1:LOAD_INT_CONST_SMALL      75   6   9    ; ints[6] = 9
+0092 A 1:APPEND_SLICE_INT_DIRECT  171   1   0
+0093   0:EXT                        6   0   0
+0094 A 1:LOAD_INT_CONST_SMALL      75   6  10    ; ints[6] = 10
+0095 A 1:APPEND_SLICE_INT_DIRECT  171   2   1
+0096   0:EXT                        6   0   0
+0097 G 1:SET_STRUCT_FIELD_SLICE_INT 196   4   2
+0098   0:EXT                        2   0   0
+0099 X 0:GET_FIELD                  2   1   0
+0100 A 0:GET_STRUCT_FIELD_SLICE_LEN   6   2   2
+0101 X 0:GET_FIELD                  2   0   0
+0102 A 0:GET_STRUCT_FIELD_SLICE_LEN   7   2   2
+0103 S 0:LOAD_GENERAL_CONST         2   0   0
+0104 A 0:LOAD_STRING_CONST          0   2   0    ; strings[0] = "%d %d %d %d %d %d %d %d"
+0105 G 1:CALL_NATIVE              130   1   0    ; call native general[2] (site 1)
+0106 A 1:MOVE_STRING               37   0   1
+0107 A 2:TIER2_RETURN               0  10   1    ; 1 values

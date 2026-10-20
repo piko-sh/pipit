@@ -19,10 +19,11 @@
 package modloader
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSourceSnapshotFreezesApprovedInputs(t *testing.T) {
@@ -32,51 +33,35 @@ func TestSourceSnapshotFreezesApprovedInputs(t *testing.T) {
 	original := "package main; func main() {}"
 	metadata := "module example.test/main\nrequire example.test/helper v1.2.3\n"
 	for name, data := range map[string]string{"main.go": original, "go.mod": metadata} {
-		if err := os.WriteFile(filepath.Join(directory, name), []byte(data), 0600); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.WriteFile(filepath.Join(directory, name), []byte(data), 0600))
 	}
 	axes := []string{"filesystem.read"}
 	path, identity, err := InvocationIdentity(target, axes, "main", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	snapshot, err := CaptureInvocation(target, axes, "main", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if snapshot.Path() != path || snapshot.Identity() != identity || snapshot.IsDirectory() {
-		t.Fatal("captured source diverged from the approval identity")
-	}
-	if err := os.Remove(target); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(directory, "go.mod"), []byte("changed"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, path, snapshot.Path(), "the captured source matches the approval identity")
+	require.Equal(t, identity, snapshot.Identity())
+	require.False(t, snapshot.IsDirectory())
+	require.NoError(t, os.Remove(target))
+	require.NoError(t, os.WriteFile(filepath.Join(directory, "go.mod"), []byte("changed"), 0600))
 	captured, err := snapshot.ReadFile(target)
-	if err != nil || string(captured) != original {
-		t.Fatalf("source was reopened: %q %v", captured, err)
-	}
+	require.NoError(t, err, "the source is opened once: %q", captured)
+	require.Equal(t, original, string(captured))
 	captured[0] = 'X'
 	again, err := snapshot.ReadFile(target)
-	if err != nil || string(again) != original {
-		t.Fatal("returned byte slice mutated snapshot")
-	}
+	require.NoError(t, err, "the returned byte slice is a copy")
+	require.Equal(t, original, string(again))
 	module, err := snapshot.ReadFile(filepath.Join(directory, "go.mod"))
-	if err != nil || string(module) != metadata {
-		t.Fatal("module metadata was reopened")
-	}
-	if versions := invocationVersions(directory, snapshot); versions["example.test/helper"] != "v1.2.3" {
-		t.Fatal("module resolution did not use approved version metadata")
-	}
-	resolution, err := ResolveScript(context.Background(), target, ScriptResolverOptions{Snapshot: snapshot})
-	if err != nil || resolution.MainSources[target] != original {
-		t.Fatalf("resolver did not use captured source: resolution=%+v error=%v", resolution, err)
-	}
-	if _, err := snapshot.ReadFile(filepath.Join(directory, "..", "outside.go")); err == nil {
-		t.Fatal("snapshot allowed source outside its captured root")
-	}
+	require.NoError(t, err, "module metadata is opened once")
+	require.Equal(t, metadata, string(module))
+	versions := invocationVersions(directory, snapshot)
+	require.Equal(t, "v1.2.3", versions["example.test/helper"], "module resolution uses the approved version metadata")
+	resolution, err := ResolveScript(t.Context(), target, ScriptResolverOptions{Snapshot: snapshot})
+	require.NoError(t, err, "the resolver uses the captured source: %+v", resolution)
+	require.Equal(t, original, resolution.MainSources[target])
+	_, err = snapshot.ReadFile(filepath.Join(directory, "..", "outside.go"))
+	require.Error(t, err, "a snapshot refuses source outside its captured root")
 }
 
 func TestSourceSnapshotDirectoryReturnsIndependentMap(t *testing.T) {
@@ -84,27 +69,18 @@ func TestSourceSnapshotDirectoryReturnsIndependentMap(t *testing.T) {
 	directory := t.TempDir()
 	for _, name := range []string{"main.go", "helper.go", "helper_test.go", "child/nested.go"} {
 		path := filepath.Join(directory, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte("package main"), 0600); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
+		require.NoError(t, os.WriteFile(path, []byte("package main"), 0600))
 	}
 	snapshot, err := CaptureInvocation(directory, nil, "main", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !snapshot.IsDirectory() {
-		t.Fatal("directory kind was not retained")
-	}
+	require.NoError(t, err)
+	require.True(t, snapshot.IsDirectory(), "the directory kind is kept")
 	sources := snapshot.DirectorySources()
-	if len(sources) != 2 || sources["helper.go"] != "package main" {
-		t.Fatalf("wrong package selection: %v", sources)
-	}
+	require.Len(t, sources, 2, "the selected package")
+	require.Equal(t, "package main", sources["helper.go"])
 	sources["main.go"] = "changed"
 	delete(sources, "helper.go")
-	if again := snapshot.DirectorySources(); len(again) != 2 || again["main.go"] != "package main" {
-		t.Fatal("returned map mutated the captured package")
-	}
+	again := snapshot.DirectorySources()
+	require.Len(t, again, 2, "the returned map is a copy")
+	require.Equal(t, "package main", again["main.go"])
 }

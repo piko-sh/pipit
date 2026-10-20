@@ -19,31 +19,30 @@
 package module
 
 import (
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseCapability(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		input    string
-		expected Capability
+		name  string
+		input string
+		want  Capability
 	}{
-		{"axis only", "filesystem.read", Capability{Axis: "filesystem.read"}},
-		{"axis and scope", "filesystem.read(/etc/*)", Capability{Axis: "filesystem.read", Scope: "/etc/*"}},
-		{"whitespace", "  exec ( ls ) ", Capability{Axis: "exec", Scope: "ls"}},
-		{"empty scope parens", "network()", Capability{Axis: "network", Scope: ""}},
-		{"unterminated paren", "exec(ls", Capability{Axis: "exec", Scope: "ls"}},
-		{"empty input", "", Capability{}},
+		{name: "axis only", input: "filesystem.read", want: Capability{Axis: "filesystem.read"}},
+		{name: "axis and scope", input: "filesystem.read(/etc/*)", want: Capability{Axis: "filesystem.read", Scope: "/etc/*"}},
+		{name: "whitespace", input: "  exec ( ls ) ", want: Capability{Axis: "exec", Scope: "ls"}},
+		{name: "empty scope parens", input: "network()", want: Capability{Axis: "network", Scope: ""}},
+		{name: "unterminated paren", input: "exec(ls", want: Capability{Axis: "exec", Scope: "ls"}},
+		{name: "empty input", input: "", want: Capability{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := ParseCapability(tt.input); got != tt.expected {
-				t.Fatalf("ParseCapability(%q) = %+v, want %+v", tt.input, got, tt.expected)
-			}
+			require.Equal(t, tt.want, ParseCapability(tt.input))
 		})
 	}
 }
@@ -51,16 +50,18 @@ func TestParseCapability(t *testing.T) {
 func TestCapabilityString(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		input    Capability
-		expected string
+		name  string
+		input Capability
+		want  string
 	}{
-		{Capability{Axis: "exec"}, "exec"},
-		{Capability{Axis: "filesystem.read", Scope: "/etc/*"}, "filesystem.read(/etc/*)"},
+		{name: "axis only", input: Capability{Axis: "exec"}, want: "exec"},
+		{name: "axis and scope", input: Capability{Axis: "filesystem.read", Scope: "/etc/*"}, want: "filesystem.read(/etc/*)"},
 	}
 	for _, tt := range tests {
-		if got := tt.input.String(); got != tt.expected {
-			t.Errorf("Capability.String() = %q, want %q", got, tt.expected)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, tt.input.String())
+		})
 	}
 }
 
@@ -80,9 +81,7 @@ func TestCapabilitySetNormalise(t *testing.T) {
 		{Axis: "filesystem.read", Scope: "/var/*"},
 		{Axis: "network"},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("Normalise() = %+v\nwant %+v", got, want)
-	}
+	require.Equal(t, want, got)
 }
 
 func TestCapabilitySetContainsAndSubset(t *testing.T) {
@@ -94,16 +93,8 @@ func TestCapabilitySetContainsAndSubset(t *testing.T) {
 	partial := CapabilitySet{
 		{Axis: "network"},
 	}
-	if !partial.IsSubsetOf(full) {
-		t.Fatalf("partial set should be subset of full set")
-	}
-	if full.IsSubsetOf(partial) {
-		t.Fatalf("full set should NOT be subset of partial set")
-	}
-	if !full.Contains(Capability{Axis: "network"}) {
-		t.Fatalf("full set should contain Capability{network}")
-	}
-	if full.Contains(Capability{Axis: "exec"}) {
-		t.Fatalf("full set should not contain Capability{exec}")
-	}
+	require.True(t, partial.IsSubsetOf(full), "the partial set is a subset of the full set")
+	require.False(t, full.IsSubsetOf(partial), "the full set is not a subset of the partial set")
+	require.True(t, full.Contains(Capability{Axis: "network"}))
+	require.False(t, full.Contains(Capability{Axis: "exec"}))
 }

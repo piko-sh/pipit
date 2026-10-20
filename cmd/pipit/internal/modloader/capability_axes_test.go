@@ -19,43 +19,42 @@
 package modloader
 
 import (
-	"context"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseGateSpec(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
-		spec string
-		want []string
-		err  bool
+	tests := []struct {
+		name    string
+		spec    string
+		want    []string
+		wantErr bool
 	}{
-		{"", nil, false},
-		{"network", []string{AxisNetworkDial, AxisNetworkListen}, false},
-		{"disk", []string{AxisFilesystemRead, AxisFilesystemWrite}, false},
-		{"env", []string{AxisEnvRead, AxisEnvWrite}, false},
-		{"exec", []string{AxisExec, AxisSubprocess}, false},
-		{"network,disk", []string{AxisNetworkDial, AxisNetworkListen, AxisFilesystemRead, AxisFilesystemWrite}, false},
-		{"all", allAxes, false},
-		{"network, network", []string{AxisNetworkDial, AxisNetworkListen}, false},
-		{"bogus", nil, true},
+		{name: "empty", spec: "", want: nil},
+		{name: "network", spec: "network", want: []string{AxisNetworkDial, AxisNetworkListen}},
+		{name: "disk", spec: "disk", want: []string{AxisFilesystemRead, AxisFilesystemWrite}},
+		{name: "env", spec: "env", want: []string{AxisEnvRead, AxisEnvWrite}},
+		{name: "exec", spec: "exec", want: []string{AxisExec, AxisSubprocess}},
+		{name: "two groups", spec: "network,disk", want: []string{AxisNetworkDial, AxisNetworkListen, AxisFilesystemRead, AxisFilesystemWrite}},
+		{name: "all", spec: "all", want: allAxes},
+		{name: "a repeated group", spec: "network, network", want: []string{AxisNetworkDial, AxisNetworkListen}},
+		{name: "unknown group", spec: "bogus", wantErr: true},
 	}
-	for _, tc := range cases {
-		got, err := ParseGateSpec(tc.spec)
-		if tc.err {
-			if err == nil {
-				t.Fatalf("ParseGateSpec(%q) expected error", tc.spec)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ParseGateSpec(tt.spec)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
 			}
-			continue
-		}
-		if err != nil {
-			t.Fatalf("ParseGateSpec(%q) unexpected error: %v", tc.spec, err)
-		}
-		if !reflect.DeepEqual(got, tc.want) {
-			t.Fatalf("ParseGateSpec(%q) = %v, want %v", tc.spec, got, tc.want)
-		}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
 	}
 }
 
@@ -73,17 +72,11 @@ func TestCheckFunctionCallGatesSelectedAxisOnly(t *testing.T) {
 	hook := NewHook(HookModeFrozen, store, nil)
 	hook.Gate(AxisFilesystemRead, AxisFilesystemWrite)
 
-	if err := hook.CheckFunctionCall(context.Background(), "", "os.ReadFile", strArgs("/etc/hostname")); err == nil {
-		t.Fatalf("expected gated os.ReadFile to be denied in frozen mode")
-	}
+	require.Error(t, hook.CheckFunctionCall(t.Context(), "", "os.ReadFile", strArgs("/etc/hostname")), "frozen mode denies a gated os.ReadFile")
 
-	if err := hook.CheckFunctionCall(context.Background(), "", "os.Getenv", strArgs("HOME")); err != nil {
-		t.Fatalf("un-gated os.Getenv should be allowed, got %v", err)
-	}
+	require.NoError(t, hook.CheckFunctionCall(t.Context(), "", "os.Getenv", strArgs("HOME")), "an ungated os.Getenv is allowed")
 
-	if err := hook.CheckFunctionCall(context.Background(), "", "strings.ToUpper", strArgs("x")); err != nil {
-		t.Fatalf("unmapped strings.ToUpper should be allowed, got %v", err)
-	}
+	require.NoError(t, hook.CheckFunctionCall(t.Context(), "", "strings.ToUpper", strArgs("x")), "an unmapped strings.ToUpper is allowed")
 }
 
 func TestCheckFunctionCallHonoursApproval(t *testing.T) {
@@ -93,32 +86,22 @@ func TestCheckFunctionCallHonoursApproval(t *testing.T) {
 	hook := NewHook(HookModeFrozen, store, nil)
 	hook.Gate(AxisNetworkDial)
 
-	if err := hook.CheckFunctionCall(context.Background(), "", "net.Dial", strArgs("tcp", "example.com:443")); err != nil {
-		t.Fatalf("pre-approved dial should pass, got %v", err)
-	}
-	if err := hook.CheckFunctionCall(context.Background(), "", "net.Dial", strArgs("tcp", "evil.example:443")); err == nil {
-		t.Fatalf("unapproved dial should be denied")
-	}
+	require.NoError(t, hook.CheckFunctionCall(t.Context(), "", "net.Dial", strArgs("tcp", "example.com:443")), "a pre-approved dial is allowed")
+	require.Error(t, hook.CheckFunctionCall(t.Context(), "", "net.Dial", strArgs("tcp", "evil.example:443")), "an unapproved dial is denied")
 }
 
 func TestCheckFunctionCallUngatedHookAllowsEverything(t *testing.T) {
 	t.Parallel()
 	hook := NewHook(HookModeFrozen, nil, nil)
-	if err := hook.CheckFunctionCall(context.Background(), "", "os.ReadFile", strArgs("/etc/hostname")); err != nil {
-		t.Fatalf("hook with no gated axes should allow all, got %v", err)
-	}
+	require.NoError(t, hook.CheckFunctionCall(t.Context(), "", "os.ReadFile", strArgs("/etc/hostname")), "a hook with no gated axes allows everything")
 }
 
 func TestOpenFileClassifierPicksWriteAxisFromFlags(t *testing.T) {
 	t.Parallel()
 	readArgs := []reflect.Value{reflect.ValueOf("/tmp/x"), reflect.ValueOf(0), reflect.ValueOf(0)}
 	axis, _ := openFileClassifier(readArgs)
-	if axis != AxisFilesystemRead {
-		t.Fatalf("O_RDONLY open should classify as read, got %q", axis)
-	}
+	require.Equal(t, AxisFilesystemRead, axis, "an O_RDONLY open is a read")
 	writeArgs := []reflect.Value{reflect.ValueOf("/tmp/x"), reflect.ValueOf(577), reflect.ValueOf(0)}
 	axis, _ = openFileClassifier(writeArgs)
-	if axis != AxisFilesystemWrite {
-		t.Fatalf("write-flag open should classify as write, got %q", axis)
-	}
+	require.Equal(t, AxisFilesystemWrite, axis, "an open with a write flag is a write")
 }

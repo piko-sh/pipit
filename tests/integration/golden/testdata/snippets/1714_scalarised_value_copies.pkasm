@@ -241,8 +241,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function indirect
-;   registers: int=7 string=3 general=10 uint=5 sliceByte=2
-;   dispatch:  asm=28 shim=5 exit=3 go=11
+;   registers: int=7 string=3 general=9 uint=5 sliceByte=2
+;   dispatch:  asm=27 shim=5 exit=4 go=11
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -279,37 +279,37 @@
 0024 A 0:SET_STRUCT_FIELD_INT_T0    0   0   2
 0025 X 0:GET_FIELD                  3   1   0
 0026 A 0:MOVE_GENERAL               2   3   2
-0027 S 0:LOAD_GENERAL_CONST         4   0   0
-0028 A 0:MOVE_GENERAL               5   3   1    ; CSE'd from PC 25
+0027 S 0:LOAD_GENERAL_CONST         3   0   0
+0028 X 0:GET_FIELD                  4   1   0
 0029 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0030 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   5    ; inlined body of function 0 called at PC 30
+0030 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   4    ; inlined body of function 0 called at PC 30
 0031   0:EXT                        0   0   0
-0032 A 0:GET_STRUCT_FIELD_INT_T0    3   5   1
+0032 A 0:GET_STRUCT_FIELD_INT_T0    3   4   1
 0033 A 0:ADD_INT                    4   3   0
 0034 A 1:SLICE_GET_BYTE_DIRECT    112   3   0
 0035   0:EXT                        4   0   0
 0036 A 1:MOVE_UINT                 39   0   3
-0037 G 0:PACK_TYPED                 6   0   5
+0037 G 0:PACK_TYPED                 5   0   5
 0038   0:EXT                        3   0   0
 0039 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = " "
 0040 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
 0041 G 1:CALL_METHOD_INLINEABLE   135   1   0    ; call method inlineable (site 1)
 0042   0:EXT                        1   0   0
-0043 G 0:PACK_TYPED                 7   1   5
+0043 G 0:PACK_TYPED                 6   1   5
 0044   0:EXT                        3   0   0
 0045 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = " "
-0046 X 0:GET_FIELD                  8   0   0
+0046 X 0:GET_FIELD                  7   0   0
 0047 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
-0048 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   1   8    ; inlined body of function 0 called at PC 48
+0048 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   1   7    ; inlined body of function 0 called at PC 48
 0049   0:EXT                        0   0   0
-0050 A 0:GET_STRUCT_FIELD_INT_T0    5   8   1
+0050 A 0:GET_STRUCT_FIELD_INT_T0    5   7   1
 0051 A 0:ADD_INT                    6   5   2
 0052 A 1:SLICE_GET_BYTE_DIRECT    112   4   1
 0053   0:EXT                        6   0   0
 0054 A 1:MOVE_UINT                 39   2   4
-0055 G 0:PACK_TYPED                 9   2   5
+0055 G 0:PACK_TYPED                 8   2   5
 0056   0:EXT                        3   0   0
-0057 G 1:CALL_NATIVE              130   3   0    ; call native general[4] (site 3)
+0057 G 1:CALL_NATIVE              130   3   0    ; call native general[3] (site 3)
 0058 A 1:MOVE_STRING               37   0   2
 0059 A 2:TIER2_RETURN               0  10   1    ; 1 values
 

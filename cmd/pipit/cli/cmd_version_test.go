@@ -19,9 +19,9 @@
 package cli
 
 import (
-	"context"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/cmd/pipit/internal/clitest"
 )
@@ -29,13 +29,9 @@ import (
 func TestRunVersionPrintsHeaders(t *testing.T) {
 	t.Parallel()
 
-	result := clitest.Run(context.Background(), RunVersion, nil, "")
-	if result.Code != 0 {
-		t.Fatalf("exit code = %d (stderr=%q)", result.Code, result.Stderr)
-	}
+	result := clitest.Run(t.Context(), RunVersion, nil, "")
+	require.Equal(t, 0, result.Code, "stderr: %q", result.Stderr)
 	for _, expected := range []string{"pipit", "library", "bytecode schema", "go"} {
-		if !strings.Contains(result.Stdout, expected) {
-			t.Fatalf("expected %q in stdout, got %q", expected, result.Stdout)
-		}
+		require.Contains(t, result.Stdout, expected)
 	}
 }

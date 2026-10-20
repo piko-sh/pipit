@@ -48,8 +48,8 @@ import (
 // capability set. Required fields: SchemaVersion, Ref.Path.
 // Takes modulePath (string) which is the Go module path passed to CompileProgram.
 // Takes packages (map[string]map[string]string) which maps package to file to source.
-// Takes bytecodePacker (func(*CompiledFileSet) []byte) which serialises the compiled
-// output.
+// Takes bytecodePacker (func(*CompiledFileSet) ([]byte, error)) which serialises the
+// compiled output, or reports why it cannot.
 //
 // Returns *module.Bundle which is the packaged module.
 // Returns error when compilation, packing, or fingerprinting fails.
@@ -58,7 +58,7 @@ func (s *Service) PackageModule(
 	moduleDescriptor module.Descriptor,
 	modulePath string,
 	packages map[string]map[string]string,
-	bytecodePacker func(*program.CompiledFileSet) []byte,
+	bytecodePacker func(*program.CompiledFileSet) ([]byte, error),
 ) (*module.Bundle, error) {
 	if bytecodePacker == nil {
 		return nil, errors.New("app: PackageModule requires a non-nil bytecodePacker")
@@ -81,7 +81,10 @@ func (s *Service) PackageModule(
 		return nil, err
 	}
 
-	bytecode := bytecodePacker(compiled)
+	bytecode, err := bytecodePacker(compiled)
+	if err != nil {
+		return nil, fmt.Errorf("app: PackageModule pack: %w", err)
+	}
 
 	typesExport, err := s.encodeTypesExportForPackages(modulePath, packages)
 	if err != nil {

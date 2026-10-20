@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,16 +32,16 @@ func TestEvalReturnVoid(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "void_function_no_return",
 			code: `func noop() {}
 noop()
 0`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "void_function_sets_slice_element",
@@ -49,7 +49,7 @@ noop()
 func set(sliceValue []int) { sliceValue[0] = 42 }
 set(s)
 s[0]`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "multiple_void_calls",
@@ -58,7 +58,7 @@ func noop2() {}
 noop1()
 noop2()
 1`,
-			expect: 1,
+			want: 1,
 		},
 	}
 
@@ -66,9 +66,9 @@ noop2()
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -77,21 +77,21 @@ func TestEvalNamedReturnAcrossReturnForms(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "named_return_assigned_then_bare_return",
 			code: `func f() (result int) { result = 42; return }
 f()`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "named_return_different_variable",
 			code: `func f() (x int) { x = 10; return }
 f()`,
-			expect: 10,
+			want: 10,
 		},
 	}
 
@@ -99,9 +99,9 @@ f()`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -110,16 +110,16 @@ func TestEvalMultipleReturns(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "swap_two_values",
 			code: `func swap(a, b int) (int, int) { return b, a }
 x, y := swap(1, 2)
 x*10 + y`,
-			expect: 21,
+			want: 21,
 		},
 	}
 
@@ -127,9 +127,9 @@ x*10 + y`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

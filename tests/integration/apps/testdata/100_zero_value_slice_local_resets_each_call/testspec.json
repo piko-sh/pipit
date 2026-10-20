@@ -1,0 +1,5 @@
+{
+  "description": "Functions in a non-main package declare zero-value []int, []string, []float64, []byte, []bool and struct slice locals and append to them; every call must start from an empty slice rather than the previous call's contents",
+  "modulePath": "testpkg",
+  "expected": "3 3 3 3 3 3abc | 3 3 3 3 3 3abc | 2 2 2 2 2 2ab | 4 4 4 4 4 4abcd"
+}

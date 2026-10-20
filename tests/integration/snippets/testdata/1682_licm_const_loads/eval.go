@@ -4,8 +4,6 @@ import "strconv"
 
 const program = "+>+<-[]>.<,+-][><"
 
-// classifyProgram indexes a package-level string constant inside a loop with a byte
-// switch, the shape whose constant reload the pass hoists to the pre-header.
 func classifyProgram(steps int) int {
 	score := 0
 	for pc := 0; pc < steps && pc < len(program); pc++ {
@@ -25,8 +23,6 @@ func classifyProgram(steps int) int {
 	return score
 }
 
-// zeroTripInt reads an int local after a loop that may never run; the constant assigned
-// inside the loop must not leak into the result when n is zero.
 func zeroTripInt(n int) int {
 	v := 1
 	for i := 0; i < n; i++ {
@@ -59,8 +55,6 @@ func zeroTripString(n int) string {
 	return v
 }
 
-// breakBeforeUse leaves the loop before the constant is used on some iterations and
-// after it on others, so both exit edges are exercised.
 func breakBeforeUse(limit int) string {
 	out := ""
 	for i := 0; i < 10; i++ {
@@ -75,7 +69,6 @@ func breakBeforeUse(limit int) string {
 	return out
 }
 
-// nested indexes the constant in an inner loop whose bound the outer loop sets.
 func nested(n int) int {
 	total := 0
 	for outer := 0; outer < n; outer++ {
@@ -88,8 +81,6 @@ func nested(n int) int {
 	return total
 }
 
-// resultWrittenInLoop writes the string result register inside the loop and returns it
-// through an early exit, so the register is live where the loop leaves.
 func resultWrittenInLoop(n int) string {
 	s := "start"
 	for i := 0; i < n; i++ {

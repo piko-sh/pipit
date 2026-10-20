@@ -21,14 +21,13 @@
 package bytecode_test
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestReflectInterfaceEqualDynamicType(t *testing.T) {
@@ -72,7 +71,7 @@ func TestEvalInterfaceEqualityUncomparablePanics(t *testing.T) {
 }
 cmp()`
 	service := app.NewService()
-	result, err := service.Eval(context.Background(), code)
+	result, err := service.Eval(t.Context(), code)
 	require.NoError(t, err)
 	require.Equal(t, "panicked", result)
 }
@@ -108,7 +107,7 @@ case v = <-ch:
 }
 v`
 	service := app.NewService()
-	result, err := service.Eval(context.Background(), code)
+	result, err := service.Eval(t.Context(), code)
 	require.NoError(t, err)
 	require.EqualValues(t, 0, result, "receive from a closed channel yields the zero value")
 }
@@ -153,8 +152,9 @@ f()`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
 			require.Equal(t, "recovered", result)
 		})

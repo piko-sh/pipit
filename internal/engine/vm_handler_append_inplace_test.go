@@ -52,6 +52,7 @@ func TestAppendUintInPlaceGrowsThroughTheFallbackForHeapSlices(t *testing.T) {
 		{
 			name: "a byte slice", slice: []byte{1, 2}, element: 3,
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, 3, got.Len())
 				require.Equal(t, uint64(3), got.Index(2).Uint())
 			},
@@ -59,6 +60,7 @@ func TestAppendUintInPlaceGrowsThroughTheFallbackForHeapSlices(t *testing.T) {
 		{
 			name: "an unsigned slice", slice: []uint64{1}, element: 2,
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, 2, got.Len())
 				require.Equal(t, uint64(2), got.Index(1).Uint())
 			},
@@ -66,13 +68,17 @@ func TestAppendUintInPlaceGrowsThroughTheFallbackForHeapSlices(t *testing.T) {
 		{
 			name: "a narrow unsigned slice", slice: []uint32{1}, element: 2,
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, 2, got.Len())
 				require.Equal(t, uint64(2), got.Index(1).Uint())
 			},
 		},
 		{
 			name: "an empty slice", slice: []uint64{}, element: 1,
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, 1, got.Len()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, 1, got.Len())
+			},
 		},
 	}
 
@@ -127,15 +133,24 @@ func TestAppendUintGrowFallbackConvertsToTheElementType(t *testing.T) {
 	}{
 		{
 			name: "an unsigned slice keeps the value", slice: []uint64{1}, element: 42,
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, uint64(42), got.Index(1).Uint()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, uint64(42), got.Index(1).Uint())
+			},
 		},
 		{
 			name: "a byte slice narrows the value", slice: []byte{1}, element: 7,
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, uint64(7), got.Index(1).Uint()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, uint64(7), got.Index(1).Uint())
+			},
 		},
 		{
 			name: "a narrow unsigned slice narrows the value", slice: []uint16{1}, element: 300,
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, uint64(300), got.Index(1).Uint()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, uint64(300), got.Index(1).Uint())
+			},
 		},
 	}
 

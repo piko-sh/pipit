@@ -38,7 +38,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=9 string=22 general=24 uint=6
+;   registers: int=5 string=21 general=23 uint=2
 ;   dispatch:  asm=106 shim=68 exit=0 go=77
 ;   params:    (none)
 ;   returns:   (string)
@@ -68,289 +68,289 @@
 0016 S 0:LOAD_GENERAL_CONST        17   7   0
 0017 A 0:MOVE_GENERAL              16  17   1
 0018 A 1:LOAD_INT_CONST_SMALL      75   0  21    ; ints[0] = 21
-0019 S 0:MAKE_SLICE                18   0   0
+0019 S 0:MAKE_SLICE                17   0   0
 0020   0:EXT                        0   0   0
-0021 G 2:MAKE_MAP                   0  12  19
+0021 G 2:MAKE_MAP                   0  12  18
 0022   0:EXT                        1   0   0
 0023 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "reflect.TypeOf(nil)"
-0024 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0024 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0025   0:EXT                        0   0   0
-0026 S 0:LOAD_GENERAL_CONST        20   8   0
-0027 G 2:TIER2_LOAD_NIL             0   9  21
-0028 G 1:CALL_NATIVE              130   0   0    ; call native general[20] (site 0)
-0029 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  22   1
+0026 S 0:LOAD_GENERAL_CONST        19   8   0
+0027 G 2:TIER2_LOAD_NIL             0   9  20
+0028 G 1:CALL_NATIVE              130   0   0    ; call native general[19] (site 0)
+0029 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  21   1
 0030 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0031 S 0:INDEX_SET                 18   0  19
-0032 G 2:MAKE_MAP                   0  12  19
+0031 S 0:INDEX_SET                 17   0  18
+0032 G 2:MAKE_MAP                   0  12  18
 0033   0:EXT                        1   0   0
 0034 A 0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "reflect.TypeOf(error nil)"
-0035 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0035 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0036   0:EXT                        0   0   0
-0037 S 0:LOAD_GENERAL_CONST        20   9   0
-0038 G 1:CALL_NATIVE              130   1   0    ; call native general[20] (site 1)
-0039 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  21   1
+0037 S 0:LOAD_GENERAL_CONST        19   9   0
+0038 G 1:CALL_NATIVE              130   1   0    ; call native general[19] (site 1)
+0039 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  20   1
 0040 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0041 S 0:INDEX_SET                 18   0  19
-0042 G 2:MAKE_MAP                   0  12  19
+0041 S 0:INDEX_SET                 17   0  18
+0042 G 2:MAKE_MAP                   0  12  18
 0043   0:EXT                        1   0   0
 0044 A 0:LOAD_STRING_CONST          0   2   0    ; strings[0] = "reflect.TypeOf((*concrete)(nil))"
-0045 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0045 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0046   0:EXT                        0   0   0
-0047 S 0:LOAD_GENERAL_CONST        20  10   0
-0048 S 0:LOAD_GENERAL_CONST        21  11   0
-0049 G 1:CALL_NATIVE              130   2   0    ; call native general[20] (site 2)
-0050 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  22   1
+0047 S 0:LOAD_GENERAL_CONST        19  10   0
+0048 S 0:LOAD_GENERAL_CONST        20  11   0
+0049 G 1:CALL_NATIVE              130   2   0    ; call native general[19] (site 2)
+0050 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  21   1
 0051 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
-0052 S 0:INDEX_SET                 18   0  19
-0053 G 2:MAKE_MAP                   0  12  19
+0052 S 0:INDEX_SET                 17   0  18
+0053 G 2:MAKE_MAP                   0  12  18
 0054   0:EXT                        1   0   0
 0055 A 0:LOAD_STRING_CONST          0   3   0    ; strings[0] = "reflect.TypeOf((*error)(nil))"
-0056 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0056 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0057   0:EXT                        0   0   0
-0058 S 0:LOAD_GENERAL_CONST        20  12   0
-0059 S 0:LOAD_GENERAL_CONST        21  13   0
-0060 G 1:CALL_NATIVE              130   3   0    ; call native general[20] (site 3)
-0061 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  22   1
+0058 S 0:LOAD_GENERAL_CONST        19  12   0
+0059 S 0:LOAD_GENERAL_CONST        20  13   0
+0060 G 1:CALL_NATIVE              130   3   0    ; call native general[19] (site 3)
+0061 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  21   1
 0062 A 1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
-0063 S 0:INDEX_SET                 18   0  19
-0064 G 2:MAKE_MAP                   0  12  19
+0063 S 0:INDEX_SET                 17   0  18
+0064 G 2:MAKE_MAP                   0  12  18
 0065   0:EXT                        1   0   0
 0066 A 0:LOAD_STRING_CONST          0   4   0    ; strings[0] = "reflect.TypeOf((*fmt.Stringer)(nil))"
-0067 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0067 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0068   0:EXT                        0   0   0
-0069 S 0:LOAD_GENERAL_CONST        20  14   0
-0070 S 0:LOAD_GENERAL_CONST        21  15   0
-0071 G 1:CALL_NATIVE              130   4   0    ; call native general[20] (site 4)
-0072 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  22   1
+0069 S 0:LOAD_GENERAL_CONST        19  14   0
+0070 S 0:LOAD_GENERAL_CONST        20  15   0
+0071 G 1:CALL_NATIVE              130   4   0    ; call native general[19] (site 4)
+0072 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  21   1
 0073 A 1:LOAD_INT_CONST_SMALL      75   0   4    ; ints[0] = 4
-0074 S 0:INDEX_SET                 18   0  19
-0075 G 2:MAKE_MAP                   0  12  19
+0074 S 0:INDEX_SET                 17   0  18
+0075 G 2:MAKE_MAP                   0  12  18
 0076   0:EXT                        1   0   0
 0077 A 0:LOAD_STRING_CONST          0   5   0    ; strings[0] = "reflect.TypeOf((*interface{})(nil))"
-0078 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0078 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0079   0:EXT                        0   0   0
-0080 S 0:LOAD_GENERAL_CONST        20  16   0
-0081 S 0:LOAD_GENERAL_CONST        21  17   0
-0082 G 1:CALL_NATIVE              130   5   0    ; call native general[20] (site 5)
-0083 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  22   1
+0080 S 0:LOAD_GENERAL_CONST        19  16   0
+0081 S 0:LOAD_GENERAL_CONST        20  17   0
+0082 G 1:CALL_NATIVE              130   5   0    ; call native general[19] (site 5)
+0083 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  21   1
 0084 A 1:LOAD_INT_CONST_SMALL      75   0   5    ; ints[0] = 5
-0085 S 0:INDEX_SET                 18   0  19
-0086 G 2:MAKE_MAP                   0  12  19
+0085 S 0:INDEX_SET                 17   0  18
+0086 G 2:MAKE_MAP                   0  12  18
 0087   0:EXT                        1   0   0
 0088 A 0:LOAD_STRING_CONST          0   6   0    ; strings[0] = "reflect.TypeOf(typedNilPtr)"
-0089 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0089 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0090   0:EXT                        0   0   0
-0091 S 0:LOAD_GENERAL_CONST        20  18   0
-0092 G 1:CALL_NATIVE              130   6   0    ; call native general[20] (site 6)
-0093 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  21   1
+0091 S 0:LOAD_GENERAL_CONST        19  18   0
+0092 G 1:CALL_NATIVE              130   6   0    ; call native general[19] (site 6)
+0093 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  20   1
 0094 A 1:LOAD_INT_CONST_SMALL      75   0   6    ; ints[0] = 6
-0095 S 0:INDEX_SET                 18   0  19
-0096 G 2:MAKE_MAP                   0  12  19
+0095 S 0:INDEX_SET                 17   0  18
+0096 G 2:MAKE_MAP                   0  12  18
 0097   0:EXT                        1   0   0
 0098 A 0:LOAD_STRING_CONST          0   7   0    ; strings[0] = "reflect.TypeOf(typedNilIfacePtr)"
-0099 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0099 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0100   0:EXT                        0   0   0
-0101 S 0:LOAD_GENERAL_CONST        20  19   0
-0102 G 1:CALL_NATIVE              130   7   0    ; call native general[20] (site 7)
-0103 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  21   1
+0101 S 0:LOAD_GENERAL_CONST        19  19   0
+0102 G 1:CALL_NATIVE              130   7   0    ; call native general[19] (site 7)
+0103 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  20   1
 0104 A 1:LOAD_INT_CONST_SMALL      75   0   7    ; ints[0] = 7
-0105 S 0:INDEX_SET                 18   0  19
-0106 G 2:MAKE_MAP                   0  12  19
+0105 S 0:INDEX_SET                 17   0  18
+0106 G 2:MAKE_MAP                   0  12  18
 0107   0:EXT                        1   0   0
 0108 A 0:LOAD_STRING_CONST          0   8   0    ; strings[0] = "reflect.TypeOf(emptyIfacePtr)"
-0109 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0109 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0110   0:EXT                        0   0   0
-0111 S 0:LOAD_GENERAL_CONST        20  20   0
-0112 G 1:CALL_NATIVE              130   8   0    ; call native general[20] (site 8)
-0113 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  21   1
+0111 S 0:LOAD_GENERAL_CONST        19  20   0
+0112 G 1:CALL_NATIVE              130   8   0    ; call native general[19] (site 8)
+0113 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  20   1
 0114 A 1:LOAD_INT_CONST_SMALL      75   0   8    ; ints[0] = 8
-0115 S 0:INDEX_SET                 18   0  19
-0116 G 2:MAKE_MAP                   0  12  19
+0115 S 0:INDEX_SET                 17   0  18
+0116 G 2:MAKE_MAP                   0  12  18
 0117   0:EXT                        1   0   0
 0118 A 0:LOAD_STRING_CONST          0   9   0    ; strings[0] = "reflect.TypeOf(anonStructPtr)"
-0119 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0119 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0120   0:EXT                        0   0   0
-0121 S 0:LOAD_GENERAL_CONST        20  21   0
-0122 G 1:CALL_NATIVE              130   9   0    ; call native general[20] (site 9)
-0123 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  21   1
+0121 S 0:LOAD_GENERAL_CONST        19  21   0
+0122 G 1:CALL_NATIVE              130   9   0    ; call native general[19] (site 9)
+0123 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  20   1
 0124 A 1:LOAD_INT_CONST_SMALL      75   0   9    ; ints[0] = 9
-0125 S 0:INDEX_SET                 18   0  19
-0126 G 2:MAKE_MAP                   0  12  19
+0125 S 0:INDEX_SET                 17   0  18
+0126 G 2:MAKE_MAP                   0  12  18
 0127   0:EXT                        1   0   0
 0128 A 0:LOAD_STRING_CONST          0  10   0    ; strings[0] = "reflect.TypeOf([]int(nil))"
-0129 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0129 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0130   0:EXT                        0   0   0
-0131 S 0:LOAD_GENERAL_CONST        20  22   0
-0132 S 0:LOAD_GENERAL_CONST        21  23   0
-0133 G 1:CALL_NATIVE              130  10   0    ; call native general[20] (site 10)
-0134 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  22   1
+0131 S 0:LOAD_GENERAL_CONST        19  22   0
+0132 S 0:LOAD_GENERAL_CONST        20  23   0
+0133 G 1:CALL_NATIVE              130  10   0    ; call native general[19] (site 10)
+0134 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  21   1
 0135 A 1:LOAD_INT_CONST_SMALL      75   0  10    ; ints[0] = 10
-0136 S 0:INDEX_SET                 18   0  19
-0137 G 2:MAKE_MAP                   0  12  19
+0136 S 0:INDEX_SET                 17   0  18
+0137 G 2:MAKE_MAP                   0  12  18
 0138   0:EXT                        1   0   0
 0139 A 0:LOAD_STRING_CONST          0  11   0    ; strings[0] = "reflect.TypeOf(slice)"
-0140 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0140 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0141   0:EXT                        0   0   0
-0142 S 0:LOAD_GENERAL_CONST        20  24   0
-0143 G 1:CALL_NATIVE              130  11   0    ; call native general[20] (site 11)
-0144 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  21   1
+0142 S 0:LOAD_GENERAL_CONST        19  24   0
+0143 G 1:CALL_NATIVE              130  11   0    ; call native general[19] (site 11)
+0144 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  20   1
 0145 A 1:LOAD_INT_CONST_SMALL      75   0  11    ; ints[0] = 11
-0146 S 0:INDEX_SET                 18   0  19
-0147 G 2:MAKE_MAP                   0  12  19
+0146 S 0:INDEX_SET                 17   0  18
+0147 G 2:MAKE_MAP                   0  12  18
 0148   0:EXT                        1   0   0
 0149 A 0:LOAD_STRING_CONST          0  12   0    ; strings[0] = "reflect.TypeOf(map[string]int(nil))"
-0150 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0150 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0151   0:EXT                        0   0   0
-0152 S 0:LOAD_GENERAL_CONST        20  25   0
-0153 S 0:LOAD_GENERAL_CONST        21  26   0
-0154 G 1:CALL_NATIVE              130  12   0    ; call native general[20] (site 12)
-0155 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  22   1
+0152 S 0:LOAD_GENERAL_CONST        19  25   0
+0153 S 0:LOAD_GENERAL_CONST        20  26   0
+0154 G 1:CALL_NATIVE              130  12   0    ; call native general[19] (site 12)
+0155 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  21   1
 0156 A 1:LOAD_INT_CONST_SMALL      75   0  12    ; ints[0] = 12
-0157 S 0:INDEX_SET                 18   0  19
-0158 G 2:MAKE_MAP                   0  12  19
+0157 S 0:INDEX_SET                 17   0  18
+0158 G 2:MAKE_MAP                   0  12  18
 0159   0:EXT                        1   0   0
 0160 A 0:LOAD_STRING_CONST          0  13   0    ; strings[0] = "reflect.TypeOf(m)"
-0161 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0161 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0162   0:EXT                        0   0   0
-0163 S 0:LOAD_GENERAL_CONST        20  27   0
-0164 G 1:CALL_NATIVE              130  13   0    ; call native general[20] (site 13)
-0165 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  21   1
+0163 S 0:LOAD_GENERAL_CONST        19  27   0
+0164 G 1:CALL_NATIVE              130  13   0    ; call native general[19] (site 13)
+0165 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  20   1
 0166 A 1:LOAD_INT_CONST_SMALL      75   0  13    ; ints[0] = 13
-0167 S 0:INDEX_SET                 18   0  19
-0168 G 2:MAKE_MAP                   0  12  19
+0167 S 0:INDEX_SET                 17   0  18
+0168 G 2:MAKE_MAP                   0  12  18
 0169   0:EXT                        1   0   0
 0170 A 0:LOAD_STRING_CONST          0  14   0    ; strings[0] = "reflect.TypeOf((chan int)(nil))"
-0171 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0171 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0172   0:EXT                        0   0   0
-0173 S 0:LOAD_GENERAL_CONST        20  28   0
-0174 S 0:LOAD_GENERAL_CONST        21  29   0
-0175 G 1:CALL_NATIVE              130  14   0    ; call native general[20] (site 14)
-0176 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  22   1
+0173 S 0:LOAD_GENERAL_CONST        19  28   0
+0174 S 0:LOAD_GENERAL_CONST        20  29   0
+0175 G 1:CALL_NATIVE              130  14   0    ; call native general[19] (site 14)
+0176 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  21   1
 0177 A 1:LOAD_INT_CONST_SMALL      75   0  14    ; ints[0] = 14
-0178 S 0:INDEX_SET                 18   0  19
-0179 G 2:MAKE_MAP                   0  12  19
+0178 S 0:INDEX_SET                 17   0  18
+0179 G 2:MAKE_MAP                   0  12  18
 0180   0:EXT                        1   0   0
 0181 A 0:LOAD_STRING_CONST          0  15   0    ; strings[0] = "reflect.TypeOf(ch)"
-0182 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0182 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0183   0:EXT                        0   0   0
-0184 S 0:LOAD_GENERAL_CONST        20  30   0
-0185 G 1:CALL_NATIVE              130  15   0    ; call native general[20] (site 15)
-0186 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  21   1
+0184 S 0:LOAD_GENERAL_CONST        19  30   0
+0185 G 1:CALL_NATIVE              130  15   0    ; call native general[19] (site 15)
+0186 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  20   1
 0187 A 1:LOAD_INT_CONST_SMALL      75   0  15    ; ints[0] = 15
-0188 S 0:INDEX_SET                 18   0  19
-0189 G 2:MAKE_MAP                   0  12  19
+0188 S 0:INDEX_SET                 17   0  18
+0189 G 2:MAKE_MAP                   0  12  18
 0190   0:EXT                        1   0   0
 0191 A 0:LOAD_STRING_CONST          0  16   0    ; strings[0] = "reflect.TypeOf((func())(nil))"
-0192 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0192 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0193   0:EXT                        0   0   0
-0194 S 0:LOAD_GENERAL_CONST        20  31   0
-0195 S 0:LOAD_GENERAL_CONST        21  32   0
-0196 G 1:CALL_NATIVE              130  16   0    ; call native general[20] (site 16)
-0197 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  22   1
+0194 S 0:LOAD_GENERAL_CONST        19  31   0
+0195 S 0:LOAD_GENERAL_CONST        20  32   0
+0196 G 1:CALL_NATIVE              130  16   0    ; call native general[19] (site 16)
+0197 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  21   1
 0198 A 1:LOAD_INT_CONST_SMALL      75   0  16    ; ints[0] = 16
-0199 S 0:INDEX_SET                 18   0  19
-0200 G 2:MAKE_MAP                   0  12  19
+0199 S 0:INDEX_SET                 17   0  18
+0200 G 2:MAKE_MAP                   0  12  18
 0201   0:EXT                        1   0   0
 0202 A 0:LOAD_STRING_CONST          0  17   0    ; strings[0] = "reflect.TypeOf(fn)"
-0203 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0203 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0204   0:EXT                        0   0   0
-0205 S 0:LOAD_GENERAL_CONST        20  33   0
-0206 G 1:CALL_NATIVE              130  17   0    ; call native general[20] (site 17)
-0207 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  21   1
+0205 S 0:LOAD_GENERAL_CONST        19  33   0
+0206 G 1:CALL_NATIVE              130  17   0    ; call native general[19] (site 17)
+0207 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  20   1
 0208 A 1:LOAD_INT_CONST_SMALL      75   0  17    ; ints[0] = 17
-0209 S 0:INDEX_SET                 18   0  19
-0210 G 2:MAKE_MAP                   0  12  19
+0209 S 0:INDEX_SET                 17   0  18
+0210 G 2:MAKE_MAP                   0  12  18
 0211   0:EXT                        1   0   0
 0212 A 0:LOAD_STRING_CONST          0  18   0    ; strings[0] = "reflect.TypeOf(42)"
-0213 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0213 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0214   0:EXT                        0   0   0
-0215 S 0:LOAD_GENERAL_CONST        20  34   0
+0215 S 0:LOAD_GENERAL_CONST        19  34   0
 0216 A 1:LOAD_INT_CONST_SMALL      75   0  42    ; ints[0] = 42
-0217 G 0:PACK_TYPED                21   0   0
+0217 G 0:PACK_TYPED                20   0   0
 0218   0:EXT                        3   0   0
-0219 G 1:CALL_NATIVE              130  18   0    ; call native general[20] (site 18)
-0220 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  22   1
+0219 G 1:CALL_NATIVE              130  18   0    ; call native general[19] (site 18)
+0220 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  21   1
 0221 A 1:LOAD_INT_CONST_SMALL      75   0  18    ; ints[0] = 18
-0222 S 0:INDEX_SET                 18   0  19
-0223 G 2:MAKE_MAP                   0  12  19
+0222 S 0:INDEX_SET                 17   0  18
+0223 G 2:MAKE_MAP                   0  12  18
 0224   0:EXT                        1   0   0
 0225 A 0:LOAD_STRING_CONST          0  19   0    ; strings[0] = "reflect.TypeOf(\"hi\")"
-0226 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0226 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0227   0:EXT                        0   0   0
-0228 S 0:LOAD_GENERAL_CONST        20  35   0
+0228 S 0:LOAD_GENERAL_CONST        19  35   0
 0229 A 0:LOAD_STRING_CONST          0  20   0    ; strings[0] = "hi"
-0230 G 0:PACK_TYPED                21   0   2
+0230 G 0:PACK_TYPED                20   0   2
 0231   0:EXT                        4   0   0
-0232 G 1:CALL_NATIVE              130  19   0    ; call native general[20] (site 19)
-0233 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  22   1
+0232 G 1:CALL_NATIVE              130  19   0    ; call native general[19] (site 19)
+0233 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  21   1
 0234 A 1:LOAD_INT_CONST_SMALL      75   0  19    ; ints[0] = 19
-0235 S 0:INDEX_SET                 18   0  19
-0236 G 2:MAKE_MAP                   0  12  19
+0235 S 0:INDEX_SET                 17   0  18
+0236 G 2:MAKE_MAP                   0  12  18
 0237   0:EXT                        1   0   0
 0238 A 0:LOAD_STRING_CONST          0  21   0    ; strings[0] = "reflect.TypeOf(concrete{})"
-0239 G 1:SET_STRUCT_FIELD_STRING   95  19   0
+0239 G 1:SET_STRUCT_FIELD_STRING   95  18   0
 0240   0:EXT                        0   0   0
-0241 S 0:LOAD_GENERAL_CONST        20  36   0
-0242 G 2:MAKE_MAP                   0  12  21
+0241 S 0:LOAD_GENERAL_CONST        19  36   0
+0242 G 2:MAKE_MAP                   0  12  20
 0243   0:EXT                        5   0   0
-0244 G 1:CALL_NATIVE              130  20   0    ; call native general[20] (site 20)
-0245 A 0:SET_STRUCT_FIELD_GENERAL_T0  19  22   1
+0244 G 1:CALL_NATIVE              130  20   0    ; call native general[19] (site 20)
+0245 A 0:SET_STRUCT_FIELD_GENERAL_T0  18  21   1
 0246 A 1:LOAD_INT_CONST_SMALL      75   0  20    ; ints[0] = 20
-0247 S 0:INDEX_SET                 18   0  19
+0247 S 0:INDEX_SET                 17   0  18
 0248 S 0:LOAD_GENERAL_CONST        16  37   0
-0249 G 1:LEN                       70   0  18
+0249 G 1:LEN                       70   0  17
 0250 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
 0251 A 1:LT_INT_JUMP_FALSE        116   1   0
 0252   0:EXT                       46   0   0
-0253 S 1:RESET_SHARED_CELL        139  19   3
-0254 S 0:INDEX                     19  18   1
-0255 A 0:MOVE_GENERAL              19  19   2
-0256 A 0:GET_STRUCT_FIELD_GENERAL_T0  20  19   1
+0253 S 1:RESET_SHARED_CELL        139  18   3
+0254 S 0:INDEX                     18  17   1
+0255 A 0:MOVE_GENERAL              18  18   2
+0256 A 0:GET_STRUCT_FIELD_GENERAL_T0  19  18   1
 0257 A 1:CALL                     128  21   0    ; call (site 21)
-0258 A 0:LOAD_STRING_CONST         21  22   0    ; strings[21] = ""
+0258 A 0:LOAD_STRING_CONST         20  22   0    ; strings[20] = ""
 0259 S 1:RESET_SHARED_CELL        139   1   2
-0260 S 0:ALLOC_INDIRECT            20  21   2
+0260 S 0:ALLOC_INDIRECT            19  20   2
 0261   0:EXT                        4   0   0
-0262 A 0:GET_STRUCT_FIELD_GENERAL_T0  21  19   1
-0263 S 1:NE_INTERFACE_NIL         147   3  21
+0262 A 0:GET_STRUCT_FIELD_GENERAL_T0  20  18   1
+0263 S 1:NE_INTERFACE_NIL         147   3  20
 0264 A 0:JUMP_IF_FALSE              3  22   0    ; if ints[3] == 0 goto +22
-0265 A 0:MOVE_GENERAL              21  21   1    ; CSE'd from PC 262
+0265 A 0:MOVE_GENERAL              20  20   1    ; CSE'd from PC 262
 0266 A 1:CALL_METHOD              132  22   0    ; call method (site 22)
 0267   0:EXT                       23   0   0
 0268 A 1:LOAD_BOOL                 76   3   0    ; ints[3] = false
 0269 A 1:LOAD_UINT_CONST_SMALL     99   1  22    ; uints[1] = 22
 0270 A 0:EQ_UINT                    4   0   1
 0271 A 0:BIT_OR                     3   3   4
-0272 A 1:LOAD_UINT_CONST_SMALL     99   2  23    ; uints[2] = 23
-0273 A 0:EQ_UINT                    5   0   2
-0274 A 0:BIT_OR                     3   3   5
-0275 A 1:LOAD_UINT_CONST_SMALL     99   3  17    ; uints[3] = 17
-0276 A 0:EQ_UINT                    6   0   3
-0277 A 0:BIT_OR                     3   3   6
-0278 A 1:LOAD_UINT_CONST_SMALL     99   4  18    ; uints[4] = 18
-0279 A 0:EQ_UINT                    7   0   4
-0280 A 0:BIT_OR                     3   3   7
-0281 A 1:LOAD_UINT_CONST_SMALL     99   5  21    ; uints[5] = 21
-0282 A 0:EQ_UINT                    8   0   5
-0283 A 0:BIT_OR                     3   3   8
+0272 A 1:LOAD_UINT_CONST_SMALL     99   1  23    ; uints[1] = 23
+0273 A 0:EQ_UINT                    4   0   1
+0274 A 0:BIT_OR                     3   3   4
+0275 A 1:LOAD_UINT_CONST_SMALL     99   1  17    ; uints[1] = 17
+0276 A 0:EQ_UINT                    4   0   1
+0277 A 0:BIT_OR                     3   3   4
+0278 A 1:LOAD_UINT_CONST_SMALL     99   1  18    ; uints[1] = 18
+0279 A 0:EQ_UINT                    4   0   1
+0280 A 0:BIT_OR                     3   3   4
+0281 A 1:LOAD_UINT_CONST_SMALL     99   1  21    ; uints[1] = 21
+0282 A 0:EQ_UINT                    4   0   1
+0283 A 0:BIT_OR                     3   3   4
 0284 A 0:JUMP_IF_FALSE              3   2   0    ; if ints[3] == 0 goto +2
 0285 G 1:CALL_IIFE                133  23   0    ; iife (site 23)
 0286 G 3:SYNC_IIFE_UPVALUES         0   0   2
-0287 G 1:GET_METHOD                83  21  16
+0287 G 1:GET_METHOD                83  20  16
 0288   0:EXT                       24   0   0
-0289 S 0:LOAD_GENERAL_CONST        22  38   0
-0290 A 0:LOAD_STRING_CONST          2  25   0    ; strings[2] = "%-48s = %s%s\n"
-0291 G 1:GET_STRUCT_FIELD_STRING   90   3  19
+0289 S 0:LOAD_GENERAL_CONST        21  38   0
+0290 A 0:LOAD_STRING_CONST          1  25   0    ; strings[1] = "%-48s = %s%s\n"
+0291 G 1:GET_STRUCT_FIELD_STRING   90   2  18
 0292   0:EXT                        0   0   0
-0293 S 0:DEREF                     23  20   0
-0294 S 0:UNPACK_INTERFACE           4  23   2
-0295 G 1:CALL_NATIVE              130  24   0    ; call native general[22] (site 24)
-0296 G 1:CALL_NATIVE              130  25   0    ; call native method general[21] (site 25)
+0293 S 0:DEREF                     22  19   0
+0294 S 0:UNPACK_INTERFACE           3  22   2
+0295 G 1:CALL_NATIVE              130  24   0    ; call native general[21] (site 24)
+0296 G 1:CALL_NATIVE              130  25   0    ; call native method general[20] (site 25)
 0297 A 0:ADD_INT_CONST              1   1   2    ; const = 1
 0298 A 1:JUMP                      74 208 255    ; goto -48
-0299 G 1:GET_METHOD                83  21  16
+0299 G 1:GET_METHOD                83  20  16
 0300   0:EXT                       26   0   0
-0301 G 1:CALL_NATIVE              130  26   0    ; call native method general[21] (site 26)
+0301 G 1:CALL_NATIVE              130  26   0    ; call native method general[20] (site 26)
 0302 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════

@@ -28,6 +28,7 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,17 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcexec "github.com/testcontainers/testcontainers-go/exec"
 	"github.com/testcontainers/testcontainers-go/wait"
+)
+
+const (
+	// stderrTailBytes is how much of a run's standard error a result keeps.
+	stderrTailBytes = 1024
+
+	// dockerFrameHeaderBytes is the size of a frame header in Docker's exec stream.
+	dockerFrameHeaderBytes = 8
+
+	// dockerStreamStdout is the frame header's stream identifier for stdout.
+	dockerStreamStdout = 1
 )
 
 // PythonRunner executes a benchmark by spawning the host's `python3` or `pypy3`
@@ -59,18 +71,24 @@ type PythonRunner struct {
 // NewHostCPythonRunner returns a Runner that invokes `python3` on the host.
 func NewHostCPythonRunner() *PythonRunner {
 	return &PythonRunner{
-		kind:           RunnerCPython,
-		pythonBinary:   "python3",
-		scriptFilename: "cpython.py",
+		kind:             RunnerCPython,
+		pythonBinary:     "python3",
+		scriptFilename:   "cpython.py",
+		availableMessage: "",
+		availableProbed:  false,
+		available:        false,
 	}
 }
 
 // NewHostPyPyRunner returns a Runner that invokes `pypy3` on the host.
 func NewHostPyPyRunner() *PythonRunner {
 	return &PythonRunner{
-		kind:           RunnerPyPy,
-		pythonBinary:   "pypy3",
-		scriptFilename: "pypy.py",
+		kind:             RunnerPyPy,
+		pythonBinary:     "pypy3",
+		scriptFilename:   "pypy.py",
+		availableMessage: "",
+		availableProbed:  false,
+		available:        false,
 	}
 }
 
@@ -78,8 +96,7 @@ func NewHostPyPyRunner() *PythonRunner {
 func (runner *PythonRunner) Kind() RunnerKind { return runner.kind }
 
 // Available probes that the interpreter binary is on PATH.
-func (runner *PythonRunner) Available(ctx context.Context) (bool, string) {
-	_ = ctx
+func (runner *PythonRunner) Available(context.Context) (bool, string) {
 	if runner.availableProbed {
 		return runner.available, runner.availableMessage
 	}
@@ -94,8 +111,7 @@ func (runner *PythonRunner) Available(ctx context.Context) (bool, string) {
 }
 
 // Close is a no-op for the host-binary path.
-func (runner *PythonRunner) Close(ctx context.Context) error {
-	_ = ctx
+func (*PythonRunner) Close(context.Context) error {
 	return nil
 }
 
@@ -107,8 +123,7 @@ func (runner *PythonRunner) Run(parent context.Context, spec BenchSpec, mode Run
 	benchmarksRoot := filepath.Dir(benchmarkDir)
 	driverPath := filepath.Join(benchmarksRoot, "_python_driver.py")
 	scriptPath := filepath.Join(benchmarkDir, "py", runner.scriptFilename)
-	args := []string{driverPath, scriptPath}
-	args = append(args, buildRunnerArgs(mode, spec)...)
+	args := slices.Concat([]string{driverPath, scriptPath}, buildRunnerArgs(mode, spec))
 
 	timeout := time.Duration(spec.TimeoutSeconds) * time.Second
 	response, err := RunSubprocess(parent, SubprocessRequest{
@@ -123,33 +138,16 @@ func (runner *PythonRunner) Run(parent context.Context, spec BenchSpec, mode Run
 	}
 	if response.Err != nil {
 		return failedResult(spec.Name, runner.kind, mode, fmt.Sprintf("%s exited %d: %s; stderr=%s",
-			runner.pythonBinary, response.ExitCode, response.Err.Error(), tailString(string(response.Stderr), 1024))), nil
+			runner.pythonBinary, response.ExitCode, response.Err.Error(), tailString(string(response.Stderr), stderrTailBytes))), nil
 	}
 
 	innerNanos, compileNanos, stderrRemainder := ParseTimingMarkers(response.Stderr)
-	normalised := NormaliseStdout(response.Stdout)
-	stdoutSHA := SHA256Hex(normalised)
-
-	status := StatusOK
-	note := ""
-	if stdoutSHA != spec.ExpectedStdoutSHA {
-		status = StatusMismatch
-		note = fmt.Sprintf("stdout SHA %s does not match expected %s", stdoutSHA, spec.ExpectedStdoutSHA)
-	}
-
-	return Result{
-		Benchmark:    spec.Name,
-		Runner:       runner.kind,
-		Mode:         mode,
-		WallNanos:    response.WallNanos,
-		InnerNanos:   innerNanos,
-		CompileNanos: compileNanos,
-		PeakRSSKB:    response.PeakRSSKB,
-		StdoutSHA:    stdoutSHA,
-		Status:       status,
-		Note:         note,
-		StderrTail:   tailString(stderrRemainder, 1024),
-	}, nil
+	return checkedResult(spec, runner.kind, mode, response.Stdout, stderrRemainder, runTimings{
+		wallNanos:    response.WallNanos,
+		innerNanos:   innerNanos,
+		compileNanos: compileNanos,
+		peakRSSKB:    response.PeakRSSKB,
+	}), nil
 }
 
 // ContainerPythonRunner runs a benchmark inside a long-lived Docker container managed by
@@ -157,6 +155,10 @@ func (runner *PythonRunner) Run(parent context.Context, spec BenchSpec, mode Run
 // reused for every subsequent invocation. The benchmarks directory is bind-mounted
 // read-only at /benchmarks inside the container.
 type ContainerPythonRunner struct {
+	container testcontainers.Container
+
+	startError error
+
 	kind RunnerKind
 
 	image string
@@ -167,28 +169,30 @@ type ContainerPythonRunner struct {
 
 	hostBenchDir string
 
+	availableMessage string
+
 	startMu sync.Mutex
-
-	container testcontainers.Container
-
-	startError error
 
 	availableProbed bool
 
 	available bool
-
-	availableMessage string
 }
 
 // NewContainerCPythonRunner returns a containerised CPython runner using the given image
 // (e.g. "python:3.13-slim"). Container is not started until first Run / Available call.
 func NewContainerCPythonRunner(image, hostBenchDir string) *ContainerPythonRunner {
 	return &ContainerPythonRunner{
-		kind:           RunnerCPython,
-		image:          image,
-		pythonBinary:   "python3",
-		scriptFilename: "cpython.py",
-		hostBenchDir:   hostBenchDir,
+		container:        nil,
+		startError:       nil,
+		kind:             RunnerCPython,
+		image:            image,
+		pythonBinary:     "python3",
+		scriptFilename:   "cpython.py",
+		hostBenchDir:     hostBenchDir,
+		availableMessage: "",
+		startMu:          sync.Mutex{},
+		availableProbed:  false,
+		available:        false,
 	}
 }
 
@@ -196,11 +200,17 @@ func NewContainerCPythonRunner(image, hostBenchDir string) *ContainerPythonRunne
 // "pypy:3.10-slim").
 func NewContainerPyPyRunner(image, hostBenchDir string) *ContainerPythonRunner {
 	return &ContainerPythonRunner{
-		kind:           RunnerPyPy,
-		image:          image,
-		pythonBinary:   "pypy3",
-		scriptFilename: "pypy.py",
-		hostBenchDir:   hostBenchDir,
+		container:        nil,
+		startError:       nil,
+		kind:             RunnerPyPy,
+		image:            image,
+		pythonBinary:     "pypy3",
+		scriptFilename:   "pypy.py",
+		hostBenchDir:     hostBenchDir,
+		availableMessage: "",
+		startMu:          sync.Mutex{},
+		availableProbed:  false,
+		available:        false,
 	}
 }
 
@@ -237,18 +247,16 @@ func (runner *ContainerPythonRunner) Close(ctx context.Context) error {
 
 // Run dispatches `python3 /benchmarks/<spec.Name>/py/cpython.py <flags>` inside the
 // long-lived container.
-func (runner *ContainerPythonRunner) Run(parent context.Context, spec BenchSpec, mode RunMode, benchmarkDir string) (Result, error) {
-	_ = benchmarkDir
+func (runner *ContainerPythonRunner) Run(parent context.Context, spec BenchSpec, mode RunMode, _ string) (Result, error) {
 	if err := runner.ensureStarted(parent); err != nil {
 		return failedResult(spec.Name, runner.kind, mode, "container start: "+err.Error()), nil
 	}
 
-	command := []string{
+	command := slices.Concat([]string{
 		runner.pythonBinary,
 		"/benchmarks/_python_driver.py",
 		fmt.Sprintf("/benchmarks/%s/py/%s", spec.Name, runner.scriptFilename),
-	}
-	command = append(command, buildRunnerArgs(mode, spec)...)
+	}, buildRunnerArgs(mode, spec))
 
 	ctx, cancel := context.WithTimeoutCause(parent,
 		time.Duration(spec.TimeoutSeconds)*time.Second,
@@ -271,33 +279,16 @@ func (runner *ContainerPythonRunner) Run(parent context.Context, spec BenchSpec,
 		return failedResult(spec.Name, runner.kind, mode, "stream demux: "+demuxError.Error()), nil
 	}
 	if exitCode != 0 {
-		return failedResult(spec.Name, runner.kind, mode, fmt.Sprintf("exit %d; stderr=%s", exitCode, tailString(string(stderrBytes), 1024))), nil
+		return failedResult(spec.Name, runner.kind, mode, fmt.Sprintf("exit %d; stderr=%s", exitCode, tailString(string(stderrBytes), stderrTailBytes))), nil
 	}
 
 	innerNanos, compileNanos, stderrRemainder := ParseTimingMarkers(stderrBytes)
-	normalised := NormaliseStdout(stdoutBytes)
-	stdoutSHA := SHA256Hex(normalised)
-
-	status := StatusOK
-	note := ""
-	if stdoutSHA != spec.ExpectedStdoutSHA {
-		status = StatusMismatch
-		note = fmt.Sprintf("stdout SHA %s does not match expected %s", stdoutSHA, spec.ExpectedStdoutSHA)
-	}
-
-	return Result{
-		Benchmark:    spec.Name,
-		Runner:       runner.kind,
-		Mode:         mode,
-		WallNanos:    wall.Nanoseconds(),
-		InnerNanos:   innerNanos,
-		CompileNanos: compileNanos,
-		PeakRSSKB:    -1,
-		StdoutSHA:    stdoutSHA,
-		Status:       status,
-		Note:         note,
-		StderrTail:   tailString(stderrRemainder, 1024),
-	}, nil
+	return checkedResult(spec, runner.kind, mode, stdoutBytes, stderrRemainder, runTimings{
+		wallNanos:    wall.Nanoseconds(),
+		innerNanos:   innerNanos,
+		compileNanos: compileNanos,
+		peakRSSKB:    -1,
+	}), nil
 }
 
 // ensureStarted lazily creates and starts the container the first time it is needed.
@@ -346,23 +337,21 @@ func (runner *ContainerPythonRunner) ensureStarted(parent context.Context) error
 
 // PythonVersionString probes the interpreter for a one-line version identification, used
 // to populate the HostInfo block in the report.
-func PythonVersionString(parent context.Context, binary string) string {
+func PythonVersionString(parent context.Context, interpreter string) string {
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, binary, "--version").CombinedOutput()
+	output, err := exec.CommandContext(ctx, interpreter, "--version").CombinedOutput()
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(string(output))
 }
 
-// demultiplexDockerStream parses Docker's frame-tagged exec output stream and splits it
-// into stdout and stderr buffers. Each frame begins with an 8-byte header: byte 0 is the
-// stream identifier (1=stdout, 2=stderr), bytes 1-3 are reserved, bytes 4-7 are the
-// payload size big-endian, then the payload follows.
-func demultiplexDockerStream(stream io.Reader) ([]byte, []byte, error) {
+// demultiplexDockerStream separates Docker exec frames into stdout and stderr, treating
+// non-stdout frames as stderr.
+func demultiplexDockerStream(stream io.Reader) (stdout []byte, stderr []byte, err error) {
 	var stdoutBuffer, stderrBuffer bytes.Buffer
-	header := make([]byte, 8)
+	header := make([]byte, dockerFrameHeaderBytes)
 	for {
 		_, readError := io.ReadFull(stream, header)
 		if readError == io.EOF {
@@ -380,17 +369,13 @@ func demultiplexDockerStream(stream io.Reader) ([]byte, []byte, error) {
 			continue
 		}
 		payload := make([]byte, payloadSize)
-		if _, err := io.ReadFull(stream, payload); err != nil {
-			return nil, nil, fmt.Errorf("read payload %d bytes: %w", payloadSize, err)
+		if _, payloadError := io.ReadFull(stream, payload); payloadError != nil {
+			return nil, nil, fmt.Errorf("read payload %d bytes: %w", payloadSize, payloadError)
 		}
-		switch streamType {
-		case 1:
-			stdoutBuffer.Write(payload)
-		case 2:
-			stderrBuffer.Write(payload)
-		default:
-
-			stderrBuffer.Write(payload)
+		target := &stderrBuffer
+		if streamType == dockerStreamStdout {
+			target = &stdoutBuffer
 		}
+		_, _ = target.Write(payload)
 	}
 }

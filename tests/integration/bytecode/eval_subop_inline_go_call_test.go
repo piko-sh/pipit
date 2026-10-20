@@ -21,14 +21,13 @@
 package bytecode_test
 
 import (
-	"context"
 	"math"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine/program"
-
-	"github.com/stretchr/testify/require"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -36,9 +35,9 @@ func TestSubOpInlineGoCallAMD64(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		build  func() *program.CompiledFunction
-		name   string
+		want  any
+		build func() *program.CompiledFunction
+		name  string
 	}{
 		{
 			name: "MathSin_via_ASM",
@@ -51,7 +50,7 @@ func TestSubOpInlineGoCallAMD64(t *testing.T) {
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
 				return builder.build()
 			},
-			expect: math.Sin(0.5),
+			want: math.Sin(0.5),
 		},
 		{
 			name: "MathCos_via_ASM",
@@ -64,7 +63,7 @@ func TestSubOpInlineGoCallAMD64(t *testing.T) {
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
 				return builder.build()
 			},
-			expect: math.Cos(1.0),
+			want: math.Cos(1.0),
 		},
 		{
 			name: "MathMod_via_ASM",
@@ -80,7 +79,7 @@ func TestSubOpInlineGoCallAMD64(t *testing.T) {
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
 				return builder.build()
 			},
-			expect: math.Mod(7.5, 2.0),
+			want: math.Mod(7.5, 2.0),
 		},
 		{
 			name: "StrconvItoa_via_ASM",
@@ -93,7 +92,7 @@ func TestSubOpInlineGoCallAMD64(t *testing.T) {
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
 				return builder.build()
 			},
-			expect: "42",
+			want: "42",
 		},
 		{
 			name: "StrconvFormatBool_via_ASM",
@@ -107,7 +106,7 @@ func TestSubOpInlineGoCallAMD64(t *testing.T) {
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
 				return builder.build()
 			},
-			expect: "true",
+			want: "true",
 		},
 		{
 			name: "StrconvFormatInt_via_ASM",
@@ -123,21 +122,21 @@ func TestSubOpInlineGoCallAMD64(t *testing.T) {
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
 				return builder.build()
 			},
-			expect: "ff",
+			want: "ff",
 		},
 	}
 
-	for _, testCase := range tests {
-		t.Run(testCase.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			compiled := testCase.build()
-			result, err := service.Execute(context.Background(), compiled)
+			compiled := tt.build()
+			result, err := service.Execute(t.Context(), compiled)
 			require.NoError(t, err)
-			if expected, ok := testCase.expect.(float64); ok {
+			if expected, ok := tt.want.(float64); ok {
 				require.InDelta(t, expected, result, 1e-10)
 			} else {
-				require.Equal(t, testCase.expect, result)
+				require.Equal(t, tt.want, result)
 			}
 		})
 	}

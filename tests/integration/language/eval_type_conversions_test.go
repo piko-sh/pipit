@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -34,7 +34,7 @@ func TestEvalStringByteConversions(t *testing.T) {
 	t.Run("bytes to string", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `string([]byte{72, 105})`)
+		result, err := service.Eval(t.Context(), `string([]byte{72, 105})`)
 		require.NoError(t, err)
 		require.Equal(t, "Hi", result)
 	})
@@ -42,7 +42,7 @@ func TestEvalStringByteConversions(t *testing.T) {
 	t.Run("string to bytes len", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `len([]byte("hello"))`)
+		result, err := service.Eval(t.Context(), `len([]byte("hello"))`)
 		require.NoError(t, err)
 		require.Equal(t, 5, result)
 	})
@@ -50,7 +50,7 @@ func TestEvalStringByteConversions(t *testing.T) {
 	t.Run("round trip", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `string([]byte("test"))`)
+		result, err := service.Eval(t.Context(), `string([]byte("test"))`)
 		require.NoError(t, err)
 		require.Equal(t, "test", result)
 	})
@@ -62,7 +62,7 @@ func TestEvalSliceToArrayConversion(t *testing.T) {
 	t.Run("byte slice to array", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(),
+		result, err := service.Eval(t.Context(),
 			`s := []byte{1, 2, 3, 4}; a := [4]byte(s); int(a[2])`)
 		require.NoError(t, err)
 		require.Equal(t, 3, result)
@@ -71,7 +71,7 @@ func TestEvalSliceToArrayConversion(t *testing.T) {
 	t.Run("int slice to array", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(),
+		result, err := service.Eval(t.Context(),
 			`s := []int{10, 20, 30}; a := [3]int(s); a[1]`)
 		require.NoError(t, err)
 		require.Equal(t, 20, result)
@@ -80,7 +80,7 @@ func TestEvalSliceToArrayConversion(t *testing.T) {
 	t.Run("partial slice to shorter array", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(),
+		result, err := service.Eval(t.Context(),
 			`s := []int{10, 20, 30, 40}; a := [2]int(s); a[0] + a[1]`)
 		require.NoError(t, err)
 		require.Equal(t, 30, result)
@@ -89,7 +89,7 @@ func TestEvalSliceToArrayConversion(t *testing.T) {
 	t.Run("string slice to array", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(),
+		result, err := service.Eval(t.Context(),
 			`s := []string{"a", "b", "c"}; a := [3]string(s); a[0] + a[1] + a[2]`)
 		require.NoError(t, err)
 		require.Equal(t, "abc", result)

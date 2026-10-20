@@ -21,55 +21,60 @@ package modloader
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestBytecodeCachePairReplacement(t *testing.T) {
 	t.Parallel()
 	cache := NewBytecodeCache(t.TempDir())
-	if err := cache.Put("example/lib", "v1", BytecodeCacheEntry{Bytecode: []byte("old"), TypesExport: []byte("old types")}); err != nil {
-		t.Fatal(err)
-	}
-	if err := cache.Put("example/lib", "v1", BytecodeCacheEntry{Bytecode: []byte("new")}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, cache.Put("example/lib", "v1", BytecodeCacheEntry{Bytecode: []byte("old"), TypesExport: []byte("old types")}))
+	require.NoError(t, cache.Put("example/lib", "v1", BytecodeCacheEntry{Bytecode: []byte("new")}))
 	entry, hit, err := cache.Get("example/lib", "v1")
-	if err != nil || !hit || string(entry.Bytecode) != "new" || len(entry.TypesExport) != 0 {
-		t.Fatalf("old type export survived replacement: entry=%+v hit=%v error=%v", entry, hit, err)
-	}
+	require.NoError(t, err, "a replacement drops the old type export")
+	require.True(t, hit)
+	require.Equal(t, "new", string(entry.Bytecode))
+	require.Empty(t, entry.TypesExport)
 }
 
 func TestBytecodeCacheConcurrentPairs(t *testing.T) {
 	t.Parallel()
 	cache := NewBytecodeCache(t.TempDir())
-	if err := cache.Put("module", "version", BytecodeCacheEntry{Bytecode: []byte("initial"), TypesExport: []byte("initial")}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, cache.Put("module", "version", BytecodeCacheEntry{Bytecode: []byte("initial"), TypesExport: []byte("initial")}))
+	failures := make([]error, 8)
 	var workers sync.WaitGroup
-	for index := range 8 {
-		workers.Go(func() {
-			marker := bytes.Repeat([]byte{byte(index + 1)}, 100+index)
-			for range 20 {
-				if err := cache.Put("module", "version", BytecodeCacheEntry{Bytecode: marker, TypesExport: marker}); err != nil {
-					t.Error(err)
-					return
-				}
-				entry, hit, err := cache.Get("module", "version")
-				if err != nil || !hit {
-					t.Errorf("read failed: hit=%v error=%v", hit, err)
-					return
-				}
-				if !bytes.Equal(entry.Bytecode, entry.TypesExport) {
-					t.Error("reader observed payloads from different publications")
-					return
-				}
-			}
-		})
+	for index := range failures {
+		workers.Go(func() { failures[index] = exerciseCachePairs(cache, index) })
 	}
 	workers.Wait()
+	for index, err := range failures {
+		require.NoError(t, err, "worker %d", index)
+	}
+}
+
+func exerciseCachePairs(cache *BytecodeCache, index int) error {
+	marker := bytes.Repeat([]byte{byte(index + 1)}, 100+index)
+	for range 20 {
+		if err := cache.Put("module", "version", BytecodeCacheEntry{Bytecode: marker, TypesExport: marker}); err != nil {
+			return err
+		}
+		entry, hit, err := cache.Get("module", "version")
+		if err != nil {
+			return err
+		}
+		if !hit {
+			return errors.New("the entry is not cached")
+		}
+		if !bytes.Equal(entry.Bytecode, entry.TypesExport) {
+			return errors.New("a reader saw parts of two publications")
+		}
+	}
+	return nil
 }
 
 func TestBytecodeCachePathsCannotEscapeRoot(t *testing.T) {
@@ -78,48 +83,35 @@ func TestBytecodeCachePathsCannotEscapeRoot(t *testing.T) {
 	for _, name := range []string{"../../outside", "/absolute", "..\\outside", "name\x00suffix"} {
 		path := cache.path(name, "../../version")
 		relative, err := filepath.Rel(cache.root, path)
-		if err != nil || !filepath.IsLocal(relative) || filepath.Dir(relative) != "v2" {
-			t.Fatalf("untrusted name escaped cache root: path=%q error=%v", path, err)
-		}
-		if err := cache.Put(name, "../../version", BytecodeCacheEntry{Bytecode: []byte("data")}); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err, "an untrusted name stays inside the cache root: path=%q", path)
+		require.True(t, filepath.IsLocal(relative))
+		require.Equal(t, "v2", filepath.Dir(relative))
+		require.NoError(t, cache.Put(name, "../../version", BytecodeCacheEntry{Bytecode: []byte("data")}))
 	}
-	if cache.path("ab", "c") == cache.path("a", "bc") {
-		t.Fatal("ambiguous key framing")
-	}
+	require.NotEqual(t, cache.path("ab", "c"), cache.path("a", "bc"), "key framing is unambiguous")
 }
 
 func TestBytecodeCacheRejectsMalformedEntries(t *testing.T) {
 	t.Parallel()
 	cache := NewBytecodeCache(t.TempDir())
-	if err := cache.Put("module", "version", BytecodeCacheEntry{Bytecode: []byte("code"), TypesExport: []byte("types")}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, cache.Put("module", "version", BytecodeCacheEntry{Bytecode: []byte("code"), TypesExport: []byte("types")}))
 	path := cache.path("module", "version")
 	valid, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	overflow := bytes.Clone(valid)
 	binary.BigEndian.PutUint64(overflow[8:16], ^uint64(0))
 	for _, data := range [][]byte{nil, valid[:8], valid[:len(valid)-1], append(bytes.Clone(valid), 0), overflow} {
-		if err := os.WriteFile(path, data, 0600); err != nil {
-			t.Fatal(err)
-		}
-		if entry, hit, err := cache.Get("module", "version"); err == nil || hit || entry != nil {
-			t.Fatalf("invalid cache data accepted: hit=%v error=%v", hit, err)
-		}
+		require.NoError(t, os.WriteFile(path, data, 0600))
+		entry, hit, err := cache.Get("module", "version")
+		require.Error(t, err, "invalid cache data is rejected")
+		require.False(t, hit)
+		require.Nil(t, entry)
 	}
-	if err := os.Truncate(path, maximumCacheEntry+1); err != nil {
-		t.Fatal(err)
-	}
-	if _, hit, err := cache.Get("module", "version"); err == nil || hit {
-		t.Fatal("oversized cache file accepted")
-	}
-	if err := cache.Put("module", "version", BytecodeCacheEntry{Bytecode: make([]byte, maximumCachedPart+1)}); err == nil {
-		t.Fatal("oversized bytecode publication accepted")
-	}
+	require.NoError(t, os.Truncate(path, maximumCacheEntry+1))
+	_, hit, err := cache.Get("module", "version")
+	require.Error(t, err, "an oversized cache file is rejected")
+	require.False(t, hit)
+	require.Error(t, cache.Put("module", "version", BytecodeCacheEntry{Bytecode: make([]byte, maximumCachedPart+1)}), "an oversized bytecode publication is refused")
 }
 
 func FuzzDecodeCacheEntry(f *testing.F) {
@@ -130,8 +122,10 @@ func FuzzDecodeCacheEntry(f *testing.F) {
 	f.Add([]byte("legacy"))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		entry, err := decodeCacheEntry(data)
-		if err == nil && (len(entry.Bytecode) == 0 || len(entry.Bytecode) > maximumCachedPart || len(entry.TypesExport) > maximumCachedPart) {
-			t.Fatal("decoder returned an unbounded payload")
+		if err == nil {
+			require.NotEmpty(t, entry.Bytecode, "a decoded entry has bytecode")
+			require.LessOrEqual(t, len(entry.Bytecode), maximumCachedPart, "the decoder bounds the bytecode")
+			require.LessOrEqual(t, len(entry.TypesExport), maximumCachedPart, "the decoder bounds the types export")
 		}
 	})
 }

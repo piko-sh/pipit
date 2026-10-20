@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,10 +32,10 @@ func TestEvalRangeSlice(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
-		delta  float64
+		want  any
+		name  string
+		code  string
+		delta float64
 	}{
 		{
 			name: "sum elements",
@@ -43,7 +43,7 @@ func TestEvalRangeSlice(t *testing.T) {
 sum := 0
 for _, v := range s { sum += v }
 sum`,
-			expect: 6,
+			want: 6,
 		},
 		{
 			name: "count elements",
@@ -51,7 +51,7 @@ sum`,
 count := 0
 for range s { count++ }
 count`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "index only",
@@ -59,7 +59,7 @@ count`,
 last := 0
 for i := range s { last = i }
 last`,
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "range over float slice",
@@ -67,8 +67,8 @@ last`,
 sum := 0.0
 for _, v := range s { sum += v }
 sum`,
-			expect: 6.6,
-			delta:  1e-10,
+			want:  6.6,
+			delta: 1e-10,
 		},
 		{
 			name: "range string slice captures value",
@@ -76,7 +76,7 @@ sum`,
 result := ""
 for _, v := range s { result += v }
 result`,
-			expect: "helloworld",
+			want: "helloworld",
 		},
 		{
 			name: "range with break",
@@ -87,7 +87,7 @@ for _, v := range s {
 	sum += v
 }
 sum`,
-			expect: 6,
+			want: 6,
 		},
 		{
 			name: "range with continue",
@@ -98,7 +98,7 @@ for _, v := range s {
 	sum += v
 }
 sum`,
-			expect: 12,
+			want: 12,
 		},
 		{
 			name: "range empty slice",
@@ -106,7 +106,7 @@ sum`,
 sum := 0
 for _, v := range s { sum += v }
 sum`,
-			expect: 0,
+			want: 0,
 		},
 	}
 
@@ -114,12 +114,12 @@ sum`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
 			if tt.delta > 0 {
-				require.InDelta(t, tt.expect, result, tt.delta, "code: %s", tt.code)
+				require.InDelta(t, tt.want, result, tt.delta, "code: %s", tt.code)
 			} else {
-				require.Equal(t, tt.expect, result, "code: %s", tt.code)
+				require.Equal(t, tt.want, result, "code: %s", tt.code)
 			}
 		})
 	}
@@ -129,9 +129,9 @@ func TestEvalRangeMap(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "count entries",
@@ -139,7 +139,7 @@ func TestEvalRangeMap(t *testing.T) {
 count := 0
 for range m { count++ }
 count`,
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "sum values",
@@ -147,7 +147,7 @@ count`,
 sum := 0
 for _, v := range m { sum += v }
 sum`,
-			expect: 30,
+			want: 30,
 		},
 		{
 			name: "collect keys length",
@@ -155,7 +155,7 @@ sum`,
 total := 0
 for k := range m { total += len(k) }
 total`,
-			expect: 9,
+			want: 9,
 		},
 		{
 			name: "empty map range",
@@ -163,7 +163,7 @@ total`,
 count := 0
 for range m { count++ }
 count`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "map key and value both captured",
@@ -171,7 +171,7 @@ count`,
 sum := 0
 for _, v := range m { sum += v }
 sum`,
-			expect: 6,
+			want: 6,
 		},
 	}
 
@@ -179,9 +179,9 @@ sum`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -190,10 +190,10 @@ func TestEvalRangeString(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
-		skip   string
+		want any
+		name string
+		code string
+		skip string
 	}{
 		{
 			name: "count runes",
@@ -201,7 +201,7 @@ func TestEvalRangeString(t *testing.T) {
 count := 0
 for range s { count++ }
 count`,
-			expect: 5,
+			want: 5,
 		},
 		{
 			name: "sum rune values",
@@ -209,7 +209,7 @@ count`,
 sum := 0
 for _, r := range s { sum += int(r) }
 sum`,
-			expect: 131,
+			want: 131,
 		},
 		{
 			name: "empty string range",
@@ -217,7 +217,7 @@ sum`,
 count := 0
 for range s { count++ }
 count`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "range index tracks rune position",
@@ -225,7 +225,7 @@ count`,
 last := 0
 for i := range s { last = i }
 last`,
-			expect: 2,
+			want: 2,
 		},
 	}
 
@@ -236,9 +236,9 @@ last`,
 				t.Skip(tt.skip)
 			}
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -247,29 +247,29 @@ func TestEvalRangeInteger(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "range int sum",
-			code:   `sum := 0; for i := range 10 { sum += i }; sum`,
-			expect: 45,
+			name: "range int sum",
+			code: `sum := 0; for i := range 10 { sum += i }; sum`,
+			want: 45,
 		},
 		{
-			name:   "range int break",
-			code:   `s := 0; for i := range 20 { if i >= 5 { break }; s += i }; s`,
-			expect: 10,
+			name: "range int break",
+			code: `s := 0; for i := range 20 { if i >= 5 { break }; s += i }; s`,
+			want: 10,
 		},
 		{
-			name:   "range int continue",
-			code:   `s := 0; for i := range 10 { if i%2 == 0 { continue }; s += i }; s`,
-			expect: 25,
+			name: "range int continue",
+			code: `s := 0; for i := range 10 { if i%2 == 0 { continue }; s += i }; s`,
+			want: 25,
 		},
 		{
-			name:   "range int variable",
-			code:   `n := 7; s := 0; for i := range n { s += i }; s`,
-			expect: 21,
+			name: "range int variable",
+			code: `n := 7; s := 0; for i := range n { s += i }; s`,
+			want: 21,
 		},
 		{
 			name: "range int closure capture",
@@ -278,7 +278,7 @@ for i := range 3 {
 	f = func() int { return i }
 }
 f()`,
-			expect: 2,
+			want: 2,
 		},
 	}
 
@@ -286,9 +286,9 @@ f()`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -297,7 +297,7 @@ func TestEvalRangeTypedSliceValues(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -317,7 +317,7 @@ func run() string {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "abc",
+			want:       "abc",
 		},
 		{
 			name: "range_float_slice_values",
@@ -334,7 +334,7 @@ func run() float64 {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     float64(6),
+			want:       float64(6),
 		},
 		{
 			name: "range_bool_slice_values",
@@ -353,7 +353,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     3,
+			want:       3,
 		},
 		{
 			name: "range_uint_slice_values",
@@ -370,7 +370,7 @@ func run() uint {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     uint(60),
+			want:       uint(60),
 		},
 	}
 
@@ -378,9 +378,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -389,9 +389,9 @@ func TestEvalRangeChannel(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "sum buffered channel values",
@@ -403,7 +403,7 @@ close(ch)
 sum := 0
 for v := range ch { sum += v }
 sum`,
-			expect: 6,
+			want: 6,
 		},
 		{
 			name: "empty closed channel",
@@ -412,7 +412,7 @@ close(ch)
 count := 0
 for _ = range ch { count++ }
 count`,
-			expect: 0,
+			want: 0,
 		},
 	}
 
@@ -420,9 +420,9 @@ count`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

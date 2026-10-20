@@ -31,6 +31,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestWatchdogHostRejectsPathHandle(t *testing.T) {
@@ -136,10 +138,7 @@ func TestWatchdogPolicyRejectsMutableOrMalformedFiles(t *testing.T) {
 }
 
 func TestNativeWatchdogHandoff(t *testing.T) {
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	group, err := newGroup(parent, Limits{})

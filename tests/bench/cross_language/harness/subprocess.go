@@ -43,37 +43,30 @@ const (
 // SubprocessRequest captures everything a runner needs to know to execute a child process
 // and capture its outputs.
 type SubprocessRequest struct {
-	// Name is the executable path or name to run (e.g. "go", "python3").
-	Name string
+	Name       string
 
-	// Args is the argument list (excluding Name).
-	Args []string
-
-	// Env is appended to os.Environ() before exec. Pairs are KEY=VALUE.
-	Env []string
-
-	// WorkingDir is the directory to chdir into before running. Empty means inherit the
-	// parent process's cwd.
 	WorkingDir string
 
-	// Timeout bounds the wall time of the call. The child is killed with SIGKILL via the
-	// platform-specific process-group kill if the timeout fires.
-	Timeout time.Duration
+	Args       []string
+
+	Env        []string
+
+	Timeout    time.Duration
 }
 
 // SubprocessResponse bundles the outputs and timing captured during a child process run.
 type SubprocessResponse struct {
-	Stdout []byte
+	Err       error
 
-	Stderr []byte
+	Stdout    []byte
+
+	Stderr    []byte
 
 	WallNanos int64
 
 	PeakRSSKB int64
 
-	ExitCode int
-
-	Err error
+	ExitCode  int
 }
 
 // RunSubprocess executes the request and returns the captured outputs. The Err field on
@@ -90,7 +83,7 @@ func RunSubprocess(parent context.Context, request SubprocessRequest) (Subproces
 	ctx, cancel := context.WithTimeoutCause(parent, timeout, fmt.Errorf("subprocess %s timed out after %s", request.Name, timeout))
 	defer cancel()
 
-	command := exec.CommandContext(ctx, request.Name, request.Args...)
+	command := exec.CommandContext(ctx, request.Name, request.Args...) //nolint:gosec // runs runner command lines
 	if request.WorkingDir != "" {
 		command.Dir = request.WorkingDir
 	}
@@ -106,16 +99,16 @@ func RunSubprocess(parent context.Context, request SubprocessRequest) (Subproces
 	elapsed := time.Since(start)
 
 	response := SubprocessResponse{
+		Err:       runError,
 		Stdout:    stdoutBuffer.Bytes(),
 		Stderr:    stderrBuffer.Bytes(),
 		WallNanos: elapsed.Nanoseconds(),
+		PeakRSSKB: 0,
+		ExitCode:  0,
 	}
 	if command.ProcessState != nil {
 		response.ExitCode = command.ProcessState.ExitCode()
 		response.PeakRSSKB = platformPeakRSSKB(command.ProcessState.SysUsage())
-	}
-	if runError != nil {
-		response.Err = runError
 	}
 	return response, nil
 }

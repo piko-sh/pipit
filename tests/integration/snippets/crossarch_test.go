@@ -25,8 +25,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 type crossArchTarget struct {
@@ -70,9 +71,8 @@ func runCrossArchSnippets(t *testing.T, dockerBin, pkgDir string, target crossAr
 	build.Dir = pkgDir
 	build.Env = append(os.Environ(), "GOARCH="+target.goarch, "CGO_ENABLED=0")
 
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("cross-compile for %s failed:\n%s\n%v", target.goarch, out, err)
-	}
+	buildOutput, err := build.CombinedOutput()
+	require.NoError(t, err, "cross-compile for %s:\n%s", target.goarch, buildOutput)
 
 	testdataEvalDir := filepath.Join(pkgDir, "testdata_eval")
 
@@ -91,24 +91,17 @@ func runCrossArchSnippets(t *testing.T, dockerBin, pkgDir string, target crossAr
 	t.Log(output)
 
 	if err != nil {
-		if strings.Contains(output, "exec format error") {
-			t.Fatalf("QEMU binfmt not registered for %s. Run:\n"+
-				"  docker run --rm --privileged multiarch/qemu-user-static --reset -p yes",
-				target.goarch)
-		}
-		t.Fatalf("%s tests failed:\n%s", target.goarch, output)
+		require.NotContains(t, output, "exec format error", "QEMU binfmt is registered for %s; to register it, run\n"+
+			"  docker run --rm --privileged multiarch/qemu-user-static --reset -p yes", target.goarch)
+		require.Failf(t, "cross-architecture tests failed", "%s:\n%s", target.goarch, output)
 	}
 
-	if !strings.Contains(output, "PASS") {
-		t.Fatalf("expected PASS in output, got:\n%s", output)
-	}
+	require.Contains(t, output, "PASS")
 }
 
 func findPackageDir(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine package directory")
-	}
+	require.True(t, ok)
 	return filepath.Dir(file)
 }

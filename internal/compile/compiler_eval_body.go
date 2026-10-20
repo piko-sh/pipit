@@ -25,7 +25,6 @@ import (
 	"go/types"
 	"reflect"
 
-	"pipit.sh/pipit/internal/compile/escape"
 	"pipit.sh/pipit/internal/compile/inline"
 	"pipit.sh/pipit/internal/engine/program"
 
@@ -79,10 +78,7 @@ func (c *Compiler) CompileEvalBody(
 		return nil, nil
 	}
 
-	c.Scopes.PushScope()
-	c.closureCapturedNames = escape.CollectClosureCapturedNamesAll(functionDeclaration.Body)
-	c.flowingSliceNames = escape.CollectFlowingSliceNames(c.Info, functionDeclaration.Type, functionDeclaration.Body, c.lookupSliceFlow)
-	c.classifyTypedSliceLocals(functionDeclaration.Body)
+	c.prepareEvalBody(functionDeclaration)
 
 	lastLocation, err := c.compileStmtList(ctx, functionDeclaration.Body.List)
 	if err != nil {
@@ -136,8 +132,7 @@ func (c *Compiler) CompileEvalFunction(ctx context.Context,
 		return evalFunction, nil
 	}
 
-	c.Scopes.PushScope()
-	c.classifyTypedSliceLocals(functionDeclaration.Body)
+	c.prepareEvalBody(functionDeclaration)
 
 	lastLocation, err := c.compileStmtList(ctx, functionDeclaration.Body.List)
 	if err != nil {
@@ -160,4 +155,13 @@ func (c *Compiler) CompileEvalFunction(ctx context.Context,
 	}
 	c.Scopes.PopScope()
 	return c.Function, nil
+}
+
+// prepareEvalBody pushes the _eval_ scope and runs analyseBody. Allocations remain on
+// the heap because eval bodies have no escape classification.
+//
+// Takes functionDeclaration (*ast.FuncDecl) which is the _eval_ function.
+func (c *Compiler) prepareEvalBody(functionDeclaration *ast.FuncDecl) {
+	c.Scopes.PushScope()
+	c.analyseBody(bodySpec{body: functionDeclaration.Body, receiver: nil, signature: functionDeclaration.Type, resultTypes: nil})
 }

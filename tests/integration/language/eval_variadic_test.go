@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalVariadicCalls(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "variadic int sum",
@@ -46,7 +46,7 @@ func TestEvalVariadicCalls(t *testing.T) {
 	return total
 }
 sum(1, 2, 3, 4, 5)`,
-			expect: 15,
+			want: 15,
 		},
 		{
 			name: "variadic with fixed params",
@@ -61,7 +61,7 @@ sum(1, 2, 3, 4, 5)`,
 	return result
 }
 first("-", "a", "b", "c")`,
-			expect: "a-b-c",
+			want: "a-b-c",
 		},
 		{
 			name: "variadic no arguments",
@@ -73,7 +73,7 @@ first("-", "a", "b", "c")`,
 	return total
 }
 sum()`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "variadic single argument",
@@ -85,7 +85,7 @@ sum()`,
 	return total
 }
 sum(42)`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "variadic spread",
@@ -98,7 +98,7 @@ sum(42)`,
 }
 s := []int{10, 20, 30}
 sum(s...)`,
-			expect: 60,
+			want: 60,
 		},
 	}
 
@@ -106,9 +106,9 @@ sum(s...)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function run
 ;   registers: int=6 string=3
-;   dispatch:  asm=15 shim=1 exit=0 go=0
+;   dispatch:  asm=14 shim=1 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (int)
 ; ═════════════════════════════════════════════════════════════
@@ -18,16 +18,15 @@
 0001 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
 0002 A 1:LOAD_INT_CONST_SMALL      75   3  97    ; LICM hoist of PC 5
 0003 A 1:LT_INT_CONST_JUMP_FALSE  123   0   1
-0004   0:EXT                        5   0   0
+0004   0:EXT                        4   0   0
 0005 A 0:ADD_INT32                  5   3   0
-0006 S 0:CONCAT_RUNE_STRING         2   0   5
-0007 A 1:MOVE_STRING               37   0   2
-0008 A 2:TIER2_INC_INT              0   1   0
-0009 A 1:JUMP                      74 249 255    ; goto -7
-0010 A 0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "abcdefghijklmnopqrstuvwxyz"
-0011 A 0:NE_STRING                  0   0   1
-0012 A 0:JUMP_IF_FALSE              0   2   0    ; if ints[0] == 0 goto +2
-0013 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0014 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0015 A 1:LEN_STRING                65   0   0
-0016 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0006 S 0:CONCAT_RUNE_STRING         0   0   5
+0007 A 2:TIER2_INC_INT              0   1   0
+0008 A 1:JUMP                      74 250 255    ; goto -6
+0009 A 0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "abcdefghijklmnopqrstuvwxyz"
+0010 A 0:NE_STRING                  0   0   1
+0011 A 0:JUMP_IF_FALSE              0   2   0    ; if ints[0] == 0 goto +2
+0012 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0013 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0014 A 1:LEN_STRING                65   0   0
+0015 A 2:TIER2_RETURN               0  10   1    ; 1 values

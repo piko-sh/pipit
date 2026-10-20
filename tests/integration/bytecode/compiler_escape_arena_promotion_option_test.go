@@ -21,10 +21,10 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/compile/passes"
 	"pipit.sh/pipit/internal/engine/program"
@@ -58,13 +58,13 @@ func TestArenaPromotionOptionControlsEscapeAnnotations(t *testing.T) {
 		{name: "promotion off leaves nothing", options: withoutArenaPromotion(passes.DefaultOptions()), wantAnnotation: false},
 	}
 	reference := compileArenaPromotionProgram(t, passes.DefaultOptions())
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			functions := compileArenaPromotionProgram(t, tc.options)
+			functions := compileArenaPromotionProgram(t, tt.options)
 			local := functions["local"]
 			require.NotNil(t, local)
-			require.Equal(t, tc.wantAnnotation, len(local.ArenaSafeAllocPCs) > 0, "ArenaSafeAllocPCs")
+			require.Equal(t, tt.wantAnnotation, len(local.ArenaSafeAllocPCs) > 0, "ArenaSafeAllocPCs")
 			require.Equal(t, reference["local"].Body, local.Body, "the option must not change the bytecode")
 		})
 	}
@@ -78,7 +78,7 @@ func withoutArenaPromotion(options passes.Options) passes.Options {
 func compileArenaPromotionProgram(t *testing.T, options passes.Options) map[string]*program.CompiledFunction {
 	t.Helper()
 	service := app.NewService(app.WithOptimisations(options))
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": arenaPromotionSource})
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": arenaPromotionSource})
 	require.NoError(t, err)
 	byName := make(map[string]*program.CompiledFunction)
 	for _, fn := range program.ExportFunctions(compiled.Root()) {

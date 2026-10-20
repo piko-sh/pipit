@@ -138,6 +138,19 @@ func TestAddCallSiteReturnsSequentialIndices(t *testing.T) {
 	require.Len(t, compiledFunction.CallSites, 2)
 }
 
+func TestAddCallSiteRefusesSpilledOperands(t *testing.T) {
+	t.Parallel()
+
+	compiledFunction := NewNamedFunction("sites")
+	spilled := VarLocation{IsSpilled: true, SpillSlot: 3}
+
+	_, err := AddCallSite(compiledFunction, &CallSite{Arguments: []VarLocation{{Register: 1}, spilled}})
+	require.ErrorIs(t, err, errSpilledCallOperand)
+	_, err = AddCallSite(compiledFunction, &CallSite{Returns: []VarLocation{spilled}})
+	require.ErrorIs(t, err, errSpilledCallOperand)
+	require.Empty(t, compiledFunction.CallSites)
+}
+
 func TestEmitHelpersAppendTheExpectedEncoding(t *testing.T) {
 	t.Parallel()
 

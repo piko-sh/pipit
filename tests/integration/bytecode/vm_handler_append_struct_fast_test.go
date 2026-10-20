@@ -21,13 +21,12 @@
 package bytecode_test
 
 import (
-	"context"
 	"strings"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/app"
 )
 
 func TestAppendStructFastEmittedForPointerFreeStruct(t *testing.T) {
@@ -77,7 +76,7 @@ func EntrypointRun(n int) int {
 func TestAppendStructFastGrowthMatchesReflectAppend(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 type point struct {
 	x int
 	y int
@@ -112,7 +111,7 @@ run(50)`)
 func TestAppendStructFastAliasedSourceKeepsLength(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 type point struct{ x int }
 func run() int {
 	ps := make([]point, 0, 8)
@@ -130,7 +129,7 @@ run()`)
 func TestAppendIntFastNilSlice(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 type bag struct {
 	ints    []int
 	floats  []float64
@@ -153,7 +152,7 @@ run()`)
 func TestAppendStructFastArrayElements(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 func run() int {
 	rows := [][2]int{}
 	for i := 0; i < 20; i++ {

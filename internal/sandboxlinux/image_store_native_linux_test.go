@@ -34,13 +34,11 @@ import (
 
 	"pipit.sh/pipit/internal/logging"
 	"pipit.sh/pipit/internal/sandboxbroker"
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestNativeWorkerPrivateImageStore(t *testing.T) {
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0700); err != nil {
 		t.Fatal(err)

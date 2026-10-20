@@ -407,6 +407,10 @@ linters:
         linters: [ govet ]
         text: "unsafeptr"
 
+      - path: internal/engine/dispatch_context\.go$
+        linters: [ unused ]
+        text: "field (vm|arenaSlabGenerationSeen|_reserved1) is unused"
+
       - linters: [ dupl ]
         path: "internal/engine/asm/"
 

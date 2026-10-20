@@ -47,7 +47,7 @@ func TestSliceHeaderSlabGrowthCapsAtChunk(t *testing.T) {
 		a.growSliceHeaderSlab()
 		require.LessOrEqual(t, len(a.sliceHeaderSlab), sliceHeaderSlabChunk)
 	}
-	require.Equal(t, sliceHeaderSlabChunk, len(a.sliceHeaderSlab))
+	require.Len(t, a.sliceHeaderSlab, sliceHeaderSlabChunk)
 	for _, old := range a.oldSliceHeaderSlabs {
 		require.LessOrEqual(t, cap(old), sliceHeaderSlabChunk)
 	}
@@ -56,9 +56,9 @@ func TestSliceHeaderSlabGrowthCapsAtChunk(t *testing.T) {
 		a.growGenericBytesSlab(1)
 		require.LessOrEqual(t, len(a.genericBytesSlab), genericBytesSlabChunk)
 	}
-	require.Equal(t, genericBytesSlabChunk, len(a.genericBytesSlab))
+	require.Len(t, a.genericBytesSlab, genericBytesSlabChunk)
 	a.growGenericBytesSlab(genericBytesSlabChunk * 2)
-	require.Equal(t, genericBytesSlabChunk*2, len(a.genericBytesSlab), "an oversized request is honoured with an oversized slab")
+	require.Len(t, a.genericBytesSlab, genericBytesSlabChunk*2, "an oversized request is honoured with an oversized slab")
 }
 
 func TestChunkedSlabGrowthChargesEachFullChunk(t *testing.T) {

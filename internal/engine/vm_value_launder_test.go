@@ -63,6 +63,7 @@ func TestLaunderReadOnlyFieldValueStripsTaint(t *testing.T) {
 		{name: "addressable", value: addressable},
 	} {
 		t.Run(source.name, func(t *testing.T) {
+			t.Parallel()
 			for fieldIndex := range source.value.NumField() {
 				field := source.value.Field(fieldIndex)
 				require.Falsef(t, field.CanInterface(), "field %d must start tainted", fieldIndex)

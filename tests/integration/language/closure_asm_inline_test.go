@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -101,9 +101,9 @@ func EntrypointRun() uint64 {
 	expected := closurePipelineNativeReplica()
 
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
-	result, err := service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
+	result, err := service.ExecuteEntrypoint(t.Context(), compiled, "EntrypointRun")
 	require.NoError(t, err)
 	got, ok := result.(uint64)
 	require.Truef(t, ok, "result type = %T, want uint64", result)

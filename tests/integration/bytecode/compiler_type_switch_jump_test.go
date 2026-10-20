@@ -21,14 +21,12 @@
 package bytecode_test
 
 import (
-	"context"
 	"strings"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/debug"
 )
 
@@ -148,10 +146,10 @@ func EntrypointRun() int { return classify(1) }`)
 func TestTypeSwitchJumpTableSemantics(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": typeSwitchJumpTableProgram})
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": typeSwitchJumpTableProgram})
 	require.NoError(t, err)
 	require.Contains(t, debug.DisassembleAssembly(compiled), "TYPE_SWITCH_JUMP")
-	result, err := service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
+	result, err := service.ExecuteEntrypoint(t.Context(), compiled, "EntrypointRun")
 	require.NoError(t, err)
 	require.Equal(t, typeSwitchJumpTableExpected, result)
 }
@@ -161,10 +159,10 @@ func TestTypeSwitchJumpTableMatchesProbeChain(t *testing.T) {
 	chainProgram := strings.Replace(typeSwitchJumpTableProgram, "\tcase []int:\n\t\treturn \"ints:\" + itoa(len(t))\n", "", 1)
 	chainProgram = strings.Replace(chainProgram, "\tcase float64:\n\t\treturn \"float\"\n", "", 1)
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": chainProgram})
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": chainProgram})
 	require.NoError(t, err)
 	require.NotContains(t, debug.DisassembleAssembly(compiled), "TYPE_SWITCH_JUMP")
-	result, err := service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
+	result, err := service.ExecuteEntrypoint(t.Context(), compiled, "EntrypointRun")
 	require.NoError(t, err)
 	require.Equal(t, "int:7;string:s;default;point:7;boxptr:b;default;default;default;default;", result)
 }
@@ -172,7 +170,7 @@ func TestTypeSwitchJumpTableMatchesProbeChain(t *testing.T) {
 func TestTypeSwitchJumpTableBoundVariableNarrowsPerClause(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 
 type a struct{ n int }
 
@@ -208,7 +206,7 @@ sum`)
 func TestTypeSwitchJumpTableBreakAndNoFallthrough(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 
 func f(v any) int {
 	out := 0

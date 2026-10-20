@@ -21,16 +21,14 @@
 package apps_test
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-	"pipit.sh/pipit/internal/symtab"
-
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/app"
+	"pipit.sh/pipit/internal/symtab"
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
@@ -47,9 +45,9 @@ func TestTypeSwitchBenchmarkStableAcrossExecutions(t *testing.T) {
 	for cycle := range typeSwitchBenchmarkCycles {
 		service := app.NewService()
 		service.UseSymbols(symtab.NewSymbolRegistry(stdlib.Exports()))
-		compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": string(source), "entry.go": wrapper})
+		compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": string(source), "entry.go": wrapper})
 		require.NoError(t, err)
-		result, err := service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
+		result, err := service.ExecuteEntrypoint(t.Context(), compiled, "EntrypointRun")
 		require.NoError(t, err)
 		require.Equalf(t, typeSwitchBenchmarkExpected, result, "cycle %d diverged from the native result", cycle)
 	}

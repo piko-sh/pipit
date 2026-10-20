@@ -21,74 +21,55 @@
 package sandboxbroker
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRecoveryJournalRefreshesUncertainAppend(t *testing.T) {
+	t.Parallel()
 	directory := testRecoveryDirectory(t)
 	record := recoveryRecordFixture()
 	journal, err := OpenLinuxRecoveryJournal(directory, record.Namespace)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer journal.Close()
-	if err := journal.appendRecord(record); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, journal.appendRecord(record))
 	record.Operation = 2
 	encoded, err := encodeRecoveryRecord(record)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := journal.persist(record, encoded); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, journal.persist(record, encoded))
 	journal.failed = true
-	if records, err := journal.Records(); !errors.Is(err, ErrClosed) || records != nil {
-		t.Fatal("uncertain append exposed cached records:", records, err)
-	}
+	records, err := journal.Records()
+	require.ErrorIs(t, err, ErrClosed, "uncertain append exposed cached records")
+	require.Nil(t, records)
 	for range 3 {
 		records, err := journal.RecoveryRecords()
-		if err != nil || len(records) != 2 || records[1] != record {
-			t.Fatal("uncertain linked intent missed:", records, err)
-		}
+		require.NoError(t, err, "uncertain linked intent missed")
+		require.Len(t, records, 2)
+		require.Equal(t, record, records[1])
 		records[0].Path = "changed"
 	}
-	if len(journal.records) != 1 {
-		t.Fatal("recovery changed the acknowledged-record cache")
-	}
+	require.Len(t, journal.records, 1, "recovery changed the acknowledged-record cache")
 	record.Operation++
-	if err := journal.appendRecord(record); !errors.Is(err, ErrClosed) {
-		t.Fatal("recovery re-enabled failed admission:", err)
-	}
-	if other, err := OpenLinuxRecoveryJournal(directory, record.Namespace); err == nil || other != nil {
-		if other != nil {
-			_ = other.Close()
-		}
-		t.Fatal("recovery released the original journal lock")
-	}
+	require.ErrorIs(t, journal.appendRecord(record), ErrClosed, "recovery does not re-enable a failed admission")
+	requireJournalLocked(t, directory, record.Namespace, "recovery keeps the original journal lock")
 }
 
 func TestRecoveryJournalRefreshRejectsChangedStorage(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"missing", "changed", "malformed", "extra-corrupt", "permissions"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			directory := testRecoveryDirectory(t)
 			record := recoveryRecordFixture()
 			journal, err := OpenLinuxRecoveryJournal(directory, record.Namespace)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer journal.Close()
-			if err := journal.appendRecord(record); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, journal.appendRecord(record))
 			name, err := recoveryRecordName(record)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			filename := filepath.Join(directory, name)
 			switch mode {
 			case "missing":
@@ -107,103 +88,70 @@ func TestRecoveryJournalRefreshRejectsChangedStorage(t *testing.T) {
 			case "permissions":
 				err = os.Chmod(directory, 0755)
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if records, err := journal.RecoveryRecords(); err == nil || records != nil {
-				t.Fatal("changed storage accepted or partially returned:", records, err)
-			}
-			if records, err := journal.Records(); !errors.Is(err, ErrClosed) || records != nil {
-				t.Fatal("invalid recovery storage retained writable state:", err)
-			}
+			require.NoError(t, err)
+			records, err := journal.RecoveryRecords()
+			require.Error(t, err, "changed storage accepted or partially returned")
+			require.Nil(t, records)
+			records, err = journal.Records()
+			require.ErrorIs(t, err, ErrClosed, "invalid recovery storage retained writable state")
+			require.Nil(t, records)
 			record.Operation++
-			if err := journal.appendRecord(record); !errors.Is(err, ErrClosed) {
-				t.Fatal("invalid recovery storage accepted another append:", err)
-			}
+			require.ErrorIs(t, journal.appendRecord(record), ErrClosed, "invalid recovery storage accepted another append")
 		})
 	}
 }
 
 func TestRecoveryJournalRefreshKeepsPinnedDirectory(t *testing.T) {
+	t.Parallel()
 	directory := testRecoveryDirectory(t)
 	record := recoveryRecordFixture()
 	journal, err := OpenLinuxRecoveryJournal(directory, record.Namespace)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer journal.Close()
-	if err := journal.appendRecord(record); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, journal.appendRecord(record))
 	moved := filepath.Join(t.TempDir(), "original")
-	if err := os.Rename(directory, moved); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(directory, 0700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Rename(directory, moved))
+	require.NoError(t, os.Mkdir(directory, 0700))
 	records, err := journal.RecoveryRecords()
-	if err != nil || len(records) != 1 || records[0] != record {
-		t.Fatal("recovery followed replacement pathname:", records, err)
-	}
-	if other, err := OpenLinuxRecoveryJournal(moved, record.Namespace); err == nil || other != nil {
-		if other != nil {
-			_ = other.Close()
-		}
-		t.Fatal("recovery dropped original directory lease")
-	}
-	if err := journal.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if records, err := journal.RecoveryRecords(); !errors.Is(err, ErrClosed) || records != nil {
-		t.Fatal("closed recovery journal returned records:", err)
-	}
+	require.NoError(t, err, "recovery followed replacement pathname")
+	require.Len(t, records, 1)
+	require.Equal(t, record, records[0])
+	requireJournalLocked(t, moved, record.Namespace, "recovery keeps the original directory lease")
+	require.NoError(t, journal.Close())
+	records, err = journal.RecoveryRecords()
+	require.ErrorIs(t, err, ErrClosed, "closed recovery journal returned records")
+	require.Nil(t, records)
 	var empty LinuxRecoveryJournal
 	for _, absent := range []*LinuxRecoveryJournal{nil, &empty} {
-		if records, err := absent.RecoveryRecords(); !errors.Is(err, ErrClosed) || records != nil {
-			t.Fatal("empty journal returned records:", err)
-		}
+		records, err := absent.RecoveryRecords()
+		require.ErrorIs(t, err, ErrClosed, "empty journal returned records")
+		require.Nil(t, records)
 	}
 }
 
 func TestRecoveryBootstrapUsesUncertainDurableIntent(t *testing.T) {
+	t.Parallel()
 	authority := testRecoveryAuthority(t, Write)
 	journal := testRecoveryAuthorityJournal(t, authority)
 	record := testRecoveryAuthorityRecord(t, authority, 1)
 	call, err := authority.admit(brokerMessage(1, recoveryWritePayload))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	encoded, err := encodeRecoveryRecord(record)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := journal.persist(record, encoded); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, journal.persist(record, encoded))
 	journal.failed = true
-	if err := call.Finish(0); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, call.Finish(0))
 	authority.budget.Close()
 	bootstrap, err := authority.RecoveryBootstrap(journal)
-	if err != nil {
-		t.Fatal("uncertain durable intent blocked recovery:", err)
-	}
+	require.NoError(t, err, "uncertain durable intent blocked recovery")
 	defer bootstrap.Close()
 	files, err := bootstrap.Files()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	policy, err := readLinuxBootstrap(files[0])
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	records, err := decodeBootstrapRecovery(policy)
-	if err != nil || len(records) != 1 || records[0] != record {
-		t.Fatal("uncertain intent omitted from sealed batch:", records, err)
-	}
-	if err := journal.appendRecord(record); !errors.Is(err, ErrClosed) {
-		t.Fatal("bootstrap construction revived failed journal:", err)
-	}
+	require.NoError(t, err, "uncertain intent omitted from sealed batch")
+	require.Len(t, records, 1)
+	require.Equal(t, record, records[0])
+	require.ErrorIs(t, journal.appendRecord(record), ErrClosed, "bootstrap construction does not revive a failed journal")
 }

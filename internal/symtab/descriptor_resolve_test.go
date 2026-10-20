@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/symtab/descriptor"
 )
 
@@ -101,7 +102,7 @@ func TestDescriptorRoundTripPreservesHostNamedTypes(t *testing.T) {
 			t.Parallel()
 			reconstructed, err := ReflectTypeFor(descriptor.ReflectTypeToDescriptor(want), registry)
 			require.NoError(t, err)
-			require.Truef(t, reconstructed == want, "round trip produced %v, want %v", reconstructed, want)
+			require.Same(t, want, reconstructed)
 		})
 	}
 }
@@ -113,7 +114,7 @@ func TestDescriptorHostNamedTypeFallsBackToShape(t *testing.T) {
 	headerDescriptor := descriptor.ReflectTypeToDescriptor(reflect.TypeFor[http.Header]())
 	readerDescriptor := descriptor.ReflectTypeToDescriptor(reflect.TypeFor[io.Reader]())
 
-	for _, tc := range []struct {
+	tests := []struct {
 		name       string
 		descriptor descriptor.TypeDescriptor
 		registry   *SymbolRegistry
@@ -125,12 +126,13 @@ func TestDescriptorHostNamedTypeFallsBackToShape(t *testing.T) {
 		{name: "kind mismatch", descriptor: monthNamedInt64, registry: hostNamedTypesRegistry(), want: reflect.TypeFor[int64]()},
 		{name: "named map unregistered", descriptor: headerDescriptor, registry: NewSymbolRegistry(nil), want: reflect.TypeFor[map[string][]string]()},
 		{name: "named interface unregistered", descriptor: readerDescriptor, registry: NewSymbolRegistry(nil), want: reflect.TypeFor[any]()},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			reconstructed, err := ReflectTypeFor(tc.descriptor, tc.registry)
+			reconstructed, err := ReflectTypeFor(tt.descriptor, tt.registry)
 			require.NoError(t, err)
-			require.Truef(t, reconstructed == tc.want, "resolved %v, want %v", reconstructed, tc.want)
+			require.Same(t, tt.want, reconstructed)
 		})
 	}
 }
@@ -143,7 +145,7 @@ func TestDescriptorHostNamedTypeResolvesThroughAlias(t *testing.T) {
 	want := reflect.TypeFor[fs.FileMode]()
 	reconstructed, err := ReflectTypeFor(descriptor.ReflectTypeToDescriptor(want), registry)
 	require.NoError(t, err)
-	require.Truef(t, reconstructed == want, "resolved %v, want %v", reconstructed, want)
+	require.Same(t, want, reconstructed)
 }
 
 func TestHostNamedTypeIndexFollowsRegistration(t *testing.T) {

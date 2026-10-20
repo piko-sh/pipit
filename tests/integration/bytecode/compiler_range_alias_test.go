@@ -21,13 +21,12 @@
 package bytecode_test
 
 import (
-	"context"
 	"strings"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/app"
 )
 
 const (
@@ -77,7 +76,7 @@ func TestRangeStructValueNoMoveWhenReadOnly(t *testing.T) {
 	require.Zerof(t, rangeValueMoveCount(dump), "read-only struct range value must alias the element; disasm:\n%s", dump)
 	require.Positivef(t, strings.Count(dump, ":INDEX "), "expected the element index into the value register; disasm:\n%s", dump)
 
-	result, err := app.NewService().Eval(context.Background(), `
+	result, err := app.NewService().Eval(t.Context(), `
 type body struct{ x, y float64 }
 bodies := []body{{x: 1, y: 2}, {x: 3, y: 4}}
 total := 0.0
@@ -91,20 +90,22 @@ total`)
 
 func TestRangeStructValueCapturesFieldsWhenBodyMutatesSlice(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct {
+	tests := []struct {
 		index string
 		want  float64
-	}{{"0", 4}, {"1", 101}} {
-		t.Run(test.index, func(t *testing.T) {
-			source := strings.ReplaceAll(rangeStructMutatingProgram, "bodies[1].x", "bodies["+test.index+"].x")
+	}{{index: "0", want: 4}, {index: "1", want: 101}}
+	for _, tt := range tests {
+		t.Run(tt.index, func(t *testing.T) {
+			t.Parallel()
+			source := strings.ReplaceAll(rangeStructMutatingProgram, "bodies[1].x", "bodies["+tt.index+"].x")
 			dump := compileSourceForOpcodeCheck(t, source)
 			require.Contains(t, dump, "aggregate snapshot replaced by field captures")
 			service := app.NewService()
-			compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+			compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 			require.NoError(t, err)
-			result, err := service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
+			result, err := service.ExecuteEntrypoint(t.Context(), compiled, "EntrypointRun")
 			require.NoError(t, err)
-			require.InDelta(t, test.want, result, 1e-9, "the range value retains fields from before the body mutation")
+			require.InDelta(t, tt.want, result, 1e-9, "the range value retains fields from before the body mutation")
 		})
 	}
 }

@@ -21,66 +21,85 @@
 package bytecode_test
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/app"
 )
 
 func TestNamedReturns(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "named_return_int", code: `
+		{
+			name: "named_return_int",
+			code: `
 func f() (result int) {
 	result = 42
 	return
 }
-f()`, expect: 42},
-		{name: "named_return_string", code: `
+f()`,
+			want: 42,
+		},
+		{
+			name: "named_return_string",
+			code: `
 func f() (s string) {
 	s = "hello"
 	return
 }
-f()`, expect: "hello"},
-		{name: "named_return_multiple", code: `
+f()`,
+			want: "hello",
+		},
+		{
+			name: "named_return_multiple",
+			code: `
 func f() (a int, b int) {
 	a = 10
 	b = 20
 	return
 }
 x, y := f()
-x + y`, expect: 30},
-		{name: "named_return_modified", code: `
+x + y`,
+			want: 30,
+		},
+		{
+			name: "named_return_modified",
+			code: `
 func f() (x int) {
 	x = 1
 	x += 9
 	return
 }
-f()`, expect: 10},
-		{name: "named_return_with_defer", code: `
+f()`,
+			want: 10,
+		},
+		{
+			name: "named_return_with_defer",
+			code: `
 func f() (x int) {
 	defer func() { x = 99 }()
 	x = 1
 	return
 }
-f()`, expect: 99},
+f()`,
+			want: 99,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -89,27 +108,35 @@ func TestImplicitReturns(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "void_func", code: `
+		{
+			name: "void_func",
+			code: `
 func f() {}
 f()
-1`, expect: 1},
-		{name: "void_with_work", code: `
+1`,
+			want: 1,
+		},
+		{
+			name: "void_with_work",
+			code: `
 func f() int { return 0 }
 f()
-1`, expect: 1},
+1`,
+			want: 1,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -118,20 +145,20 @@ func TestTypeAssertions(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "assert_int", code: `var x any = 42; x.(int)`, expect: int(42)},
+		{name: "assert_int", code: `var x any = 42; x.(int)`, want: int(42)},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -140,39 +167,59 @@ func TestMultiReturnCopiesAcrossBanks(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "two_ints", code: `
+		{
+			name: "two_ints",
+			code: `
 func f() (int, int) { return 10, 20 }
 a, b := f()
-a + b`, expect: 30},
-		{name: "int_and_string", code: `
+a + b`,
+			want: 30,
+		},
+		{
+			name: "int_and_string",
+			code: `
 func f() (int, string) { return 42, "hello" }
 _, s := f()
-s`, expect: "hello"},
-		{name: "three_values", code: `
+s`,
+			want: "hello",
+		},
+		{
+			name: "three_values",
+			code: `
 func f() (int, int, int) { return 1, 2, 3 }
 a, b, c := f()
-a + b + c`, expect: 6},
-		{name: "bool_return", code: `
+a + b + c`,
+			want: 6,
+		},
+		{
+			name: "bool_return",
+			code: `
 func f() (int, bool) { return 42, true }
 _, ok := f()
-ok`, expect: true},
-		{name: "float_return", code: `
+ok`,
+			want: true,
+		},
+		{
+			name: "float_return",
+			code: `
 func f() (float64, float64) { return 1.5, 2.5 }
 a, b := f()
-a + b`, expect: float64(4.0)},
+a + b`,
+			want: float64(4.0),
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -181,24 +228,34 @@ func TestUpvalueSync(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "capture_and_modify", code: `
+		{
+			name: "capture_and_modify",
+			code: `
 x := 10
 f := func() { x = 20 }
 f()
-x`, expect: 20},
-		{name: "capture_multiple", code: `
+x`,
+			want: 20,
+		},
+		{
+			name: "capture_multiple",
+			code: `
 func f() int {
 	a := 1
 	b := 2
 	g := func() int { return a + b }
 	return g()
 }
-f()`, expect: 3},
-		{name: "counter_closure", code: `
+f()`,
+			want: 3,
+		},
+		{
+			name: "counter_closure",
+			code: `
 func makeCounter() func() int {
 	n := 0
 	return func() int {
@@ -209,8 +266,12 @@ func makeCounter() func() int {
 c := makeCounter()
 c()
 c()
-c()`, expect: 3},
-		{name: "nested_capture", code: `
+c()`,
+			want: 3,
+		},
+		{
+			name: "nested_capture",
+			code: `
 func f() int {
 	x := 42
 	g := func() func() int {
@@ -218,16 +279,18 @@ func f() int {
 	}
 	return g()()
 }
-f()`, expect: 42},
+f()`,
+			want: 42,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -236,23 +299,27 @@ func TestReflectBinaryOps(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "interface_add", code: `
+		{
+			name: "interface_add",
+			code: `
 var x any = 10
 var y any = 20
-x.(int) + y.(int)`, expect: 30},
+x.(int) + y.(int)`,
+			want: 30,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -261,37 +328,49 @@ func TestTailCallAcrossArgumentShapes(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "simple_tail", code: `
+		{
+			name: "simple_tail",
+			code: `
 func f(n int) int {
 	if n <= 0 { return 0 }
 	return f(n - 1)
 }
-f(10)`, expect: 0},
-		{name: "tail_accumulator", code: `
+f(10)`,
+			want: 0,
+		},
+		{
+			name: "tail_accumulator",
+			code: `
 func sum(n, acc int) int {
 	if n <= 0 { return acc }
 	return sum(n-1, acc+n)
 }
-sum(10, 0)`, expect: 55},
-		{name: "tail_with_string", code: `
+sum(10, 0)`,
+			want: 55,
+		},
+		{
+			name: "tail_with_string",
+			code: `
 func repeat(s string, n int) string {
 	if n <= 0 { return s }
 	return repeat(s + "a", n-1)
 }
-len(repeat("", 5))`, expect: 5},
+len(repeat("", 5))`,
+			want: 5,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -300,18 +379,24 @@ func TestDeferAcrossReturnAndPanicForms(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "defer_modifies_named_return", code: `
+		{
+			name: "defer_modifies_named_return",
+			code: `
 func f() (x int) {
 	defer func() { x += 10 }()
 	x = 5
 	return
 }
-f()`, expect: 15},
-		{name: "defer_order_lifo", code: `
+f()`,
+			want: 15,
+		},
+		{
+			name: "defer_order_lifo",
+			code: `
 func f() string {
 	result := ""
 	defer func() { result += "3" }()
@@ -319,31 +404,41 @@ func f() string {
 	defer func() { result += "1" }()
 	return result
 }
-f()`, expect: ""},
-		{name: "recover_from_panic", code: `
+f()`,
+			want: "",
+		},
+		{
+			name: "recover_from_panic",
+			code: `
 func f() string {
 	defer func() {
 		recover()
 	}()
 	panic("boom")
 }
-f()`, expect: ""},
-		{name: "defer_runs_on_return", code: `
+f()`,
+			want: "",
+		},
+		{
+			name: "defer_runs_on_return",
+			code: `
 func f() int {
 	x := 0
 	defer func() { x = 99 }()
 	return x
 }
-f()`, expect: 0},
+f()`,
+			want: 0,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -352,7 +447,7 @@ func TestVMRangeOverTypedSlices(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
+		want   any
 		name   string
 		source string
 	}{
@@ -370,7 +465,7 @@ func run() int {
 
 func main() {}
 `,
-			expect: 60,
+			want: 60,
 		},
 		{
 			name: "range_over_string_slice",
@@ -386,7 +481,7 @@ func run() string {
 
 func main() {}
 `,
-			expect: "abc",
+			want: "abc",
 		},
 		{
 			name: "range_over_float64_slice",
@@ -402,7 +497,7 @@ func run() float64 {
 
 func main() {}
 `,
-			expect: float64(7.0),
+			want: float64(7.0),
 		},
 		{
 			name: "range_over_bool_slice",
@@ -418,7 +513,7 @@ func run() int {
 
 func main() {}
 `,
-			expect: 3,
+			want: 3,
 		},
 	}
 
@@ -426,9 +521,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, "run")
+			result, err := service.EvalFile(t.Context(), tt.source, "run")
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -437,14 +532,14 @@ func TestVMAppendFastPath(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "append_bool",
-			code:   `s := []bool{true}; s = append(s, false); s[1]`,
-			expect: false,
+			name: "append_bool",
+			code: `s := []bool{true}; s = append(s, false); s[1]`,
+			want: false,
 		},
 	}
 
@@ -452,9 +547,9 @@ func TestVMAppendFastPath(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -463,7 +558,7 @@ func TestVMMapInsertLookupAndDelete(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
+		want   any
 		name   string
 		source string
 	}{
@@ -480,7 +575,7 @@ func run() int {
 
 func main() {}
 `,
-			expect: 30,
+			want: 30,
 		},
 		{
 			name: "map_int_string_slow_path",
@@ -495,7 +590,7 @@ func run() string {
 
 func main() {}
 `,
-			expect: "hello",
+			want: "hello",
 		},
 	}
 
@@ -503,9 +598,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, "run")
+			result, err := service.EvalFile(t.Context(), tt.source, "run")
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -527,7 +622,7 @@ func run() int {
 func main() {}
 `
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 42, result)
 }
@@ -554,7 +649,7 @@ func run() int {
 func main() {}
 `
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 10, result)
 }
@@ -563,39 +658,39 @@ func TestVMBuiltinPrint(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "print_int",
-			code:   `print(42); true`,
-			expect: true,
+			name: "print_int",
+			code: `print(42); true`,
+			want: true,
 		},
 		{
-			name:   "print_string",
-			code:   `print("hello"); true`,
-			expect: true,
+			name: "print_string",
+			code: `print("hello"); true`,
+			want: true,
 		},
 		{
-			name:   "print_float",
-			code:   `print(3.14); true`,
-			expect: true,
+			name: "print_float",
+			code: `print(3.14); true`,
+			want: true,
 		},
 		{
-			name:   "print_bool",
-			code:   `print(true); true`,
-			expect: true,
+			name: "print_bool",
+			code: `print(true); true`,
+			want: true,
 		},
 		{
-			name:   "print_multiple",
-			code:   `print(1, " ", "hello", " ", true); true`,
-			expect: true,
+			name: "print_multiple",
+			code: `print(1, " ", "hello", " ", true); true`,
+			want: true,
 		},
 		{
-			name:   "println_multiple",
-			code:   `println(1, "hello", true); true`,
-			expect: true,
+			name: "println_multiple",
+			code: `println(1, "hello", true); true`,
+			want: true,
 		},
 	}
 
@@ -603,9 +698,9 @@ func TestVMBuiltinPrint(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -614,7 +709,7 @@ func TestVMClosureCaptures(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
+		want   any
 		name   string
 		source string
 	}{
@@ -630,7 +725,7 @@ func run() int {
 
 func main() {}
 `,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "capture_string",
@@ -644,7 +739,7 @@ func run() string {
 
 func main() {}
 `,
-			expect: "hello",
+			want: "hello",
 		},
 		{
 			name: "capture_float",
@@ -658,7 +753,7 @@ func run() float64 {
 
 func main() {}
 `,
-			expect: float64(3.14),
+			want: float64(3.14),
 		},
 		{
 			name: "capture_bool",
@@ -672,7 +767,7 @@ func run() bool {
 
 func main() {}
 `,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "capture_uint",
@@ -686,7 +781,7 @@ func run() uint {
 
 func main() {}
 `,
-			expect: uint(42),
+			want: uint(42),
 		},
 		{
 			name: "capture_complex",
@@ -700,7 +795,7 @@ func run() complex128 {
 
 func main() {}
 `,
-			expect: complex128(1 + 2i),
+			want: complex128(1 + 2i),
 		},
 	}
 
@@ -708,9 +803,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, "run")
+			result, err := service.EvalFile(t.Context(), tt.source, "run")
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -894,7 +989,7 @@ func run() int {
 
 func main() {}
 `
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 
 	require.IsType(t, 0, result)
@@ -905,7 +1000,7 @@ func TestVMNativeFunctionReturns(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
+		want   any
 		fns    map[string]reflect.Value
 		name   string
 		source string
@@ -925,7 +1020,7 @@ func run() uint64 { return testpkg.GetUint() }
 
 func main() {}
 `,
-			expect: uint64(42),
+			want: uint64(42),
 		},
 		{
 			name: "native_returns_complex",
@@ -942,7 +1037,7 @@ func run() complex128 { return testpkg.GetComplex() }
 
 func main() {}
 `,
-			expect: complex128(1 + 2i),
+			want: complex128(1 + 2i),
 		},
 		{
 			name: "native_returns_bool",
@@ -959,7 +1054,7 @@ func run() bool { return testpkg.GetBool() }
 
 func main() {}
 `,
-			expect: true,
+			want: true,
 		},
 	}
 
@@ -967,9 +1062,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := bytecodeServiceWithFunctions(t, "testpkg", tt.fns)
-			result, err := service.EvalFile(context.Background(), tt.source, "run")
+			result, err := service.EvalFile(t.Context(), tt.source, "run")
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -998,7 +1093,7 @@ func run() int {
 func main() {}
 `
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 3, result)
 }
@@ -1020,7 +1115,7 @@ func run() int {
 func main() {}
 `
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 6, result)
 }
@@ -1046,7 +1141,7 @@ func run() int {
 func main() {}
 `
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 60, result)
 }
@@ -1073,7 +1168,7 @@ func run() int {
 
 func main() {}
 `
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 1, result)
 
@@ -1103,7 +1198,7 @@ func run() int {
 
 func main() {}
 `
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 1, result)
 
@@ -1115,7 +1210,7 @@ func TestVMDeferTypedArgs(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
+		want   any
 		name   string
 		source string
 	}{
@@ -1134,7 +1229,7 @@ func run() float64 {
 
 func main() {}
 `,
-			expect: float64(0),
+			want: float64(0),
 		},
 		{
 			name: "defer_with_bool_arg",
@@ -1151,7 +1246,7 @@ func run() int {
 
 func main() {}
 `,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "defer_with_uint_arg",
@@ -1168,7 +1263,7 @@ func run() uint {
 
 func main() {}
 `,
-			expect: uint(0),
+			want: uint(0),
 		},
 	}
 
@@ -1176,9 +1271,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, "run")
+			result, err := service.EvalFile(t.Context(), tt.source, "run")
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -1187,7 +1282,7 @@ func TestVMPrintUintComplex(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
+		want   any
 		name   string
 		source string
 	}{
@@ -1203,7 +1298,7 @@ func run() uint {
 
 func main() {}
 `,
-			expect: uint(42),
+			want: uint(42),
 		},
 		{
 			name: "print_complex",
@@ -1217,7 +1312,7 @@ func run() complex128 {
 
 func main() {}
 `,
-			expect: complex128(1 + 2i),
+			want: complex128(1 + 2i),
 		},
 	}
 
@@ -1225,9 +1320,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, "run")
+			result, err := service.EvalFile(t.Context(), tt.source, "run")
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -1236,7 +1331,7 @@ func TestVMTypeAssertUintFloat(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
+		want   any
 		name   string
 		source string
 	}{
@@ -1251,7 +1346,7 @@ func run() uint {
 
 func main() {}
 `,
-			expect: uint(42),
+			want: uint(42),
 		},
 		{
 			name: "type_assert_to_float",
@@ -1264,7 +1359,7 @@ func run() float64 {
 
 func main() {}
 `,
-			expect: float64(3.14),
+			want: float64(3.14),
 		},
 		{
 			name: "type_assert_to_bool",
@@ -1277,7 +1372,7 @@ func run() bool {
 
 func main() {}
 `,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "type_assert_to_complex",
@@ -1290,7 +1385,7 @@ func run() complex128 {
 
 func main() {}
 `,
-			expect: complex128(1 + 2i),
+			want: complex128(1 + 2i),
 		},
 	}
 
@@ -1298,9 +1393,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, "run")
+			result, err := service.EvalFile(t.Context(), tt.source, "run")
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -1344,7 +1439,7 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			_, err := service.EvalFile(context.Background(), tt.source, "run")
+			_, err := service.EvalFile(t.Context(), tt.source, "run")
 			require.Error(t, err)
 		})
 	}
@@ -1369,7 +1464,7 @@ func run() int {
 func main() {}
 `
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 42, result)
 }
@@ -1378,7 +1473,7 @@ func TestVMFunctionReturnsUintComplex(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
+		want   any
 		name   string
 		source string
 	}{
@@ -1390,7 +1485,7 @@ func getUint() uint { return 42 }
 func run() uint { return getUint() }
 func main() {}
 `,
-			expect: uint(42),
+			want: uint(42),
 		},
 		{
 			name: "returns_complex",
@@ -1400,7 +1495,7 @@ func getComplex() complex128 { return complex(3.0, 4.0) }
 func run() complex128 { return getComplex() }
 func main() {}
 `,
-			expect: complex128(3 + 4i),
+			want: complex128(3 + 4i),
 		},
 	}
 
@@ -1408,9 +1503,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, "run")
+			result, err := service.EvalFile(t.Context(), tt.source, "run")
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -1419,7 +1514,7 @@ func TestVMPanicRecover(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
+		want   any
 		name   string
 		source string
 	}{
@@ -1439,7 +1534,7 @@ func run() int {
 
 func main() {}
 `,
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "recover_in_entry_function",
@@ -1452,7 +1547,7 @@ func run() int {
 
 func main() {}
 `,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "recover_returns_panic_value",
@@ -1469,7 +1564,7 @@ func run() int {
 
 func main() {}
 `,
-			expect: 0,
+			want: 0,
 		},
 	}
 
@@ -1477,9 +1572,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, "run")
+			result, err := service.EvalFile(t.Context(), tt.source, "run")
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -1488,7 +1583,7 @@ func TestVMMapNamedIntReflectFallback(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -1506,7 +1601,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     42,
+			want:       42,
 		},
 		{
 			name: "named_int_map_set",
@@ -1522,7 +1617,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     42,
+			want:       42,
 		},
 		{
 			name: "named_int_map_missing_key",
@@ -1537,7 +1632,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     0,
+			want:       0,
 		},
 	}
 
@@ -1545,9 +1640,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -1556,7 +1651,7 @@ func TestVMTypeAssertionAcrossKinds(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -1577,7 +1672,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     -1,
+			want:       -1,
 		},
 		{
 			name: "nil_interface_to_string_comma_ok",
@@ -1595,7 +1690,7 @@ func run() string {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "nil",
+			want:       "nil",
 		},
 		{
 			name: "nil_interface_to_bool_comma_ok",
@@ -1610,7 +1705,7 @@ func run() bool {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     false,
+			want:       false,
 		},
 		{
 			name: "uint_from_interface",
@@ -1624,7 +1719,7 @@ func run() uint64 {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     uint64(42),
+			want:       uint64(42),
 		},
 	}
 
@@ -1632,9 +1727,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -1643,7 +1738,7 @@ func TestVMRangeUintAndComplexSlice(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -1663,7 +1758,7 @@ func run() uint {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     uint(60),
+			want:       uint(60),
 		},
 		{
 			name: "range_complex_slice",
@@ -1680,7 +1775,7 @@ func run() complex128 {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     complex128(4 + 6i),
+			want:       complex128(4 + 6i),
 		},
 	}
 
@@ -1688,9 +1783,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -1710,7 +1805,7 @@ func run() interface{} {
 func main() {}
 `
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 42, result)
 }
@@ -1729,7 +1824,7 @@ func run() string {
 
 func main() {}
 `
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "hello", result)
 }

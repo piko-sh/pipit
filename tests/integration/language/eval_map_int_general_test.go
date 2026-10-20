@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,7 +32,7 @@ func TestEvalMapIntGeneralTypedFastPath(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -57,7 +57,7 @@ func run() int64 {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     int64(7),
+			want:       int64(7),
 		},
 		{
 			name: "map int to pointer struct (lookup miss)",
@@ -79,7 +79,7 @@ func run() int64 {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     int64(100),
+			want:       int64(100),
 		},
 		{
 			name: "map int to interface (any)",
@@ -97,7 +97,7 @@ func run() int64 {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     int64(30),
+			want:       int64(30),
 		},
 		{
 			name: "map int64 to interface (any)",
@@ -115,7 +115,7 @@ func run() int64 {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     int64(30),
+			want:       int64(30),
 		},
 		{
 			name: "map int to slice (general value type)",
@@ -131,7 +131,7 @@ func run() int64 {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     int64(60),
+			want:       int64(60),
 		},
 		{
 			name: "map int to pointer struct reused across iterations",
@@ -158,7 +158,7 @@ func run() int64 {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     int64(9900),
+			want:       int64(9900),
 		},
 	}
 
@@ -166,13 +166,13 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			compiled, err := service.CompileFileSet(context.Background(), map[string]string{
+			compiled, err := service.CompileFileSet(t.Context(), map[string]string{
 				"main.go": tt.source,
 			})
 			require.NoError(t, err, "compile failure for %s", tt.name)
-			result, err := service.ExecuteEntrypoint(context.Background(), compiled, tt.entrypoint)
+			result, err := service.ExecuteEntrypoint(t.Context(), compiled, tt.entrypoint)
 			require.NoError(t, err, "execute failure for %s", tt.name)
-			require.Equal(t, tt.expect, result, "expected %v, got %v for %s", tt.expect, result, tt.name)
+			require.Equal(t, tt.want, result, "expected %v, got %v for %s", tt.want, result, tt.name)
 		})
 	}
 }

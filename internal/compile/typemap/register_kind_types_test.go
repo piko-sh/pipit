@@ -86,8 +86,22 @@ func TestKindForTypeLooksThroughToTheUnderlyingBasic(t *testing.T) {
 		want  isa.RegisterKind
 	}{
 		{name: "a plain int", build: func(*testing.T) types.Type { return types.Typ[types.Int] }, want: isa.RegisterInt},
-		{name: "a named integer", build: func(t *testing.T) types.Type { return namedOf(t, "counter", types.Typ[types.Int]) }, want: isa.RegisterInt},
-		{name: "a named string", build: func(t *testing.T) types.Type { return namedOf(t, "label", types.Typ[types.String]) }, want: isa.RegisterString},
+		{
+			name: "a named integer",
+			build: func(t *testing.T) types.Type {
+				t.Helper()
+				return namedOf(t, "counter", types.Typ[types.Int])
+			},
+			want: isa.RegisterInt,
+		},
+		{
+			name: "a named string",
+			build: func(t *testing.T) types.Type {
+				t.Helper()
+				return namedOf(t, "label", types.Typ[types.String])
+			},
+			want: isa.RegisterString,
+		},
 		{name: "a slice is boxed", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Int]) }, want: isa.RegisterGeneral},
 		{name: "a map is boxed", build: func(*testing.T) types.Type { return types.NewMap(types.Typ[types.Int], types.Typ[types.Int]) }, want: isa.RegisterGeneral},
 		{name: "a pointer is boxed", build: func(*testing.T) types.Type { return types.NewPointer(types.Typ[types.Int]) }, want: isa.RegisterGeneral},
@@ -123,7 +137,14 @@ func TestKindForCallSlotPromotesASliceOfACanonicalWidth(t *testing.T) {
 		{name: "a slice of float32 is boxed", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Float32]) }, want: isa.RegisterGeneral},
 		{name: "a slice of int32 is boxed", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Int32]) }, want: isa.RegisterGeneral},
 		{name: "a slice of a non-basic element is boxed", build: func(*testing.T) types.Type { return types.NewSlice(types.NewSlice(types.Typ[types.Int])) }, want: isa.RegisterGeneral},
-		{name: "a named slice keeps its own name and is not promoted", build: func(t *testing.T) types.Type { return namedOf(t, "row", types.NewSlice(types.Typ[types.Int])) }, want: isa.RegisterGeneral},
+		{
+			name: "a named slice keeps its own name and is not promoted",
+			build: func(t *testing.T) types.Type {
+				t.Helper()
+				return namedOf(t, "row", types.NewSlice(types.Typ[types.Int]))
+			},
+			want: isa.RegisterGeneral,
+		},
 		{name: "a value that is not a slice falls through to its bank", build: func(*testing.T) types.Type { return types.Typ[types.Int] }, want: isa.RegisterInt},
 	}
 
@@ -144,10 +165,38 @@ func TestKindForTypedSliceLooksThroughANameThatCallSlotsDoNot(t *testing.T) {
 		want  isa.RegisterKind
 	}{
 		{name: "a slice of int", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Int]) }, want: isa.RegisterSliceInt},
-		{name: "a named slice of int", build: func(t *testing.T) types.Type { return namedOf(t, "row", types.NewSlice(types.Typ[types.Int])) }, want: isa.RegisterSliceInt},
-		{name: "a named slice of byte", build: func(t *testing.T) types.Type { return namedOf(t, "blob", types.NewSlice(types.Typ[types.Uint8])) }, want: isa.RegisterSliceByte},
-		{name: "a slice of a named byte still reads as a byte slice", build: func(t *testing.T) types.Type { return types.NewSlice(namedOf(t, "octet", types.Typ[types.Uint8])) }, want: isa.RegisterSliceByte},
-		{name: "a slice of a named integer is boxed because the element is not a bare basic", build: func(t *testing.T) types.Type { return types.NewSlice(namedOf(t, "counter", types.Typ[types.Int])) }, want: isa.RegisterGeneral},
+		{
+			name: "a named slice of int",
+			build: func(t *testing.T) types.Type {
+				t.Helper()
+				return namedOf(t, "row", types.NewSlice(types.Typ[types.Int]))
+			},
+			want: isa.RegisterSliceInt,
+		},
+		{
+			name: "a named slice of byte",
+			build: func(t *testing.T) types.Type {
+				t.Helper()
+				return namedOf(t, "blob", types.NewSlice(types.Typ[types.Uint8]))
+			},
+			want: isa.RegisterSliceByte,
+		},
+		{
+			name: "a slice of a named byte still reads as a byte slice",
+			build: func(t *testing.T) types.Type {
+				t.Helper()
+				return types.NewSlice(namedOf(t, "octet", types.Typ[types.Uint8]))
+			},
+			want: isa.RegisterSliceByte,
+		},
+		{
+			name: "a slice of a named integer is boxed because the element is not a bare basic",
+			build: func(t *testing.T) types.Type {
+				t.Helper()
+				return types.NewSlice(namedOf(t, "counter", types.Typ[types.Int]))
+			},
+			want: isa.RegisterGeneral,
+		},
 		{name: "a slice of a narrow element is boxed", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.Int16]) }, want: isa.RegisterGeneral},
 		{name: "a value that is not a slice is boxed", build: func(*testing.T) types.Type { return types.Typ[types.Int] }, want: isa.RegisterGeneral},
 	}
@@ -174,7 +223,14 @@ func TestNarrowIntegerBitWidthReportsOnlyTheSubWordWidths(t *testing.T) {
 		{name: "a uint16", build: func(*testing.T) types.Type { return types.Typ[types.Uint16] }, want: isa.NarrowIntegerBitWidth16},
 		{name: "an int32", build: func(*testing.T) types.Type { return types.Typ[types.Int32] }, want: isa.NarrowIntegerBitWidth32},
 		{name: "a uint32", build: func(*testing.T) types.Type { return types.Typ[types.Uint32] }, want: isa.NarrowIntegerBitWidth32},
-		{name: "a named int8 is still narrow", build: func(t *testing.T) types.Type { return namedOf(t, "small", types.Typ[types.Int8]) }, want: isa.NarrowIntegerBitWidth8},
+		{
+			name: "a named int8 is still narrow",
+			build: func(t *testing.T) types.Type {
+				t.Helper()
+				return namedOf(t, "small", types.Typ[types.Int8])
+			},
+			want: isa.NarrowIntegerBitWidth8,
+		},
 		{name: "an int is a whole word", build: func(*testing.T) types.Type { return types.Typ[types.Int] }, want: 0},
 		{name: "an int64 is a whole word", build: func(*testing.T) types.Type { return types.Typ[types.Int64] }, want: 0},
 		{name: "a uint64 is a whole word", build: func(*testing.T) types.Type { return types.Typ[types.Uint64] }, want: 0},
@@ -277,7 +333,14 @@ func TestIsTypeParameterLooksThroughNamesAndAliases(t *testing.T) {
 		{name: "a plain int", build: func(*testing.T) types.Type { return types.Typ[types.Int] }, want: false},
 		{name: "no type at all", build: func(*testing.T) types.Type { return nil }, want: false},
 		{name: "a slice of a type parameter is not itself one", build: func(*testing.T) types.Type { return types.NewSlice(typeParameter) }, want: false},
-		{name: "a named type over an int", build: func(t *testing.T) types.Type { return namedOf(t, "counter", types.Typ[types.Int]) }, want: false},
+		{
+			name: "a named type over an int",
+			build: func(t *testing.T) types.Type {
+				t.Helper()
+				return namedOf(t, "counter", types.Typ[types.Int])
+			},
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -289,6 +352,7 @@ func TestIsTypeParameterLooksThroughNamesAndAliases(t *testing.T) {
 }
 
 func TestContainsTypeParameterWalksIntoEveryComposite(t *testing.T) {
+	t.Helper()
 	t.Parallel()
 
 	typeParameter := types.NewTypeParam(types.NewTypeName(0, nil, "T", nil), types.NewInterfaceType(nil, nil))
@@ -344,6 +408,7 @@ func TestContainsTypeParameterWalksIntoEveryComposite(t *testing.T) {
 		{
 			name: "a named type over a struct with an abstract field",
 			build: func(t *testing.T) types.Type {
+				t.Helper()
 				return namedOf(t, "holder", types.NewStruct([]*types.Var{types.NewField(0, pkg, "V", typeParameter, false)}, nil))
 			},
 			want: true,
@@ -351,6 +416,7 @@ func TestContainsTypeParameterWalksIntoEveryComposite(t *testing.T) {
 		{
 			name: "a slice of a named type over an abstract struct",
 			build: func(t *testing.T) types.Type {
+				t.Helper()
 				return types.NewSlice(namedOf(t, "holder", types.NewStruct([]*types.Var{types.NewField(0, pkg, "V", typeParameter, false)}, nil)))
 			},
 			want: true,
@@ -365,6 +431,7 @@ func TestContainsTypeParameterWalksIntoEveryComposite(t *testing.T) {
 		{
 			name: "a self-referential struct that also holds a type parameter",
 			build: func(t *testing.T) types.Type {
+				t.Helper()
 				named, ok := namedOf(t, "node", nil).(*types.Named)
 				require.True(t, ok)
 				named.SetUnderlying(types.NewStruct([]*types.Var{
@@ -385,6 +452,7 @@ func TestContainsTypeParameterWalksIntoEveryComposite(t *testing.T) {
 		{
 			name: "a named type over a concrete struct",
 			build: func(t *testing.T) types.Type {
+				t.Helper()
 				return namedOf(t, "point", types.NewStruct([]*types.Var{types.NewField(0, pkg, "X", types.Typ[types.Int], false)}, nil))
 			},
 			want: false,
@@ -392,6 +460,7 @@ func TestContainsTypeParameterWalksIntoEveryComposite(t *testing.T) {
 		{
 			name: "a self-referential struct terminates without a parameter",
 			build: func(t *testing.T) types.Type {
+				t.Helper()
 				named, ok := namedOf(t, "node", nil).(*types.Named)
 				require.True(t, ok)
 				named.SetUnderlying(types.NewStruct([]*types.Var{types.NewField(0, pkg, "Next", types.NewPointer(named), false)}, nil))
@@ -426,7 +495,14 @@ func TestCanonicalTypeStripsAliasesAndRebuildsComposites(t *testing.T) {
 		{name: "a pointer to int", build: func(*testing.T) types.Type { return types.NewPointer(types.Typ[types.Int]) }, want: "*int"},
 		{name: "an array of int", build: func(*testing.T) types.Type { return types.NewArray(types.Typ[types.Int], 4) }, want: "[4]int"},
 		{name: "a channel of int", build: func(*testing.T) types.Type { return types.NewChan(types.SendRecv, types.Typ[types.Int]) }, want: "chan int"},
-		{name: "a named type keeps its name", build: func(t *testing.T) types.Type { return namedOf(t, "counter", types.Typ[types.Int]) }, want: "main.counter"},
+		{
+			name: "a named type keeps its name",
+			build: func(t *testing.T) types.Type {
+				t.Helper()
+				return namedOf(t, "counter", types.Typ[types.Int])
+			},
+			want: "main.counter",
+		},
 	}
 
 	for _, tt := range tests {
@@ -460,7 +536,14 @@ func TestRuntimeTypeStringRendersWhatTheEngineStoresAsATypeName(t *testing.T) {
 		{name: "a plain int", build: func(*testing.T) types.Type { return types.Typ[types.Int] }, want: "int"},
 		{name: "a slice of string", build: func(*testing.T) types.Type { return types.NewSlice(types.Typ[types.String]) }, want: "[]string"},
 		{name: "a map of string to int", build: func(*testing.T) types.Type { return types.NewMap(types.Typ[types.String], types.Typ[types.Int]) }, want: "map[string]int"},
-		{name: "a named type is qualified by its package name", build: func(t *testing.T) types.Type { return namedOf(t, "counter", types.Typ[types.Int]) }, want: "main.counter"},
+		{
+			name: "a named type is qualified by its package name",
+			build: func(t *testing.T) types.Type {
+				t.Helper()
+				return namedOf(t, "counter", types.Typ[types.Int])
+			},
+			want: "main.counter",
+		},
 		{
 			name: "a function type drops its parameter names",
 			build: func(*testing.T) types.Type {

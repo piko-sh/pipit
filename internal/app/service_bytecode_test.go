@@ -19,10 +19,10 @@
 package app
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/adapters"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/rootfs"
@@ -51,19 +51,19 @@ func TestRecoverSurvivesBytecodeRoundTrip(t *testing.T) {
 	bytecodeStore := adapters.NewBytecodeStore(store)
 
 	service := newTestService(t, WithBytecodeStore(bytecodeStore))
-	compiled, err := service.CompileFileSet(context.Background(),
+	compiled, err := service.CompileFileSet(t.Context(),
 		map[string]string{"main.go": recoverRoundTripSource})
 	require.NoError(t, err)
 
-	direct, err := service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
+	direct, err := service.ExecuteEntrypoint(t.Context(), compiled, "EntrypointRun")
 	require.NoError(t, err)
 	require.EqualValues(t, -1, direct, "the compiled program recovers from the division panic")
 
-	require.NoError(t, service.SaveCompiled(context.Background(), "recover-round-trip", compiled))
-	loaded, err := service.LoadCompiled(context.Background(), "recover-round-trip")
+	require.NoError(t, service.SaveCompiled(t.Context(), "recover-round-trip", compiled))
+	loaded, err := service.LoadCompiled(t.Context(), "recover-round-trip")
 	require.NoError(t, err)
 
-	reloaded, err := service.ExecuteEntrypoint(context.Background(), loaded, "EntrypointRun")
+	reloaded, err := service.ExecuteEntrypoint(t.Context(), loaded, "EntrypointRun")
 	require.NoError(t, err)
 	require.EqualValues(t, -1, reloaded, "recover must work identically in a loaded bundle")
 
@@ -112,20 +112,20 @@ func TestReceiverAndSignatureSurviveBytecodeRoundTrip(t *testing.T) {
 	bytecodeStore := adapters.NewBytecodeStore(store)
 
 	service := newTestService(t, WithBytecodeStore(bytecodeStore))
-	compiled, err := service.CompileFileSet(context.Background(),
+	compiled, err := service.CompileFileSet(t.Context(),
 		map[string]string{"main.go": receiverRoundTripSource})
 	require.NoError(t, err)
 
-	direct, err := service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
+	direct, err := service.ExecuteEntrypoint(t.Context(), compiled, "EntrypointRun")
 	require.NoError(t, err)
 	require.EqualValues(t, 5, direct,
 		"the closure must assert to its own func type and not to a differently shaped one")
 
-	require.NoError(t, service.SaveCompiled(context.Background(), "receiver-round-trip", compiled))
-	loaded, err := service.LoadCompiled(context.Background(), "receiver-round-trip")
+	require.NoError(t, service.SaveCompiled(t.Context(), "receiver-round-trip", compiled))
+	loaded, err := service.LoadCompiled(t.Context(), "receiver-round-trip")
 	require.NoError(t, err)
 
-	reloaded, err := service.ExecuteEntrypoint(context.Background(), loaded, "EntrypointRun")
+	reloaded, err := service.ExecuteEntrypoint(t.Context(), loaded, "EntrypointRun")
 	require.NoError(t, err)
 	require.Equal(t, direct, reloaded,
 		"a loaded bundle must keep both the receiver marking and closure signature identity")

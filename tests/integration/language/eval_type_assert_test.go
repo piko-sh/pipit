@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalTypeSwitch(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "type switch int",
@@ -47,7 +47,7 @@ case string:
 	result = -1
 }
 result`,
-			expect: 43,
+			want: 43,
 		},
 		{
 			name: "type switch string",
@@ -60,7 +60,7 @@ case string:
 	result = v + " world"
 }
 result`,
-			expect: "hello world",
+			want: "hello world",
 		},
 		{
 			name: "type switch default",
@@ -75,7 +75,7 @@ default:
 	result = "other"
 }
 result`,
-			expect: "other",
+			want: "other",
 		},
 	}
 
@@ -83,9 +83,9 @@ result`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -94,23 +94,23 @@ func TestEvalTypeAssertion(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "assert interface to int",
 			code: `var x interface{} = 42
 v := x.(int)
 v`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "assert interface to string",
 			code: `var x interface{} = "hello"
 v := x.(string)
 v`,
-			expect: "hello",
+			want: "hello",
 		},
 		{
 			name: "assert interface to bool then branch",
@@ -120,7 +120,7 @@ if x.(bool) {
 	result = "yes"
 }
 result`,
-			expect: "yes",
+			want: "yes",
 		},
 		{
 			name: "assert interface to bool false then branch",
@@ -130,7 +130,7 @@ if x.(bool) {
 	result = "yes"
 }
 result`,
-			expect: "no",
+			want: "no",
 		},
 		{
 			name: "assert function result to bool as if condition",
@@ -140,7 +140,7 @@ if pick(true).(bool) {
 	result = "yes"
 }
 result`,
-			expect: "yes",
+			want: "yes",
 		},
 	}
 
@@ -148,9 +148,9 @@ result`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

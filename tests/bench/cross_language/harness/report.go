@@ -29,26 +29,57 @@ import (
 	"time"
 )
 
+const (
+	// reportFileMode is the mode of latest.json and latest.md.
+	reportFileMode = 0o600
+
+	// missingValue fills a report cell that has no value.
+	missingValue = "-"
+
+	// kibPerMiB converts KiB to MiB.
+	kibPerMiB = 1024
+
+	// kibPerGiB converts KiB to GiB.
+	kibPerGiB = kibPerMiB * 1024
+)
+
+// ReportEnvelope is the layout of latest.json.
 type ReportEnvelope struct {
+	// GeneratedAtUTC is when the report was written, in RFC 3339.
 	GeneratedAtUTC string `json:"generated_at_utc"`
 
+	// Host describes the machine and tool versions.
 	Host HostInfo `json:"host"`
 
-	Config ReportConf `json:"config"`
-
+	// Runs holds every measured run.
 	Runs []Result `json:"runs"`
 
+	// Aggregates summarises the runs per benchmark, runner and mode.
 	Aggregates []Aggregate `json:"aggregates"`
+
+	// Config records the run settings.
+	Config ReportConf `json:"config"`
 }
 
+// ReportConf is the run settings a report records.
 type ReportConf struct {
+	// Modes lists the modes measured.
+	Modes []RunMode `json:"modes"`
+
+	// RunsPerCombo is the number of measured runs per cell.
 	RunsPerCombo int `json:"runs_per_combo"`
 
+	// Warmup is the number of unmeasured runs before them.
 	Warmup int `json:"warmup"`
-
-	Modes []RunMode `json:"modes"`
 }
 
+// WriteJSONReport writes latest.json to the suite's output directory.
+//
+// Takes suite (*Suite) which supplies the host information, settings and directory.
+// Takes runs ([]Result) which holds every measured run.
+// Takes aggregates ([]Aggregate) which holds the summaries.
+//
+// Returns error when encoding or writing fails.
 func WriteJSONReport(suite *Suite, runs []Result, aggregates []Aggregate) error {
 	envelope := ReportEnvelope{
 		GeneratedAtUTC: time.Now().UTC().Format(time.RFC3339),
@@ -66,16 +97,23 @@ func WriteJSONReport(suite *Suite, runs []Result, aggregates []Aggregate) error 
 		return fmt.Errorf("marshal report: %w", err)
 	}
 	path := filepath.Join(suite.OutputDirectory, "latest.json")
-	return os.WriteFile(path, payload, 0o644)
+	return os.WriteFile(path, payload, reportFileMode)
 }
 
+// WriteMarkdownReport writes latest.md, the human-readable summary, to the suite's output
+// directory.
+//
+// Takes suite (*Suite) which supplies the host information, settings and directory.
+// Takes aggregates ([]Aggregate) which holds the summaries.
+//
+// Returns error when writing fails.
 func WriteMarkdownReport(suite *Suite, aggregates []Aggregate) error {
 	var builder strings.Builder
 	writeMarkdownHeader(&builder, suite)
 	writeMarkdownSummary(&builder, aggregates)
 	writeMarkdownPerBenchmark(&builder, aggregates)
 	path := filepath.Join(suite.OutputDirectory, "latest.md")
-	return os.WriteFile(path, []byte(builder.String()), 0o644)
+	return os.WriteFile(path, []byte(builder.String()), reportFileMode)
 }
 
 func writeMarkdownHeader(builder *strings.Builder, suite *Suite) {
@@ -211,12 +249,12 @@ func ratioColdVsPipit(aggregates []Aggregate, benchmark string, runner RunnerKin
 		return "1.00×"
 	}
 	if pipitCold == 0 {
-		return "-"
+		return missingValue
 	}
 	for _, aggregate := range aggregates {
 		if aggregate.Benchmark == benchmark && aggregate.Runner == runner && aggregate.Mode == mode {
 			if aggregate.ColdStartNanos == 0 {
-				return "-"
+				return missingValue
 			}
 			ratio := float64(aggregate.ColdStartNanos) / float64(pipitCold)
 			return fmt.Sprintf("%.2f×", ratio)
@@ -225,54 +263,43 @@ func ratioColdVsPipit(aggregates []Aggregate, benchmark string, runner RunnerKin
 	return "_miss_"
 }
 
-func medianForCell(aggregates []Aggregate, benchmark string, runner RunnerKind, mode RunMode) int64 {
-	for _, aggregate := range aggregates {
-		if aggregate.Benchmark == benchmark && aggregate.Runner == runner && aggregate.Mode == mode {
-			return aggregate.MedianNanos
-		}
-	}
-	return 0
-}
-
-func ratioVsPipit(aggregates []Aggregate, benchmark string, runner RunnerKind, mode RunMode, pipitMedian int64) string {
-	for _, aggregate := range aggregates {
-		if aggregate.Benchmark == benchmark && aggregate.Runner == runner && aggregate.Mode == mode {
-			if pipitMedian == 0 {
-				return "-"
-			}
-			ratio := float64(aggregate.MedianNanos) / float64(pipitMedian)
-			return fmt.Sprintf("%.2f×", ratio)
-		}
-	}
-	return "-"
-}
-
+// formatNanos renders a duration in the largest unit below it.
+//
+// Takes nanos (int64) which is the duration.
+//
+// Returns string which is the duration with its unit, or missingValue when not positive.
 func formatNanos(nanos int64) string {
 	if nanos <= 0 {
-		return "-"
+		return missingValue
 	}
+	duration := time.Duration(nanos)
 	switch {
-	case nanos < 1_000:
+	case duration < time.Microsecond:
 		return fmt.Sprintf("%d ns", nanos)
-	case nanos < 1_000_000:
-		return fmt.Sprintf("%.1f µs", float64(nanos)/1_000)
-	case nanos < 1_000_000_000:
-		return fmt.Sprintf("%.2f ms", float64(nanos)/1_000_000)
+	case duration < time.Millisecond:
+		return fmt.Sprintf("%.1f µs", float64(nanos)/float64(time.Microsecond))
+	case duration < time.Second:
+		return fmt.Sprintf("%.2f ms", float64(nanos)/float64(time.Millisecond))
 	default:
-		return fmt.Sprintf("%.2f s", float64(nanos)/1_000_000_000)
+		return fmt.Sprintf("%.2f s", duration.Seconds())
 	}
 }
 
+// formatRSS renders a memory size in the largest binary unit below it.
+//
+// Takes kib (int64) which is the size in KiB.
+//
+// Returns string which is the size with its unit, or missingValue when not positive.
 func formatRSS(kib int64) string {
 	if kib <= 0 {
-		return "-"
+		return missingValue
 	}
 	switch {
-	case kib < 1024:
+	case kib < kibPerMiB:
 		return fmt.Sprintf("%d KiB", kib)
-	case kib < 1024*1024:
-		return fmt.Sprintf("%.1f MiB", float64(kib)/1024)
+	case kib < kibPerGiB:
+		return fmt.Sprintf("%.1f MiB", float64(kib)/kibPerMiB)
 	default:
-		return fmt.Sprintf("%.2f GiB", float64(kib)/(1024*1024))
+		return fmt.Sprintf("%.2f GiB", float64(kib)/kibPerGiB)
 	}
 }

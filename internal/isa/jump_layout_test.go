@@ -27,7 +27,7 @@ import (
 func TestJumpLayoutOfClassifiesEveryLayout(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	tests := []struct {
 		name         string
 		instr        Instruction
 		layout       JumpLayout
@@ -63,12 +63,12 @@ func TestJumpLayoutOfClassifiesEveryLayout(t *testing.T) {
 		{name: "return transfers control without an offset", instr: NewTier2Instruction(SubOpTier2Return, 1), layout: JumpLayoutNone},
 	}
 
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			layout, trailingNops := JumpLayoutOf(testCase.instr)
-			require.Equal(t, testCase.layout, layout)
-			require.Equal(t, testCase.trailingNops, trailingNops)
+			layout, trailingNops := JumpLayoutOf(tt.instr)
+			require.Equal(t, tt.layout, layout)
+			require.Equal(t, tt.trailingNops, trailingNops)
 		})
 	}
 }

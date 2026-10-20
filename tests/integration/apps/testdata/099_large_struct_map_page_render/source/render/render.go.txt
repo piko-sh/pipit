@@ -1,0 +1,23 @@
+package render
+
+import (
+	"fmt"
+	"strings"
+
+	"testpkg/posts"
+	"testpkg/related"
+)
+
+func Page(slug string) (string, bool) {
+	post, ok := posts.Find(slug)
+	if !ok || post.Draft {
+		return "", false
+	}
+	var page strings.Builder
+	fmt.Fprintf(&page, "<h1>%s</h1><p>%s</p><p>%d min, %s</p><ul>", post.Title, post.Description, post.Minutes, post.Year)
+	for _, other := range related.Related(slug, 3) {
+		fmt.Fprintf(&page, "<li><a href=%q>%s</a></li>", other.URL, other.Title)
+	}
+	page.WriteString("</ul>")
+	return page.String(), true
+}

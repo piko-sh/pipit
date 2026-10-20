@@ -31,8 +31,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function lookups
-;   registers: int=7 float=3 string=11 general=12 bool=2 uint=1 sliceInt=1 sliceFloat=1 sliceString=1 sliceBool=1 sliceByte=1
-;   dispatch:  asm=152 shim=85 exit=2 go=46
+;   registers: int=5 float=3 string=7 general=9 bool=2 uint=1 sliceInt=1 sliceFloat=1 sliceString=1 sliceBool=1 sliceByte=1
+;   dispatch:  asm=153 shim=85 exit=2 go=46
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -146,11 +146,11 @@
 0099 A 1:LOAD_INT_CONST_SMALL      75   2   2    ; ints[2] = 2
 0100 A 1:SLICE_GET_STRING_DIRECT   23   4   0
 0101   0:EXT                        2   0   0
-0102 S 0:CONCAT_STRING              5   3   4
-0103 A 0:LOAD_STRING_CONST          6   7   0    ; strings[6] = ","
-0104 S 0:CONCAT_STRING              7   5   6
-0105 S 0:CONCAT_STRING              8   0   7
-0106 A 1:MOVE_STRING               37   0   8
+0102 S 0:CONCAT_STRING              3   3   4
+0103 A 0:LOAD_STRING_CONST          4   7   0    ; strings[4] = ","
+0104 S 0:CONCAT_STRING              3   3   4
+0105 S 0:CONCAT_STRING              4   0   3
+0106 A 1:MOVE_STRING               37   0   4
 0107 A 1:LEN_SLICE_STRING_DIRECT   25   0   0
 0108 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
 0109 A 1:LT_INT_JUMP_FALSE        116   1   0
@@ -188,179 +188,180 @@
 0141 A 0:ADD_INT_CONST              1   1   2    ; const = 1
 0142 A 1:JUMP                      74 250 255    ; goto -6
 0143 A 0:LOAD_STRING_CONST          1  10   0    ; strings[1] = "grown"
-0144 X 0:APPEND_STRING_FAST         5   5   1
-0145 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0146 S 0:SLICE_GET_STRING           1   5   0
-0147 A 0:LOAD_STRING_CONST          2   7   0    ; strings[2] = ","
-0148 S 0:CONCAT_STRING              3   1   2
-0149 S 0:CONCAT_STRING              4   0   3
-0150 A 1:MOVE_STRING               37   0   4
-0151 A 0:LOAD_STRING_CONST          1   4   0    ; strings[1] = "b"
-0152 S 0:MAP_INDEX_OK_STRING_GENERAL   6   0   1
-0153   0:EXT                        1   0   0
-0154 G 1:ADOPT_GENERAL_TO_SLICES_STRING 157   0   6
-0155 A 1:MOVE_INT                  35   0   1
-0156 G 1:INT_TO_BOOL               54   0   0
-0157 A 1:STRCONV_FORMAT_BOOL        6   2   0
-0158 A 1:LEN_SLICE_STRING_DIRECT   25   2   0
-0159 A 1:STRCONV_ITOA               8   3   2
-0160 S 0:CONCAT_STRING              4   2   3
-0161 G 2:TIER2_LOAD_NIL             0   9   7
-0162 S 0:PACK_INTERFACE             8   0   9
-0163 A 0:EQ_GENERAL                 3   8   7
-0164 G 1:INT_TO_BOOL               54   1   3
-0165 A 1:STRCONV_FORMAT_BOOL        6   5   1
-0166 S 0:CONCAT_STRING              6   4   5
-0167 A 0:LOAD_STRING_CONST          7   7   0    ; strings[7] = ","
-0168 S 0:CONCAT_STRING              8   6   7
-0169 S 0:CONCAT_STRING              9   0   8
-0170 A 1:MOVE_STRING               37   0   9
-0171 A 0:LOAD_STRING_CONST          2   0   0    ; strings[2] = "a"
-0172 S 0:MAP_INDEX_OK_STRING_GENERAL   7   1   2
-0173   0:EXT                        2   0   0
-0174 G 1:ADOPT_GENERAL_TO_SLICES_INT 156   0   7
-0175 A 1:MOVE_INT                  35   0   2
-0176 G 1:INT_TO_BOOL               54   0   0
-0177 A 1:STRCONV_FORMAT_BOOL        6   3   0
-0178 A 1:CALL                     128   0   0    ; call (site 0)
-0179 S 0:CONCAT_STRING              5   3   4
-0180 S 0:CONCAT_STRING              6   0   5
-0181 A 1:MOVE_STRING               37   0   6
-0182 A 1:LOAD_INT_CONST_SMALL      75   3  20    ; ints[3] = 20
-0183 A 1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
-0184 A 0:SLICE_SET_INT_DIRECT       0   4   3
-0185 A 0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "a"
-0186 S 0:MAP_GET_STRING_GENERAL     8   1   3
-0187 A 1:CALL                     128   1   0    ; call (site 1)
-0188 A 0:LOAD_STRING_CONST          5   7   0    ; strings[5] = ","
-0189 S 0:CONCAT_STRING              6   4   5
-0190 S 0:CONCAT_STRING              7   0   6
-0191 A 1:MOVE_STRING               37   0   7
-0192 A 1:LOAD_INT_CONST_SMALL      75   3   7    ; ints[3] = 7
-0193 S 0:MAP_GET_INT_GENERAL        8   2   3
-0194 G 1:ADOPT_GENERAL_TO_SLICES_FLOAT 155   0   8
-0195 S 0:LOAD_GENERAL_CONST         8   0   0
-0196 A 1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
-0197 A 1:SLICE_GET_FLOAT_DIRECT    19   0   0
-0198   0:EXT                        3   0   0
-0199 A 1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
-0200 A 1:SLICE_GET_FLOAT_DIRECT    19   1   0
-0201   0:EXT                        4   0   0
-0202 A 0:ADD_FLOAT                  2   0   1
-0203 A 1:LOAD_UINT_CONST_SMALL     99   0 102    ; uints[0] = 102
-0204 A 1:LOAD_INT_CONST_SMALL      75   5   1    ; ints[5] = 1
-0205 A 1:LOAD_INT_CONST_SMALL      75   6  64    ; ints[6] = 64
-0206 G 1:CALL_NATIVE              130   2   0    ; call native general[8] (site 2)
-0207 A 0:LOAD_STRING_CONST          4   7   0    ; strings[4] = ","
-0208 S 0:CONCAT_STRING              5   3   4
-0209 S 0:CONCAT_STRING              6   0   5
-0210 A 1:MOVE_STRING               37   0   6
-0211 A 0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "a"
-0212 S 0:MAP_GET_STRING_GENERAL     8   3   3
-0213 G 1:ADOPT_GENERAL_TO_SLICES_BOOL 158   0   8
-0214 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0215 A 1:LEN_SLICE_BOOL_DIRECT     29   3   0
-0216 A 1:LOAD_INT_CONST_SMALL      75   4   0    ; ints[4] = 0
-0217 A 1:LT_INT_JUMP_FALSE        116   4   3
-0218   0:EXT                        7   0   0
-0219 A 1:SLICE_GET_BOOL_DIRECT     27   0   0
-0220   0:EXT                        4   0   0
-0221 G 1:BOOL_TO_INT               53   6   0
-0222 A 0:JUMP_IF_FALSE              6   1   0    ; if ints[6] == 0 goto +1
-0223 A 2:TIER2_INC_INT              0   1   0
-0224 A 0:ADD_INT_CONST              4   4   2    ; const = 1
-0225 A 1:JUMP                      74 247 255    ; goto -9
-0226 A 1:STRCONV_ITOA               8   3   0
-0227 A 0:LOAD_STRING_CONST          4   7   0    ; strings[4] = ","
-0228 S 0:CONCAT_STRING              5   3   4
-0229 S 0:CONCAT_STRING              6   0   5
-0230 A 1:MOVE_STRING               37   0   6
-0231 A 0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "a"
-0232 S 0:MAP_GET_STRING_GENERAL     8   4   3
-0233 G 1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   8
-0234 A 1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
-0235 A 1:SLICE_GET_BYTE_DIRECT    112   0   0
-0236   0:EXT                        3   0   0
-0237 G 0:PACK_TYPED                 8   0   5
-0238   0:EXT                        9   0   0
-0239 S 0:CONVERT                    9   8   0
-0240   0:EXT                       10   0   0
-0241 G 1:MOVE_GENERAL_TO_STRING    45   3   9
-0242 A 1:LEN_SLICE_BYTE_DIRECT    114   4   0
-0243 A 1:STRCONV_ITOA               8   4   4
-0244 S 0:CONCAT_STRING              5   3   4
-0245 A 0:LOAD_STRING_CONST          6   7   0    ; strings[6] = ","
-0246 S 0:CONCAT_STRING              7   5   6
-0247 S 0:CONCAT_STRING              8   0   7
-0248 A 1:MOVE_STRING               37   0   8
-0249 A 0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "a"
-0250 S 0:MAP_GET_STRING_GENERAL     8   0   3
-0251 A 0:LOAD_STRING_CONST          4  11   0    ; strings[4] = "w"
-0252 X 0:APPEND_STRING_FAST         9   8   4
-0253 A 0:MOVE_GENERAL               4   9   1
-0254 A 0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "a"
-0255 S 0:MAP_SET_STRING_GENERAL     0   3   4
-0256 A 0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "a"
-0257 S 0:MAP_GET_STRING_GENERAL     8   0   3
-0258 G 1:LEN                       70   3   8
-0259 A 1:STRCONV_ITOA               8   4   3
-0260 A 0:LOAD_STRING_CONST          5   0   0    ; strings[5] = "a"
-0261 S 0:MAP_GET_STRING_GENERAL     9   0   5
-0262 A 1:LOAD_INT_CONST_SMALL      75   4   3    ; ints[4] = 3
-0263 S 0:SLICE_GET_STRING           6   9   4
-0264 S 0:CONCAT_STRING              7   4   6
-0265 A 0:LOAD_STRING_CONST          8   7   0    ; strings[8] = ","
-0266 S 0:CONCAT_STRING              9   7   8
-0267 S 0:CONCAT_STRING             10   0   9
-0268 A 1:MOVE_STRING               37   0  10
-0269 S 0:LOAD_GENERAL_CONST         4   1   0
-0270 A 0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "a"
-0271 S 0:MAP_INDEX_OK_STRING_GENERAL   8   0   3
-0272   0:EXT                        3   0   0
-0273 A 0:MOVE_GENERAL               4   8   0
-0274 A 1:MOVE_INT                  35   0   3
-0275 G 1:INT_TO_BOOL               54   0   0
-0276 A 1:STRCONV_FORMAT_BOOL        6   4   0
-0277 G 1:LEN                       70   4   4
-0278 A 1:STRCONV_ITOA               8   5   4
-0279 S 0:CONCAT_STRING              6   4   5
-0280 A 0:LOAD_STRING_CONST          7   7   0    ; strings[7] = ","
-0281 S 0:CONCAT_STRING              8   6   7
-0282 S 0:CONCAT_STRING              9   0   8
-0283 A 1:MOVE_STRING               37   0   9
-0284 G 2:MAKE_MAP                   0  12   9
-0285   0:EXT                        0   0   1
-0286 A 0:LOAD_STRING_CONST          4   0   0    ; strings[4] = "a"
-0287 A 1:LOAD_INT_CONST_SMALL      75   4   2    ; ints[4] = 2
-0288 S 0:MAKE_SLICE                10   4   4
-0289   0:EXT                        1   0   0
-0290 A 0:LOAD_STRING_CONST          5  12   0    ; strings[5] = "n1"
-0291 A 1:LOAD_INT_CONST_SMALL      75   4   0    ; ints[4] = 0
-0292 G 1:MOVE_STRING_TO_GENERAL    44  11   5
-0293 S 0:INDEX_SET                 10   4  11
-0294 A 0:LOAD_STRING_CONST          5  13   0    ; strings[5] = "n2"
-0295 A 1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
-0296 G 1:MOVE_STRING_TO_GENERAL    44  11   5
-0297 S 0:INDEX_SET                 10   4  11
-0298 G 1:MOVE_STRING_TO_GENERAL    44  11   4
-0299 S 0:MAP_SET                    9  11  10
-0300 A 0:MOVE_GENERAL               4   9   1
-0301 A 0:LOAD_STRING_CONST          4   0   0    ; strings[4] = "a"
-0302 S 0:MAP_GET_STRING_GENERAL     9   4   4
-0303 A 0:MOVE_GENERAL               0   9   1
-0304 A 1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
-0305 S 0:SLICE_GET_STRING           4   0   4
-0306 G 1:LEN                       70   5   0
-0307 A 1:STRCONV_ITOA               8   5   5
-0308 S 0:CONCAT_STRING              6   4   5
-0309 S 0:CONCAT_STRING              7   0   6
-0310 A 1:MOVE_STRING               37   0   7
-0311 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0144 X 0:APPEND_STRING_FAST         6   5   1
+0145 A 0:MOVE_GENERAL               5   6   1
+0146 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0147 S 0:SLICE_GET_STRING           1   5   0
+0148 A 0:LOAD_STRING_CONST          2   7   0    ; strings[2] = ","
+0149 S 0:CONCAT_STRING              3   1   2
+0150 S 0:CONCAT_STRING              4   0   3
+0151 A 1:MOVE_STRING               37   0   4
+0152 A 0:LOAD_STRING_CONST          1   4   0    ; strings[1] = "b"
+0153 S 0:MAP_INDEX_OK_STRING_GENERAL   6   0   1
+0154   0:EXT                        1   0   0
+0155 G 1:ADOPT_GENERAL_TO_SLICES_STRING 157   0   6
+0156 A 1:MOVE_INT                  35   0   1
+0157 G 1:INT_TO_BOOL               54   0   0
+0158 A 1:STRCONV_FORMAT_BOOL        6   1   0
+0159 A 1:LEN_SLICE_STRING_DIRECT   25   1   0
+0160 A 1:STRCONV_ITOA               8   2   1
+0161 S 0:CONCAT_STRING              3   1   2
+0162 G 2:TIER2_LOAD_NIL             0   9   6
+0163 S 0:PACK_INTERFACE             7   0   9
+0164 A 0:EQ_GENERAL                 2   7   6
+0165 G 1:INT_TO_BOOL               54   1   2
+0166 A 1:STRCONV_FORMAT_BOOL        6   4   1
+0167 S 0:CONCAT_STRING              3   3   4
+0168 A 0:LOAD_STRING_CONST          4   7   0    ; strings[4] = ","
+0169 S 0:CONCAT_STRING              3   3   4
+0170 S 0:CONCAT_STRING              4   0   3
+0171 A 1:MOVE_STRING               37   0   4
+0172 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "a"
+0173 S 0:MAP_INDEX_OK_STRING_GENERAL   6   1   1
+0174   0:EXT                        1   0   0
+0175 G 1:ADOPT_GENERAL_TO_SLICES_INT 156   0   6
+0176 A 1:MOVE_INT                  35   0   1
+0177 G 1:INT_TO_BOOL               54   0   0
+0178 A 1:STRCONV_FORMAT_BOOL        6   1   0
+0179 A 1:CALL                     128   0   0    ; call (site 0)
+0180 S 0:CONCAT_STRING              3   1   2
+0181 S 0:CONCAT_STRING              4   0   3
+0182 A 1:MOVE_STRING               37   0   4
+0183 A 1:LOAD_INT_CONST_SMALL      75   1  20    ; ints[1] = 20
+0184 A 1:LOAD_INT_CONST_SMALL      75   2   1    ; ints[2] = 1
+0185 A 0:SLICE_SET_INT_DIRECT       0   2   1
+0186 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "a"
+0187 S 0:MAP_GET_STRING_GENERAL     6   1   1
+0188 A 1:CALL                     128   1   0    ; call (site 1)
+0189 A 0:LOAD_STRING_CONST          3   7   0    ; strings[3] = ","
+0190 S 0:CONCAT_STRING              4   2   3
+0191 S 0:CONCAT_STRING              5   0   4
+0192 A 1:MOVE_STRING               37   0   5
+0193 A 1:LOAD_INT_CONST_SMALL      75   1   7    ; ints[1] = 7
+0194 S 0:MAP_GET_INT_GENERAL        6   2   1
+0195 G 1:ADOPT_GENERAL_TO_SLICES_FLOAT 155   0   6
+0196 S 0:LOAD_GENERAL_CONST         6   0   0
+0197 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0198 A 1:SLICE_GET_FLOAT_DIRECT    19   0   0
+0199   0:EXT                        1   0   0
+0200 A 1:LOAD_INT_CONST_SMALL      75   2   1    ; ints[2] = 1
+0201 A 1:SLICE_GET_FLOAT_DIRECT    19   1   0
+0202   0:EXT                        2   0   0
+0203 A 0:ADD_FLOAT                  2   0   1
+0204 A 1:LOAD_UINT_CONST_SMALL     99   0 102    ; uints[0] = 102
+0205 A 1:LOAD_INT_CONST_SMALL      75   3   1    ; ints[3] = 1
+0206 A 1:LOAD_INT_CONST_SMALL      75   4  64    ; ints[4] = 64
+0207 G 1:CALL_NATIVE              130   2   0    ; call native general[6] (site 2)
+0208 A 0:LOAD_STRING_CONST          2   7   0    ; strings[2] = ","
+0209 S 0:CONCAT_STRING              3   1   2
+0210 S 0:CONCAT_STRING              4   0   3
+0211 A 1:MOVE_STRING               37   0   4
+0212 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "a"
+0213 S 0:MAP_GET_STRING_GENERAL     6   3   1
+0214 G 1:ADOPT_GENERAL_TO_SLICES_BOOL 158   0   6
+0215 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
+0216 A 1:LEN_SLICE_BOOL_DIRECT     29   1   0
+0217 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0218 A 1:LT_INT_JUMP_FALSE        116   2   1
+0219   0:EXT                        7   0   0
+0220 A 1:SLICE_GET_BOOL_DIRECT     27   0   0
+0221   0:EXT                        2   0   0
+0222 G 1:BOOL_TO_INT               53   4   0
+0223 A 0:JUMP_IF_FALSE              4   1   0    ; if ints[4] == 0 goto +1
+0224 A 2:TIER2_INC_INT              0   1   0
+0225 A 0:ADD_INT_CONST              2   2   2    ; const = 1
+0226 A 1:JUMP                      74 247 255    ; goto -9
+0227 A 1:STRCONV_ITOA               8   1   0
+0228 A 0:LOAD_STRING_CONST          2   7   0    ; strings[2] = ","
+0229 S 0:CONCAT_STRING              3   1   2
+0230 S 0:CONCAT_STRING              4   0   3
+0231 A 1:MOVE_STRING               37   0   4
+0232 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "a"
+0233 S 0:MAP_GET_STRING_GENERAL     6   4   1
+0234 G 1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   6
+0235 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0236 A 1:SLICE_GET_BYTE_DIRECT    112   0   0
+0237   0:EXT                        1   0   0
+0238 G 0:PACK_TYPED                 6   0   5
+0239   0:EXT                        9   0   0
+0240 S 0:CONVERT                    7   6   0
+0241   0:EXT                       10   0   0
+0242 G 1:MOVE_GENERAL_TO_STRING    45   1   7
+0243 A 1:LEN_SLICE_BYTE_DIRECT    114   2   0
+0244 A 1:STRCONV_ITOA               8   2   2
+0245 S 0:CONCAT_STRING              3   1   2
+0246 A 0:LOAD_STRING_CONST          4   7   0    ; strings[4] = ","
+0247 S 0:CONCAT_STRING              3   3   4
+0248 S 0:CONCAT_STRING              4   0   3
+0249 A 1:MOVE_STRING               37   0   4
+0250 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "a"
+0251 S 0:MAP_GET_STRING_GENERAL     6   0   1
+0252 A 0:LOAD_STRING_CONST          2  11   0    ; strings[2] = "w"
+0253 X 0:APPEND_STRING_FAST         7   6   2
+0254 A 0:MOVE_GENERAL               4   7   1
+0255 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "a"
+0256 S 0:MAP_SET_STRING_GENERAL     0   1   4
+0257 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "a"
+0258 S 0:MAP_GET_STRING_GENERAL     6   0   1
+0259 G 1:LEN                       70   1   6
+0260 A 1:STRCONV_ITOA               8   2   1
+0261 A 0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "a"
+0262 S 0:MAP_GET_STRING_GENERAL     7   0   3
+0263 A 1:LOAD_INT_CONST_SMALL      75   2   3    ; ints[2] = 3
+0264 S 0:SLICE_GET_STRING           4   7   2
+0265 S 0:CONCAT_STRING              5   2   4
+0266 A 0:LOAD_STRING_CONST          6   7   0    ; strings[6] = ","
+0267 S 0:CONCAT_STRING              5   5   6
+0268 S 0:CONCAT_STRING              6   0   5
+0269 A 1:MOVE_STRING               37   0   6
+0270 S 0:LOAD_GENERAL_CONST         4   1   0
+0271 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "a"
+0272 S 0:MAP_INDEX_OK_STRING_GENERAL   6   0   1
+0273   0:EXT                        1   0   0
+0274 A 0:MOVE_GENERAL               4   6   0
+0275 A 1:MOVE_INT                  35   0   1
+0276 G 1:INT_TO_BOOL               54   0   0
+0277 A 1:STRCONV_FORMAT_BOOL        6   1   0
+0278 G 1:LEN                       70   1   4
+0279 A 1:STRCONV_ITOA               8   2   1
+0280 S 0:CONCAT_STRING              3   1   2
+0281 A 0:LOAD_STRING_CONST          4   7   0    ; strings[4] = ","
+0282 S 0:CONCAT_STRING              3   3   4
+0283 S 0:CONCAT_STRING              4   0   3
+0284 A 1:MOVE_STRING               37   0   4
+0285 G 2:MAKE_MAP                   0  12   6
+0286   0:EXT                        0   0   1
+0287 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "a"
+0288 A 1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
+0289 S 0:MAKE_SLICE                 7   1   1
+0290   0:EXT                        1   0   0
+0291 A 0:LOAD_STRING_CONST          2  12   0    ; strings[2] = "n1"
+0292 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0293 G 1:MOVE_STRING_TO_GENERAL    44   8   2
+0294 S 0:INDEX_SET                  7   1   8
+0295 A 0:LOAD_STRING_CONST          2  13   0    ; strings[2] = "n2"
+0296 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0297 G 1:MOVE_STRING_TO_GENERAL    44   8   2
+0298 S 0:INDEX_SET                  7   1   8
+0299 G 1:MOVE_STRING_TO_GENERAL    44   8   1
+0300 S 0:MAP_SET                    6   8   7
+0301 A 0:MOVE_GENERAL               4   6   1
+0302 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "a"
+0303 S 0:MAP_GET_STRING_GENERAL     6   4   1
+0304 A 0:MOVE_GENERAL               0   6   1
+0305 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
+0306 S 0:SLICE_GET_STRING           1   0   1
+0307 G 1:LEN                       70   2   0
+0308 A 1:STRCONV_ITOA               8   2   2
+0309 S 0:CONCAT_STRING              3   1   2
+0310 S 0:CONCAT_STRING              4   0   3
+0311 A 1:MOVE_STRING               37   0   4
+0312 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function markov
-;   registers: int=11 string=5 general=3 sliceString=1
-;   dispatch:  asm=79 shim=42 exit=1 go=29
+;   registers: int=10 string=5 general=3 sliceString=1
+;   dispatch:  asm=77 shim=42 exit=1 go=29
 ;   params:    (int)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -499,47 +500,45 @@
 0127 A 1:MOVE_STRING               37   1   0
 0128 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
 0129 A 1:LT_INT_JUMP_FALSE        116   2   0
-0130   0:EXT                       34   0   0
+0130   0:EXT                       32   0   0
 0131 S 0:MAP_INDEX_OK_STRING_GENERAL   2   0   0
 0132   0:EXT                        5   0   0
 0133 G 1:ADOPT_GENERAL_TO_SLICES_STRING 157   0   2
 0134 A 1:MOVE_INT                  35   4   5
-0135 G 1:NOT                       52   7   4
-0136 A 0:JUMP_IF_TRUE               7   3   0    ; if ints[7] != 0 goto +3
-0137 A 1:LEN_SLICE_STRING_DIRECT   25   8   0
-0138 A 1:LOAD_INT_CONST_SMALL      75   9   0    ; ints[9] = 0
-0139 A 0:EQ_INT                     7   8   9
-0140 A 0:JUMP_IF_FALSE              7   9   0    ; if ints[7] == 0 goto +9
-0141 G 1:LEN                       70   6   1
-0142 A 0:REM_INT                    7   1   6
-0143 S 0:SLICE_GET_STRING           2   1   7
+0135 G 1:NOT                       52   6   4
+0136 A 0:JUMP_IF_TRUE               6   3   0    ; if ints[6] != 0 goto +3
+0137 A 1:LEN_SLICE_STRING_DIRECT   25   7   0
+0138 A 1:LOAD_INT_CONST_SMALL      75   8   0    ; ints[8] = 0
+0139 A 0:EQ_INT                     6   7   8
+0140 A 0:JUMP_IF_FALSE              6   8   0    ; if ints[6] == 0 goto +8
+0141 G 1:LEN                       70   5   1
+0142 A 0:REM_INT                    6   1   5
+0143 S 0:SLICE_GET_STRING           2   1   6
 0144 A 1:MOVE_STRING               37   0   2
 0145 A 0:LOAD_STRING_CONST          2  12   0    ; strings[2] = "|"
 0146 S 0:CONCAT_STRING              3   2   0
-0147 S 0:CONCAT_STRING              4   1   3
-0148 A 1:MOVE_STRING               37   1   4
-0149 A 1:JUMP                      74  13   0    ; goto 13
-0150 A 0:MUL_INT_CONST              7   1   5    ; const = 1103515245
-0151 A 0:ADD_INT_CONST              9   7   6    ; const = 12345
-0152 A 0:LOAD_INT_CONST            10   7   0    ; ints[10] = 2147483647
-0153 A 0:REM_INT                    1   9  10
-0154 A 1:LEN_SLICE_STRING_DIRECT   25   6   0
-0155 A 0:REM_INT                    7   1   6
-0156 A 1:SLICE_GET_STRING_DIRECT   23   2   0
-0157   0:EXT                        7   0   0
-0158 A 1:MOVE_STRING               37   0   2
-0159 A 0:LOAD_STRING_CONST          2  13   0    ; strings[2] = " "
-0160 S 0:CONCAT_STRING              3   2   0
-0161 S 0:CONCAT_STRING              4   1   3
-0162 A 1:MOVE_STRING               37   1   4
-0163 A 2:TIER2_INC_INT              0   1   2
-0164 A 1:JUMP                      74 220 255    ; goto -36
-0165 A 1:MOVE_STRING               37   0   1
-0166 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0147 S 0:CONCAT_STRING              1   1   3
+0148 A 1:JUMP                      74  12   0    ; goto 12
+0149 A 0:MUL_INT_CONST              6   1   5    ; const = 1103515245
+0150 A 0:ADD_INT_CONST              6   6   6    ; const = 12345
+0151 A 0:LOAD_INT_CONST             7   7   0    ; ints[7] = 2147483647
+0152 A 0:REM_INT                    1   6   7
+0153 A 1:LEN_SLICE_STRING_DIRECT   25   5   0
+0154 A 0:REM_INT                    6   1   5
+0155 A 1:SLICE_GET_STRING_DIRECT   23   2   0
+0156   0:EXT                        6   0   0
+0157 A 1:MOVE_STRING               37   0   2
+0158 A 0:LOAD_STRING_CONST          2  13   0    ; strings[2] = " "
+0159 S 0:CONCAT_STRING              3   2   0
+0160 S 0:CONCAT_STRING              1   1   3
+0161 A 2:TIER2_INC_INT              0   1   2
+0162 A 1:JUMP                      74 222 255    ; goto -34
+0163 A 1:MOVE_STRING               37   0   1
+0164 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=2 string=8
+;   registers: int=1 string=4
 ;   dispatch:  asm=8 shim=4 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (string)
@@ -554,10 +553,10 @@
 0002 S 0:CONCAT_STRING              2   0   1
 0003 A 1:LOAD_INT_CONST_SMALL      75   0  12    ; ints[0] = 12
 0004 A 1:CALL_SCALAR              134   1   0
-0005 S 0:CONCAT_STRING              4   2   3
-0006 A 0:LOAD_STRING_CONST          5   0   0    ; strings[5] = "|"
-0007 S 0:CONCAT_STRING              6   4   5
-0008 A 1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
+0005 S 0:CONCAT_STRING              2   2   3
+0006 A 0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "|"
+0007 S 0:CONCAT_STRING              2   2   3
+0008 A 1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
 0009 A 1:CALL_SCALAR              134   2   0
-0010 S 0:CONCAT_STRING              0   6   7
+0010 S 0:CONCAT_STRING              0   2   3
 0011 A 2:TIER2_RETURN               0  10   1    ; 1 values

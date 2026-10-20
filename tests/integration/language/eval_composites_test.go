@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,53 +32,53 @@ func TestEvalSliceLiteral(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "slice literal len",
 			code: `s := []int{10, 20, 30}
 len(s)`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "slice index",
 			code: `s := []int{10, 20, 30}
 s[1]`,
-			expect: 20,
+			want: 20,
 		},
 		{
 			name: "slice index last",
 			code: `s := []int{5, 10, 15, 20}
 s[3]`,
-			expect: 20,
+			want: 20,
 		},
 		{
 			name: "string slice",
 			code: `s := []string{"hello", "world"}
 s[0]`,
-			expect: "hello",
+			want: "hello",
 		},
 		{
 			name: "slice append and len",
 			code: `s := []int{1, 2}
 s = append(s, 3, 4)
 len(s)`,
-			expect: 4,
+			want: 4,
 		},
 		{
 			name: "slice append value",
 			code: `s := []int{1, 2}
 s = append(s, 3)
 s[2]`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "empty slice make",
 			code: `s := make([]int, 3)
 s[0] + s[1] + s[2]`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "slice set and get",
@@ -87,7 +87,7 @@ s[0] = 10
 s[1] = 20
 s[2] = 30
 s[0] + s[1] + s[2]`,
-			expect: 60,
+			want: 60,
 		},
 	}
 
@@ -95,9 +95,9 @@ s[0] + s[1] + s[2]`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -106,35 +106,35 @@ func TestEvalMapLiteral(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "map literal len",
 			code: `m := map[string]int{"a": 1, "b": 2}
 len(m)`,
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "map index",
 			code: `m := map[string]int{"x": 42}
 m["x"]`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "map set and get",
 			code: `m := make(map[string]int)
 m["key"] = 99
 m["key"]`,
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "map delete",
 			code: `m := map[string]int{"a": 1, "b": 2, "c": 3}
 delete(m, "b")
 len(m)`,
-			expect: 2,
+			want: 2,
 		},
 	}
 
@@ -142,9 +142,9 @@ len(m)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -153,9 +153,9 @@ func TestEvalForRange(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "range slice sum",
@@ -165,7 +165,7 @@ for _, v := range s {
 	sum = sum + v
 }
 sum`,
-			expect: 15,
+			want: 15,
 		},
 		{
 			name: "range slice index sum",
@@ -175,7 +175,7 @@ for i := range s {
 	sum = sum + i
 }
 sum`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "range string",
@@ -185,7 +185,7 @@ for range s {
 	count++
 }
 count`,
-			expect: 5,
+			want: 5,
 		},
 		{
 			name: "range slice compound assign",
@@ -197,7 +197,7 @@ for j := range s {
 	s[j] += 5
 }
 s[0] + s[1] + s[2]`,
-			expect: 75,
+			want: 75,
 		},
 		{
 			name: "range slice float value",
@@ -207,7 +207,7 @@ for _, v := range s {
 	sum += v
 }
 sum`,
-			expect: 7.5,
+			want: 7.5,
 		},
 		{
 			name: "range slice key only",
@@ -217,7 +217,7 @@ for i := range s {
 	sum += s[i]
 }
 sum`,
-			expect: 60,
+			want: 60,
 		},
 		{
 			name: "range slice no vars",
@@ -227,7 +227,7 @@ for range s {
 	count++
 }
 count`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "range bool slice count",
@@ -239,7 +239,7 @@ for _, v := range s {
 	}
 }
 count`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "range uint slice sum",
@@ -249,7 +249,7 @@ for _, v := range s {
 	total += v
 }
 total`,
-			expect: uint(60),
+			want: uint(60),
 		},
 		{
 			name: "iterations benchmark pattern",
@@ -264,7 +264,7 @@ for _, x := range s {
 	}
 }
 s[0]`,
-			expect: 1013,
+			want: 1013,
 		},
 	}
 
@@ -272,9 +272,9 @@ s[0]`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -283,21 +283,21 @@ func TestEvalBuiltins(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "len slice",
 			code: `s := []int{1, 2, 3}
 len(s)`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "cap slice",
 			code: `s := make([]int, 3, 10)
 cap(s)`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "copy slices",
@@ -305,7 +305,7 @@ cap(s)`,
 destination := make([]int, 3)
 copy(destination, source)
 destination[0] + destination[1] + destination[2]`,
-			expect: 6,
+			want: 6,
 		},
 	}
 
@@ -313,9 +313,9 @@ destination[0] + destination[1] + destination[2]`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -324,44 +324,44 @@ func TestEvalSliceExpr(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "slice low high",
 			code: `s := []int{10, 20, 30, 40, 50}
 t := s[1:3]
 len(t)`,
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "slice low high value",
 			code: `s := []int{10, 20, 30, 40, 50}
 t := s[1:4]
 t[0] + t[1] + t[2]`,
-			expect: 90,
+			want: 90,
 		},
 		{
 			name: "slice from start",
 			code: `s := []int{10, 20, 30}
 t := s[:2]
 t[0] + t[1]`,
-			expect: 30,
+			want: 30,
 		},
 		{
 			name: "slice to end",
 			code: `s := []int{10, 20, 30}
 t := s[1:]
 t[0] + t[1]`,
-			expect: 50,
+			want: 50,
 		},
 		{
 			name: "slice full copy",
 			code: `s := []int{10, 20, 30}
 t := s[:]
 len(t)`,
-			expect: 3,
+			want: 3,
 		},
 	}
 
@@ -369,9 +369,9 @@ len(t)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -380,16 +380,16 @@ func TestEvalStructLiteral(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "struct field access",
 			code: `type Point struct { X int; Y int }
 p := Point{X: 3, Y: 4}
 p.X + p.Y`,
-			expect: 7,
+			want: 7,
 		},
 		{
 			name: "struct field set",
@@ -397,14 +397,14 @@ p.X + p.Y`,
 p := Point{X: 1, Y: 2}
 p.X = 10
 p.X + p.Y`,
-			expect: 12,
+			want: 12,
 		},
 		{
 			name: "struct string field",
 			code: `type Named struct { Name string; Age int }
 n := Named{Name: "alice", Age: 30}
 n.Name`,
-			expect: "alice",
+			want: "alice",
 		},
 	}
 
@@ -412,9 +412,9 @@ n.Name`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -423,34 +423,34 @@ func TestEvalArrayLiteral(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "array index",
-			code:   "a := [3]int{10, 20, 30}\na[1]",
-			expect: 20,
+			name: "array index",
+			code: "a := [3]int{10, 20, 30}\na[1]",
+			want: 20,
 		},
 		{
-			name:   "array first",
-			code:   "a := [3]int{1, 2, 3}\na[0]",
-			expect: 1,
+			name: "array first",
+			code: "a := [3]int{1, 2, 3}\na[0]",
+			want: 1,
 		},
 		{
-			name:   "array last",
-			code:   "a := [3]int{1, 2, 3}\na[2]",
-			expect: 3,
+			name: "array last",
+			code: "a := [3]int{1, 2, 3}\na[2]",
+			want: 3,
 		},
 		{
-			name:   "array string",
-			code:   `a := [2]string{"hello", "world"}` + "\na[1]",
-			expect: "world",
+			name: "array string",
+			code: `a := [2]string{"hello", "world"}` + "\na[1]",
+			want: "world",
 		},
 		{
-			name:   "array len",
-			code:   "len([5]int{1, 2, 3, 4, 5})",
-			expect: 5,
+			name: "array len",
+			code: "len([5]int{1, 2, 3, 4, 5})",
+			want: 5,
 		},
 	}
 
@@ -458,9 +458,9 @@ func TestEvalArrayLiteral(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -469,21 +469,21 @@ func TestEvalTypeConversion(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "int to float",
 			code: `x := 5
 float64(x)`,
-			expect: float64(5),
+			want: float64(5),
 		},
 		{
 			name: "float to int",
 			code: `x := 3.7
 int(x)`,
-			expect: 3,
+			want: 3,
 		},
 	}
 
@@ -491,9 +491,9 @@ int(x)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -502,24 +502,24 @@ func TestEvalTypeConversionAcrossKinds(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "int var to string rune",
-			code:   "x := 65\nstring(x)",
-			expect: "A",
+			name: "int var to string rune",
+			code: "x := 65\nstring(x)",
+			want: "A",
 		},
 		{
-			name:   "string var to bytes len",
-			code:   "s := \"hello\"\nb := []byte(s)\nlen(b)",
-			expect: 5,
+			name: "string var to bytes len",
+			code: "s := \"hello\"\nb := []byte(s)\nlen(b)",
+			want: 5,
 		},
 		{
-			name:   "bytes var to string",
-			code:   "b := []byte{72, 105}\nstring(b)",
-			expect: "Hi",
+			name: "bytes var to string",
+			code: "b := []byte{72, 105}\nstring(b)",
+			want: "Hi",
 		},
 	}
 
@@ -527,9 +527,9 @@ func TestEvalTypeConversionAcrossKinds(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -538,9 +538,9 @@ func TestEvalForRangeMapTyped(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "range map float values",
@@ -550,7 +550,7 @@ for _, v := range m {
 	sum += v
 }
 sum`,
-			expect: 4.0,
+			want: 4.0,
 		},
 		{
 			name: "range map bool values",
@@ -562,7 +562,7 @@ for _, v := range m {
 	}
 }
 count`,
-			expect: 2,
+			want: 2,
 		},
 	}
 
@@ -570,9 +570,9 @@ count`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -581,9 +581,9 @@ func TestEvalForRangeMap(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "range map value sum",
@@ -593,7 +593,7 @@ for _, v := range m {
 	sum = sum + v
 }
 sum`,
-			expect: 6,
+			want: 6,
 		},
 		{
 			name: "range map count keys",
@@ -603,7 +603,7 @@ for range m {
 	count++
 }
 count`,
-			expect: 2,
+			want: 2,
 		},
 	}
 
@@ -611,9 +611,9 @@ count`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -622,37 +622,37 @@ func TestEvalStructFuncFields(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "func_field_call_basic",
 			code: `type Handler struct { Run func() int }
 h := Handler{Run: func() int { return 42 }}
 h.Run()`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "func_field_call_with_args",
 			code: `type Op struct { Compute func(int, int) int }
 op := Op{Compute: func(a, b int) int { return a + b }}
 op.Compute(10, 32)`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "func_field_call_returns_string",
 			code: `type Greeter struct { Greet func(string) string }
 g := Greeter{Greet: func(name string) string { return "hi " + name }}
 g.Greet("world")`,
-			expect: "hi world",
+			want: "hi world",
 		},
 		{
 			name: "func_field_create_pattern",
 			code: `type Factory struct { Create func() any }
 f := Factory{Create: func() any { return 99 }}
 f.Create()`,
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "func_field_in_map",
@@ -664,7 +664,7 @@ registry := map[string]Entry{
 	"double": {Name: "double", Invoke: func(x int) int { return x * 2 }},
 }
 registry["double"].Invoke(21)`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "func_field_reassign",
@@ -672,14 +672,14 @@ registry["double"].Invoke(21)`,
 r := Runner{Do: func() int { return 1 }}
 r.Do = func() int { return 2 }
 r.Do()`,
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "func_field_nil_check",
 			code: `type Handler struct { Run func() int }
 h := Handler{}
 h.Run == nil`,
-			expect: true,
+			want: true,
 		},
 	}
 
@@ -687,9 +687,9 @@ h.Run == nil`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -698,24 +698,24 @@ func TestEvalStructTags(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "struct_with_tags_constructs",
-			code:   "type Props struct {\n\tArticle string `prop:\"article\"`\n\tCount int `prop:\"count\"`\n}\np := Props{Article: \"hello\", Count: 3}\np.Article",
-			expect: "hello",
+			name: "struct_with_tags_constructs",
+			code: "type Props struct {\n\tArticle string `prop:\"article\"`\n\tCount int `prop:\"count\"`\n}\np := Props{Article: \"hello\", Count: 3}\np.Article",
+			want: "hello",
 		},
 		{
-			name:   "struct_with_json_tags",
-			code:   "type User struct {\n\tName string `json:\"name\"`\n\tAge int `json:\"age\"`\n}\nu := User{Name: \"alice\", Age: 30}\nu.Name",
-			expect: "alice",
+			name: "struct_with_json_tags",
+			code: "type User struct {\n\tName string `json:\"name\"`\n\tAge int `json:\"age\"`\n}\nu := User{Name: \"alice\", Age: 30}\nu.Name",
+			want: "alice",
 		},
 		{
-			name:   "struct_with_multiple_tags",
-			code:   "type Config struct {\n\tHost string `json:\"host\" yaml:\"host\"`\n\tPort int `json:\"port\" yaml:\"port\"`\n}\nc := Config{Host: \"localhost\", Port: 8080}\nc.Port",
-			expect: 8080,
+			name: "struct_with_multiple_tags",
+			code: "type Config struct {\n\tHost string `json:\"host\" yaml:\"host\"`\n\tPort int `json:\"port\" yaml:\"port\"`\n}\nc := Config{Host: \"localhost\", Port: 8080}\nc.Port",
+			want: 8080,
 		},
 	}
 
@@ -723,9 +723,9 @@ func TestEvalStructTags(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -734,7 +734,7 @@ func TestEvalSelfReferentialStruct(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -756,7 +756,7 @@ func run() string {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "root",
+			want:       "root",
 		},
 		{
 			name: "self_referential_slice_field_with_children",
@@ -776,7 +776,7 @@ func run() string {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "child",
+			want:       "child",
 		},
 		{
 			name: "self_referential_deeply_nested",
@@ -797,7 +797,7 @@ func run() string {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "leaf",
+			want:       "leaf",
 		},
 		{
 			name: "self_referential_pointer_field",
@@ -819,7 +819,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     6,
+			want:       6,
 		},
 		{
 			name: "self_referential_nil_children",
@@ -838,7 +838,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     0,
+			want:       0,
 		},
 		{
 			name: "self_referential_append_children",
@@ -859,7 +859,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     2,
+			want:       2,
 		},
 		{
 			name: "self_referential_many_string_fields",
@@ -883,7 +883,7 @@ func run() string {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "Child",
+			want:       "Child",
 		},
 	}
 
@@ -891,9 +891,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

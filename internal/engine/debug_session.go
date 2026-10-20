@@ -498,8 +498,8 @@ func (s *DebugSession) nextEvent(ctx context.Context) (DebugSessionEvent, error)
 	}
 }
 
-// register adds vm to the session on its goroutine when it enters its first dispatch
-// loop.
+// register adds vm to the debug session on its owning goroutine's first dispatch. If a
+// stop was already quiescent, it must wait again until this VM parks.
 //
 // Takes vm (*VM) which is entering run().
 //
@@ -519,6 +519,7 @@ func (s *DebugSession) register(vm *VM) *DebugThread {
 	thread.state = debugThreadRunning
 	s.threads[vm] = thread
 	s.running++
+	s.reopenQuiescenceLocked()
 	if tracker := vm.Limits.Tracker; tracker != nil {
 		s.trackers[tracker]++
 	}

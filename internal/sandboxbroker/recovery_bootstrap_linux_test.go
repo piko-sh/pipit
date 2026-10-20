@@ -23,86 +23,64 @@ package sandboxbroker
 import (
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"net"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 func TestRecoveryBootstrapRequiresClosedAdmission(t *testing.T) {
+	t.Parallel()
 	authority := testRecoveryAuthority(t, Read|Write|List)
 	record := testRecoveryAuthorityRecord(t, authority, 1)
 	journal := testRecoveryAuthorityJournal(t, authority)
 	call, err := authority.admit(brokerMessage(1, recoveryWritePayload))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := authority.record(journal, call, record); err != nil {
-		t.Fatal(err)
-	}
-	if bootstrap, err := authority.RecoveryBootstrap(journal); err == nil || bootstrap != nil {
-		t.Fatal("live admission allowed recovery")
-	}
+	require.NoError(t, err)
+	require.NoError(t, authority.record(journal, call, record))
+	blocked, err := authority.RecoveryBootstrap(journal)
+	require.Error(t, err, "live admission blocks recovery")
+	require.Nil(t, blocked)
 	authority.budget.Close()
-	if bootstrap, err := authority.RecoveryBootstrap(journal); err == nil || bootstrap != nil {
-		t.Fatal("outstanding reservation allowed recovery")
-	}
-	if err := call.Finish(0); err != nil {
-		t.Fatal(err)
-	}
+	blocked, err = authority.RecoveryBootstrap(journal)
+	require.Error(t, err, "an outstanding reservation blocks recovery")
+	require.Nil(t, blocked)
+	require.NoError(t, call.Finish(0))
 	bootstrap, err := authority.RecoveryBootstrap(journal)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer bootstrap.Close()
-	if _, err := bootstrap.RecoveryAuthority(); !errors.Is(err, ErrInvalidPolicy) {
-		t.Fatal("recovery policy created new execution authority:", err)
-	}
+	_, err = bootstrap.RecoveryAuthority()
+	require.ErrorIs(t, err, ErrInvalidPolicy, "recovery policy created new execution authority")
 	files, err := bootstrap.Files()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	policy, err := readLinuxBootstrap(files[0])
-	if err != nil || policy.Profile != filesystemRecoveryBootstrapProfile || len(policy.Recovery) != 1 ||
-		len(policy.Roots) != 1 || policy.Roots[0].Rights != Write {
-		t.Fatal("recovery bootstrap failed to narrow authority:", policy, err)
-	}
+	require.NoError(t, err, "recovery bootstrap failed to narrow authority: %v", policy)
+	require.Equal(t, filesystemRecoveryBootstrapProfile, policy.Profile)
+	require.Len(t, policy.Recovery, 1)
+	require.Len(t, policy.Roots, 1)
+	require.Equal(t, Write, policy.Roots[0].Rights)
 	backend, err := adoptLinuxFilesystem(files, testBrokerProc(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer backend.Close()
-	if err := bootstrap.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := backend.Execute(brokerMessage(1, recoveryWritePayload)); !errors.Is(err, ErrDenied) {
-		t.Fatal("recovery-only backend executed script write:", err)
-	}
-	if err := backend.recover(); !errors.Is(err, ErrClosed) {
-		t.Fatal("unconfined recovery allowed:", err)
-	}
+	require.NoError(t, bootstrap.Close())
+	_, err = backend.Execute(brokerMessage(1, recoveryWritePayload))
+	require.ErrorIs(t, err, ErrDenied, "recovery-only backend executed script write")
+	require.ErrorIs(t, backend.recover(), ErrClosed, "unconfined recovery is refused")
 	backend.sealed = true
-	if err := backend.beginProtocol(); err != nil {
-		t.Fatal(err)
-	}
-	if err := backend.recover(); err != nil {
-		t.Fatal("sealed absent-remnant cleanup failed:", err)
-	}
+	require.NoError(t, backend.beginProtocol())
+	require.NoError(t, backend.recover(), "sealed absent-remnant cleanup succeeds")
 }
 
 func TestRecoveryBootstrapRejectsRoleMixing(t *testing.T) {
+	t.Parallel()
 	bootstrap := testRecoveryBootstrap(t)
 	files, err := bootstrap.Files()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	original, err := readLinuxBootstrap(files[0])
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, mode := range []string{"normal", "unknown", "empty", "null-record", "malformed-record", "wrong-right", "replay", "too-many", "write-limit", "call-limit"} {
 		policy := original
 		limits := *original.Limits
@@ -133,127 +111,87 @@ func TestRecoveryBootstrapRejectsRoleMixing(t *testing.T) {
 			policy.Limits.WriteBytes = 2
 		case "call-limit":
 			record, err := decodeRecoveryRecord(original.Recovery[0])
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			record.Operation = 2
 			encoded, err := encodeRecoveryRecord(record)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			policy.Recovery = append(policy.Recovery, encoded)
 			policy.Limits.Calls, policy.Limits.Outstanding = 1, 1
 		}
 		encoded, err := json.Marshal(policy)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		file, err := sealLinuxBootstrapBytes(encoded, maximumRecoveryBootstrapBytes)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		_, decodeErr := readLinuxBootstrap(file)
-		if err := file.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if decodeErr == nil {
-			t.Fatal("invalid recovery role accepted:", mode)
-		}
+		require.NoError(t, file.Close())
+		require.Error(t, decodeErr, "invalid recovery role accepted: %v", mode)
 	}
 }
 
 func TestRecoveryBootstrapMaximumEscapedBatch(t *testing.T) {
+	t.Parallel()
 	bootstrap := testRecoveryBootstrap(t)
 	files, err := bootstrap.Files()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	policy, err := readLinuxBootstrap(files[0])
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	record, err := decodeRecoveryRecord(policy.Recovery[0])
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	record.Path = strings.Repeat(strings.Repeat("&", 255)+"/", 15) + strings.Repeat("&", 255)
 	policy.Recovery = make([]json.RawMessage, defaultCalls)
 	for index := range policy.Recovery {
 		record.Operation = uint64(index + 1)
 		policy.Recovery[index], err = encodeRecoveryRecord(record)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 	}
 	encoded, err := json.Marshal(policy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(encoded) <= maximumBootstrapBytes {
-		t.Fatal("test does not exercise larger recovery ceiling")
-	}
+	require.NoError(t, err)
+	require.Greater(t, len(encoded), maximumBootstrapBytes, "test does not exercise larger recovery ceiling")
 	file, err := sealLinuxBootstrapBytes(encoded, maximumRecoveryBootstrapBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer file.Close()
 	decoded, err := readLinuxBootstrap(file)
-	if err != nil || len(decoded.Recovery) != defaultCalls {
-		t.Fatal("maximum recovery batch rejected:", err)
-	}
-	if file, err := sealLinuxBootstrap(encoded); err == nil || file != nil {
-		t.Fatal("ordinary policy accepted recovery-sized metadata")
-	}
+	require.NoError(t, err, "maximum recovery batch rejected")
+	require.Len(t, decoded.Recovery, defaultCalls)
+	file, err = sealLinuxBootstrap(encoded)
+	require.Error(t, err, "ordinary policy accepted recovery-sized metadata")
+	require.Nil(t, file)
 }
 
 func TestRecoveryProtocolAcceptsOnlySealedBatch(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"recover", "write", "downgrade", "wrong-id", "null"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			bootstrap := testRecoveryBootstrap(t)
 			files, err := bootstrap.Files()
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			backend, err := adoptLinuxFilesystem(files, testBrokerProc(t))
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			defer backend.Close()
 			backend.sealed = true
 			host, peer := net.Pipe()
 			defer host.Close()
 			defer peer.Close()
-			if err := host.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, host.SetDeadline(time.Now().Add(3*time.Second)))
 			done := make(chan error, 1)
 			go func() { done <- ServeFilesystemBroker(peer, backend); _ = peer.Close() }()
 			codec, err := sandboxwire.New(host, host, sandboxwire.Limits{})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			hello, err := codec.Read()
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			var configuration FilesystemConfiguration
-			if err := hello.DecodePayload(&configuration); err != nil || configuration.Profile != FilesystemRecoveryProfile {
-				t.Fatal("wrong recovery handshake:", configuration, err)
-			}
+			require.NoError(t, hello.DecodePayload(&configuration), "wrong recovery handshake: %v", configuration)
+			require.Equal(t, FilesystemRecoveryProfile, configuration.Profile)
 			if mode == "downgrade" {
 				configuration.Profile = filesystemProfile
 			}
 			encoded, err := json.Marshal(configuration)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := codec.Write(sandboxwire.Message{Kind: sandboxwire.Configure, ID: 0, Payload: encoded}); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+			require.NoError(t, codec.Write(sandboxwire.Message{Kind: sandboxwire.Configure, ID: 0, Payload: encoded}))
 			if mode != "downgrade" {
-				if _, err := codec.Read(); err != nil {
-					t.Fatal(err)
-				}
+				_, configureErr := codec.Read()
+				require.NoError(t, configureErr)
 				request := sandboxwire.Message{Kind: sandboxwire.Run, ID: 1, Payload: []byte("{}")}
 				switch mode {
 				case "write":
@@ -270,20 +208,18 @@ func TestRecoveryProtocolAcceptsOnlySealedBatch(t *testing.T) {
 				} else {
 					err = codec.Write(request)
 				}
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 			}
 			reply, err := codec.Read()
 			if mode == "recover" {
-				if err != nil || reply.Kind != sandboxwire.Result || reply.ID != 1 || reply.DecodePayload(&struct{}{}) != nil {
-					t.Fatal("sealed cleanup failed:", reply, err)
-				}
-				if err := <-done; err != nil {
-					t.Fatal(err)
-				}
-			} else if err == nil || <-done == nil {
-				t.Fatal("recovery role accepted script authority:", mode)
+				require.NoError(t, err, "sealed cleanup failed: %v", reply)
+				require.Equal(t, sandboxwire.Result, reply.Kind)
+				require.Equal(t, uint64(1), reply.ID)
+				require.NoError(t, reply.DecodePayload(&struct{}{}))
+				require.NoError(t, <-done)
+			} else {
+				require.Error(t, err, "the recovery role refuses script authority: %s", mode)
+				require.Error(t, <-done)
 			}
 		})
 	}
@@ -295,20 +231,12 @@ func testRecoveryBootstrap(t *testing.T) *LinuxBootstrap {
 	record := testRecoveryAuthorityRecord(t, authority, 1)
 	journal := testRecoveryAuthorityJournal(t, authority)
 	call, err := authority.admit(brokerMessage(1, recoveryWritePayload))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := authority.record(journal, call, record); err != nil {
-		t.Fatal(err)
-	}
-	if err := call.Finish(0); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, authority.record(journal, call, record))
+	require.NoError(t, call.Finish(0))
 	authority.budget.Close()
 	bootstrap, err := authority.RecoveryBootstrap(journal)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = bootstrap.Close() })
 	return bootstrap
 }

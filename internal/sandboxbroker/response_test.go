@@ -19,71 +19,69 @@
 package sandboxbroker
 
 import (
-	"errors"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 func TestDecodeFilesystemResponse(t *testing.T) {
-	cases := []struct {
+	t.Parallel()
+	tests := []struct {
 		name     string
 		request  string
 		response string
 		valid    bool
 	}{
-		{"read", `{"operation":"fs.read","root":"data","path":"file","max_bytes":2}`, `{"code":"","data":"YWI=","entries":null,"written":0,"skipped":0}`, true},
-		{"read-empty", `{"operation":"fs.read","root":"data","path":"file","max_bytes":2}`, `{"code":"","data":null,"entries":null,"written":0,"skipped":0}`, true},
-		{"read-limit", `{"operation":"fs.read","root":"data","path":"file","max_bytes":1}`, `{"code":"","data":"YWI=","entries":null,"written":0,"skipped":0}`, false},
-		{"write", `{"operation":"fs.write","root":"data","path":"file","data":"YWI="}`, `{"code":"","data":null,"entries":null,"written":2,"skipped":0}`, true},
-		{"short-write", `{"operation":"fs.write","root":"data","path":"file","data":"YWI="}`, `{"code":"","data":null,"entries":null,"written":1,"skipped":0}`, false},
-		{"list", `{"operation":"fs.list","root":"data","path":".","max_entries":2}`, `{"code":"","data":null,"entries":["file","other"],"written":0,"skipped":0}`, true},
-		{"list-skipped", `{"operation":"fs.list","root":"data","path":".","max_entries":2}`, `{"code":"","data":null,"entries":["file"],"written":0,"skipped":1}`, true},
-		{"list-skipped-over-limit", `{"operation":"fs.list","root":"data","path":".","max_entries":2}`, `{"code":"","data":null,"entries":["file"],"written":0,"skipped":2}`, false},
-		{"list-skipped-negative", `{"operation":"fs.list","root":"data","path":".","max_entries":2}`, `{"code":"","data":null,"entries":["file"],"written":0,"skipped":-1}`, false},
-		{"read-skipped", `{"operation":"fs.read","root":"data","path":"file","max_bytes":2}`, `{"code":"","data":"YWI=","entries":null,"written":0,"skipped":1}`, false},
-		{"denied-skipped", `{"operation":"fs.list","root":"data","path":".","max_entries":2}`, `{"code":"denied","data":null,"entries":null,"written":0,"skipped":1}`, false},
-		{"list-limit", `{"operation":"fs.list","root":"data","path":".","max_entries":1}`, `{"code":"","data":null,"entries":["file","other"],"written":0,"skipped":0}`, false},
-		{"list-path", `{"operation":"fs.list","root":"data","path":".","max_entries":1}`, `{"code":"","data":null,"entries":["a/b"],"written":0,"skipped":0}`, false},
-		{"list-parent", `{"operation":"fs.list","root":"data","path":".","max_entries":1}`, `{"code":"","data":null,"entries":[".."],"written":0,"skipped":0}`, false},
-		{"list-null-name", `{"operation":"fs.list","root":"data","path":".","max_entries":1}`, `{"code":"","data":null,"entries":[null],"written":0,"skipped":0}`, false},
-		{"list-device-name", `{"operation":"fs.list","root":"data","path":".","max_entries":1}`, `{"code":"","data":null,"entries":["CON"],"written":0,"skipped":0}`, false},
-		{"write-extra-data", `{"operation":"fs.write","root":"data","path":"file","data":"YWI="}`, `{"code":"","data":"","entries":null,"written":2,"skipped":0}`, false},
+		{name: "read", request: `{"operation":"fs.read","root":"data","path":"file","max_bytes":2}`, response: `{"code":"","data":"YWI=","entries":null,"written":0,"skipped":0}`, valid: true},
+		{name: "read-empty", request: `{"operation":"fs.read","root":"data","path":"file","max_bytes":2}`, response: `{"code":"","data":null,"entries":null,"written":0,"skipped":0}`, valid: true},
+		{name: "read-limit", request: `{"operation":"fs.read","root":"data","path":"file","max_bytes":1}`, response: `{"code":"","data":"YWI=","entries":null,"written":0,"skipped":0}`, valid: false},
+		{name: "write", request: `{"operation":"fs.write","root":"data","path":"file","data":"YWI="}`, response: `{"code":"","data":null,"entries":null,"written":2,"skipped":0}`, valid: true},
+		{name: "short-write", request: `{"operation":"fs.write","root":"data","path":"file","data":"YWI="}`, response: `{"code":"","data":null,"entries":null,"written":1,"skipped":0}`, valid: false},
+		{name: "list", request: `{"operation":"fs.list","root":"data","path":".","max_entries":2}`, response: `{"code":"","data":null,"entries":["file","other"],"written":0,"skipped":0}`, valid: true},
+		{name: "list-skipped", request: `{"operation":"fs.list","root":"data","path":".","max_entries":2}`, response: `{"code":"","data":null,"entries":["file"],"written":0,"skipped":1}`, valid: true},
+		{name: "list-skipped-over-limit", request: `{"operation":"fs.list","root":"data","path":".","max_entries":2}`, response: `{"code":"","data":null,"entries":["file"],"written":0,"skipped":2}`, valid: false},
+		{name: "list-skipped-negative", request: `{"operation":"fs.list","root":"data","path":".","max_entries":2}`, response: `{"code":"","data":null,"entries":["file"],"written":0,"skipped":-1}`, valid: false},
+		{name: "read-skipped", request: `{"operation":"fs.read","root":"data","path":"file","max_bytes":2}`, response: `{"code":"","data":"YWI=","entries":null,"written":0,"skipped":1}`, valid: false},
+		{name: "denied-skipped", request: `{"operation":"fs.list","root":"data","path":".","max_entries":2}`, response: `{"code":"denied","data":null,"entries":null,"written":0,"skipped":1}`, valid: false},
+		{name: "list-limit", request: `{"operation":"fs.list","root":"data","path":".","max_entries":1}`, response: `{"code":"","data":null,"entries":["file","other"],"written":0,"skipped":0}`, valid: false},
+		{name: "list-path", request: `{"operation":"fs.list","root":"data","path":".","max_entries":1}`, response: `{"code":"","data":null,"entries":["a/b"],"written":0,"skipped":0}`, valid: false},
+		{name: "list-parent", request: `{"operation":"fs.list","root":"data","path":".","max_entries":1}`, response: `{"code":"","data":null,"entries":[".."],"written":0,"skipped":0}`, valid: false},
+		{name: "list-null-name", request: `{"operation":"fs.list","root":"data","path":".","max_entries":1}`, response: `{"code":"","data":null,"entries":[null],"written":0,"skipped":0}`, valid: false},
+		{name: "list-device-name", request: `{"operation":"fs.list","root":"data","path":".","max_entries":1}`, response: `{"code":"","data":null,"entries":["CON"],"written":0,"skipped":0}`, valid: false},
+		{name: "write-extra-data", request: `{"operation":"fs.write","root":"data","path":"file","data":"YWI="}`, response: `{"code":"","data":"","entries":null,"written":2,"skipped":0}`, valid: false},
 	}
-	for _, test := range cases {
-		t.Run(test.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			budget, err := NewFilesystemBudget([]RootGrant{{Name: "data", Rights: Read | Write | List}}, FilesystemLimits{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			call, err := budget.Admit(brokerMessage(1, test.request))
-			if err != nil {
-				t.Fatal(err)
-			}
-			message := brokerMessage(1, test.response)
+			require.NoError(t, err)
+			call, err := budget.Admit(brokerMessage(1, tt.request))
+			require.NoError(t, err)
+			message := brokerMessage(1, tt.response)
 			message.Kind = sandboxwire.Result
 			response, err := decodeFilesystemResponse(message, 1, call)
-			if test.valid {
-				if err != nil {
-					t.Fatal(err)
-				}
-			} else if !errors.Is(err, sandboxwire.ErrProtocol) || response.Code != "" || response.Data != nil || response.Entries != nil || response.Written != 0 {
-				t.Fatalf("invalid response escaped: %+v, %v", response, err)
+			if tt.valid {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, sandboxwire.ErrProtocol, "an invalid response does not escape")
+				require.Empty(t, response.Code)
+				require.Nil(t, response.Data)
+				require.Nil(t, response.Entries)
+				require.Zero(t, response.Written)
 			}
 		})
 	}
 }
 
 func TestDecodeFilesystemResponseRejectsMalformed(t *testing.T) {
+	t.Parallel()
 	budget, err := NewFilesystemBudget([]RootGrant{{Name: "data", Rights: Read}}, FilesystemLimits{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	call, err := budget.Admit(brokerMessage(1, `{"operation":"fs.read","root":"data","path":"file","max_bytes":2}`))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	payloads := []string{
 		strings.Repeat(" ", maximumBrokerFrameBytes+1),
 		`{}`, `null`,
@@ -108,25 +106,20 @@ func TestDecodeFilesystemResponseRejectsMalformed(t *testing.T) {
 	for _, payload := range payloads {
 		message := brokerMessage(1, payload)
 		message.Kind = sandboxwire.Result
-		if _, err := decodeFilesystemResponse(message, 1, call); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Errorf("accepted %s: %v", payload, err)
-		}
+		_, err := decodeFilesystemResponse(message, 1, call)
+		require.ErrorIs(t, err, sandboxwire.ErrProtocol, "an invalid response is refused: %s", payload)
 	}
 	for _, code := range []string{"denied", "limit", "closed", "io"} {
 		message := brokerMessage(1, `{"code":"`+code+`","data":null,"entries":null,"written":0,"skipped":0}`)
 		message.Kind = sandboxwire.Result
-		if _, err := decodeFilesystemResponse(message, 1, call); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := decodeFilesystemResponse(message, 2, call); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatal("accepted wrong identity")
-		}
-		if _, err := decodeFilesystemResponse(message, 1, nil); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatal("accepted absent reservation")
-		}
+		_, err := decodeFilesystemResponse(message, 1, call)
+		require.NoError(t, err)
+		_, err = decodeFilesystemResponse(message, 2, call)
+		require.ErrorIs(t, err, sandboxwire.ErrProtocol, "accepted wrong identity")
+		_, err = decodeFilesystemResponse(message, 1, nil)
+		require.ErrorIs(t, err, sandboxwire.ErrProtocol, "accepted absent reservation")
 		message.Kind = sandboxwire.Call
-		if _, err := decodeFilesystemResponse(message, 1, call); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatal("accepted wrong kind")
-		}
+		_, err = decodeFilesystemResponse(message, 1, call)
+		require.ErrorIs(t, err, sandboxwire.ErrProtocol, "accepted wrong kind")
 	}
 }

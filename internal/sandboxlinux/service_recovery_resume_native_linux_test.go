@@ -32,6 +32,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func exerciseReleaseCrash(t *testing.T, ctx context.Context, original *ServiceRecoveryClaim, storage FilesystemRecoveryStorage, parent, stage string) *ServiceRecoveryClaim {
@@ -43,8 +45,7 @@ func exerciseReleaseCrash(t *testing.T, ctx context.Context, original *ServiceRe
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestNativeServiceResumeReleaseChild$")
-	command.Env = append(os.Environ(), "PIPIT_TEST_RELEASE_STORAGE="+string(encoded),
+	command := sandboxtest.Command(ctx, "TestNativeServiceResumeReleaseChild", "PIPIT_TEST_RELEASE_STORAGE="+string(encoded),
 		"PIPIT_TEST_RELEASE_PARENT="+parent, "PIPIT_TEST_RELEASE_STAGE="+stage)
 	command.Stderr = os.Stderr
 	input, err := command.StdinPipe()
@@ -61,10 +62,7 @@ func exerciseReleaseCrash(t *testing.T, ctx context.Context, original *ServiceRe
 		t.Fatal(err)
 	}
 	defer func() { _ = command.Process.Kill(); _ = command.Wait() }()
-	ready, err := bufio.NewReader(output).ReadString('\n')
-	if err != nil || ready != "ready\n" {
-		t.Fatal("replacement host did not reach release boundary:", ready, err)
-	}
+	sandboxtest.WaitForLine(t, bufio.NewReader(output), "ready", "the replacement host reaches the release boundary")
 	competing, err := ClaimServiceRecovery(ctx, storage)
 	if competing != nil {
 		_ = competing.Close()
@@ -124,10 +122,7 @@ func TestNativeServiceResumeReleaseChild(t *testing.T) {
 }
 
 func TestNativeReadyRecoveryRefusesPopulatedOriginal(t *testing.T) {
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	aggregate, err := newGroup(parent, Limits{})
 	if err != nil {
 		t.Fatal(err)

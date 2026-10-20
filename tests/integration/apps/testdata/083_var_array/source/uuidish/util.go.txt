@@ -1,10 +1,5 @@
 package uuidish
 
-// xvalues lives in util.go on purpose: filename order puts util.go
-// AFTER uuidish.go, so before piko respected go/types.Info.InitOrder
-// the package init walked uuidish.go first and Parse hit an
-// uninitialised xvalues. Keeping the same layout here regression-tests
-// that fix alongside the cross-package var bridge.
 var xvalues = [256]byte{
 	255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
 	255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,

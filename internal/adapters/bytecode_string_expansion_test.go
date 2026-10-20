@@ -20,11 +20,11 @@ package adapters
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
 	flatbuffers "github.com/google/flatbuffers/go"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/schema/schemagen"
 	"pipit.sh/pipit/internal/symtab"
@@ -122,14 +122,13 @@ func TestBytecodeRejectsStringAliasAmplification(t *testing.T) {
 
 	for _, source := range []string{"strings", "methods", "variables", "entrypoints", "constants", "names", "method-table", "functions"} {
 		t.Run(source, func(t *testing.T) {
+			t.Parallel()
 			payload := stringExpansionPayload(source, 257)
-			if len(payload) > 40000 {
-				t.Fatal("fixture is no longer compact")
-			}
-			loaded, err := decodeCompiledFileSet(context.Background(), payload, symtab.NewSymbolRegistry(nil))
-			if loaded != nil || !errors.Is(err, errCorruptBytecodePayload) || !strings.Contains(err.Error(), "string expansion exceeds") {
-				t.Fatal("aliased strings reached reconstruction:", err)
-			}
+			require.LessOrEqual(t, len(payload), 40000, "the fixture stays compact")
+			loaded, err := decodeCompiledFileSet(t.Context(), payload, symtab.NewSymbolRegistry(nil))
+			require.Nil(t, loaded, "aliased strings stop before reconstruction")
+			require.ErrorIs(t, err, errCorruptBytecodePayload)
+			require.Contains(t, err.Error(), "string expansion exceeds")
 		})
 	}
 }
@@ -139,11 +138,11 @@ func TestBytecodeSharedDescriptorStringMaterialisesOnce(t *testing.T) {
 
 	for _, source := range []string{"types", "fields"} {
 		t.Run(source, func(t *testing.T) {
+			t.Parallel()
 			payload := stringExpansionPayload(source, 257)
-			loaded, err := decodeCompiledFileSet(context.Background(), payload, symtab.NewSymbolRegistry(nil))
-			if err != nil || loaded == nil {
-				t.Fatal("shared descriptor string rejected:", err)
-			}
+			loaded, err := decodeCompiledFileSet(t.Context(), payload, symtab.NewSymbolRegistry(nil))
+			require.NoError(t, err, "a shared descriptor string decodes")
+			require.NotNil(t, loaded)
 		})
 	}
 }
@@ -151,33 +150,28 @@ func TestBytecodeSharedDescriptorStringMaterialisesOnce(t *testing.T) {
 func TestBytecodeStringAliasesAtBudgetDecode(t *testing.T) {
 	t.Parallel()
 	payload := stringExpansionPayload("strings", 256)
-	loaded, err := decodeCompiledFileSet(context.Background(), payload, symtab.NewSymbolRegistry(nil))
-	if loaded == nil || err != nil {
-		t.Fatal("bounded string aliases rejected:", err)
-	}
+	loaded, err := decodeCompiledFileSet(t.Context(), payload, symtab.NewSymbolRegistry(nil))
+	require.NotNil(t, loaded, "bounded string aliases decode")
+	require.NoError(t, err)
 }
 
 func TestBytecodeStringBudgetCountsBytes(t *testing.T) {
 	t.Parallel()
 	budget := bytecodeExpansionBudget{strings: 4}
-	if err := budget.chargeStrings([]byte("é"), []byte("é")); err != nil || budget.strings != 0 {
-		t.Fatal(err)
-	}
-	if err := budget.chargeStrings([]byte("x")); !errors.Is(err, errCorruptBytecodePayload) || budget.strings != 0 {
-		t.Fatal("exhausted byte budget wrapped:", err)
-	}
-	if err := budget.chargeStrings(nil, []byte{}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, budget.chargeStrings([]byte("é"), []byte("é")))
+	require.Equal(t, 0, budget.strings)
+	err := budget.chargeStrings([]byte("x"))
+	require.ErrorIs(t, err, errCorruptBytecodePayload, "a charge past the budget is rejected")
+	require.Equal(t, 0, budget.strings, "an exhausted byte budget stays at zero")
+	require.NoError(t, budget.chargeStrings(nil, []byte{}))
 }
 
 func TestBytecodeStringScanCancellation(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	called := false
 	err := checkStringEntries(ctx, 1, func(int) error { called = true; return nil })
-	if !errors.Is(err, context.Canceled) || called {
-		t.Fatal("cancelled scan accessed metadata:", err)
-	}
+	require.ErrorIs(t, err, context.Canceled, "a cancelled scan reads no metadata")
+	require.False(t, called)
 }

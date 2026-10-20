@@ -21,28 +21,28 @@
 package bytecode_test
 
 import (
-	"context"
-	"strings"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-
-	"pipit.sh/pipit/internal/debug"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/app"
+	"pipit.sh/pipit/internal/debug"
 )
 
 func compileForSimdSmoke(t *testing.T, source string) string {
 	t.Helper()
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoErrorf(t, err, "compile failed: %v", err)
 	return debug.DisassembleAssembly(compiled)
 }
 
-func TestSimdRecogniser_DotProduct(t *testing.T) {
+func TestSimdRecogniser(t *testing.T) {
 	t.Parallel()
-	disasm := compileForSimdSmoke(t, `package main
+	runDisassemblyExpectations(t, compileForSimdSmoke, []disassemblyExpectation{
+		{
+			name: "dot product",
+			source: `package main
 func EntrypointRun() float64 {
 	a := make([]float64, 8)
 	b := make([]float64, 8)
@@ -55,14 +55,12 @@ func EntrypointRun() float64 {
 		sum += a[i] * b[i]
 	}
 	return sum
-}`)
-	require.Positivef(t, strings.Count(disasm, "SIMD_DOT_PRODUCT_FLOAT64"),
-		"expected SIMD_DOT_PRODUCT_FLOAT64 in disasm; got:\n%s", disasm)
-}
-
-func TestSimdRecogniser_SumSlice(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSimdSmoke(t, `package main
+}`,
+			contains: []string{"SIMD_DOT_PRODUCT_FLOAT64"},
+		},
+		{
+			name: "sum slice",
+			source: `package main
 func EntrypointRun() float64 {
 	a := make([]float64, 4)
 	a[0] = 1.5
@@ -74,14 +72,12 @@ func EntrypointRun() float64 {
 		sum += a[i]
 	}
 	return sum
-}`)
-	require.Positivef(t, strings.Count(disasm, "SIMD_SUM_SLICE_FLOAT64"),
-		"expected SIMD_SUM_SLICE_FLOAT64 in disasm; got:\n%s", disasm)
-}
-
-func TestSimdRecogniser_AddSlice(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSimdSmoke(t, `package main
+}`,
+			contains: []string{"SIMD_SUM_SLICE_FLOAT64"},
+		},
+		{
+			name: "add slice",
+			source: `package main
 func EntrypointRun() float64 {
 	a := make([]float64, 4)
 	b := make([]float64, 4)
@@ -94,14 +90,12 @@ func EntrypointRun() float64 {
 		destination[i] = a[i] + b[i]
 	}
 	return destination[0] + destination[1] + destination[2] + destination[3]
-}`)
-	require.Positivef(t, strings.Count(disasm, "SIMD_ADD_SLICE_FLOAT64"),
-		"expected SIMD_ADD_SLICE_FLOAT64 in disasm; got:\n%s", disasm)
-}
-
-func TestSimdRecogniser_ScaleSlice(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSimdSmoke(t, `package main
+}`,
+			contains: []string{"SIMD_ADD_SLICE_FLOAT64"},
+		},
+		{
+			name: "scale slice",
+			source: `package main
 func EntrypointRun() float64 {
 	a := make([]float64, 4)
 	for i := 0; i < len(a); i++ {
@@ -112,14 +106,12 @@ func EntrypointRun() float64 {
 		a[i] *= k
 	}
 	return a[0] + a[1] + a[2] + a[3]
-}`)
-	require.Positivef(t, strings.Count(disasm, "SIMD_SCALE_SLICE_FLOAT64"),
-		"expected SIMD_SCALE_SLICE_FLOAT64 in disasm; got:\n%s", disasm)
-}
-
-func TestSimdRecogniser_RefusesNonFloat64(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSimdSmoke(t, `package main
+}`,
+			contains: []string{"SIMD_SCALE_SLICE_FLOAT64"},
+		},
+		{
+			name: "refuses non float64",
+			source: `package main
 func EntrypointRun() int {
 	a := make([]int, 4)
 	b := make([]int, 4)
@@ -132,14 +124,12 @@ func EntrypointRun() int {
 		sum += a[i] * b[i]
 	}
 	return sum
-}`)
-	require.Zerof(t, strings.Count(disasm, "SIMD_"),
-		"expected NO SIMD opcode in int-slice loop; got:\n%s", disasm)
-}
-
-func TestSimdRecogniser_RefusesVariableUpperBound(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSimdSmoke(t, `package main
+}`,
+			absent: []string{"SIMD_"},
+		},
+		{
+			name: "refuses variable upper bound",
+			source: `package main
 func EntrypointRun() float64 {
 	a := make([]float64, 5)
 	for i := 0; i < len(a); i++ {
@@ -151,14 +141,12 @@ func EntrypointRun() float64 {
 		sum += a[i]
 	}
 	return sum
-}`)
-	require.Zerof(t, strings.Count(disasm, "SIMD_"),
-		"expected NO SIMD opcode when upper bound is a variable: got:\n%s", disasm)
-}
-
-func TestSimdRecogniser_DotProductConstBound(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSimdSmoke(t, `package main
+}`,
+			absent: []string{"SIMD_"},
+		},
+		{
+			name: "dot product const bound",
+			source: `package main
 const N = 1024
 func EntrypointRun() float64 {
 	a := make([]float64, N)
@@ -172,14 +160,12 @@ func EntrypointRun() float64 {
 		sum += a[i] * b[i]
 	}
 	return sum
-}`)
-	require.Positivef(t, strings.Count(disasm, "SIMD_DOT_PRODUCT_FLOAT64"),
-		"expected SIMD_DOT_PRODUCT_FLOAT64 for const-bound loop; got:\n%s", disasm)
-}
-
-func TestSimdRecogniser_SumSliceConstBound(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSimdSmoke(t, `package main
+}`,
+			contains: []string{"SIMD_DOT_PRODUCT_FLOAT64"},
+		},
+		{
+			name: "sum slice const bound",
+			source: `package main
 const N = 64
 func EntrypointRun() float64 {
 	a := make([]float64, N)
@@ -191,14 +177,12 @@ func EntrypointRun() float64 {
 		sum += a[i]
 	}
 	return sum
-}`)
-	require.Positivef(t, strings.Count(disasm, "SIMD_SUM_SLICE_FLOAT64"),
-		"expected SIMD_SUM_SLICE_FLOAT64 for const-bound loop; got:\n%s", disasm)
-}
-
-func TestSimdRecogniser_AdoptsGeneralBankOperands(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSimdSmoke(t, `package main
+}`,
+			contains: []string{"SIMD_SUM_SLICE_FLOAT64"},
+		},
+		{
+			name: "adopts general bank operands",
+			source: `package main
 func EntrypointRun() float64 {
 	a := []float64{1, 2, 3, 4}
 	b := []float64{4, 3, 2, 1}
@@ -207,16 +191,12 @@ func EntrypointRun() float64 {
 		sum += a[i] * b[i]
 	}
 	return sum
-}`)
-	require.Positivef(t, strings.Count(disasm, "ADOPT_GENERAL_TO_SLICES_FLOAT"),
-		"expected ADOPT_GENERAL_TO_SLICES_FLOAT prologue for general-bank operands; got:\n%s", disasm)
-	require.Positivef(t, strings.Count(disasm, "SIMD_DOT_PRODUCT_FLOAT64"),
-		"expected SIMD opcode after general-bank adoption; got:\n%s", disasm)
-}
-
-func TestSimdRecogniser_FiresOnFunctionParameterSlices(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSimdSmoke(t, `package main
+}`,
+			contains: []string{"ADOPT_GENERAL_TO_SLICES_FLOAT", "SIMD_DOT_PRODUCT_FLOAT64"},
+		},
+		{
+			name: "fires on function parameter slices",
+			source: `package main
 func dotRow(row []float64, input []float64) float64 {
 	sum := 0.0
 	for j := 0; j < len(row); j++ {
@@ -228,60 +208,12 @@ func EntrypointRun() float64 {
 	a := make([]float64, 8)
 	b := make([]float64, 8)
 	return dotRow(a, b)
-}`)
-	require.Positivef(t, strings.Count(disasm, "SIMD_DOT_PRODUCT_FLOAT64"),
-		"expected SIMD opcode on typed-bank parameter slices; got:\n%s", disasm)
-}
-
-func TestLoopUnroll_SmallConstBody(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSimdSmoke(t, `package main
-func process(value int) {}
-func EntrypointRun() int {
-	total := 0
-	for i := 0; i < 4; i++ {
-		total += i * 2
-	}
-	return total
-}`)
-	require.Zerof(t, strings.Count(disasm, "JUMP "),
-		"expected unrolled loop (no back-edge JUMP); got:\n%s", disasm)
-}
-
-func TestLoopUnroll_RefusesLargeTripCount(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSimdSmoke(t, `package main
-func EntrypointRun() int {
-	total := 0
-	for i := 0; i < 32; i++ {
-		total += i * 3
-	}
-	return total
-}`)
-	require.Positivef(t, strings.Count(disasm, "JUMP "),
-		"expected scalar loop fallthrough for N=32; got:\n%s", disasm)
-}
-
-func TestLoopUnroll_RefusesBreak(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSimdSmoke(t, `package main
-func EntrypointRun() int {
-	total := 0
-	for i := 0; i < 4; i++ {
-		if i == 2 {
-			break
-		}
-		total += i
-	}
-	return total
-}`)
-	require.Positivef(t, strings.Count(disasm, "JUMP "),
-		"expected scalar loop fallthrough when body contains break; got:\n%s", disasm)
-}
-
-func TestLoopUnroll_SimdWinsPriority(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSimdSmoke(t, `package main
+}`,
+			contains: []string{"SIMD_DOT_PRODUCT_FLOAT64"},
+		},
+		{
+			name: "simd wins priority",
+			source: `package main
 func EntrypointRun() float64 {
 	a := make([]float64, 4)
 	b := make([]float64, 4)
@@ -294,7 +226,77 @@ func EntrypointRun() float64 {
 		sum += a[i] * b[i]
 	}
 	return sum
-}`)
-	require.Positivef(t, strings.Count(disasm, "SIMD_DOT_PRODUCT_FLOAT64"),
-		"expected SIMD path for const-bound dot product; got:\n%s", disasm)
+}`,
+			contains: []string{"SIMD_DOT_PRODUCT_FLOAT64"},
+		},
+	})
+}
+
+func TestLoopUnroll(t *testing.T) {
+	t.Parallel()
+	runDisassemblyExpectations(t, compileForSimdSmoke, []disassemblyExpectation{
+		{
+			name: "small const body",
+			source: `package main
+func process(value int) {}
+func EntrypointRun() int {
+	total := 0
+	for i := 0; i < 4; i++ {
+		total += i * 2
+	}
+	return total
+}`,
+			absent: []string{"JUMP "},
+		},
+		{
+			name: "refuses large trip count",
+			source: `package main
+func EntrypointRun() int {
+	total := 0
+	for i := 0; i < 32; i++ {
+		total += i * 3
+	}
+	return total
+}`,
+			contains: []string{"JUMP "},
+		},
+		{
+			name: "refuses break",
+			source: `package main
+func EntrypointRun() int {
+	total := 0
+	for i := 0; i < 4; i++ {
+		if i == 2 {
+			break
+		}
+		total += i
+	}
+	return total
+}`,
+			contains: []string{"JUMP "},
+		},
+	})
+}
+
+type disassemblyExpectation struct {
+	name     string
+	source   string
+	contains []string
+	absent   []string
+}
+
+func runDisassemblyExpectations(t *testing.T, compile func(*testing.T, string) string, tests []disassemblyExpectation) {
+	t.Helper()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			disasm := compile(t, tt.source)
+			for _, want := range tt.contains {
+				require.Contains(t, disasm, want)
+			}
+			for _, unwanted := range tt.absent {
+				require.NotContains(t, disasm, unwanted)
+			}
+		})
+	}
 }

@@ -154,7 +154,7 @@ func (c *Compiler) compileIndirectCall(ctx context.Context, expression *ast.Call
 func (c *Compiler) resolveIndirectIdent(ctx context.Context, identifier *ast.Ident, expression *ast.CallExpr) (program.VarLocation, error) {
 	location, varFound := c.Scopes.LookupVar(identifier.Name)
 	if varFound && location.Kind == isa.RegisterGeneral {
-		return c.compileClosureCall(ctx, identifier, expression, location)
+		return c.compileClosureCall(ctx, identifier, expression, c.emitReloadIfSpilled(ctx, location))
 	}
 	if reference, ok := c.upvalueMap[identifier.Name]; ok {
 		dest := c.Scopes.Alloc.Alloc(reference.kind)
@@ -345,6 +345,8 @@ func (c *Compiler) specialiseInto(
 		return 0, false, nil
 	}
 	if err := c.compileSpecialisedBody(ctx, callee, subs, specFunctionIndex); err != nil {
+		delete(callee.Specialisations, *key)
+		root.Functions[specFunctionIndex] = program.NewDiscardedFunction()
 		return 0, false, err
 	}
 	return specFunctionIndex, true, nil
@@ -918,6 +920,7 @@ func (c *Compiler) compileDynamicMethodArgs(ctx context.Context, receiverLocatio
 		if err != nil {
 			return nil, err
 		}
+		c.detachIndexedRead(argument, location)
 		if typemodel.IsNamedScalarPoolType(location.SourceType) {
 			c.boxToGeneralTemp(ctx, &location)
 		}

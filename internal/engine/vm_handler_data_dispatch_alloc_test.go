@@ -59,6 +59,7 @@ func TestAllocIndirectProducesATypedPointer(t *testing.T) {
 			name: "an int pointee carries the converted register value", pointeeType: reflect.TypeFor[int](),
 			load: func(r *Registers) { r.Ints[1] = 5 }, sourceKind: isa.RegisterInt,
 			inspect: func(t *testing.T, pointer reflect.Value) {
+				t.Helper()
 				require.Equal(t, 5, pointer.Elem().Interface())
 			},
 		},
@@ -66,6 +67,7 @@ func TestAllocIndirectProducesATypedPointer(t *testing.T) {
 			name: "a heap cell is requested explicitly", pointeeType: reflect.TypeFor[int](), heapCell: isa.AllocIndirectHeapCell,
 			load: func(r *Registers) { r.Ints[1] = 6 }, sourceKind: isa.RegisterInt,
 			inspect: func(t *testing.T, pointer reflect.Value) {
+				t.Helper()
 				require.Equal(t, 6, pointer.Elem().Interface())
 			},
 		},
@@ -73,6 +75,7 @@ func TestAllocIndirectProducesATypedPointer(t *testing.T) {
 			name: "an arena-safe pointer-free pointee still carries its value", pointeeType: reflect.TypeFor[int64](),
 			arenaSafe: true, load: func(r *Registers) { r.Ints[1] = 7 }, sourceKind: isa.RegisterInt,
 			inspect: func(t *testing.T, pointer reflect.Value) {
+				t.Helper()
 				require.Equal(t, int64(7), pointer.Elem().Interface())
 			},
 		},
@@ -81,6 +84,7 @@ func TestAllocIndirectProducesATypedPointer(t *testing.T) {
 			load:       func(r *Registers) { r.General[1] = reflect.ValueOf(allocPointee{Name: "n", Count: 2}) },
 			sourceKind: isa.RegisterGeneral,
 			inspect: func(t *testing.T, pointer reflect.Value) {
+				t.Helper()
 				require.Equal(t, allocPointee{Name: "n", Count: 2}, pointer.Elem().Interface())
 			},
 		},
@@ -88,6 +92,7 @@ func TestAllocIndirectProducesATypedPointer(t *testing.T) {
 			name: "an array pointee comes from the boundary snapshot chunk", pointeeType: reflect.TypeFor[[2]int](),
 			load: func(r *Registers) { r.General[1] = reflect.ValueOf([2]int{1, 2}) }, sourceKind: isa.RegisterGeneral,
 			inspect: func(t *testing.T, pointer reflect.Value) {
+				t.Helper()
 				require.Equal(t, [2]int{1, 2}, pointer.Elem().Interface())
 			},
 		},
@@ -95,6 +100,7 @@ func TestAllocIndirectProducesATypedPointer(t *testing.T) {
 			name: "a slice pointee comes from the arena slice-header slab", pointeeType: reflect.TypeFor[[]int64](),
 			load: func(r *Registers) { r.SlicesInt[1] = []int64{3, 4} }, sourceKind: isa.RegisterSliceInt,
 			inspect: func(t *testing.T, pointer reflect.Value) {
+				t.Helper()
 				require.Equal(t, []int64{3, 4}, pointer.Elem().Interface())
 			},
 		},
@@ -102,6 +108,7 @@ func TestAllocIndirectProducesATypedPointer(t *testing.T) {
 			name: "a string pointee falls back to a plain heap cell", pointeeType: reflect.TypeFor[string](),
 			load: func(r *Registers) { r.Strings[1] = "v" }, sourceKind: isa.RegisterString,
 			inspect: func(t *testing.T, pointer reflect.Value) {
+				t.Helper()
 				require.Equal(t, "v", pointer.Elem().Interface())
 			},
 		},
@@ -109,6 +116,7 @@ func TestAllocIndirectProducesATypedPointer(t *testing.T) {
 			name: "an unset source leaves the pointee zeroed", pointeeType: reflect.TypeFor[int](),
 			load: func(*Registers) {}, sourceKind: isa.RegisterGeneral,
 			inspect: func(t *testing.T, pointer reflect.Value) {
+				t.Helper()
 				require.Equal(t, 0, pointer.Elem().Interface())
 			},
 		},

@@ -222,7 +222,7 @@ func handlerRemUint() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
 func handlerLoadStringConst() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
+	return guardPointerBankWriter(asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 		Name: "handlerLoadStringConst", Comment: "handlerLoadStringConst loads stringConstants[B|(C<<8)] into strings[A].",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
@@ -232,7 +232,7 @@ func handlerLoadStringConst() asmgen.HandlerDefinition[BytecodeArchitecturePort]
 			architecture.StringConstLoad(emitter, scratches[0], scratches[1])
 			architecture.DispatchNext(emitter)
 		},
-	}
+	})
 }
 
 // handlerLoadBoolConst builds the LoadBoolConst handler, loading boolConstants[C] into

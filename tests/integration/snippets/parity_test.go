@@ -39,11 +39,10 @@ import (
 	"testing"
 	"time"
 
-	"pipit.sh/pipit/internal/app"
-	"pipit.sh/pipit/internal/engine"
-
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/app"
+	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
@@ -67,20 +66,21 @@ func resolveGoRunParallelism() int {
 }
 
 func TestParity(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("skipping parity tests in short mode")
 	}
 
 	testdataDir := filepath.Join("testdata")
-	entries, err := os.ReadDir(testdataDir)
+	tests, err := os.ReadDir(testdataDir)
 	require.NoError(t, err, "reading testdata directory")
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
+	for _, tt := range tests {
+		if !tt.IsDir() {
 			continue
 		}
 
-		name := entry.Name()
+		name := tt.Name()
 		directory := filepath.Join(testdataDir, name)
 
 		t.Run(name, func(t *testing.T) {
@@ -109,7 +109,7 @@ func TestParity(t *testing.T) {
 				t.Run(mode.name, func(t *testing.T) {
 					service := app.NewService(mode.options...)
 					service.UseSymbolProviders(stdlib.Providers()...)
-					result, evalErr := service.EvalFile(context.Background(), snippet, "run")
+					result, evalErr := service.EvalFile(t.Context(), snippet, "run")
 					require.NoError(t, evalErr, "EvalFile failed for %s in %s mode", name, mode.name)
 
 					actual := strings.TrimSpace(fmt.Sprint(result))
@@ -194,7 +194,7 @@ func runGoSource(t *testing.T, source string) string {
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goModSource), 0o644))
 
 	ctx, cancel := context.WithTimeoutCause(
-		context.Background(),
+		t.Context(),
 		30*time.Second,
 		fmt.Errorf("parity: go run timed out"),
 	)
@@ -254,22 +254,23 @@ func readFile(t *testing.T, path string) string {
 }
 
 func TestEvalParity(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("skipping eval-parity tests in short mode")
 	}
 
 	testdataDir := filepath.Join("testdata_eval")
-	entries, err := os.ReadDir(testdataDir)
+	tests, err := os.ReadDir(testdataDir)
 	if err != nil {
 		t.Skipf("no eval-parity fixtures: %v", err)
 	}
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
+	for _, tt := range tests {
+		if !tt.IsDir() {
 			continue
 		}
 
-		name := entry.Name()
+		name := tt.Name()
 		directory := filepath.Join(testdataDir, name)
 
 		t.Run(name, func(t *testing.T) {
@@ -285,7 +286,7 @@ func TestEvalParity(t *testing.T) {
 
 			service := app.NewService()
 			service.UseSymbolProviders(stdlib.Providers()...)
-			result, evalErr := service.Eval(context.Background(), snippet)
+			result, evalErr := service.Eval(t.Context(), snippet)
 			require.NoError(t, evalErr, "Service.Eval failed for %s", name)
 
 			actual := fmt.Sprint(result)

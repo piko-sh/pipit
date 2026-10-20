@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalMethodCall(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "struct field access via method-like selector",
@@ -44,7 +44,7 @@ func TestEvalMethodCall(t *testing.T) {
 }
 p := Point{X: 3, Y: 4}
 p.X + p.Y`,
-			expect: 7,
+			want: 7,
 		},
 	}
 
@@ -52,9 +52,9 @@ p.X + p.Y`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -63,9 +63,9 @@ func TestEvalMethodValue(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "value receiver method call",
@@ -73,7 +73,7 @@ func TestEvalMethodValue(t *testing.T) {
 func (c Counter) Get() int { return c.V }
 c := Counter{V: 42}
 c.Get()`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "pointer receiver method call",
@@ -84,7 +84,7 @@ c := Counter{V: 10}
 c.Inc()
 c.Inc()
 c.Get()`,
-			expect: 12,
+			want: 12,
 		},
 		{
 			name: "pointer receiver method value binds the variable's address",
@@ -95,7 +95,7 @@ f := c.Inc
 f()
 f()
 c.V`,
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "value receiver method value copies the receiver when bound",
@@ -105,7 +105,7 @@ c := Counter{V: 1}
 g := c.Get
 c.V = 5
 g()`,
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "value receiver method value through a pointer copies the pointee when bound",
@@ -115,7 +115,7 @@ p := &Counter{V: 1}
 g := p.Get
 p.V = 9
 g()`,
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "pointer receiver method value promoted through an embedded value",
@@ -126,7 +126,7 @@ var w Wrapped
 f := w.Inc
 f()
 w.V`,
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "pointer receiver method value of a struct field",
@@ -137,7 +137,7 @@ var h Holder
 f := h.Inner.Inc
 f()
 h.Inner.V`,
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "pointer receiver method value of a slice element",
@@ -147,7 +147,7 @@ cs := make([]Counter, 2)
 f := cs[1].Inc
 f()
 cs[1].V`,
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "pointer receiver method value of a generic type",
@@ -158,7 +158,7 @@ add := b.Add
 add("a")
 add("b")
 len(b.Items)`,
-			expect: 2,
+			want: 2,
 		},
 	}
 
@@ -166,9 +166,9 @@ len(b.Items)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -177,10 +177,10 @@ func TestEvalMethodCalls(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
-		skip   string
+		want any
+		name string
+		code string
+		skip string
 	}{
 		{
 			name: "method on value receiver",
@@ -188,8 +188,8 @@ func TestEvalMethodCalls(t *testing.T) {
 func (c Counter) Value() int { return c.N }
 c := Counter{N: 42}
 c.Value()`,
-			expect: 42,
-			skip:   "",
+			want: 42,
+			skip: "",
 		},
 		{
 			name: "method on pointer receiver",
@@ -197,8 +197,8 @@ c.Value()`,
 func (c *Counter) Inc() int { c.N++; return c.N }
 c := &Counter{N: 10}
 c.Inc()`,
-			expect: 11,
-			skip:   "",
+			want: 11,
+			skip: "",
 		},
 		{
 			name: "multiple method calls with mutation",
@@ -208,8 +208,8 @@ a := &Acc{V: 0}
 a.Add(5)
 a.Add(3)
 a.V`,
-			expect: 8,
-			skip:   "",
+			want: 8,
+			skip: "",
 		},
 		{
 			name: "method returning string",
@@ -217,8 +217,8 @@ a.V`,
 func (g Greeter) Hello() string { return "hello " + g.Name }
 g := Greeter{Name: "world"}
 g.Hello()`,
-			expect: "hello world",
-			skip:   "",
+			want: "hello world",
+			skip: "",
 		},
 	}
 
@@ -229,9 +229,9 @@ g.Hello()`,
 				t.Skip(tt.skip)
 			}
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -240,10 +240,10 @@ func TestEvalInterfaces(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
-		skip   string
+		want any
+		name string
+		code string
+		skip string
 	}{
 		{
 			name: "basic interface satisfaction and method call",
@@ -252,8 +252,8 @@ type MyType struct{ V string }
 func (m MyType) String() string { return m.V }
 var s Stringer = MyType{V: "test"}
 s.String()`,
-			expect: "test",
-			skip:   "",
+			want: "test",
+			skip: "",
 		},
 	}
 
@@ -264,9 +264,9 @@ s.String()`,
 				t.Skip(tt.skip)
 			}
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -275,7 +275,7 @@ func TestPromotedMethodCall(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -297,7 +297,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     42,
+			want:       42,
 		},
 		{
 			name: "promoted_method_two_levels",
@@ -317,7 +317,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     42,
+			want:       42,
 		},
 		{
 			name: "pointer_receiver_promotion",
@@ -338,7 +338,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     42,
+			want:       42,
 		},
 	}
 
@@ -346,9 +346,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

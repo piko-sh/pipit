@@ -25,82 +25,59 @@ import (
 	"crypto/sha256"
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestServiceCheckpointRoundTrip(t *testing.T) {
+	t.Parallel()
 	checkpointDirectory, approvalDirectory := testRecoveryDirectory(t), testRecoveryDirectory(t)
 	checkpoint, err := OpenLinuxRecoveryCheckpointStore(checkpointDirectory)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	approval, err := OpenLinuxRecoveryApprovalStore(approvalDirectory)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	binding := [sha256.Size]byte{7}
 	metadata := []byte(`{"service":"context"}`)
 	approved, err := PersistServiceCheckpoint(checkpoint, approval, binding, metadata)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := PersistServiceCheckpoint(checkpoint, approval, binding, metadata); !errors.Is(err, ErrDenied) {
-		t.Fatal("second checkpoint accepted in a used store:", err)
-	}
-	if err := errors.Join(checkpoint.Close(), approval.Close()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = PersistServiceCheckpoint(checkpoint, approval, binding, metadata)
+	require.ErrorIs(t, err, ErrDenied, "second checkpoint accepted in a used store")
+	require.NoError(t, errors.Join(checkpoint.Close(), approval.Close()))
 
 	claim, err := OpenLinuxRecoveryClaim("", checkpointDirectory, approvalDirectory, binding)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer claim.Close()
-	if !claim.Service() {
-		t.Fatal("service checkpoint claimed as a filesystem one")
-	}
+	require.True(t, claim.Service(), "service checkpoint claimed as a filesystem one")
 	encoded, digest, err := claim.Checkpoint()
-	if err != nil || digest != approved {
-		t.Fatalf("claim digest mismatch: %v", err)
-	}
+	require.NoError(t, err, "claim digest mismatch")
+	require.Equal(t, approved, digest)
 	context, err := RecoveryCheckpointContext(encoded, digest, binding)
-	if err != nil || !bytes.Equal(context, metadata) {
-		t.Fatalf("service context lost: %v %q", err, context)
-	}
-	if ready, err := claim.ServiceReleaseReady(); err != nil || ready {
-		t.Fatalf("fresh claim reports release ready: %v %v", ready, err)
-	}
-	if err := claim.RecordServiceReleaseReady(); err != nil {
-		t.Fatal(err)
-	}
-	if ready, err := claim.ServiceReleaseReady(); err != nil || !ready {
-		t.Fatalf("release marker not durable without a journal: %v %v", ready, err)
-	}
-	if err := claim.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := OpenLinuxRecoveryClaim(testRecoveryDirectory(t), checkpointDirectory, approvalDirectory, binding); !errors.Is(err, ErrInvalidPolicy) {
-		t.Fatal("service checkpoint claimed with a journal directory:", err)
-	}
+	require.NoError(t, err, "service context lost")
+	require.True(t, bytes.Equal(context, metadata))
+	ready, err := claim.ServiceReleaseReady()
+	require.NoError(t, err, "fresh claim reports release")
+	require.False(t, ready)
+	require.NoError(t, claim.RecordServiceReleaseReady())
+	ready, err = claim.ServiceReleaseReady()
+	require.NoError(t, err, "release marker not durable without a journal")
+	require.True(t, ready)
+	require.NoError(t, claim.Close())
+	_, err = OpenLinuxRecoveryClaim(testRecoveryDirectory(t), checkpointDirectory, approvalDirectory, binding)
+	require.ErrorIs(t, err, ErrInvalidPolicy, "service checkpoint claimed with a journal directory")
 }
 
 func TestServiceCheckpointRejectsBadInputs(t *testing.T) {
+	t.Parallel()
 	checkpoint, err := OpenLinuxRecoveryCheckpointStore(testRecoveryDirectory(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer checkpoint.Close()
 	approval, err := OpenLinuxRecoveryApprovalStore(testRecoveryDirectory(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer approval.Close()
-	if _, err := PersistServiceCheckpoint(checkpoint, approval, [sha256.Size]byte{}, nil); !errors.Is(err, ErrInvalidPolicy) {
-		t.Fatal("empty binding accepted:", err)
-	}
-	if _, err := PersistServiceCheckpoint(nil, approval, [sha256.Size]byte{1}, nil); !errors.Is(err, ErrClosed) {
-		t.Fatal("nil checkpoint store accepted:", err)
-	}
-	if _, err := PersistServiceCheckpoint(checkpoint, approval, [sha256.Size]byte{1}, make([]byte, maximumRecoveryContextBytes+1)); !errors.Is(err, errLimit) {
-		t.Fatal("oversized context accepted:", err)
-	}
+	_, err = PersistServiceCheckpoint(checkpoint, approval, [sha256.Size]byte{}, nil)
+	require.ErrorIs(t, err, ErrInvalidPolicy, "empty binding accepted")
+	_, err = PersistServiceCheckpoint(nil, approval, [sha256.Size]byte{1}, nil)
+	require.ErrorIs(t, err, ErrClosed, "nil checkpoint store accepted")
+	_, err = PersistServiceCheckpoint(checkpoint, approval, [sha256.Size]byte{1}, make([]byte, maximumRecoveryContextBytes+1))
+	require.ErrorIs(t, err, errLimit, "oversized context accepted")
 }

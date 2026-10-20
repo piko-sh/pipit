@@ -19,7 +19,6 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net"
@@ -27,12 +26,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/sandboxbroker"
 	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 func TestRestrictedFilesystemProxy(t *testing.T) {
-	cases := []struct {
+	t.Parallel()
+	tests := []struct {
 		name      string
 		source    string
 		reply     string
@@ -40,30 +42,29 @@ func TestRestrictedFilesystemProxy(t *testing.T) {
 		want      string
 		failure   bool
 	}{
-		{"read-initialiser", `package main
+		{name: "read-initialiser", source: `package main
 import "pipit/fs"
 var value = load()
 func load() string { data, _ := fs.Read("data", "file", 4); return string(data) }
-func run() string { return value }`, `{"code":"","data":"dGVzdA==","entries":null,"written":0,"skipped":0}`, sandboxbroker.ReadFile, `"test"`, false},
-		{"write", `package main
+func run() string { return value }`, reply: `{"code":"","data":"dGVzdA==","entries":null,"written":0,"skipped":0}`, operation: sandboxbroker.ReadFile, want: `"test"`, failure: false},
+		{name: "write", source: `package main
 import "pipit/fs"
-func run() bool { return fs.Write("data", "file", []byte("ok")) == nil }`, `{"code":"","data":null,"entries":null,"written":2,"skipped":0}`, sandboxbroker.WriteFile, "true", false},
-		{"list", `package main
+func run() bool { return fs.Write("data", "file", []byte("ok")) == nil }`, reply: `{"code":"","data":null,"entries":null,"written":2,"skipped":0}`, operation: sandboxbroker.WriteFile, want: "true", failure: false},
+		{name: "list", source: `package main
 import "pipit/fs"
-func run() string { names, _, _ := fs.List("data", ".", 2); return names[0] }`, `{"code":"","data":null,"entries":["file"],"written":0,"skipped":0}`, sandboxbroker.ListDirectory, `"file"`, false},
-		{"ignored-failure", `package main
+func run() string { names, _, _ := fs.List("data", ".", 2); return names[0] }`, reply: `{"code":"","data":null,"entries":["file"],"written":0,"skipped":0}`, operation: sandboxbroker.ListDirectory, want: `"file"`, failure: false},
+		{name: "ignored-failure", source: `package main
 import "pipit/fs"
-func run() bool { _, _ = fs.Read("data", "file", 4); return true }`, `{"code":"io","data":null,"entries":null,"written":0,"skipped":0}`, sandboxbroker.ReadFile, "", true},
+func run() bool { _, _ = fs.Read("data", "file", 4); return true }`, reply: `{"code":"io","data":null,"entries":null,"written":0,"skipped":0}`, operation: sandboxbroker.ReadFile, want: "", failure: true},
 	}
-	for _, test := range cases {
-		t.Run(test.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			granted := new(atomic.Bool)
-			proxy, machine, done := restrictedFilesystemFixture(t, test.operation, test.reply, granted)
+			proxy, machine, done := restrictedFilesystemFixture(t, tt.operation, tt.reply, granted)
 			interpreter, err := NewFilesystemRestrictedInterpreter(RestrictedConfig{Imports: []string{"pipit/fs"}}, proxy)
-			if err != nil {
-				t.Fatal(err)
-			}
-			result, err := EvaluateRestrictedPhased(context.Background(), interpreter, test.source, "run", true, func() error {
+			require.NoError(t, err)
+			result, err := EvaluateRestrictedPhased(t.Context(), interpreter, tt.source, "run", true, func() error {
 				if err := machine.Observe(sandboxwire.WorkerToHost, sandboxwire.Message{Kind: sandboxwire.Result, ID: 1, Payload: json.RawMessage("{}")}); err != nil {
 					return err
 				}
@@ -73,16 +74,14 @@ func run() bool { _, _ = fs.Read("data", "file", 4); return true }`, `{"code":"i
 				granted.Store(true)
 				return nil
 			})
-			if test.failure {
-				if err == nil || proxy.Err() == nil {
-					t.Fatal("ignored broker error produced success")
-				}
-			} else if err != nil || string(result.Value) != test.want {
-				t.Fatalf("result %s: %v", result.Value, err)
+			if tt.failure {
+				require.Error(t, err, "a broker error fails the evaluation")
+				require.Error(t, proxy.Err())
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.want, string(result.Value))
 			}
-			if err := <-done; err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, <-done)
 		})
 	}
 }
@@ -93,39 +92,27 @@ func restrictedFilesystemFixture(t *testing.T, operation sandboxbroker.Operation
 	t.Helper()
 	worker, host := net.Pipe()
 	t.Cleanup(func() { _ = worker.Close(); _ = host.Close() })
-	if err := worker.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	if err := host.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, worker.SetDeadline(time.Now().Add(3*time.Second)))
+	require.NoError(t, host.SetDeadline(time.Now().Add(3*time.Second)))
 	codec, err := sandboxwire.New(worker, worker, sandboxwire.Limits{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	machine, err := sandboxwire.NewMachine(sandboxwire.SessionLimits{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, event := range []struct {
 		direction sandboxwire.Direction
 		kind      sandboxwire.Kind
 		identity  uint64
 	}{
-		{sandboxwire.WorkerToHost, sandboxwire.Hello, 0},
-		{sandboxwire.HostToWorker, sandboxwire.Configure, 0},
-		{sandboxwire.WorkerToHost, sandboxwire.Ready, 0},
-		{sandboxwire.HostToWorker, sandboxwire.Run, 1},
+		{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Hello, identity: 0},
+		{direction: sandboxwire.HostToWorker, kind: sandboxwire.Configure, identity: 0},
+		{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Ready, identity: 0},
+		{direction: sandboxwire.HostToWorker, kind: sandboxwire.Run, identity: 1},
 	} {
-		if err := machine.Observe(event.direction, sandboxwire.Message{Kind: event.kind, ID: event.identity, Payload: json.RawMessage("{}")}); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, machine.Observe(event.direction, sandboxwire.Message{Kind: event.kind, ID: event.identity, Payload: json.RawMessage("{}")}))
 	}
 	grants := []sandboxbroker.RootGrant{{Name: "data", Rights: sandboxbroker.Read | sandboxbroker.Write | sandboxbroker.List}}
 	proxy, err := sandboxbroker.NewFilesystemProxy(codec, machine, grants, sandboxbroker.FilesystemLimits{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	done := make(chan error, 1)
 	go func() {
 		hostCodec, err := sandboxwire.New(host, host, sandboxwire.Limits{})
@@ -166,10 +153,9 @@ func restrictedFilesystemFixture(t *testing.T, operation sandboxbroker.Operation
 }
 
 func TestOrdinaryRestrictedRejectsFilesystemImport(t *testing.T) {
-	if _, err := NewRestrictedInterpreter(RestrictedConfig{Imports: []string{"pipit/fs"}}); !errors.Is(err, ErrInvalidRestrictedConfig) {
-		t.Fatal("ordinary restricted interpreter admitted filesystem import:", err)
-	}
-	if _, err := NewFilesystemRestrictedInterpreter(RestrictedConfig{Imports: []string{"pipit/fs"}}, nil); !errors.Is(err, ErrInvalidRestrictedConfig) {
-		t.Fatal("missing proxy admitted:", err)
-	}
+	t.Parallel()
+	_, err := NewRestrictedInterpreter(RestrictedConfig{Imports: []string{"pipit/fs"}})
+	require.ErrorIs(t, err, ErrInvalidRestrictedConfig, "an ordinary restricted interpreter refuses the filesystem import")
+	_, err = NewFilesystemRestrictedInterpreter(RestrictedConfig{Imports: []string{"pipit/fs"}}, nil)
+	require.ErrorIs(t, err, ErrInvalidRestrictedConfig, "the filesystem import needs a proxy")
 }

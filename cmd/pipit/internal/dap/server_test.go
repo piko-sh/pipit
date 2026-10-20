@@ -21,15 +21,16 @@ package dap
 import (
 	"bufio"
 	"bytes"
-	"errors"
 	"io"
 	"sync"
 	"testing"
 
 	"github.com/google/go-dap"
+	"github.com/stretchr/testify/require"
 )
 
 func TestServerLoopHandshakeAndDisconnect(t *testing.T) {
+	t.Parallel()
 	serverFromClient, clientToServer := io.Pipe()
 	defer func() { _ = clientToServer.Close() }()
 
@@ -49,27 +50,17 @@ func TestServerLoopHandshakeAndDisconnect(t *testing.T) {
 	mustSendRequest(t, clientToServer, 1, "initialize")
 	mustSendRequest(t, clientToServer, 2, "disconnect")
 
-	if err := <-loopDone; err != nil && !errors.Is(err, io.EOF) {
-		t.Fatalf("serve returned %v", err)
+	if err := <-loopDone; err != nil {
+		require.ErrorIs(t, err, io.EOF, "serve stops cleanly")
 	}
 
 	messages := readMessagesFromBuffer(t, output.Bytes())
-	if got := len(messages); got < 3 {
-		t.Fatalf("messages: got %d, want >=3 (initialize response + initialized event + disconnect response)", got)
-	}
-	if _, ok := messages[0].(*dap.InitializeResponse); !ok {
-		t.Fatalf("first message: got %T, want *dap.InitializeResponse", messages[0])
-	}
-	if _, ok := messages[1].(*dap.InitializedEvent); !ok {
-		t.Fatalf("second message: got %T, want *dap.InitializedEvent", messages[1])
-	}
+	require.GreaterOrEqual(t, len(messages), 3)
+	require.IsType(t, &dap.InitializeResponse{}, messages[0])
+	require.IsType(t, &dap.InitializedEvent{}, messages[1])
 	lastResponse, ok := messages[len(messages)-1].(*dap.DisconnectResponse)
-	if !ok {
-		t.Fatalf("last message: got %T, want *dap.DisconnectResponse", messages[len(messages)-1])
-	}
-	if !lastResponse.Success {
-		t.Fatalf("disconnect success: got false, want true")
-	}
+	require.True(t, ok, "the message is a *dap.DisconnectResponse, not %T", messages[len(messages)-1])
+	require.True(t, lastResponse.Success, "disconnect succeeds")
 }
 
 func mustSendRequest(t *testing.T, w io.Writer, seq int, command string) {
@@ -85,11 +76,9 @@ func mustSendRequest(t *testing.T, w io.Writer, seq int, command string) {
 			Request: dap.Request{ProtocolMessage: dap.ProtocolMessage{Seq: seq, Type: "request"}, Command: command},
 		}
 	default:
-		t.Fatalf("mustSendRequest: command %q not wired in this helper", command)
+		require.Failf(t, "unknown command", "command %q is not wired in this helper", command)
 	}
-	if err := dap.WriteProtocolMessage(w, request); err != nil {
-		t.Fatalf("write request %q: %v", command, err)
-	}
+	require.NoError(t, dap.WriteProtocolMessage(w, request), "write request %q", command)
 }
 
 func readMessagesFromBuffer(t *testing.T, data []byte) []dap.Message {
@@ -101,9 +90,7 @@ func readMessagesFromBuffer(t *testing.T, data []byte) []dap.Message {
 			break
 		}
 		message, err := dap.ReadProtocolMessage(reader)
-		if err != nil {
-			t.Fatalf("ReadProtocolMessage: %v", err)
-		}
+		require.NoError(t, err)
 		messages = append(messages, message)
 	}
 	return messages

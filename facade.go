@@ -54,7 +54,8 @@ func (i *Interpreter) CompileFileSet(ctx context.Context, sources map[string]str
 	return i.service.CompileFileSet(ctx, sources)
 }
 
-// CompileProgram compiles a multi-package program.
+// CompileProgram compiles a multi-package program. When several packages fail, the error
+// is a ProblemList with one problem for each; CompileProblems splits it.
 //
 // Takes modulePath (string) which is the root module import path.
 // Takes packages (map[string]map[string]string) mapping package paths to their named
@@ -157,7 +158,8 @@ func (i *Interpreter) HasRegisteredPackage(importPath string) bool {
 // Takes modulePath (string) which is the root module import path.
 // Takes packages (map[string]map[string]string) mapping package paths to their named
 // source files.
-// Takes bytecodePacker (func) which serialises the compiled output.
+// Takes bytecodePacker (func) which serialises the compiled output, or reports why it
+// cannot.
 //
 // Returns *module.Bundle and any compilation or packaging error.
 func (i *Interpreter) PackageModule(
@@ -165,7 +167,7 @@ func (i *Interpreter) PackageModule(
 	moduleDescriptor module.Descriptor,
 	modulePath string,
 	packages map[string]map[string]string,
-	bytecodePacker func(*CompiledFileSet) []byte,
+	bytecodePacker func(*CompiledFileSet) ([]byte, error),
 ) (*module.Bundle, error) {
 	return i.service.PackageModule(ctx, moduleDescriptor, modulePath, packages, bytecodePacker)
 }

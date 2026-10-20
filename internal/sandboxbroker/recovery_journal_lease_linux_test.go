@@ -26,20 +26,21 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestRecoveryJournalCloseReleasesInheritedLease(t *testing.T) {
 	if os.Getenv("PIPIT_TEST_JOURNAL_LEASE_CHILD") == "1" {
 		inherited := os.NewFile(3, "inherited-journal-directory")
 		defer inherited.Close()
-		if _, err := inherited.Stat(); err != nil {
-			t.Fatal(err)
-		}
+		_, err := inherited.Stat()
+		require.NoError(t, err)
 		fmt.Println("ready")
 		var signal [1]byte
 		_, _ = io.ReadFull(os.Stdin, signal[:])
@@ -48,94 +49,47 @@ func TestRecoveryJournalCloseReleasesInheritedLease(t *testing.T) {
 	directory := testRecoveryDirectory(t)
 	namespace := recoveryRecordFixture().Namespace
 	owner, err := OpenLinuxRecoveryJournal(directory, namespace)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer owner.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestRecoveryJournalCloseReleasesInheritedLease$")
-	command.Env = append(os.Environ(), "PIPIT_TEST_JOURNAL_LEASE_CHILD=1")
+	command := sandboxtest.Command(ctx, "TestRecoveryJournalCloseReleasesInheritedLease", "PIPIT_TEST_JOURNAL_LEASE_CHILD=1")
 	command.ExtraFiles = []*os.File{owner.directory}
 	command.Stderr = os.Stderr
 	input, err := command.StdinPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer input.Close()
 	output, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer output.Close()
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, command.Start())
 	defer func() { _ = command.Process.Kill(); _ = command.Wait() }()
-	ready, err := bufio.NewReader(output).ReadString('\n')
-	if err != nil || ready != "ready\n" {
-		t.Fatal("inheriting child did not become ready:", ready, err)
-	}
-	if err := owner.Close(); err != nil {
-		t.Fatal(err)
-	}
+	sandboxtest.WaitForLine(t, bufio.NewReader(output), "ready", "the inheriting child becomes ready")
+	require.NoError(t, owner.Close())
 	replacement, err := OpenLinuxRecoveryJournal(directory, namespace)
-	if err != nil {
-		t.Fatal("live child retained a closed owner's lease:", err)
-	}
+	require.NoError(t, err, "a live child keeps no closed owner's lease")
 	defer replacement.Close()
-	if err := input.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Wait(); err != nil {
-		t.Fatal(err)
-	}
-	if concurrent, err := OpenLinuxRecoveryJournal(directory, namespace); concurrent != nil || err == nil {
-		if concurrent != nil {
-			_ = concurrent.Close()
-		}
-		t.Fatal("child exit released replacement owner's lease:", err)
-	}
+	require.NoError(t, input.Close())
+	require.NoError(t, command.Wait())
+	requireJournalLocked(t, directory, namespace, "the child's exit keeps the replacement owner's lease")
 }
 
 func TestRecoveryJournalCloseReleasesDuplicatedLease(t *testing.T) {
 	directory := testRecoveryDirectory(t)
 	namespace := recoveryRecordFixture().Namespace
 	owner, err := OpenLinuxRecoveryJournal(directory, namespace)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer owner.Close()
 	descriptor, err := unix.FcntlInt(owner.directory.Fd(), unix.F_DUPFD_CLOEXEC, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	inherited := os.NewFile(uintptr(descriptor), "inherited-journal-directory")
 	defer inherited.Close()
-	if err := owner.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, owner.Close())
 	replacement, err := OpenLinuxRecoveryJournal(directory, namespace)
-	if err != nil {
-		t.Fatal("closed owner retained lease through duplicated descriptor:", err)
-	}
+	require.NoError(t, err, "a closed owner keeps no lease through a duplicated descriptor")
 	defer replacement.Close()
-	if err := owner.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if concurrent, err := OpenLinuxRecoveryJournal(directory, namespace); concurrent != nil || err == nil {
-		if concurrent != nil {
-			_ = concurrent.Close()
-		}
-		t.Fatal("repeated closure released replacement owner's lease:", err)
-	}
-	if err := inherited.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if concurrent, err := OpenLinuxRecoveryJournal(directory, namespace); concurrent != nil || err == nil {
-		if concurrent != nil {
-			_ = concurrent.Close()
-		}
-		t.Fatal("old descriptor closure released replacement owner's lease:", err)
-	}
+	require.NoError(t, owner.Close())
+	requireJournalLocked(t, directory, namespace, "a repeated close keeps the replacement owner's lease")
+	require.NoError(t, inherited.Close())
+	requireJournalLocked(t, directory, namespace, "closing the old descriptor keeps the replacement owner's lease")
 }

@@ -107,20 +107,24 @@ func TestScopedShareTypeCaches(t *testing.T) {
 func TestParseAllowlistEntry(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
+		name       string
 		input      string
 		wantPath   string
 		wantSymbol string
 	}{
-		{input: "net/http.Get", wantPath: "net/http", wantSymbol: "Get"},
-		{input: "strings.ToUpper", wantPath: "strings", wantSymbol: "ToUpper"},
-		{input: "net/http/*", wantPath: "net/http", wantSymbol: "*"},
-		{input: "strings", wantPath: "strings", wantSymbol: ""},
-		{input: "", wantPath: "", wantSymbol: ""},
-		{input: "example.com/foo/v2.Type", wantPath: "example.com/foo/v2", wantSymbol: "Type"},
+		{name: "symbol", input: "net/http.Get", wantPath: "net/http", wantSymbol: "Get"},
+		{name: "symbol in a one-element path", input: "strings.ToUpper", wantPath: "strings", wantSymbol: "ToUpper"},
+		{name: "wildcard", input: "net/http/*", wantPath: "net/http", wantSymbol: "*"},
+		{name: "package only", input: "strings", wantPath: "strings", wantSymbol: ""},
+		{name: "empty", input: "", wantPath: "", wantSymbol: ""},
+		{name: "dot in the module path", input: "example.com/foo/v2.Type", wantPath: "example.com/foo/v2", wantSymbol: "Type"},
 	}
 	for _, tt := range tests {
-		gotPath, gotSymbol := parseAllowlistEntry(tt.input)
-		assert.Equal(t, tt.wantPath, gotPath, "parseAllowlistEntry(%q) path", tt.input)
-		assert.Equal(t, tt.wantSymbol, gotSymbol, "parseAllowlistEntry(%q) symbol", tt.input)
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gotPath, gotSymbol := parseAllowlistEntry(tt.input)
+			assert.Equal(t, tt.wantPath, gotPath, "path")
+			assert.Equal(t, tt.wantSymbol, gotSymbol, "symbol")
+		})
 	}
 }

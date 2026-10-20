@@ -19,7 +19,6 @@
 package app
 
 import (
-	"context"
 	"encoding/binary"
 	"fmt"
 	"reflect"
@@ -27,29 +26,36 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/symtab"
 )
 
-func TestEvalFileRunsEntrypoint(t *testing.T) {
+func TestEvalFile(t *testing.T) {
 	t.Parallel()
-	source := `package main
+	tests := []struct {
+		name       string
+		source     string
+		entrypoint string
+		want       string
+		wantErr    error
+	}{
+		{
+			name: "runs an entrypoint",
+			source: `package main
 
 func entrypoint() int {
 	return 42
 }
 
 func main() {}
-`
-	service := NewService()
-	result, err := service.EvalFile(context.Background(), source, "entrypoint")
-	require.NoError(t, err)
-	require.Equal(t, "42", fmt.Sprint(result))
-}
-
-func TestEvalFile_WithHelpers(t *testing.T) {
-	t.Parallel()
-	source := `package main
+`,
+			entrypoint: "entrypoint",
+			want:       "42",
+		},
+		{
+			name: "calls a helper",
+			source: `package main
 
 func double(x int) int {
 	return x * 2
@@ -60,70 +66,150 @@ func entrypoint() int {
 }
 
 func main() {}
-`
-	service := NewService()
-	result, err := service.EvalFile(context.Background(), source, "entrypoint")
-	require.NoError(t, err)
-	require.Equal(t, "42", fmt.Sprint(result))
-}
-
-func TestEvalFile_StringReturn(t *testing.T) {
-	t.Parallel()
-	source := `package main
+`,
+			entrypoint: "entrypoint",
+			want:       "42",
+		},
+		{
+			name: "returns a string",
+			source: `package main
 
 func entrypoint() string {
 	return "hello world"
 }
 
 func main() {}
-`
-	service := NewService()
-	result, err := service.EvalFile(context.Background(), source, "entrypoint")
-	require.NoError(t, err)
-	require.Equal(t, "hello world", fmt.Sprint(result))
+`,
+			entrypoint: "entrypoint",
+			want:       "hello world",
+		},
+		{
+			name: "a variadic entrypoint call",
+			source: `package main
+
+func sum(nums ...int) int {
+	total := 0
+	for _, n := range nums {
+		total += n
+	}
+	return total
 }
 
-func TestEvalFile_EntrypointNotFound(t *testing.T) {
-	t.Parallel()
-	source := `package main
+func run() int {
+	return sum(10, 20, 12)
+}
+`,
+			entrypoint: "run",
+			want:       "42",
+		},
+		{
+			name: "an empty variadic call",
+			source: `package main
+
+func count(arguments ...int) int {
+	return len(arguments)
+}
+
+func run() int {
+	return count()
+}
+`,
+			entrypoint: "run",
+			want:       "0",
+		},
+		{
+			name: "a spread variadic call",
+			source: `package main
+
+func sum(nums ...int) int {
+	total := 0
+	for _, n := range nums {
+		total += n
+	}
+	return total
+}
+
+func run() int {
+	s := []int{1, 2, 3, 4, 5}
+	return sum(s...)
+}
+`,
+			entrypoint: "run",
+			want:       "15",
+		},
+		{
+			name: "a variadic call after a fixed parameter",
+			source: `package main
+
+func first(prefix string, nums ...int) int {
+	r := len(prefix)
+	for _, n := range nums {
+		r += n
+	}
+	return r
+}
+
+func run() int {
+	return first("abc", 10, 20)
+}
+`,
+			entrypoint: "run",
+			want:       "33",
+		},
+		{
+			name: "a missing entrypoint",
+			source: `package main
 
 func other() int {
 	return 1
 }
 
 func main() {}
-`
-	service := NewService()
-	_, err := service.EvalFile(context.Background(), source, "nonexistent")
-	require.ErrorIs(t, err, fault.ErrEntrypointNotFound)
-}
-
-func TestEvalFile_ParseError(t *testing.T) {
-	t.Parallel()
-	service := NewService()
-	_, err := service.EvalFile(context.Background(), "not valid go {{{", "entrypoint")
-	require.ErrorIs(t, err, fault.ErrParse)
-}
-
-func TestEvalFile_TypeCheckError(t *testing.T) {
-	t.Parallel()
-	source := `package main
+`,
+			entrypoint: "nonexistent",
+			wantErr:    fault.ErrEntrypointNotFound,
+		},
+		{name: "a parse error", source: "not valid go {{{", entrypoint: "entrypoint", wantErr: fault.ErrParse},
+		{
+			name: "a type error",
+			source: `package main
 
 func entrypoint() int {
 	return "not an int"
 }
 
 func main() {}
-`
-	service := NewService()
-	_, err := service.EvalFile(context.Background(), source, "entrypoint")
-	require.ErrorIs(t, err, fault.ErrTypeCheck)
+`,
+			entrypoint: "entrypoint",
+			wantErr:    fault.ErrTypeCheck,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := NewService().EvalFile(t.Context(), tt.source, tt.entrypoint)
+			require.ErrorIs(t, err, tt.wantErr)
+			if tt.wantErr != nil {
+				return
+			}
+			require.Equal(t, tt.want, fmt.Sprint(result))
+		})
+	}
 }
 
-func TestCompileFileSet_SingleFile(t *testing.T) {
+func TestCompileFileSet(t *testing.T) {
 	t.Parallel()
-	sources := map[string]string{
-		"main.go": `package main
+	tests := []struct {
+		name       string
+		options    []Option
+		sources    map[string]string
+		entrypoint string
+		want       string
+	}{
+		{
+			name: "one file",
+			sources: map[string]string{
+				"main.go": `package main
 
 func entrypoint() int {
 	return 100
@@ -131,27 +217,20 @@ func entrypoint() int {
 
 func main() {}
 `,
-	}
-
-	service := NewService()
-	cfs, err := service.CompileFileSet(context.Background(), sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	require.NoError(t, err)
-	require.Equal(t, "100", fmt.Sprint(result))
-}
-
-func TestCompileFileSet_MultiFile(t *testing.T) {
-	t.Parallel()
-	sources := map[string]string{
-		"helpers.go": `package main
+			},
+			entrypoint: "entrypoint",
+			want:       "100",
+		},
+		{
+			name: "several files",
+			sources: map[string]string{
+				"helpers.go": `package main
 
 func triple(x int) int {
 	return x * 3
 }
 `,
-		"main.go": `package main
+				"main.go": `package main
 
 func entrypoint() int {
 	return triple(14)
@@ -159,21 +238,14 @@ func entrypoint() int {
 
 func main() {}
 `,
-	}
-
-	service := NewService()
-	cfs, err := service.CompileFileSet(context.Background(), sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	require.NoError(t, err)
-	require.Equal(t, "42", fmt.Sprint(result))
-}
-
-func TestCompileFileSet_MultiFile_BidirectionalCalls(t *testing.T) {
-	t.Parallel()
-	sources := map[string]string{
-		"a.go": `package main
+			},
+			entrypoint: "entrypoint",
+			want:       "42",
+		},
+		{
+			name: "calls in both directions between files",
+			sources: map[string]string{
+				"a.go": `package main
 
 func addOne(x int) int {
 	return x + 1
@@ -183,21 +255,95 @@ func entrypoint() int {
 	return doubleAndAdd(20)
 }
 `,
-		"b.go": `package main
+				"b.go": `package main
 
 func doubleAndAdd(x int) int {
 	return addOne(x * 2)
 }
 `,
+			},
+			entrypoint: "entrypoint",
+			want:       "41",
+		},
+		{
+			name:    "a build tag excludes a file",
+			options: []Option{WithBuildTags("custom")},
+			sources: map[string]string{
+				"main.go": `package main
+
+func Run() int { return 1 }
+`,
+				"extra.go": "//go:build !custom\n\npackage main\n\nfunc Run() int { return 2 }\n",
+			},
+			entrypoint: "Run",
+			want:       "1",
+		},
+		{
+			name:    "a build tag includes a file",
+			options: []Option{WithBuildTags("custom")},
+			sources: map[string]string{
+				"main.go": `package main
+
+func Entry() int { return helper() }
+`,
+				"impl_custom.go":  "//go:build custom\n\npackage main\n\nfunc helper() int { return 42 }\n",
+				"impl_default.go": "//go:build !custom\n\npackage main\n\nfunc helper() int { return 0 }\n",
+			},
+			entrypoint: "Entry",
+			want:       "42",
+		},
+		{
+			name: "the ignore tag excludes a file",
+			sources: map[string]string{
+				"main.go": `package main
+
+func Run() int { return 1 }
+`,
+				"ignored.go": "//go:build ignore\n\npackage main\n\nfunc Run() int { return 999 }\n",
+			},
+			entrypoint: "Run",
+			want:       "1",
+		},
+		{
+			name: "the host GOOS selects a file",
+			sources: map[string]string{
+				"main.go": `package main
+
+func Run() string { return "base" }
+`,
+				"platform.go": "//go:build " + runtime.GOOS + "\n\npackage main\n\nfunc Platform() string { return \"" + runtime.GOOS + "\" }\n",
+				"other.go":    "//go:build fakeos\n\npackage main\n\nfunc Platform() string { return \"fake\" }\n",
+			},
+			entrypoint: "Platform",
+			want:       runtime.GOOS,
+		},
+		{
+			name:    "boolean build constraints",
+			options: []Option{WithBuildTags("tagA")},
+			sources: map[string]string{
+				"main.go": `package main
+
+func Run() int { return helper() }
+`,
+				"impl_ab.go":   "//go:build tagA && tagB\n\npackage main\n\nfunc helper() int { return 1 }\n",
+				"impl_a.go":    "//go:build tagA && !tagB\n\npackage main\n\nfunc helper() int { return 2 }\n",
+				"impl_none.go": "//go:build !tagA && !tagB\n\npackage main\n\nfunc helper() int { return 3 }\n",
+			},
+			entrypoint: "Run",
+			want:       "2",
+		},
 	}
-
-	service := NewService()
-	cfs, err := service.CompileFileSet(context.Background(), sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	require.NoError(t, err)
-	require.Equal(t, "41", fmt.Sprint(result))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			service := NewService(tt.options...)
+			cfs, err := service.CompileFileSet(t.Context(), tt.sources)
+			require.NoError(t, err)
+			result, err := service.ExecuteEntrypoint(t.Context(), cfs, tt.entrypoint)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, fmt.Sprint(result))
+		})
+	}
 }
 
 func TestCompileFileSet_ReExecute(t *testing.T) {
@@ -214,11 +360,11 @@ func main() {}
 	}
 
 	service := NewService()
-	cfs, err := service.CompileFileSet(context.Background(), sources)
+	cfs, err := service.CompileFileSet(t.Context(), sources)
 	require.NoError(t, err)
 
 	for range 3 {
-		result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
+		result, err := service.ExecuteEntrypoint(t.Context(), cfs, "entrypoint")
 		require.NoError(t, err)
 		require.Equal(t, "42", fmt.Sprint(result))
 	}
@@ -242,14 +388,14 @@ func main() {}
 	}
 
 	service := NewService()
-	cfs, err := service.CompileFileSet(context.Background(), sources)
+	cfs, err := service.CompileFileSet(t.Context(), sources)
 	require.NoError(t, err)
 
-	r1, err := service.ExecuteEntrypoint(context.Background(), cfs, "alpha")
+	r1, err := service.ExecuteEntrypoint(t.Context(), cfs, "alpha")
 	require.NoError(t, err)
 	require.Equal(t, "alpha", fmt.Sprint(r1))
 
-	r2, err := service.ExecuteEntrypoint(context.Background(), cfs, "beta")
+	r2, err := service.ExecuteEntrypoint(t.Context(), cfs, "beta")
 	require.NoError(t, err)
 	require.Equal(t, "beta", fmt.Sprint(r2))
 }
@@ -260,7 +406,7 @@ func TestEvalFile_PackageLevelVars(t *testing.T) {
 	tests := []struct {
 		name   string
 		source string
-		expect string
+		want   string
 	}{
 		{
 			name: "global int var",
@@ -277,7 +423,7 @@ func Main() int {
 	return counter
 }
 `,
-			expect: "3",
+			want: "3",
 		},
 		{
 			name: "global with initialiser",
@@ -291,7 +437,7 @@ func Main() int {
 	return add(42)
 }
 `,
-			expect: "142",
+			want: "142",
 		},
 		{
 			name: "multiple global types",
@@ -305,7 +451,7 @@ func Main() string {
 	return name
 }
 `,
-			expect: "pipit",
+			want: "pipit",
 		},
 	}
 
@@ -313,9 +459,9 @@ func Main() string {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, "Main")
+			result, err := service.EvalFile(t.Context(), tt.source, "Main")
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, fmt.Sprint(result))
+			require.Equal(t, tt.want, fmt.Sprint(result))
 		})
 	}
 }
@@ -332,17 +478,24 @@ func entrypoint() int {
 	}
 
 	service := NewService()
-	_, err := service.CompileFileSet(context.Background(), sources)
-	require.Error(t, err)
+	_, err := service.CompileFileSet(t.Context(), sources)
 	require.ErrorIs(t, err, fault.ErrTypeCheck)
 }
 
-func TestCompileProgram_CrossPackage(t *testing.T) {
+func TestCompileProgram(t *testing.T) {
 	t.Parallel()
-
-	sources := map[string]map[string]string{
-		"": {
-			"main.go": `package main
+	tests := []struct {
+		name       string
+		options    []Option
+		sources    map[string]map[string]string
+		entrypoint string
+		want       string
+	}{
+		{
+			name: "a cross-package call",
+			sources: map[string]map[string]string{
+				"": {
+					"main.go": `package main
 
 import (
 	"testmod/lib"
@@ -354,32 +507,24 @@ func entrypoint() int {
 
 func main() {}
 `,
-		},
-		"lib": {
-			"lib.go": `package lib
+				},
+				"lib": {
+					"lib.go": `package lib
 
 func Add(a, b int) int {
 	return a + b
 }
 `,
+				},
+			},
+			entrypoint: "entrypoint",
+			want:       "3",
 		},
-	}
-
-	service := NewService()
-	cfs, err := service.CompileProgram(context.Background(), "testmod", sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	require.NoError(t, err)
-	require.Equal(t, "3", fmt.Sprint(result))
-}
-
-func TestCompileProgram_CrossPackageConstants(t *testing.T) {
-	t.Parallel()
-
-	sources := map[string]map[string]string{
-		"": {
-			"main.go": `package main
+		{
+			name: "a cross-package constant",
+			sources: map[string]map[string]string{
+				"": {
+					"main.go": `package main
 
 import (
 	"testmod/lib"
@@ -391,30 +536,22 @@ func entrypoint() int {
 
 func main() {}
 `,
-		},
-		"lib": {
-			"lib.go": `package lib
+				},
+				"lib": {
+					"lib.go": `package lib
 
 const Answer = 42
 `,
+				},
+			},
+			entrypoint: "entrypoint",
+			want:       "42",
 		},
-	}
-
-	service := NewService()
-	cfs, err := service.CompileProgram(context.Background(), "testmod", sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	require.NoError(t, err)
-	require.Equal(t, "42", fmt.Sprint(result))
-}
-
-func TestCompileProgram_CrossPackageFloatConst(t *testing.T) {
-	t.Parallel()
-
-	sources := map[string]map[string]string{
-		"": {
-			"main.go": `package main
+		{
+			name: "a cross-package float constant",
+			sources: map[string]map[string]string{
+				"": {
+					"main.go": `package main
 
 import (
 	"testmod/lib"
@@ -426,30 +563,22 @@ func entrypoint() float64 {
 
 func main() {}
 `,
-		},
-		"lib": {
-			"lib.go": `package lib
+				},
+				"lib": {
+					"lib.go": `package lib
 
 const Pi = 3.14
 `,
+				},
+			},
+			entrypoint: "entrypoint",
+			want:       "3.14",
 		},
-	}
-
-	service := NewService()
-	cfs, err := service.CompileProgram(context.Background(), "testmod", sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	require.NoError(t, err)
-	require.Equal(t, "3.14", fmt.Sprint(result))
-}
-
-func TestCompileProgram_CrossPackageBoolConst(t *testing.T) {
-	t.Parallel()
-
-	sources := map[string]map[string]string{
-		"": {
-			"main.go": `package main
+		{
+			name: "a cross-package bool constant",
+			sources: map[string]map[string]string{
+				"": {
+					"main.go": `package main
 
 import (
 	"testmod/lib"
@@ -461,30 +590,22 @@ func entrypoint() bool {
 
 func main() {}
 `,
-		},
-		"lib": {
-			"lib.go": `package lib
+				},
+				"lib": {
+					"lib.go": `package lib
 
 const Flag = true
 `,
+				},
+			},
+			entrypoint: "entrypoint",
+			want:       "true",
 		},
-	}
-
-	service := NewService()
-	cfs, err := service.CompileProgram(context.Background(), "testmod", sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	require.NoError(t, err)
-	require.Equal(t, "true", fmt.Sprint(result))
-}
-
-func TestCompileProgram_CrossPackageStringConst(t *testing.T) {
-	t.Parallel()
-
-	sources := map[string]map[string]string{
-		"": {
-			"main.go": `package main
+		{
+			name: "a cross-package string constant",
+			sources: map[string]map[string]string{
+				"": {
+					"main.go": `package main
 
 import (
 	"testmod/lib"
@@ -496,30 +617,22 @@ func entrypoint() string {
 
 func main() {}
 `,
-		},
-		"lib": {
-			"lib.go": `package lib
+				},
+				"lib": {
+					"lib.go": `package lib
 
 const Greeting = "hello"
 `,
+				},
+			},
+			entrypoint: "entrypoint",
+			want:       "hello",
 		},
-	}
-
-	service := NewService()
-	cfs, err := service.CompileProgram(context.Background(), "testmod", sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	require.NoError(t, err)
-	require.Equal(t, "hello", fmt.Sprint(result))
-}
-
-func TestCompileProgram_DependencyChain(t *testing.T) {
-	t.Parallel()
-
-	sources := map[string]map[string]string{
-		"": {
-			"main.go": `package main
+		{
+			name: "a dependency chain",
+			sources: map[string]map[string]string{
+				"": {
+					"main.go": `package main
 
 import (
 	"testmod/b"
@@ -531,17 +644,17 @@ func entrypoint() int {
 
 func main() {}
 `,
-		},
-		"a": {
-			"a.go": `package a
+				},
+				"a": {
+					"a.go": `package a
 
 func Add(x, y int) int {
 	return x + y
 }
 `,
-		},
-		"b": {
-			"b.go": `package b
+				},
+				"b": {
+					"b.go": `package b
 
 import (
 	"testmod/a"
@@ -551,16 +664,140 @@ func Double(x int) int {
 	return a.Add(x, x)
 }
 `,
+				},
+			},
+			entrypoint: "entrypoint",
+			want:       "42",
+		},
+		{
+			name: "a blank import",
+			sources: map[string]map[string]string{
+				"": {
+					"main.go": `package main
+
+import (
+	_ "testmod/sideeffect"
+)
+
+func entrypoint() int {
+	return 1
+}
+
+func main() {}
+`,
+				},
+				"sideeffect": {
+					"sideeffect.go": `package sideeffect
+
+func helper() int { return 42 }
+
+func init() {
+	_ = helper()
+}
+`,
+				},
+			},
+			entrypoint: "entrypoint",
+			want:       "1",
+		},
+		{
+			name: "a cross-package method call",
+			sources: map[string]map[string]string{
+				"": {
+					"main.go": `package main
+
+import (
+	"testmod/lib"
+)
+
+func entrypoint() int {
+	c := lib.NewCounter(10)
+	c = c.Add(5)
+	return c.Value()
+}
+
+func main() {}
+`,
+				},
+				"lib": {
+					"lib.go": `package lib
+
+type Counter struct { V int }
+
+func NewCounter(v int) Counter { return Counter{V: v} }
+
+func (c Counter) Add(x int) Counter { return Counter{V: c.V + x} }
+
+func (c Counter) Value() int { return c.V }
+`,
+				},
+			},
+			entrypoint: "entrypoint",
+			want:       "15",
+		},
+		{
+			name:    "build tags select files in imported packages",
+			options: []Option{WithBuildTags("interp_test")},
+			sources: map[string]map[string]string{
+				"": {
+					"main.go": `package main
+
+import (
+	"testmod/util"
+)
+
+func Run() int { return util.Val() }
+
+func main() {}
+`,
+				},
+				"util": {
+					"val_tagged.go":  "//go:build interp_test\n\npackage util\n\nfunc Val() int { return 100 }\n",
+					"val_default.go": "//go:build !interp_test\n\npackage util\n\nfunc Val() int { return 0 }\n",
+				},
+			},
+			entrypoint: "Run",
+			want:       "100",
+		},
+		{
+			name: "a cross-package float constant in an expression",
+			sources: map[string]map[string]string{
+				"": {
+					"main.go": `package main
+
+import (
+	"testmod/lib"
+)
+
+func entrypoint() float64 {
+	return lib.Pi * 2
+}
+
+func main() {}
+`,
+				},
+				"lib": {
+					"lib.go": `package lib
+
+const Pi = 3.14
+`,
+				},
+			},
+			entrypoint: "entrypoint",
+			want:       "6.28",
 		},
 	}
-
-	service := NewService()
-	cfs, err := service.CompileProgram(context.Background(), "testmod", sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	require.NoError(t, err)
-	require.Equal(t, "42", fmt.Sprint(result))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			service := NewService(tt.options...)
+			cfs, err := service.CompileProgram(t.Context(), "testmod", tt.sources)
+			require.NoError(t, err)
+			result, err := service.ExecuteEntrypoint(t.Context(), cfs, tt.entrypoint)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, fmt.Sprint(result))
+		})
+	}
 }
 
 func TestCompileProgram_CyclicImport(t *testing.T) {
@@ -601,7 +838,7 @@ func Y() int { return a.X() }
 	}
 
 	service := NewService()
-	_, err := service.CompileProgram(context.Background(), "testmod", sources)
+	_, err := service.CompileProgram(t.Context(), "testmod", sources)
 	require.ErrorIs(t, err, fault.ErrCyclicImport)
 }
 
@@ -618,10 +855,10 @@ func Hello() string { return "hello" }
 	}
 
 	service := NewService()
-	cfs, err := service.CompileProgram(context.Background(), "testmod", sources)
+	cfs, err := service.CompileProgram(t.Context(), "testmod", sources)
 	require.NoError(t, err)
 
-	err = service.ExecuteInits(context.Background(), cfs)
+	err = service.ExecuteInits(t.Context(), cfs)
 	require.NoError(t, err)
 }
 
@@ -636,96 +873,11 @@ func main() {}
 	}
 
 	service := NewService()
-	cfs, err := service.CompileFileSet(context.Background(), sources)
+	cfs, err := service.CompileFileSet(t.Context(), sources)
 	require.NoError(t, err)
 
-	_, err = service.ExecuteEntrypoint(context.Background(), cfs, "nonexistent")
+	_, err = service.ExecuteEntrypoint(t.Context(), cfs, "nonexistent")
 	require.ErrorIs(t, err, fault.ErrEntrypointNotFound)
-}
-
-func TestEvalFileRunsVariadicEntrypoint(t *testing.T) {
-	t.Parallel()
-	source := `package main
-
-func sum(nums ...int) int {
-	total := 0
-	for _, n := range nums {
-		total += n
-	}
-	return total
-}
-
-func run() int {
-	return sum(10, 20, 12)
-}
-`
-	service := NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
-	require.NoError(t, err)
-	require.Equal(t, "42", fmt.Sprint(result))
-}
-
-func TestEvalFile_VariadicEmpty(t *testing.T) {
-	t.Parallel()
-	source := `package main
-
-func count(arguments ...int) int {
-	return len(arguments)
-}
-
-func run() int {
-	return count()
-}
-`
-	service := NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
-	require.NoError(t, err)
-	require.Equal(t, "0", fmt.Sprint(result))
-}
-
-func TestEvalFile_VariadicSpread(t *testing.T) {
-	t.Parallel()
-	source := `package main
-
-func sum(nums ...int) int {
-	total := 0
-	for _, n := range nums {
-		total += n
-	}
-	return total
-}
-
-func run() int {
-	s := []int{1, 2, 3, 4, 5}
-	return sum(s...)
-}
-`
-	service := NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
-	require.NoError(t, err)
-	require.Equal(t, "15", fmt.Sprint(result))
-}
-
-func TestEvalFile_VariadicMixed(t *testing.T) {
-	t.Parallel()
-	source := `package main
-
-func first(prefix string, nums ...int) int {
-	r := len(prefix)
-	for _, n := range nums {
-		r += n
-	}
-	return r
-}
-
-func run() int {
-	return first("abc", 10, 20)
-}
-`
-	service := NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
-	require.NoError(t, err)
-	require.Equal(t, "33", fmt.Sprint(result))
 }
 
 func TestEvalFile_NativeVariadic(t *testing.T) {
@@ -747,175 +899,11 @@ func run() string {
 	})
 	service := NewService()
 	service.UseSymbols(symbols)
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "run")
+	result, err := service.ExecuteEntrypoint(t.Context(), cfs, "run")
 	require.NoError(t, err)
 	require.Equal(t, "hello world, you are 42", result)
-}
-
-func TestCompileProgram_BlankImport(t *testing.T) {
-	t.Parallel()
-
-	sources := map[string]map[string]string{
-		"": {
-			"main.go": `package main
-
-import (
-	_ "testmod/sideeffect"
-)
-
-func entrypoint() int {
-	return 1
-}
-
-func main() {}
-`,
-		},
-		"sideeffect": {
-			"sideeffect.go": `package sideeffect
-
-func helper() int { return 42 }
-
-func init() {
-	_ = helper()
-}
-`,
-		},
-	}
-
-	service := NewService()
-	cfs, err := service.CompileProgram(context.Background(), "testmod", sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	require.NoError(t, err)
-	require.Equal(t, "1", fmt.Sprint(result))
-}
-
-func TestCompileProgram_CrossPackageMethodCall(t *testing.T) {
-	t.Parallel()
-
-	sources := map[string]map[string]string{
-		"": {
-			"main.go": `package main
-
-import (
-	"testmod/lib"
-)
-
-func entrypoint() int {
-	c := lib.NewCounter(10)
-	c = c.Add(5)
-	return c.Value()
-}
-
-func main() {}
-`,
-		},
-		"lib": {
-			"lib.go": `package lib
-
-type Counter struct { V int }
-
-func NewCounter(v int) Counter { return Counter{V: v} }
-
-func (c Counter) Add(x int) Counter { return Counter{V: c.V + x} }
-
-func (c Counter) Value() int { return c.V }
-`,
-		},
-	}
-
-	service := NewService()
-	cfs, err := service.CompileProgram(context.Background(), "testmod", sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	require.NoError(t, err)
-	require.Equal(t, "15", fmt.Sprint(result))
-}
-
-func TestCompileFileSet_BuildTagExclude(t *testing.T) {
-	t.Parallel()
-
-	sources := map[string]string{
-		"main.go": `package main
-
-func Run() int { return 1 }
-`,
-		"extra.go": "//go:build !custom\n\npackage main\n\nfunc Run() int { return 2 }\n",
-	}
-
-	service := NewService(WithBuildTags("custom"))
-	cfs, err := service.CompileFileSet(context.Background(), sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "Run")
-	require.NoError(t, err)
-	require.Equal(t, "1", fmt.Sprint(result))
-}
-
-func TestCompileFileSet_BuildTagInclude(t *testing.T) {
-	t.Parallel()
-
-	sources := map[string]string{
-		"main.go": `package main
-
-func Entry() int { return helper() }
-`,
-		"impl_custom.go":  "//go:build custom\n\npackage main\n\nfunc helper() int { return 42 }\n",
-		"impl_default.go": "//go:build !custom\n\npackage main\n\nfunc helper() int { return 0 }\n",
-	}
-
-	service := NewService(WithBuildTags("custom"))
-	cfs, err := service.CompileFileSet(context.Background(), sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "Entry")
-	require.NoError(t, err)
-	require.Equal(t, "42", fmt.Sprint(result))
-}
-
-func TestCompileFileSet_BuildTagIgnore(t *testing.T) {
-	t.Parallel()
-
-	sources := map[string]string{
-		"main.go": `package main
-
-func Run() int { return 1 }
-`,
-		"ignored.go": "//go:build ignore\n\npackage main\n\nfunc Run() int { return 999 }\n",
-	}
-
-	service := NewService()
-	cfs, err := service.CompileFileSet(context.Background(), sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "Run")
-	require.NoError(t, err)
-	require.Equal(t, "1", fmt.Sprint(result))
-}
-
-func TestCompileFileSet_BuildTagGOOS(t *testing.T) {
-	t.Parallel()
-
-	sources := map[string]string{
-		"main.go": `package main
-
-func Run() string { return "base" }
-`,
-		"platform.go": "//go:build " + runtime.GOOS + "\n\npackage main\n\nfunc Platform() string { return \"" + runtime.GOOS + "\" }\n",
-		"other.go":    "//go:build fakeos\n\npackage main\n\nfunc Platform() string { return \"fake\" }\n",
-	}
-
-	service := NewService()
-	cfs, err := service.CompileFileSet(context.Background(), sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "Platform")
-	require.NoError(t, err)
-	require.Equal(t, runtime.GOOS, fmt.Sprint(result))
 }
 
 func TestCompileFileSet_BuildTagAllExcluded(t *testing.T) {
@@ -926,62 +914,9 @@ func TestCompileFileSet_BuildTagAllExcluded(t *testing.T) {
 	}
 
 	service := NewService()
-	_, err := service.CompileFileSet(context.Background(), sources)
+	_, err := service.CompileFileSet(t.Context(), sources)
 	require.ErrorIs(t, err, fault.ErrParse)
 	require.ErrorContains(t, err, "all files excluded")
-}
-
-func TestCompileProgram_BuildTags(t *testing.T) {
-	t.Parallel()
-
-	sources := map[string]map[string]string{
-		"": {
-			"main.go": `package main
-
-import (
-	"testmod/util"
-)
-
-func Run() int { return util.Val() }
-
-func main() {}
-`,
-		},
-		"util": {
-			"val_tagged.go":  "//go:build interp_test\n\npackage util\n\nfunc Val() int { return 100 }\n",
-			"val_default.go": "//go:build !interp_test\n\npackage util\n\nfunc Val() int { return 0 }\n",
-		},
-	}
-
-	service := NewService(WithBuildTags("interp_test"))
-	cfs, err := service.CompileProgram(context.Background(), "testmod", sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "Run")
-	require.NoError(t, err)
-	require.Equal(t, "100", fmt.Sprint(result))
-}
-
-func TestCompileFileSet_BuildTagBooleanLogic(t *testing.T) {
-	t.Parallel()
-
-	sources := map[string]string{
-		"main.go": `package main
-
-func Run() int { return helper() }
-`,
-		"impl_ab.go":   "//go:build tagA && tagB\n\npackage main\n\nfunc helper() int { return 1 }\n",
-		"impl_a.go":    "//go:build tagA && !tagB\n\npackage main\n\nfunc helper() int { return 2 }\n",
-		"impl_none.go": "//go:build !tagA && !tagB\n\npackage main\n\nfunc helper() int { return 3 }\n",
-	}
-
-	service := NewService(WithBuildTags("tagA"))
-	cfs, err := service.CompileFileSet(context.Background(), sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "Run")
-	require.NoError(t, err)
-	require.Equal(t, "2", fmt.Sprint(result))
 }
 
 func TestReflectedVariableRetainsUnexportedTypeMethods(t *testing.T) {
@@ -990,7 +925,7 @@ func TestReflectedVariableRetainsUnexportedTypeMethods(t *testing.T) {
 	service.UseSymbols(symtab.NewSymbolRegistry(symtab.SymbolExports{"encoding/binary": {
 		"LittleEndian": reflect.ValueOf(&binary.LittleEndian).Elem(),
 	}}))
-	result, err := service.EvalFile(context.Background(), `package main
+	result, err := service.EvalFile(t.Context(), `package main
  import "encoding/binary"
  func run() uint16 { return binary.LittleEndian.Uint16([]byte{42, 1}) }
  `, "run")

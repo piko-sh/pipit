@@ -192,7 +192,10 @@ func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
 			kind:    isa.RegisterInt,
 			fill:    func(c any) { c.(chan int) <- 5 },
 			wantOk:  1,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(5), r.Ints[3]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(5), r.Ints[3])
+			},
 		},
 		{
 			name:    "a buffered int64 arrives in the int bank",
@@ -200,7 +203,10 @@ func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
 			kind:    isa.RegisterInt,
 			fill:    func(c any) { c.(chan int64) <- -5 },
 			wantOk:  1,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(-5), r.Ints[3]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(-5), r.Ints[3])
+			},
 		},
 		{
 			name:    "a buffered string arrives in the string bank",
@@ -208,7 +214,10 @@ func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
 			kind:    isa.RegisterString,
 			fill:    func(c any) { c.(chan string) <- "value" },
 			wantOk:  1,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "value", r.Strings[3]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "value", r.Strings[3])
+			},
 		},
 		{
 			name:    "a buffered bool arrives in the bool bank",
@@ -216,7 +225,10 @@ func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
 			kind:    isa.RegisterBool,
 			fill:    func(c any) { c.(chan bool) <- true },
 			wantOk:  1,
-			inspect: func(t *testing.T, r *Registers) { require.True(t, r.Bools[3]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.True(t, r.Bools[3])
+			},
 		},
 		{
 			name:    "a buffered float64 arrives in the float bank",
@@ -224,7 +236,10 @@ func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
 			kind:    isa.RegisterFloat,
 			fill:    func(c any) { c.(chan float64) <- 1.25 },
 			wantOk:  1,
-			inspect: func(t *testing.T, r *Registers) { require.InDelta(t, 1.25, r.Floats[3], 0) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.InDelta(t, 1.25, r.Floats[3], 0)
+			},
 		},
 		{
 			name:    "a closed int channel yields the zero value with a false comma-ok",
@@ -232,7 +247,10 @@ func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
 			kind:    isa.RegisterInt,
 			fill:    func(c any) { close(c.(chan int)) },
 			wantOk:  0,
-			inspect: func(t *testing.T, r *Registers) { require.Zero(t, r.Ints[3]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Zero(t, r.Ints[3])
+			},
 		},
 		{
 			name:    "a closed string channel yields the empty string",
@@ -240,7 +258,10 @@ func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
 			kind:    isa.RegisterString,
 			fill:    func(c any) { close(c.(chan string)) },
 			wantOk:  0,
-			inspect: func(t *testing.T, r *Registers) { require.Empty(t, r.Strings[3]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Empty(t, r.Strings[3])
+			},
 		},
 		{
 			name:    "a named channel type falls to the reflect receive",
@@ -248,7 +269,10 @@ func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
 			kind:    isa.RegisterInt,
 			fill:    func(c any) { c.(namedIntChannel) <- 8 },
 			wantOk:  1,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(8), r.Ints[3]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(8), r.Ints[3])
+			},
 		},
 		{
 			name:    "an interface channel is unwrapped to its dynamic value",
@@ -256,7 +280,10 @@ func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
 			kind:    isa.RegisterString,
 			fill:    func(c any) { c.(chan any) <- "dynamic" },
 			wantOk:  1,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "dynamic", r.Strings[3]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "dynamic", r.Strings[3])
+			},
 		},
 	}
 

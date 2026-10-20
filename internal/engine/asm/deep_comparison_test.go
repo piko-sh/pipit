@@ -87,7 +87,7 @@ func TestDeepInstructionComparison(t *testing.T) {
 
 			if requiresExactMatch {
 
-				if !assert.Equal(t, len(oldNormalised), len(newNormalised),
+				if !assert.Len(t, newNormalised, len(oldNormalised),
 					"%s:%s instruction count mismatch", filename, name) {
 					continue
 				}

@@ -26,6 +26,7 @@ import (
 	"os"
 	"reflect"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"piko.sh/safeconv"
@@ -46,9 +47,9 @@ const (
 	// to check for context cancellation.
 	cancellationCheckMask uint32 = 0x3FF
 
-	// opcodeTableSize is the number of entries in the opcode dispatch table (one per
-	// possible uint8 opcode value).
-	opcodeTableSize = 256
+	// pollYieldMask schedules a processor yield every pollYieldMask+1 context polls,
+	// allowing Go work to run during tight interpreted loops.
+	pollYieldMask uint32 = 0x3F
 
 	// checkpointFlagGCPending signals a pending arena MinorGC at the next safe point.
 	checkpointFlagGCPending uint8 = 1 << 0
@@ -303,6 +304,37 @@ type VM struct {
 	// loop.
 	Cancelled atomic.Uint32
 
+	// ctxDone caches ctx.Done() for polling without an AfterFunc watcher.
+	ctxDone <-chan struct{}
+
+	// callbackDeadline bounds the current callback run under VMLimits.CallbackTimeout; zero
+	// when the run is unbounded.
+	callbackDeadline time.Time
+
+	// pollCause is why pollContext stopped the run when the context itself did not end, such
+	// as fault.ErrCallbackTimeout; nil otherwise.
+	pollCause error
+
+	// pollsSinceYield counts pollContext calls, spacing its cooperative yields.
+	pollsSinceYield uint32
+
+	// link connects callbacks, bound methods and goroutines to the VM's execution.
+	link *executionLink
+
+	// ownsLink is true while this VM runs an execution of its own (beginExecution until
+	// endExecution), whose link it builds and ends.
+	ownsLink bool
+
+	// spawnCtx is the context the goroutines this VM starts run under.
+	spawnCtx context.Context
+
+	// blockCtx bounds this run's blocking waits by callbackDeadline; built on the first wait
+	// under a deadline (blockingDone) and cancelled when the run finishes.
+	blockCtx context.Context
+
+	// blockCancel releases blockCtx.
+	blockCancel context.CancelFunc
+
 	// inlineDispatchExpectUintResult signals that the active vm.run invocation came from an
 	// inline-dispatch path that expects a uint64 result. handleReturn checks this flag at
 	// baseFramePointer to decide whether to populate inlineDispatchUintResult (fast path, no
@@ -341,6 +373,8 @@ func NewVM(ctx context.Context, globals *GlobalStore, symbols *symtab.SymbolRegi
 		ctx:                  ctx,
 		callbackVMs:          new(callbackVMCache),
 		debugParkDone:        ctx.Done(),
+		ctxDone:              ctx.Done(),
+		spawnCtx:             ctx,
 	}
 	if ctx.Done() != nil {
 		flag := &vm.Cancelled
@@ -399,6 +433,7 @@ func (vm *VM) Execute(compiledFunction *program.CompiledFunction) (result any, e
 		vm.resetPointerProvenance()
 	}
 	defer vm.FinishWatcher()
+	defer vm.endExecution()
 	ownArena := false
 	defer func() {
 		if budgetErr := ClassifyRecoveredPanic(recover()); budgetErr != nil {
@@ -493,7 +528,7 @@ func (vm *VM) MaterialiseGlobalStrings() {
 // Returns *RegisterArena which the caller must pass to ReleaseFileSetArena.
 func (vm *VM) PrepareForFileSet(cfs *program.CompiledFileSet, entrypointFunction *program.CompiledFunction) *RegisterArena {
 	vm.BindFileSet(program.ExportFunctions(cfs.Root()), cfs.Root())
-	vm.reopenCallbackVMs()
+	vm.beginExecution(false)
 	arena := vm.acquireArena()
 	vm.Arena = arena
 
@@ -524,7 +559,8 @@ func (vm *VM) ReleaseFileSetArena(arena *RegisterArena) {
 }
 
 // SetExecutionCancel records the cancel function that tears down the VM's execution
-// context.
+// context, and begins the execution the callbacks, bound methods and goroutines it starts
+// are linked to; a callback timeout fails the execution through cancel.
 //
 // Takes cancel (context.CancelCauseFunc) which cancels the VM and every goroutine it
 // spawned.
@@ -533,6 +569,7 @@ func (vm *VM) SetExecutionCancel(cancel context.CancelCauseFunc) {
 	if tracker := vm.Limits.Tracker; tracker != nil {
 		tracker.executionCancel.Store(&cancel)
 	}
+	vm.beginExecution(true)
 }
 
 // SetStderrWriter redirects the VM's stderr stream.
@@ -568,6 +605,7 @@ func (vm *VM) acquireArena() *RegisterArena {
 	arena.MaxArenaBytes = vm.Limits.MaxArenaBytes
 	arena.MaxAllocSize = vm.Limits.MaxAllocSize
 	arena.disableMinorGC = vm.Limits.DisableMinorGC
+	arena.cloneUnownedStrings = vm.reentrantInterpreterVM
 	arena.AttachBudgetTracker(vm.Limits.Tracker)
 	return arena
 }
@@ -741,7 +779,7 @@ func (vm *VM) prepareForExecution(compiledFunction *program.CompiledFunction) bo
 	vm.rootFunction = compiledFunction
 	vm.usesTypedSliceBanks = vm.usesTypedSliceBanks || bundleUsesTypedSliceBanks(compiledFunction)
 	vm.SeedExecutionBudgets()
-	vm.reopenCallbackVMs()
+	vm.beginExecution(false)
 
 	ownArena := vm.Arena == nil
 	if ownArena {
@@ -1132,11 +1170,6 @@ func (vm *VM) copyReturnValueAt(calleeFrame *CallFrame, kind isa.RegisterKind, s
 		copyReturnToGeneral(callerFrame, &calleeFrame.Registers, kind, sourceRegister, dest.Register)
 	}
 }
-
-// setExecutionContext replaces the context the VM checks for cancellation.
-//
-// Exposed for tests that need to cancel a VM mid-run.
-func (vm *VM) setExecutionContext(ctx context.Context) { vm.ctx = ctx }
 
 // executionContext returns the context the VM checks for cancellation.
 //

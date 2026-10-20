@@ -83,9 +83,11 @@ func (c *Compiler) tryCompileStructIntoCollection(ctx context.Context, leftHandS
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2SetZero), destination)
 
 	for i, element := range compositeLiteral.Elts {
+		watermark := c.Scopes.Alloc.Snapshot()
 		if err := c.compileStructField(ctx, destination, i, element, compositeLiteral, reflectType); err != nil {
 			return program.VarLocation{}, true, err
 		}
+		c.Scopes.RestoreWatermark(watermark)
 	}
 
 	return program.VarLocation{Register: destination, Kind: isa.RegisterGeneral}, true, nil

@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,25 +32,29 @@ func TestRangeOverSlice(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "range_string_slice", code: `
+		{
+			name: "range_string_slice",
+			code: `
 s := ""
 for _, v := range []string{"a", "b", "c"} {
     s += v
 }
-s`, expect: "abc"},
+s`,
+			want: "abc",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -59,28 +63,36 @@ func TestMethodValues(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "closure_variable_call", code: `
+		{
+			name: "closure_variable_call",
+			code: `
 f := func(x int) int { return x * 2 }
-f(21)`, expect: 42},
-		{name: "closure_in_slice", code: `
+f(21)`,
+			want: 42,
+		},
+		{
+			name: "closure_in_slice",
+			code: `
 fns := []func(int) int{
     func(x int) int { return x + 1 },
     func(x int) int { return x * 2 },
 }
-fns[0](10) + fns[1](10)`, expect: 31},
+fns[0](10) + fns[1](10)`,
+			want: 31,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -89,17 +101,23 @@ func TestSelectSend(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "select_send", code: `
+		{
+			name: "select_send",
+			code: `
 ch := make(chan int, 1)
 select {
 case ch <- 42:
 }
-<-ch`, expect: 42},
-		{name: "select_default", code: `
+<-ch`,
+			want: 42,
+		},
+		{
+			name: "select_default",
+			code: `
 ch := make(chan int)
 x := 0
 select {
@@ -108,16 +126,18 @@ case v := <-ch:
 default:
     x = -1
 }
-x`, expect: -1},
+x`,
+			want: -1,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

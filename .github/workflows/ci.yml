@@ -173,9 +173,13 @@ jobs:
         run: cd cmd/wasm && go test -exec="$(go env GOROOT)/lib/wasm/go_js_wasm_exec" . -count=1 -timeout=90s
 
   lint:
-    name: Lint Go
+    name: Lint Go (${{ matrix.group }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [core, integration]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -187,12 +191,11 @@ jobs:
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
           install-mode: goinstall
-          args: --timeout=10m
+          install-only: true
           verify: false
 
-      - name: Lint cmd/pipit
-        working-directory: cmd/pipit
-        run: golangci-lint run --timeout=10m ./...
+      - name: Lint the ${{ matrix.group }} targets
+        run: hack/lint/go.sh --only ${{ matrix.group }} --timeout=10m
 
   lint-scripts:
     name: Lint Scripts

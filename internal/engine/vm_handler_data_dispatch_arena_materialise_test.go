@@ -224,7 +224,7 @@ func TestCopyReflectValueArenaProducesAnIndependentValue(t *testing.T) {
 		name   string
 		source any
 	}{
-		{name: "a pointer-free struct is copied into the arena", source: struct{ X, Y int }{1, 2}},
+		{name: "a pointer-free struct is copied into the arena", source: struct{ X, Y int }{X: 1, Y: 2}},
 		{name: "a pointer-bearing struct still copies", source: hostContainer{Label: "label", Items: []string{"a"}}},
 		{name: "a slice keeps its contents", source: []int{1, 2, 3}},
 		{name: "a string keeps its bytes", source: "borrowed"},
@@ -276,12 +276,12 @@ func TestArenaSliceBackingSurvivesReset(t *testing.T) {
 		allocate func(*RegisterArena, int) reflect.Value
 		value    any
 	}{
-		{"string", func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocStringBacking(n)) }, "TROO"},
-		{"int", func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocIntBacking(n)) }, int64(42)},
-		{"float", func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocFloatBacking(n)) }, 1.25},
-		{"bool", func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocBoolBacking(n)) }, true},
-		{"uint", func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocUintBacking(n)) }, uint64(42)},
-		{"byte", func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocByteBacking(n)) }, byte(42)},
+		{name: "string", allocate: func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocStringBacking(n)) }, value: "TROO"},
+		{name: "int", allocate: func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocIntBacking(n)) }, value: int64(42)},
+		{name: "float", allocate: func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocFloatBacking(n)) }, value: 1.25},
+		{name: "bool", allocate: func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocBoolBacking(n)) }, value: true},
+		{name: "uint", allocate: func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocUintBacking(n)) }, value: uint64(42)},
+		{name: "byte", allocate: func(a *RegisterArena, n int) reflect.Value { return reflect.ValueOf(a.AllocByteBacking(n)) }, value: byte(42)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

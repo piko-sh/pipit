@@ -56,7 +56,7 @@ func TestPanicStackWithCallbackPrependsCallbackFrames(t *testing.T) {
 	vm := newGCTestVM()
 	vm.callbackPanicStack = "inner()\n\tinner.go:3"
 	rendered := vm.panicStackWithCallback()
-	require.True(t, len(rendered) > len(vm.callbackPanicStack))
+	require.Greater(t, len(rendered), len(vm.callbackPanicStack))
 	require.Contains(t, rendered, "inner()\n\tinner.go:3\n"+callbackBoundaryMarker)
 
 	vm.callbackPanicStack = ""

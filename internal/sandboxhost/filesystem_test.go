@@ -27,6 +27,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/sandboxworker"
 )
 
@@ -43,41 +45,35 @@ func (fixture *filesystemAPIFixture) evaluate(_ sandboxworker.Request) (sandboxw
 }
 
 func TestIsolatedFilesystemAPI(t *testing.T) {
+	t.Parallel()
 	fixture := &filesystemAPIFixture{
 		response: sandboxworker.Response{Output: "ok", Error: "", Code: "ok", Value: nil, CostUsed: 1, OutputTruncated: false},
 		err:      nil, closes: atomic.Int32{},
 	}
 	worker := &IsolatedFilesystemWorker{process: fixture, used: atomic.Bool{}}
 	result, err := worker.Eval("1")
-	if err != nil || result.Output != "ok" {
-		t.Fatalf("%+v: %v", result, err)
-	}
-	if _, err := worker.EvalFile("package main", "main"); !errors.Is(err, ErrIsolatedUsed) {
-		t.Fatal(err)
-	}
-	if worker.Diagnostics() != "bounded diagnostics" {
-		t.Fatal("diagnostics unavailable")
-	}
-	if err := worker.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "%+v", result)
+	require.Equal(t, "ok", result.Output)
+	_, err = worker.EvalFile("package main", "main")
+	require.ErrorIs(t, err, ErrIsolatedUsed)
+	require.Equal(t, "bounded diagnostics", worker.Diagnostics(), "diagnostics unavailable")
+	require.NoError(t, worker.Close())
 	failure := errors.New("cleanup failed")
 	fixture.err = failure
 	worker = &IsolatedFilesystemWorker{process: fixture, used: atomic.Bool{}}
 	result, err = worker.Eval("1")
-	if !errors.Is(err, failure) || result.Output != "" || result.Value != nil {
-		t.Fatal("failed result escaped:", result, err)
-	}
+	require.ErrorIs(t, err, failure, "failed result escaped: %v", result)
+	require.Empty(t, result.Output)
+	require.Nil(t, result.Value)
 	var absent *IsolatedFilesystemWorker
-	if err := absent.Close(); err != nil || absent.Diagnostics() != "" {
-		t.Fatal(err)
-	}
-	if _, err := absent.Eval("1"); !errors.Is(err, ErrIsolatedUsed) {
-		t.Fatal(err)
-	}
+	require.NoError(t, absent.Close())
+	require.Empty(t, absent.Diagnostics())
+	_, err = absent.Eval("1")
+	require.ErrorIs(t, err, ErrIsolatedUsed)
 }
 
 func TestIsolatedFilesystemConfig(t *testing.T) {
+	t.Parallel()
 	var config IsolatedFilesystemConfig
 	config.Worker.WorkerPath = filepath.Join(t.TempDir(), "worker")
 	config.Worker.WorkerSHA256 = [sha256.Size]byte{1}
@@ -90,14 +86,11 @@ func TestIsolatedFilesystemConfig(t *testing.T) {
 	config.Worker.Tenant = "test-tenant"
 	config.Roots = []FilesystemRoot{{Name: "data", HostPath: t.TempDir(), Rights: FilesystemRead}}
 	copied := config
-	if err := validateIsolatedFilesystemConfig(context.Background(), &copied); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, validateIsolatedFilesystemConfig(t.Context(), &copied))
 	copied.Roots[0].Name = "changed"
 	copied.Worker.Imports[0] = "os"
-	if config.Roots[0].Name != "data" || config.Worker.Imports[0] != "math" {
-		t.Fatal("policy aliases caller memory")
-	}
+	require.Equal(t, "data", config.Roots[0].Name, "policy aliases caller memory")
+	require.Equal(t, "math", config.Worker.Imports[0])
 	for _, mutate := range []func(*IsolatedFilesystemConfig){
 		func(config *IsolatedFilesystemConfig) { config.Worker.StateDirectory = "" },
 		func(config *IsolatedFilesystemConfig) { config.Worker.StateDirectory = "relative" },
@@ -132,16 +125,13 @@ func TestIsolatedFilesystemConfig(t *testing.T) {
 	} {
 		invalid := config
 		mutate(&invalid)
-		if _, err := NewIsolatedFilesystemWorker(context.Background(), invalid); !errors.Is(err, ErrInvalidIsolatedConfig) {
-			t.Fatal("invalid config accepted:", err)
-		}
+		_, err := NewIsolatedFilesystemWorker(t.Context(), invalid)
+		require.ErrorIs(t, err, ErrInvalidIsolatedConfig, "invalid config accepted")
 	}
-	if _, err := NewIsolatedFilesystemWorker(nil, config); !errors.Is(err, ErrInvalidIsolatedConfig) {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
+	_, err := NewIsolatedFilesystemWorker(nil, config)
+	require.ErrorIs(t, err, ErrInvalidIsolatedConfig)
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := NewIsolatedFilesystemWorker(ctx, config); !errors.Is(err, context.Canceled) {
-		t.Fatal(err)
-	}
+	_, err = NewIsolatedFilesystemWorker(ctx, config)
+	require.ErrorIs(t, err, context.Canceled)
 }

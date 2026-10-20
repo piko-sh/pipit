@@ -21,13 +21,13 @@
 package app
 
 import (
-	"context"
 	"reflect"
 	"strings"
 	"testing"
 	"unsafe"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
@@ -41,7 +41,7 @@ len(s)`
 
 func submitForArenaEscape(t *testing.T, session *Session, code string) any {
 	t.Helper()
-	result, err := session.Submit(context.Background(), code)
+	result, err := session.Submit(t.Context(), code)
 	require.NoError(t, err, code)
 	return result
 }
@@ -81,6 +81,70 @@ func TestPointerFieldStringSurvivesArenaReset(t *testing.T) {
 	require.Equal(t, "val-7-suffix", submitForArenaEscape(t, session, `p.S`), "runtime-built string behind a heap pointer after churn")
 }
 
+func TestTypedSliceFieldAppendSurvivesArenaReset(t *testing.T) {
+	t.Parallel()
+	service := NewService()
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": `package main
+type Kind uint8
+type Function struct {
+	Kinds []Kind
+	Bytes []byte
+	Ints  []int
+	Names []string
+}
+func build() *Function {
+	f := &Function{}
+	for i := 0; i < 5; i++ {
+		f.Kinds = append(f.Kinds, Kind(i+1))
+		f.Bytes = append(f.Bytes, byte('a'+i))
+		f.Ints = append(f.Ints, i*i)
+		f.Names = append(f.Names, "n"+string(rune('0'+i)))
+	}
+	return f
+}
+func churn() int {
+	s := ""
+	var bytes []byte
+	var ints []int
+	var names []string
+	for i := 0; i < 4096; i++ {
+		s = s + "0123456789abcdef"
+		bytes = append(bytes, 0xEE)
+		ints = append(ints, -1)
+		names = append(names, "churn")
+	}
+	return len(s) + len(bytes) + len(ints) + len(names)
+}`})
+	require.NoError(t, err)
+
+	built, err := service.ExecuteEntrypoint(t.Context(), cfs, "build")
+	require.NoError(t, err)
+	_, err = service.ExecuteEntrypoint(t.Context(), cfs, "churn")
+	require.NoError(t, err)
+
+	function := reflect.ValueOf(built).Elem()
+	require.Equal(t, []uint64{1, 2, 3, 4, 5}, uintElements(function.FieldByName("Kinds")), "a named byte slice")
+	require.Equal(t, "abcde", string(function.FieldByName("Bytes").Bytes()))
+	require.Equal(t, []int64{0, 1, 4, 9, 16}, intElements(function.FieldByName("Ints")))
+	require.Equal(t, []string{"n0", "n1", "n2", "n3", "n4"}, function.FieldByName("Names").Interface())
+}
+
+func uintElements(slice reflect.Value) []uint64 {
+	out := make([]uint64, slice.Len())
+	for index := range out {
+		out[index] = slice.Index(index).Uint()
+	}
+	return out
+}
+
+func intElements(slice reflect.Value) []int64 {
+	out := make([]int64, slice.Len())
+	for index := range out {
+		out[index] = slice.Index(index).Int()
+	}
+	return out
+}
+
 func TestAnyBoxedStringGlobalSurvivesArenaReset(t *testing.T) {
 	t.Parallel()
 	session := NewService().NewSession()
@@ -112,7 +176,7 @@ func run() int {
 }
 func main() {}
 `
-	ctx := context.Background()
+	ctx := t.Context()
 	_, err := service.EvalFile(ctx, source, "run")
 	require.NoError(t, err)
 	_, err = service.Eval(ctx, arenaChurnSource)
@@ -214,7 +278,7 @@ const (
 
 func TestSliceSetStringDirectStoreSurvivesArenaChurn(t *testing.T) {
 	t.Parallel()
-	compiledFunction, err := NewService().Compile(context.Background(), fillStringSliceSource+"\nfill(make([]string, 1))")
+	compiledFunction, err := NewService().Compile(t.Context(), fillStringSliceSource+"\nfill(make([]string, 1))")
 	require.NoError(t, err)
 	require.NotEmpty(t, program.ExportFunctions(compiledFunction))
 	requireContainsTier1SubOp(t, program.ExportFunctions(compiledFunction)[0], isa.SubOpSliceSetStringDirect)
@@ -250,9 +314,9 @@ func TestAnyBoxedIntGlobalSurvivesArenaReset(t *testing.T) {
 	submitForArenaEscape(t, session, arenaChurnSource)
 	require.EqualValues(t, 5000015, submitForArenaEscape(t, session, `x.(int)`), "boxed int global after churn")
 	require.EqualValues(t, 10000015, submitForArenaEscape(t, session, `y.(int)`), "boxed int through interface call after churn")
-	require.EqualValues(t, 7.5, submitForArenaEscape(t, session, `f.(float64)`), "boxed float global after churn")
+	require.InDelta(t, 7.5, submitForArenaEscape(t, session, `f.(float64)`), 0, "boxed float global after churn")
 	require.EqualValues(t, 15000015, submitForArenaEscape(t, session, `m["k"].(int)`), "boxed int map value after churn")
-	require.EqualValues(t, 12.5, submitForArenaEscape(t, session, `m["f"].(float64)`), "boxed float map value after churn")
+	require.InDelta(t, 12.5, submitForArenaEscape(t, session, `m["f"].(float64)`), 0, "boxed float map value after churn")
 	require.EqualValues(t, 20000015, submitForArenaEscape(t, session, `boxed[0].(int)`), "boxed int slice element after churn")
 }
 

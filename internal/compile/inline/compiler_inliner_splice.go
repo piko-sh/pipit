@@ -236,32 +236,9 @@ type spliceSnapshot struct {
 	// callSites records the caller's callSites slice length.
 	callSites int
 
-	// intConsts records the caller's intConstants slice length.
-	intConsts int
-
-	// floatConsts records the caller's floatConstants slice length.
-	floatConsts int
-
-	// stringConsts records the caller's stringConstants slice length.
-	stringConsts int
-
-	// boolConsts records the caller's boolConstants slice length.
-	boolConsts int
-
-	// uintConsts records the caller's uintConstants slice length.
-	uintConsts int
-
-	// complexConsts records the caller's complexConstants slice length.
-	complexConsts int
-
-	// generalConsts records the caller's generalConstants slice length.
-	generalConsts int
-
-	// typeTable records the caller's typeTable slice length.
-	typeTable int
-
-	// structLayoutTable records the caller's structLayoutTable slice length.
-	structLayoutTable int
+	// pools records the caller's constant pools and type tables, with their descriptors and
+	// interface method sets.
+	pools program.PoolMarks
 
 	// positions records the caller's debug source-map positions length, or zero when the
 	// caller carries no source map.
@@ -338,26 +315,16 @@ func CrossBankAdoptOrBoxSubOp(sourceKind, destinationKind isa.RegisterKind) (isa
 //revive:disable-next-line:unexported-return // package-internal type stays unexported.
 func CaptureSpliceSnapshot(caller *program.CompiledFunction) spliceSnapshot {
 	return spliceSnapshot{
-		bodyLen:           len(caller.Body),
-		numRegisters:      caller.NumRegisters,
-		callSites:         len(caller.CallSites),
-		intConsts:         len(caller.IntConstants),
-		floatConsts:       len(caller.FloatConstants),
-		stringConsts:      len(caller.StringConstants),
-		boolConsts:        len(caller.BoolConstants),
-		uintConsts:        len(caller.UintConstants),
-		complexConsts:     len(caller.ComplexConstants),
-		generalConsts:     len(caller.GeneralConstants),
-		typeTable:         len(caller.TypeTable),
-		structLayoutTable: len(caller.StructLayoutTable),
-		positions:         sourceMapPositionsLength(caller),
+		bodyLen:      len(caller.Body),
+		numRegisters: caller.NumRegisters,
+		callSites:    len(caller.CallSites),
+		pools:        program.CapturePoolMarks(caller),
+		positions:    sourceMapPositionsLength(caller),
 	}
 }
 
-// RestoreSpliceSnapshot rewinds every caller slice and numRegisters counter to the
-// lengths recorded in the snapshot. The constant-pool dedup indexes are dropped because
-// stale entries would point past the truncated pool and addDedupedConstant lazily
-// re-seeds them on next use.
+// RestoreSpliceSnapshot restores the caller's slices, register counts and constant
+// pools after a failed splice.
 //
 // Takes caller (*CompiledFunction) whose state is restored.
 // Takes snapshot (SpliceSnapshot) carrying the pre-splice lengths.
@@ -365,21 +332,7 @@ func RestoreSpliceSnapshot(caller *program.CompiledFunction, snapshot spliceSnap
 	caller.Body = caller.Body[:snapshot.bodyLen]
 	caller.NumRegisters = snapshot.numRegisters
 	caller.CallSites = caller.CallSites[:snapshot.callSites]
-	caller.IntConstants = caller.IntConstants[:snapshot.intConsts]
-	caller.FloatConstants = caller.FloatConstants[:snapshot.floatConsts]
-	caller.StringConstants = caller.StringConstants[:snapshot.stringConsts]
-	caller.BoolConstants = caller.BoolConstants[:snapshot.boolConsts]
-	caller.UintConstants = caller.UintConstants[:snapshot.uintConsts]
-	caller.ComplexConstants = caller.ComplexConstants[:snapshot.complexConsts]
-	caller.GeneralConstants = caller.GeneralConstants[:snapshot.generalConsts]
-	caller.TypeTable = caller.TypeTable[:snapshot.typeTable]
-	caller.StructLayoutTable = caller.StructLayoutTable[:snapshot.structLayoutTable]
-	caller.IntConstIndex = nil
-	caller.FloatConstIndex = nil
-	caller.StringConstIndex = nil
-	caller.UintConstIndex = nil
-	caller.ComplexConstIndex = nil
-	caller.TypeRefIndex = nil
+	snapshot.pools.Restore(caller)
 	truncateSourceMapPositions(caller, snapshot.positions)
 }
 

@@ -228,6 +228,12 @@ func (c *Compiler) compileBuiltinAppend(ctx context.Context, expression *ast.Cal
 	sliceType := c.Info.Types[expression.Args[0]].Type
 	typedAppendSubOp, typedAppendKind := c.pickTypedAppendVariant(sliceType)
 
+	var chain *appendChain
+	if len(expression.Args) > 2 {
+		chain = c.newAppendChain(sliceLocation.Kind, c.appendNeedsGeneralResult(sliceLocation.Kind, expression.Args[1:]))
+	}
+	elementMark := c.Scopes.Alloc.Snapshot()
+
 	lastArgIndex := len(expression.Args) - 1
 	for i := 1; i < len(expression.Args); i++ {
 		location, err := c.compileExpression(ctx, expression.Args[i])
@@ -236,10 +242,105 @@ func (c *Compiler) compileBuiltinAppend(ctx context.Context, expression *ast.Cal
 		}
 		location = c.coerceEvalBoolResult(ctx, c.Info, expression.Args[i], location)
 		isSpread := i == lastArgIndex && expression.Ellipsis != token.NoPos
+		c.appendDestinations = chain
 		sliceLocation = c.emitAppendStep(ctx, sliceLocation, location, isSpread, typedAppendSubOp, typedAppendKind, sliceType)
+		c.appendDestinations = nil
+		if chain != nil && chain.overflowed {
+			chain = nil
+		}
+		if chain != nil {
+			c.Scopes.RestoreWatermark(elementMark)
+		}
 	}
 
 	return sliceLocation, nil
+}
+
+// appendChain holds two result registers per bank so append steps can alternate between
+// them and release each element's temporaries.
+type appendChain struct {
+	// general holds the general-bank pair.
+	general [2]uint8
+
+	// typed holds the pair in the appended slice's typed-slice bank, when it has one.
+	typed [2]uint8
+
+	// typedKind is the typed-slice bank, or isa.RegisterGeneral when the slice has none.
+	typedKind isa.RegisterKind
+
+	// hasGeneral reports whether the general-bank pair was allocated.
+	hasGeneral bool
+
+	// overflowed stops per-element reclamation when an append step needs a register
+	// outside the chain.
+	overflowed bool
+}
+
+// newAppendChain allocates the result registers of a multi-value append.
+//
+// Takes sliceKind (isa.RegisterKind) which is the bank of the slice appended to; a
+// typed-slice bank gets a pair, since the direct typed append writes that bank.
+// Takes needsGeneral (bool) which reports whether some step may write a general-bank
+// result.
+//
+// Returns *appendChain which holds the registers.
+func (c *Compiler) newAppendChain(sliceKind isa.RegisterKind, needsGeneral bool) *appendChain {
+	chain := &appendChain{general: [2]uint8{}, typed: [2]uint8{}, typedKind: isa.RegisterGeneral, hasGeneral: false, overflowed: false}
+	if needsGeneral || !isa.IsTypedSliceKind(sliceKind) {
+		chain.hasGeneral = true
+		chain.general = [2]uint8{c.Scopes.Alloc.Alloc(isa.RegisterGeneral), c.Scopes.Alloc.Alloc(isa.RegisterGeneral)}
+	}
+	if isa.IsTypedSliceKind(sliceKind) {
+		chain.typedKind = sliceKind
+		chain.typed = [2]uint8{c.Scopes.Alloc.Alloc(sliceKind), c.Scopes.Alloc.Alloc(sliceKind)}
+	}
+	return chain
+}
+
+// appendNeedsGeneralResult reports whether the slice or any appended value requires the
+// general register bank.
+//
+// Takes sliceKind (isa.RegisterKind) which is the appended slice's bank.
+// Takes values ([]ast.Expr) which are the appended values.
+//
+// Returns bool which is true when a general-bank result may occur.
+func (c *Compiler) appendNeedsGeneralResult(sliceKind isa.RegisterKind, values []ast.Expr) bool {
+	if !isa.IsTypedSliceKind(sliceKind) {
+		return true
+	}
+	elementKind := isa.ElementKindForTypedSlice(sliceKind)
+	for _, value := range values {
+		staticType := c.staticTypeOf(value)
+		if staticType == nil || c.kindFor(staticType) != elementKind {
+			return true
+		}
+	}
+	return false
+}
+
+// allocAppendDestination returns a fresh result register or the append-chain register
+// that does not hold source.
+//
+// Takes kind (isa.RegisterKind) which is the result's bank.
+// Takes source (program.VarLocation) which is the slice the step extends.
+//
+// Returns uint8 which is the destination register.
+func (c *Compiler) allocAppendDestination(kind isa.RegisterKind, source program.VarLocation) uint8 {
+	chain := c.appendDestinations
+	if chain == nil {
+		return c.Scopes.Alloc.Alloc(kind)
+	}
+	pair := chain.general
+	if kind != isa.RegisterGeneral {
+		pair = chain.typed
+	} else if !chain.hasGeneral {
+		chain.overflowed = true
+		return c.Scopes.Alloc.Alloc(kind)
+	}
+	if source.Kind == kind && source.Register == pair[0] {
+		return pair[1]
+	}
+	return pair[0]
 }
 
 // pickTypedAppendVariant selects the tier-1 typed-append sub-op (and the matching
@@ -305,7 +406,7 @@ func (c *Compiler) emitAppendStep(
 	if isSpread {
 		c.boxToGeneralTemp(ctx, &sliceLocation)
 		c.boxToGeneralTemp(ctx, &location)
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
+		dest := c.allocAppendDestination(isa.RegisterGeneral, sliceLocation)
 		program.Emit(c.Function, isa.OpAppendSpread, dest, sliceLocation.Register, location.Register)
 		return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}
 	}
@@ -319,7 +420,7 @@ func (c *Compiler) emitAppendStep(
 			return dest
 		}
 		if fastOp, ok := fastAppendOpcodeFor(typedAppendSubOp); ok {
-			dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
+			dest := c.allocAppendDestination(isa.RegisterGeneral, sliceLocation)
 			program.Emit(c.Function, fastOp, dest, sliceLocation.Register, location.Register)
 			return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}
 		}
@@ -329,7 +430,7 @@ func (c *Compiler) emitAppendStep(
 	if dest, ok := c.tryEmitStructFastAppend(ctx, sliceLocation, location, sliceType); ok {
 		return dest
 	}
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
+	dest := c.allocAppendDestination(isa.RegisterGeneral, sliceLocation)
 	program.Emit(c.Function, isa.OpAppend, dest, sliceLocation.Register, location.Register)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}
 }
@@ -343,7 +444,7 @@ func (c *Compiler) emitAppendStep(
 //
 // Returns the new typed-bank slice location.
 func (c *Compiler) emitTypedSliceDirectAppend(sliceLocation, location program.VarLocation, directOp isa.SubOpcode) program.VarLocation {
-	dest := c.Scopes.Alloc.Alloc(sliceLocation.Kind)
+	dest := c.allocAppendDestination(sliceLocation.Kind, sliceLocation)
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(directOp), dest, sliceLocation.Register)
 	program.Emit(c.Function, isa.OpExt, location.Register, 0, 0)
 	return program.VarLocation{Register: dest, Kind: sliceLocation.Kind}
@@ -376,7 +477,7 @@ func (c *Compiler) tryEmitByteFastAppend(sliceLocation, location program.VarLoca
 	if elemKind != "byte" && elemKind != "uint8" {
 		return program.VarLocation{}, false
 	}
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
+	dest := c.allocAppendDestination(isa.RegisterGeneral, sliceLocation)
 	program.Emit(c.Function, isa.OpAppendByteFast, dest, sliceLocation.Register, location.Register)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, true
 }
@@ -394,7 +495,7 @@ func (c *Compiler) tryEmitByteFastAppend(sliceLocation, location program.VarLoca
 //
 // Returns the new destination location.
 func (c *Compiler) emitTypedAppend(sliceLocation, location program.VarLocation, typedAppendSubOp isa.SubOpcode) program.VarLocation {
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
+	dest := c.allocAppendDestination(isa.RegisterGeneral, sliceLocation)
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(typedAppendSubOp), dest, sliceLocation.Register)
 	program.Emit(c.Function, isa.OpExt, location.Register, 0, 0)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}
@@ -485,6 +586,7 @@ func (c *Compiler) compileMakeSlice(ctx context.Context, expression *ast.CallExp
 		if err != nil {
 			return program.VarLocation{}, err
 		}
+		c.ensureIntRegister(ctx, &lenLocation)
 	}
 	capLocation := lenLocation
 	if len(expression.Args) >= makeSliceMinCapArgs {
@@ -493,6 +595,7 @@ func (c *Compiler) compileMakeSlice(ctx context.Context, expression *ast.CallExp
 		if err != nil {
 			return program.VarLocation{}, err
 		}
+		c.ensureIntRegister(ctx, &capLocation)
 	}
 	var placement uint8
 	if heapPlaced {
@@ -522,6 +625,7 @@ func (c *Compiler) compileMakeChannel(ctx context.Context, expression *ast.CallE
 		if err != nil {
 			return program.VarLocation{}, err
 		}
+		c.ensureIntRegister(ctx, &sizeLocation)
 	} else {
 		sizeLocation.Register = c.Scopes.Alloc.Alloc(isa.RegisterInt)
 		sizeLocation.Kind = isa.RegisterInt
@@ -1035,6 +1139,7 @@ func (c *Compiler) compileBuiltinMinMax(ctx context.Context, expression *ast.Cal
 	c.emitMoveTyped(ctx, destLocation, resultLocation, c.staticTypeOf(expression.Args[0]))
 
 	for _, argument := range expression.Args[1:] {
+		watermark := c.Scopes.Alloc.Snapshot()
 		argumentLocation, err := c.compileExpression(ctx, argument)
 		if err != nil {
 			return program.VarLocation{}, err
@@ -1053,6 +1158,7 @@ func (c *Compiler) compileBuiltinMinMax(ctx context.Context, expression *ast.Cal
 		skipJump := program.EmitJump(c.Function, isa.OpJumpIfFalse, cmpLocation.Register)
 		c.emitMoveTyped(ctx, destLocation, argumentLocation, c.staticTypeOf(argument))
 		program.PatchJump(c.Function, skipJump)
+		c.Scopes.RestoreWatermark(watermark)
 	}
 
 	return destLocation, nil

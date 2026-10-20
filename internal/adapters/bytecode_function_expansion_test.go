@@ -20,10 +20,10 @@ package adapters
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	flatbuffers "github.com/google/flatbuffers/go"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/schema/schemagen"
 	"pipit.sh/pipit/internal/symtab"
@@ -62,50 +62,59 @@ func repeatedFunctionGraph(depth int, bothRoots, initializer bool) []byte {
 
 func TestBytecodeRejectsExponentialFunctionExpansion(t *testing.T) {
 	t.Parallel()
-	for _, initializer := range []bool{false, true} {
-		payload := repeatedFunctionGraph(24, false, initializer)
-		if len(payload) > 4096 {
-			t.Fatal("fixture no longer demonstrates compact expansion")
-		}
-		loaded, err := decodeCompiledFileSet(context.Background(), payload, symtab.NewSymbolRegistry(nil))
-		if !errors.Is(err, errCorruptBytecodePayload) || loaded != nil {
-			t.Fatal("expansion bomb reached reconstruction:", err)
-		}
+	tests := []struct {
+		name        string
+		initializer bool
+	}{
+		{name: "nested functions", initializer: false},
+		{name: "variable initialisers", initializer: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			payload := repeatedFunctionGraph(24, false, tt.initializer)
+			require.LessOrEqual(t, len(payload), 4096, "the fixture stays compact")
+			loaded, err := decodeCompiledFileSet(t.Context(), payload, symtab.NewSymbolRegistry(nil))
+			require.ErrorIs(t, err, errCorruptBytecodePayload, "an expansion bomb stops before reconstruction")
+			require.Nil(t, loaded)
+		})
 	}
 }
 
 func TestBytecodeFunctionExpansionSharesRootBudget(t *testing.T) {
 	t.Parallel()
-	for _, bothRoots := range []bool{false, true} {
-		payload := repeatedFunctionGraph(15, bothRoots, false)
-		fileSet := schemagen.GetRootAsCompiledFileSet(payload, 0)
-		err := validateFunctionExpansion(context.Background(), fileSet, len(payload))
-		if bothRoots {
-			if !errors.Is(err, errCorruptBytecodePayload) {
-				t.Fatal("file roots received independent budgets:", err)
-			}
-		} else if err != nil {
-			t.Fatal("bounded shared references rejected:", err)
-		}
+	tests := []struct {
+		name      string
+		bothRoots bool
+		wantErr   error
+	}{
+		{name: "one root stays within the budget", bothRoots: false, wantErr: nil},
+		{name: "both file roots share one budget", bothRoots: true, wantErr: errCorruptBytecodePayload},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			payload := repeatedFunctionGraph(15, tt.bothRoots, false)
+			fileSet := schemagen.GetRootAsCompiledFileSet(payload, 0)
+			require.ErrorIs(t, validateFunctionExpansion(t.Context(), fileSet, len(payload)), tt.wantErr)
+		})
 	}
 }
 
 func TestBytecodeFunctionExpansionCancellation(t *testing.T) {
 	t.Parallel()
 	payload := repeatedFunctionGraph(24, false, false)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	loaded, err := decodeCompiledFileSet(ctx, payload, symtab.NewSymbolRegistry(nil))
-	if loaded != nil || !errors.Is(err, context.Canceled) {
-		t.Fatal("cancelled expansion reached reconstruction:", err)
-	}
+	require.Nil(t, loaded, "a cancelled expansion stops before reconstruction")
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestBytecodeBoundedFunctionAliasesStillDecode(t *testing.T) {
 	t.Parallel()
 	payload := repeatedFunctionGraph(4, true, true)
-	loaded, err := decodeCompiledFileSet(context.Background(), payload, symtab.NewSymbolRegistry(nil))
-	if err != nil || loaded == nil {
-		t.Fatal("bounded shared references no longer decode:", err)
-	}
+	loaded, err := decodeCompiledFileSet(t.Context(), payload, symtab.NewSymbolRegistry(nil))
+	require.NoError(t, err, "bounded shared references decode")
+	require.NotNil(t, loaded)
 }

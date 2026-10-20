@@ -27,6 +27,7 @@ import (
 	"maps"
 	"reflect"
 
+	"pipit.sh/pipit/internal/compile/appendlower"
 	"pipit.sh/pipit/internal/compile/escape"
 	"pipit.sh/pipit/internal/compile/fieldlayout"
 	"pipit.sh/pipit/internal/compile/liveness"
@@ -209,10 +210,9 @@ type Compiler struct {
 	// indexed by label name and patched once the label is visited.
 	forwardGotos map[string][]int
 
-	// inPlaceAppendAliases names locals with potentially aliased slices, which are refused
-	// the in-place append opcode because the slot mutation would be visible through the
-	// alias.
-	inPlaceAppendAliases map[string]bool
+	// appendAliases records when locals may share their slice headers. Nil disables
+	// in-place append lowering.
+	inPlaceAppendAliases *appendlower.Aliases
 
 	// debugSourceMap is the source map being built during compilation. Nil when debug info
 	// is disabled.
@@ -232,6 +232,14 @@ type Compiler struct {
 	// compileSelectorExpression consults it before any other strategy.
 	destructuredLocals map[types.Object]map[string]program.VarLocation
 
+	// appendDestinations, while a multi-value append emits a step, names the registers the
+	// step may write its result to; nil outside such a step.
+	appendDestinations *appendChain
+
+	// createdFunctions lists closures and range-over-func bodies to discard if this
+	// compilation attempt fails.
+	createdFunctions []uint16
+
 	// currentBody is the AST body of the function this Compiler instance is compiling. Set
 	// alongside the per-body analysis maps; the struct-copy destructuring pass scans it to
 	// prove a slice-element local is consumed only by scalar field selects.
@@ -250,6 +258,9 @@ type Compiler struct {
 	// returns from nested statements.
 	stmtScratch
 
+	// pressure is what this attempt at the body learns about its registers.
+	pressure registerPressure
+
 	// deferCount counts defer statements compiled in the current function body. Combined
 	// with hasRecover, deferInLoop, and the per-defer thisDeferTrivial classification it
 	// determines whether the function qualifies for the trivial-defer fast path.
@@ -262,6 +273,10 @@ type Compiler struct {
 	// callParen is the opening parenthesis of the call expression being compiled, the
 	// position Go attributes a call instruction to; token.NoPos outside a call.
 	callParen token.Pos
+
+	// overflowPosition records the first register overflow's innermost statement, or
+	// token.NoPos before an overflow.
+	overflowPosition token.Pos
 
 	// statementDepth tracks compileStmt recursion depth, capped at maxStatementDepth.
 	statementDepth int
@@ -353,16 +368,31 @@ func (c *Compiler) recordStickyError(err error) {
 
 // resourceError returns the first sticky error recorded during Emit.
 //
-// Returns the overflowError result when no sticky error has been recorded. Used by
-// compile entry points to fail fast when a void helper observed a
-// pool/method/specialisation overflow.
+// Returns the overflowError result when no sticky error has been recorded, with the
+// position of the statement that overflowed when it is known. Used by compile entry
+// points to fail fast when a void helper observed a pool/method/specialisation overflow.
 //
 // Returns error which is the first sticky or overflow error, or nil.
 func (c *Compiler) resourceError() error {
 	if c.stickyError != nil {
 		return c.stickyError
 	}
-	return c.Scopes.OverflowError()
+	overflow := c.Scopes.OverflowError()
+	if overflow != nil && c.overflowPosition.IsValid() {
+		return fmt.Errorf("%w at %s", overflow, c.positionString(c.overflowPosition))
+	}
+	return overflow
+}
+
+// noteOverflowPosition records statement as the place a register overflow occurred, the
+// first time the allocator reports one.
+//
+// Takes statement (ast.Stmt) which has just been compiled.
+func (c *Compiler) noteOverflowPosition(statement ast.Stmt) {
+	if c.overflowPosition.IsValid() || c.Scopes.Alloc.OverflowErr == nil {
+		return
+	}
+	c.overflowPosition = statement.Pos()
 }
 
 // expressionDepthLimit returns the configured expression-depth ceiling.
@@ -558,7 +588,14 @@ func (c *Compiler) compileStmt(ctx context.Context, statement ast.Stmt) (program
 		return program.VarLocation{}, fmt.Errorf("%w: statement nesting exceeded %d at %s", fault.ErrCompileDepthLimit, maxStatementDepth, c.positionString(statement.Pos()))
 	}
 	c.statementDepth++
-	defer func() { c.statementDepth-- }()
+	mark := c.Scopes.BeginStatement()
+	sites := c.pressure.overflowSites
+	defer func() {
+		c.statementDepth--
+		usage := c.Scopes.EndStatement(&mark)
+		c.notePressure(&usage, sites)
+		c.noteOverflowPosition(statement)
+	}()
 
 	c.setDebugPosition(ctx, statement.Pos())
 	if location, handled, err := c.compileConcurrencyStmt(ctx, statement); handled {
@@ -794,6 +831,13 @@ func (c *Compiler) emitValueSpecInitialiser(ctx context.Context, name string, va
 // initialised.
 // Takes location (program.VarLocation): the destination register location.
 func (c *Compiler) emitLocalZeroValue(ctx context.Context, typeObject types.Object, location program.VarLocation) {
+	if location.IsSpilled {
+		temporary := program.VarLocation{Register: c.Scopes.Alloc.AllocTemp(location.Kind), Kind: location.Kind}
+		c.emitLocalZeroValue(ctx, typeObject, temporary)
+		c.emitSpillStore(ctx, temporary.Register, location.Kind, location.SpillSlot)
+		c.Scopes.Alloc.FreeTemp(location.Kind, temporary.Register)
+		return
+	}
 	if location.Kind != isa.RegisterGeneral {
 		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLoadZero), location.Register, uint8(location.Kind))
 		return
@@ -855,7 +899,7 @@ func (c *Compiler) tryEmitCompositeTypeZero(ctx context.Context, typeObject type
 		return false
 	}
 	constIndex, err := program.AddGeneralConstant(c.Function, zeroValue, descriptor.GeneralConstantDescriptor{Kind: descriptor.GeneralConstantCompositeZero,
-		TypeDescriptor: descriptor.ReflectTypeToDescriptor(c.TypeToReflect(ctx, typeObject.Type())), PackagePath: "", SymbolName: ""})
+		TypeDescriptor: descriptor.TypeDescriptor{}, PackagePath: "", SymbolName: ""})
 	if err != nil {
 		c.recordStickyError(err)
 		return true
@@ -881,7 +925,7 @@ func (c *Compiler) tryEmitReflectZero(ctx context.Context, typeObject types.Obje
 		return false
 	}
 	constIndex, err := program.AddGeneralConstant(c.Function, reflect.Zero(reflectType), descriptor.GeneralConstantDescriptor{Kind: descriptor.GeneralConstantCompositeZero,
-		TypeDescriptor: descriptor.ReflectTypeToDescriptor(reflectType), PackagePath: "", SymbolName: ""})
+		TypeDescriptor: descriptor.TypeDescriptor{}, PackagePath: "", SymbolName: ""})
 	if err != nil {
 		c.recordStickyError(err)
 		return true
@@ -910,13 +954,12 @@ func (c *Compiler) zeroValueForCompositeType(ctx context.Context, t types.Type) 
 	return reflect.Value{}, false
 }
 
-// zeroValueForNamedType returns an addressable zero reflect.Value for a registered named
-// type.
+// zeroValueForNamedType returns symtab.ZeroConstant for a registered named type.
 //
-// Takes t (types.Type): the type whose zero value is required.
+// Takes t (types.Type) which is the type whose zero value is required.
 //
-// Returns the addressable zero reflect.Value and true when t is a named type registered
-// in the symbol registry, and (reflect.Value{}, false) otherwise.
+// Returns the zero constant and true when t is a named type registered in the symbol
+// registry, and (reflect.Value{}, false) otherwise.
 func (c *Compiler) zeroValueForNamedType(_ context.Context, t types.Type) (reflect.Value, bool) {
 	t = c.substitutedType(t)
 	named, ok := types.Unalias(t).(*types.Named)
@@ -1064,7 +1107,11 @@ func (c *Compiler) compileOrderedAssignPair(ctx context.Context, leftHandSide, r
 // Returns the location holding the value and any compilation error.
 func (c *Compiler) compileAssignValue(ctx context.Context, leftHandSide, rightHandSide ast.Expr) (program.VarLocation, error) {
 	if dest, direct := c.directAssignDestination(leftHandSide); direct {
-		return c.compileExpressionInto(ctx, rightHandSide, dest)
+		valueLocation, err := c.compileExpressionInto(ctx, rightHandSide, dest)
+		if err == nil {
+			c.detachIndexedRead(rightHandSide, valueLocation)
+		}
+		return valueLocation, err
 	}
 	target, isIdent := leftHandSide.(*ast.Ident)
 	if !isIdent {
@@ -1075,6 +1122,7 @@ func (c *Compiler) compileAssignValue(ctx context.Context, leftHandSide, rightHa
 		return program.VarLocation{}, err
 	}
 	c.snapshotIndirectLocalRead(rightHandSide, valueLocation)
+	c.detachIndexedRead(rightHandSide, valueLocation)
 	return valueLocation, nil
 }
 

@@ -24,11 +24,11 @@ import (
 	"context"
 	"testing"
 
-	"pipit.sh/pipit/internal/debug"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
-
-	"github.com/stretchr/testify/require"
+	"pipit.sh/pipit/internal/debug"
+	"pipit.sh/pipit/internal/debug/debugtest"
 )
 
 func TestInlinedBodyPositionsResolve(t *testing.T) {
@@ -57,26 +57,25 @@ func run() int {
 	return total
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
 	require.NoError(t, err)
 
 	dbg.SetBreakpoint("main.go", 9)
 
-	done := make(chan error, 1)
-	go func() {
-		_, execErr := svc.ExecuteEntrypoint(context.Background(), cfs, "run")
-		done <- execErr
-	}()
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+	})
 
-	snap := waitPause(t, dbg)
+	snap := debugtest.WaitPause(t, dbg)
 	require.Equal(t, debug.StopReasonBreakpoint, snap.Reason)
 	require.Equal(t, 9, snap.Location.Line, "breakpoint inside the inlined callee resolves to the callee's line")
 	require.Equal(t, "main.go", snap.Location.File)
-	require.NotEmpty(t, stackOf(t, dbg, snap))
-	require.Equal(t, 9, stackOf(t, dbg, snap)[0].Line)
-	require.Equal(t, "main.run", stackOf(t, dbg, snap)[0].Function, "the inlined body executes in the caller's frame")
+	require.NotEmpty(t, debugtest.StackOf(t, dbg, snap))
+	require.Equal(t, 9, debugtest.StackOf(t, dbg, snap)[0].Line)
+	require.Equal(t, "main.run", debugtest.StackOf(t, dbg, snap)[0].Function, "the inlined body executes in the caller's frame")
 
 	dbg.ClearBreakpoint("main.go", 9)
 	dbg.Continue()
-	require.NoError(t, <-done)
+	_, execErr := execution.Wait(t)
+	require.NoError(t, execErr)
 }

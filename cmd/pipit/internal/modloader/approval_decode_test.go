@@ -23,35 +23,44 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestApprovalDecodeRejectsAmbiguousDocuments(t *testing.T) {
 	t.Parallel()
-	for _, input := range []string{
-		"", "null", "[]",
-		`{"schema":2,"schema":2}`,
-		`{"schema":2,"\u0073chema":2}`,
-		`{"Schema":2}`,
-		`{"schema":2,"unknown":true}`,
-		`{"schema":2}{}`,
-		`{"schema":2,"modules":[{"path":"first","path":"second"}]}`,
-		`{"schema":2,"modules":[{"Path":"aliased"}]}`,
-		`{"schema":2,"modules":[{"path":"module","extra":true}]}`,
-		`{"schema":2,"modules":[{"path":"module"},{"path":"module"}]}`,
-		`{"schema":2,"modules":[{"path":"module","approved_capabilities":{} }]}`,
-		`{"schema":2,"modules":[null]}`,
-		`{"schema":2,"script":null}`,
-		`{"schema":2,"modules":[{"path":null}]}`,
-		`{"schema":2,"modules":[{"path":"module","approved_capabilities":[null]}]}`,
-		`{"schema":2,"script":"` + string([]byte{0xff}) + `"}`,
-	} {
-		decoded, err := decodeApprovalFile([]byte(input))
-		if err == nil || !reflect.DeepEqual(decoded, Lockfile{}) {
-			t.Fatalf("ambiguous document returned state: %q: %+v %v", input, decoded, err)
-		}
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{name: "empty", input: ""},
+		{name: "null", input: "null"},
+		{name: "array", input: "[]"},
+		{name: "duplicate schema", input: `{"schema":2,"schema":2}`},
+		{name: "duplicate schema through an escape", input: `{"schema":2,"schema":2}`},
+		{name: "field name in another case", input: `{"Schema":2}`},
+		{name: "unknown field", input: `{"schema":2,"unknown":true}`},
+		{name: "trailing value", input: `{"schema":2}{}`},
+		{name: "duplicate module field", input: `{"schema":2,"modules":[{"path":"first","path":"second"}]}`},
+		{name: "module field name in another case", input: `{"schema":2,"modules":[{"Path":"aliased"}]}`},
+		{name: "unknown module field", input: `{"schema":2,"modules":[{"path":"module","extra":true}]}`},
+		{name: "duplicate module", input: `{"schema":2,"modules":[{"path":"module"},{"path":"module"}]}`},
+		{name: "capabilities as an object", input: `{"schema":2,"modules":[{"path":"module","approved_capabilities":{} }]}`},
+		{name: "null module", input: `{"schema":2,"modules":[null]}`},
+		{name: "null script", input: `{"schema":2,"script":null}`},
+		{name: "null module path", input: `{"schema":2,"modules":[{"path":null}]}`},
+		{name: "null capability", input: `{"schema":2,"modules":[{"path":"module","approved_capabilities":[null]}]}`},
+		{name: "invalid UTF-8 script", input: `{"schema":2,"script":"` + string([]byte{0xff}) + `"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			decoded, err := decodeApprovalFile([]byte(tt.input))
+			require.Error(t, err, "an ambiguous document is rejected")
+			require.Equal(t, Lockfile{}, decoded, "a rejected document returns no state")
+		})
 	}
 }
 
@@ -67,27 +76,20 @@ func TestApprovalDecodeCollectionBoundaries(t *testing.T) {
 			modules[index].Path = fmt.Sprintf("module-%d", index)
 		}
 		encoded, err := json.Marshal(Lockfile{Schema: LockfileSchema, Modules: modules})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		decoded, err := decodeApprovalFile(encoded)
-		if (err != nil) != oversized {
-			t.Fatalf("module boundary: %d: %v", count, err)
+		require.Equal(t, oversized, err != nil, "module boundary %d: %v", count, err)
+		if !oversized {
+			require.Len(t, decoded.Modules, count, "no module entry is lost")
 		}
-		if !oversized && len(decoded.Modules) != count {
-			t.Fatal("module entries lost")
-		}
-		if _, err := encodeApprovalSnapshot(Lockfile{Schema: LockfileSchema, Modules: modules}); (err != nil) != oversized {
-			t.Fatalf("writer module boundary differs: %v", err)
-		}
+		_, err = encodeApprovalSnapshot(Lockfile{Schema: LockfileSchema, Modules: modules})
+		require.Equal(t, oversized, err != nil, "the writer applies the same module boundary: %v", err)
 	}
 	for _, count := range []int{maximumModuleApprovals, maximumModuleApprovals + 1} {
 		input := `{"schema":2,"modules":[{"path":"module","approved_capabilities":[` +
 			strings.TrimSuffix(strings.Repeat(`"cap",`, count), ",") + `]}]}`
 		_, err := decodeApprovalFile([]byte(input))
-		if (err != nil) != (count > maximumModuleApprovals) {
-			t.Fatalf("capability boundary: %d: %v", count, err)
-		}
+		require.Equal(t, count > maximumModuleApprovals, err != nil, "capability boundary %d: %v", count, err)
 	}
 }
 
@@ -96,18 +98,11 @@ func TestApprovalDecodeFailureClearsLiveGrants(t *testing.T) {
 	path := filepath.Join(t.TempDir(), LockfileName)
 	store := NewStore(path)
 	store.Upsert(LockedModule{Path: "module", ApprovedCapabilities: []string{"network"}})
-	if err := store.Save(); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(`{"schema":2,"schema":2}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Load(); err == nil {
-		t.Fatal("ambiguous approval document loaded")
-	}
-	if _, exists := store.Lookup("module", ""); exists {
-		t.Fatal("ambiguous reload retained a grant")
-	}
+	require.NoError(t, store.Save())
+	require.NoError(t, os.WriteFile(path, []byte(`{"schema":2,"schema":2}`), 0o600))
+	require.Error(t, store.Load(), "an ambiguous approval document is refused")
+	_, exists := store.Lookup("module", "")
+	require.False(t, exists, "an ambiguous reload drops grants")
 }
 
 func FuzzApprovalDecode(f *testing.F) {
@@ -117,8 +112,8 @@ func FuzzApprovalDecode(f *testing.F) {
 	f.Add([]byte{})
 	f.Fuzz(func(t *testing.T, data []byte) {
 		decoded, err := decodeApprovalFile(data)
-		if err != nil && !reflect.DeepEqual(decoded, Lockfile{}) {
-			t.Fatal("failed approval decode returned partial state")
+		if err != nil {
+			require.Equal(t, Lockfile{}, decoded, "a failed decode returns no partial state")
 		}
 	})
 }

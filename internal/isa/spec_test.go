@@ -25,6 +25,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,7 +76,7 @@ func TestSpecHasOneRowPerEnumConstant(t *testing.T) {
 				require.Containsf(t, constant, "Reserved", "%s is a reserved row but its constant does not say so", constant)
 				continue
 			}
-			require.Falsef(t, strings.Contains(constant, "Reserved"), "%s must be a reserved row", constant)
+			require.NotContainsf(t, constant, "Reserved", "%s must be a reserved row", constant)
 			require.NotEmptyf(t, row.Name, "row for %s has no name", constant)
 		}
 		for code := len(constants); code < 256; code++ {
@@ -95,9 +96,8 @@ func TestSpecNamesAreUniqueWithinTier(t *testing.T) {
 		if seen[row.Tier] == nil {
 			seen[row.Tier] = map[string]uint8{}
 		}
-		if other, dup := seen[row.Tier][row.Name]; dup {
-			t.Errorf("tier %d: codes %d and %d share the name %q", row.Tier, other, row.Code, row.Name)
-		}
+		other, dup := seen[row.Tier][row.Name]
+		assert.False(t, dup, "tier %d: codes %d and %d share the name %q", row.Tier, other, row.Code, row.Name)
 		seen[row.Tier][row.Name] = row.Code
 	}
 }
@@ -149,6 +149,7 @@ func TestSpecForInstructionResolvesTheDrillCascade(t *testing.T) {
 }
 
 func TestSpecRowsClassifyTheirMemoryEffect(t *testing.T) {
+	t.Parallel()
 	for _, rows := range [][]OpSpec{tierMainSpecs, tierSub1Specs, tierSub2Specs, tierSub3Specs} {
 		for _, row := range rows {
 			if row.Has(specMeta) || row.Has(specReserved) {
@@ -156,9 +157,9 @@ func TestSpecRowsClassifyTheirMemoryEffect(t *testing.T) {
 			}
 			mutates := row.Has(specMutatesMemory)
 			pure := row.Has(specMemoryPure)
-			require.False(t, mutates && pure,
+			assert.False(t, mutates && pure,
 				"%s claims both SpecMutatesMemory and SpecMemoryPure", row.Name)
-			require.True(t, mutates || pure,
+			assert.True(t, mutates || pure,
 				"%s carries neither SpecMutatesMemory nor SpecMemoryPure. Every operation must "+
 					"state whether it can mutate memory beyond its own register writes, because "+
 					"passes.InstructionDirectlyMutatesHeap derives from this and treats an "+
@@ -169,6 +170,7 @@ func TestSpecRowsClassifyTheirMemoryEffect(t *testing.T) {
 }
 
 func TestSpecMemoryClassificationSurvivesTheDrillCascade(t *testing.T) {
+	t.Parallel()
 	mutating := NewInstruction(OpSliceSetInt, 0, 0, 0)
 	row, ok := SpecForInstruction(mutating)
 	require.True(t, ok)
@@ -187,14 +189,15 @@ func TestSpecMemoryClassificationSurvivesTheDrillCascade(t *testing.T) {
 	row, ok = SpecForInstruction(tier1)
 	require.True(t, ok)
 	mutates, _ = row.MutatesMemory()
-	require.True(t, mutates, "a tier-1 struct-field write must resolve through the cascade")
+	require.True(t, mutates, "a tier-1 struct-field write resolves through the cascade")
 }
 
 func TestSpecUnclassifiedRowReportsAsMutating(t *testing.T) {
+	t.Parallel()
 	var unclassified OpSpec
 	mutates, classified := unclassified.MutatesMemory()
 	require.False(t, classified)
-	require.True(t, mutates, "an unclassified operation must fail closed")
+	require.True(t, mutates, "an unclassified operation fails closed")
 }
 
 func TestTypedMakesDispatchThroughTheValidatedGoHandler(t *testing.T) {

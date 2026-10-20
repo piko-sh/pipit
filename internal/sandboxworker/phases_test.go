@@ -21,9 +21,10 @@ package sandboxworker
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/sandboxwire"
 )
@@ -41,12 +42,8 @@ func TestWorkerRejectsExecutionGrantChanges(t *testing.T) {
 		fixtureMessage(t, sandboxwire.Close, 0, struct{}{}),
 	} {
 		stream := sourceFixture(t, config, source, grant)
-		if err := Serve(stream); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatalf("invalid execution grant accepted: %v", err)
-		}
-		if bytes.Contains(stream.output.Bytes(), []byte("executed")) {
-			t.Fatal("source ran before a valid execution grant")
-		}
+		require.ErrorIs(t, Serve(stream), sandboxwire.ErrProtocol, "invalid execution grant accepted")
+		require.False(t, bytes.Contains(stream.output.Bytes(), []byte("executed")), "source ran before a valid execution grant")
 	}
 }
 
@@ -66,9 +63,7 @@ func TestHostRejectsPhaseConfusion(t *testing.T) {
 		messages := append([]sandboxwire.Message{hello, ready}, replies...)
 		stream := sourceFixture(t, messages...)
 		_, err := Exchange(stream, Configuration{Profile: Profile, Imports: nil}, Request{Kind: "expression", Source: "7", Entrypoint: ""})
-		if !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatalf("phase confusion accepted: %v", err)
-		}
+		require.ErrorIs(t, err, sandboxwire.ErrProtocol, "phase confusion accepted")
 	}
 	for _, mutate := range []func(*Response){
 		func(response *Response) { response.Output = "premature output" },
@@ -79,9 +74,7 @@ func TestHostRejectsPhaseConfusion(t *testing.T) {
 	} {
 		response := compiled
 		mutate(&response)
-		if err := validateResponse(response); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatalf("non-empty compilation acknowledgement accepted: %+v", response)
-		}
+		require.ErrorIs(t, validateResponse(response), sandboxwire.ErrProtocol, "non-empty compilation acknowledgement accepted: %+v", response)
 	}
 }
 
@@ -101,23 +94,19 @@ func TestHostPhaseDeadlinesAndCompileFailure(t *testing.T) {
 			messages = append(messages, fixtureMessage(t, sandboxwire.Result, 2, final))
 		}
 		stream := &phaseDeadlineFixture{fixtureTransport: sourceFixture(t, messages...), deadlines: nil}
-		if _, err := Exchange(stream, Configuration{Profile: Profile, Imports: nil}, Request{Kind: "expression", Source: "7", Entrypoint: ""}); err != nil {
-			t.Fatal(err)
-		}
+		_, err := Exchange(stream, Configuration{Profile: Profile, Imports: nil}, Request{Kind: "expression", Source: "7", Entrypoint: ""})
+		require.NoError(t, err)
 		want := []time.Duration{startupTimeout, compilationTimeout}
 		if !failure {
 			want = append(want, executionTimeout)
 		}
-		if len(stream.deadlines) != len(want) {
-			t.Fatalf("unexpected phase count: %v", stream.deadlines)
-		}
+		require.Len(t, stream.deadlines, len(want))
 		for index, budget := range want {
-			if stream.deadlines[index] > budget || stream.deadlines[index] < budget-time.Second {
-				t.Fatalf("phase %d has wrong deadline: %v", index, stream.deadlines[index])
-			}
+			require.LessOrEqual(t, stream.deadlines[index], budget, "phase %d has wrong deadline", index)
+			require.GreaterOrEqual(t, stream.deadlines[index], budget-time.Second)
 		}
-		if failure && bytes.Contains(stream.output.Bytes(), []byte("\"kind\":\"execute\"")) {
-			t.Fatal("compile failure received execution permission")
+		if failure {
+			require.NotContains(t, stream.output.String(), `"kind":"execute"`, "a compile failure receives no execution permission")
 		}
 	}
 }

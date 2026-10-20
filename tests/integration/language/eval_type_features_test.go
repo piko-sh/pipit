@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalTypeAssertCommaOk(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "successful string assertion returns value",
@@ -42,7 +42,7 @@ func TestEvalTypeAssertCommaOk(t *testing.T) {
 s, ok := i.(string)
 _ = ok
 s`,
-			expect: "hello",
+			want: "hello",
 		},
 		{
 			name: "successful int assertion returns value",
@@ -50,7 +50,7 @@ s`,
 v, ok := i.(int)
 _ = ok
 v`,
-			expect: 42,
+			want: 42,
 		},
 	}
 
@@ -58,16 +58,16 @@ v`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 
 	t.Run("failed assertion comma-ok returns false", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), "var i interface{} = \"hello\"\n_, ok := i.(int)\nok")
+		result, err := service.Eval(t.Context(), "var i interface{} = \"hello\"\n_, ok := i.(int)\nok")
 		require.NoError(t, err)
 		require.Equal(t, false, result)
 	})
@@ -77,9 +77,9 @@ func TestEvalTypeSwitchFunction(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "type switch dispatches to int case",
@@ -94,7 +94,7 @@ func TestEvalTypeSwitchFunction(t *testing.T) {
 	}
 }
 check(42)`,
-			expect: "int",
+			want: "int",
 		},
 		{
 			name: "type switch dispatches to string case",
@@ -109,7 +109,7 @@ check(42)`,
 	}
 }
 check("hello")`,
-			expect: "string",
+			want: "string",
 		},
 		{
 			name: "type switch dispatches to default case",
@@ -124,7 +124,7 @@ check("hello")`,
 	}
 }
 check(3.14)`,
-			expect: "other",
+			want: "other",
 		},
 	}
 
@@ -132,9 +132,9 @@ check(3.14)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -143,24 +143,24 @@ func TestEvalInterfacePacking(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "pack int into interface",
-			code:   "var i interface{} = 42\ni",
-			expect: 42,
+			name: "pack int into interface",
+			code: "var i interface{} = 42\ni",
+			want: 42,
 		},
 		{
-			name:   "pack string into interface",
-			code:   "var i interface{} = \"hello\"\ni",
-			expect: "hello",
+			name: "pack string into interface",
+			code: "var i interface{} = \"hello\"\ni",
+			want: "hello",
 		},
 		{
-			name:   "pack float into interface",
-			code:   "var i interface{} = 3.14\ni",
-			expect: 3.14,
+			name: "pack float into interface",
+			code: "var i interface{} = 3.14\ni",
+			want: 3.14,
 		},
 	}
 
@@ -168,9 +168,9 @@ func TestEvalInterfacePacking(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -179,24 +179,24 @@ func TestEvalConvertRuntime(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "float to int via variable",
-			code:   "x := 3.14\nint(x)",
-			expect: 3,
+			name: "float to int via variable",
+			code: "x := 3.14\nint(x)",
+			want: 3,
 		},
 		{
-			name:   "int to float via variable",
-			code:   "x := 42\nfloat64(x)",
-			expect: float64(42),
+			name: "int to float via variable",
+			code: "x := 42\nfloat64(x)",
+			want: float64(42),
 		},
 		{
-			name:   "bytes to string via variable",
-			code:   "b := []byte{72, 105}\nstring(b)",
-			expect: "Hi",
+			name: "bytes to string via variable",
+			code: "b := []byte{72, 105}\nstring(b)",
+			want: "Hi",
 		},
 	}
 
@@ -204,16 +204,16 @@ func TestEvalConvertRuntime(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 
 	t.Run("string to bytes does not error", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		_, err := service.Eval(context.Background(), "s := \"hello\"\n[]byte(s)")
+		_, err := service.Eval(t.Context(), "s := \"hello\"\n[]byte(s)")
 		require.NoError(t, err)
 	})
 }

@@ -19,7 +19,6 @@
 package extract
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -282,8 +281,7 @@ func TestGenerateFileEmitsInterpLinkWrap(t *testing.T) {
 	require.Contains(t, src, `"pipit.sh/pipit/sdk/link"`)
 	require.Contains(t, src, "link.WrapFunc(1, linkfixture.GetItemLink")
 	require.Contains(t, src, `reflect.ValueOf(link.WrapFunc`)
-	require.True(t, strings.Contains(src, `"GetItem":`),
-		"map key must be the generic's exported name, got:\n%s", src)
+	require.Contains(t, src, `"GetItem":`, "the map key is the generic's exported name")
 }
 
 func TestIsValidIdentifier(t *testing.T) {

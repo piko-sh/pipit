@@ -93,6 +93,10 @@ const (
 
 	// stateExited means the execution ended.
 	stateExited = "exited"
+
+	// variablesStartArgument is the position of debugVariables' optional start row, after
+	// threadID, frame, scope and ref.
+	variablesStartArgument = 4
 )
 
 var (
@@ -939,7 +943,7 @@ type variablesRequest struct {
 // Returns error when an argument is missing or out of range.
 func parseVariablesRequest(arguments []js.Value) (variablesRequest, error) {
 	var request variablesRequest
-	if (len(arguments) != 4 && len(arguments) != 5) || arguments[2].Type() != js.TypeString {
+	if (len(arguments) != variablesStartArgument && len(arguments) != variablesStartArgument+1) || arguments[2].Type() != js.TypeString {
 		return request, errors.New("debugVariables requires threadID, frame, scope, ref and an optional start")
 	}
 	threadID, err := parseThreadID(arguments[0])
@@ -955,8 +959,8 @@ func parseVariablesRequest(arguments []js.Value) (variablesRequest, error) {
 		return request, err
 	}
 	start := 0
-	if len(arguments) == 5 && arguments[4].Type() != js.TypeUndefined {
-		if start, err = parseCount(arguments[4], "start"); err != nil {
+	if len(arguments) > variablesStartArgument && arguments[variablesStartArgument].Type() != js.TypeUndefined {
+		if start, err = parseCount(arguments[variablesStartArgument], "start"); err != nil {
 			return request, err
 		}
 	}

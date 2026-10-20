@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -34,7 +34,7 @@ func TestEvalPointerMutation(t *testing.T) {
 	t.Run("mutate through pointer", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `x := 1; p := &x; *p = 99; x`)
+		result, err := service.Eval(t.Context(), `x := 1; p := &x; *p = 99; x`)
 		require.NoError(t, err)
 		require.Equal(t, 99, result)
 	})
@@ -42,7 +42,7 @@ func TestEvalPointerMutation(t *testing.T) {
 	t.Run("mutate string through pointer", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `s := "old"; p := &s; *p = "new"; s`)
+		result, err := service.Eval(t.Context(), `s := "old"; p := &s; *p = "new"; s`)
 		require.NoError(t, err)
 		require.Equal(t, "new", result)
 	})
@@ -54,7 +54,7 @@ func TestEvalPointerNew(t *testing.T) {
 	t.Run("new int", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `p := new(int); *p = 5; *p`)
+		result, err := service.Eval(t.Context(), `p := new(int); *p = 5; *p`)
 		require.NoError(t, err)
 		require.Equal(t, 5, result)
 	})
@@ -62,7 +62,7 @@ func TestEvalPointerNew(t *testing.T) {
 	t.Run("new struct", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `type S struct{ X int }; p := new(S); p.X = 7; p.X`)
+		result, err := service.Eval(t.Context(), `type S struct{ X int }; p := new(S); p.X = 7; p.X`)
 		require.NoError(t, err)
 		require.Equal(t, 7, result)
 	})
@@ -72,44 +72,44 @@ func TestEvalNewExpr(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "new int literal",
-			code:   `p := new(42); *p`,
-			expect: 42,
+			name: "new int literal",
+			code: `p := new(42); *p`,
+			want: 42,
 		},
 		{
-			name:   "new string literal",
-			code:   `p := new("hello"); *p`,
-			expect: "hello",
+			name: "new string literal",
+			code: `p := new("hello"); *p`,
+			want: "hello",
 		},
 		{
-			name:   "new expression",
-			code:   `x := 10; p := new(x + 32); *p`,
-			expect: 42,
+			name: "new expression",
+			code: `x := 10; p := new(x + 32); *p`,
+			want: 42,
 		},
 		{
-			name:   "new func call",
-			code:   "func d(n int) int { return n * 2 }\np := new(d(21))\n*p",
-			expect: 42,
+			name: "new func call",
+			code: "func d(n int) int { return n * 2 }\np := new(d(21))\n*p",
+			want: 42,
 		},
 		{
-			name:   "new expr independence",
-			code:   `x := 42; p := new(x); *p = 99; x`,
-			expect: 42,
+			name: "new expr independence",
+			code: `x := 42; p := new(x); *p = 99; x`,
+			want: 42,
 		},
 		{
-			name:   "new bool literal",
-			code:   `p := new(true); *p`,
-			expect: true,
+			name: "new bool literal",
+			code: `p := new(true); *p`,
+			want: true,
 		},
 		{
-			name:   "new float literal",
-			code:   `p := new(3.14); *p`,
-			expect: 3.14,
+			name: "new float literal",
+			code: `p := new(3.14); *p`,
+			want: 3.14,
 		},
 	}
 
@@ -117,9 +117,9 @@ func TestEvalNewExpr(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -128,19 +128,19 @@ func TestEvalAddressOfIndex(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "address of slice element",
-			code:   "s := []int{10, 20, 30}\np := &s[1]\n*p",
-			expect: 20,
+			name: "address of slice element",
+			code: "s := []int{10, 20, 30}\np := &s[1]\n*p",
+			want: 20,
 		},
 		{
-			name:   "mutate via slice element pointer",
-			code:   "s := []int{10, 20, 30}\np := &s[1]\n*p = 99\ns[1]",
-			expect: 99,
+			name: "mutate via slice element pointer",
+			code: "s := []int{10, 20, 30}\np := &s[1]\n*p = 99\ns[1]",
+			want: 99,
 		},
 	}
 
@@ -148,9 +148,9 @@ func TestEvalAddressOfIndex(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -159,24 +159,24 @@ func TestEvalIndirectWrite(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "write through pointer func",
-			code:   "func set(p *int, v int) { *p = v }\nx := 0\nset(&x, 42)\nx",
-			expect: 42,
+			name: "write through pointer func",
+			code: "func set(p *int, v int) { *p = v }\nx := 0\nset(&x, 42)\nx",
+			want: 42,
 		},
 		{
-			name:   "write through pointer string func",
-			code:   "func set(p *string, v string) { *p = v }\ns := \"old\"\nset(&s, \"new\")\ns",
-			expect: "new",
+			name: "write through pointer string func",
+			code: "func set(p *string, v string) { *p = v }\ns := \"old\"\nset(&s, \"new\")\ns",
+			want: "new",
 		},
 		{
-			name:   "assign heap-escaped variable",
-			code:   "x := 5\np := &x\nx = 10\n*p",
-			expect: 10,
+			name: "assign heap-escaped variable",
+			code: "x := 5\np := &x\nx = 10\n*p",
+			want: 10,
 		},
 	}
 
@@ -184,9 +184,9 @@ func TestEvalIndirectWrite(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -197,7 +197,7 @@ func TestEvalPointerToField(t *testing.T) {
 	t.Run("pointer to struct field", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `type S struct{ V int }; s := S{V: 10}; p := &s.V; *p`)
+		result, err := service.Eval(t.Context(), `type S struct{ V int }; s := S{V: 10}; p := &s.V; *p`)
 		require.NoError(t, err)
 		require.Equal(t, 10, result)
 	})

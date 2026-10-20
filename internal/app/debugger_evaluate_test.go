@@ -19,7 +19,6 @@
 package app
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
@@ -79,20 +78,20 @@ func TestDebuggerEvaluateExpressions(t *testing.T) {
 		{name: "string concatenation", expression: `s + "!"`, want: "hello!", wantType: "string"},
 		{name: "comparison", expression: "x > 40 && s == \"hello\"", want: true, wantType: "untyped bool"},
 	}
-	for _, tc := range tests {
-		result, err := h.dbg.Evaluate(context.Background(), event.ThreadID, 0, tc.expression, debug.EvalOptions{Timeout: 0, AllowCalls: true})
-		require.NoError(t, err, tc.name)
-		require.EqualValues(t, tc.want, result.Value, tc.name)
-		require.Equal(t, tc.wantType, result.Type, tc.name)
+	for _, tt := range tests {
+		result, err := h.dbg.Evaluate(t.Context(), event.ThreadID, 0, tt.expression, debug.EvalOptions{Timeout: 0, AllowCalls: true})
+		require.NoError(t, err, tt.name)
+		require.EqualValues(t, tt.want, result.Value, tt.name)
+		require.Equal(t, tt.wantType, result.Type, tt.name)
 	}
-	_, err := h.dbg.Evaluate(context.Background(), event.ThreadID, 0, "nosuch + 1", debug.EvalOptions{Timeout: 0, AllowCalls: true})
+	_, err := h.dbg.Evaluate(t.Context(), event.ThreadID, 0, "nosuch + 1", debug.EvalOptions{Timeout: 0, AllowCalls: true})
 	require.Error(t, err, "an undefined identifier is a type error")
-	_, err = h.dbg.Evaluate(context.Background(), event.ThreadID, 0, "host.Twice(x)", debug.EvalOptions{Timeout: 0, AllowCalls: false})
+	_, err = h.dbg.Evaluate(t.Context(), event.ThreadID, 0, "host.Twice(x)", debug.EvalOptions{Timeout: 0, AllowCalls: false})
 	require.ErrorIs(t, err, fault.ErrCallsNotAllowed)
-	result, err := h.dbg.Evaluate(context.Background(), event.ThreadID, 0, "len(xs)", debug.EvalOptions{Timeout: 0, AllowCalls: false})
+	result, err := h.dbg.Evaluate(t.Context(), event.ThreadID, 0, "len(xs)", debug.EvalOptions{Timeout: 0, AllowCalls: false})
 	require.NoError(t, err, "builtins are not calls")
 	require.EqualValues(t, 3, result.Value)
-	outer, err := h.dbg.Evaluate(context.Background(), event.ThreadID, 1, "x + len(xs)", debug.EvalOptions{Timeout: 0, AllowCalls: true})
+	outer, err := h.dbg.Evaluate(t.Context(), event.ThreadID, 1, "x + len(xs)", debug.EvalOptions{Timeout: 0, AllowCalls: true})
 	require.NoError(t, err, "the caller frame evaluates its own locals")
 	require.EqualValues(t, 44, outer.Value)
 	require.NoError(t, h.dbg.Continue())
@@ -213,17 +212,17 @@ func run() int {
 		{name: "condition error pauses with a message", breakpoint: debug.Breakpoint{Condition: "nosuch > 1", HitCondition: "", Line: 6}, wantPauses: 6, wantFirst: 0, wantMsg: true},
 		{name: "non-boolean condition pauses with a message", breakpoint: debug.Breakpoint{Condition: "i", HitCondition: "", Line: 6}, wantPauses: 6, wantFirst: 0, wantMsg: true},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			h := newDebugHarness(t, source, nil, func(dbg *debug.Debugger) {
-				results := dbg.SetBreakpoints("main.go", []debug.Breakpoint{tc.breakpoint})
+				results := dbg.SetBreakpoints("main.go", []debug.Breakpoint{tt.breakpoint})
 				require.True(t, results[0].Verified)
 			})
-			for pause := range tc.wantPauses {
+			for pause := range tt.wantPauses {
 				event := h.pause(t)
 				require.Equal(t, debug.StopReasonBreakpoint, event.Reason)
-				if tc.wantMsg {
+				if tt.wantMsg {
 					require.NotEmpty(t, event.Message)
 				} else {
 					require.Empty(t, event.Message)
@@ -231,7 +230,7 @@ func run() int {
 				if pause == 0 {
 					locals, err := h.dbg.Variables(event.ThreadID, 0, debug.ScopeLocals)
 					require.NoError(t, err)
-					require.EqualValues(t, tc.wantFirst, variablesByName(locals)["i"].Value)
+					require.EqualValues(t, tt.wantFirst, variablesByName(locals)["i"].Value)
 				}
 				require.NoError(t, h.dbg.Continue())
 			}
@@ -256,7 +255,7 @@ func run() int {
 `
 	dbg := debug.NewDebugger()
 	service := NewService(WithDebugger(dbg))
-	_, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	_, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
 	results := dbg.SetBreakpoints("main.go", []debug.Breakpoint{
 		{Condition: "", HitCondition: "", Line: 4},

@@ -27,18 +27,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/engine/program"
-
-	"github.com/stretchr/testify/require"
 	"pipit.sh/pipit/internal/isa"
 )
 
 func TestASMLoopCancellable(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 	defer cancel()
 
 	start := time.Now()
@@ -59,7 +59,7 @@ const (
 
 func requireFusedLoopCancelled(t *testing.T, compiledFunction *program.CompiledFunction) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), fusedLoopCancelDeadline)
+	ctx, cancel := context.WithTimeout(t.Context(), fusedLoopCancelDeadline)
 	defer cancel()
 	start := time.Now()
 	_, err := app.NewService().Execute(ctx, compiledFunction)
@@ -142,7 +142,7 @@ func buildLtIntConstJumpFalseLoop() *program.CompiledFunction {
 
 func compileFusedLoopSource(t *testing.T, code string) *program.CompiledFunction {
 	t.Helper()
-	compiledFunction, err := app.NewService().Compile(context.Background(), code)
+	compiledFunction, err := app.NewService().Compile(t.Context(), code)
 	require.NoError(t, err)
 	return compiledFunction
 }
@@ -150,7 +150,7 @@ func compileFusedLoopSource(t *testing.T, code string) *program.CompiledFunction
 func TestASMFusedLoopsCancellable(t *testing.T) {
 	t.Parallel()
 
-	synthetic := []struct {
+	tests := []struct {
 		build  func() *program.CompiledFunction
 		assert func(t *testing.T, compiledFunction *program.CompiledFunction)
 		name   string
@@ -159,6 +159,7 @@ func TestASMFusedLoopsCancellable(t *testing.T) {
 			name:  "inc_int_jump_lt counted loop",
 			build: buildIncIntJumpLtLoop,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
+				t.Helper()
 				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpIncIntJumpLt)
 			},
 		},
@@ -166,6 +167,7 @@ func TestASMFusedLoopsCancellable(t *testing.T) {
 			name:  "len_string_lt_jump_false loop",
 			build: buildLenStringLtJumpFalseLoop,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
+				t.Helper()
 				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpLenStringLtJumpFalse)
 			},
 		},
@@ -173,6 +175,7 @@ func TestASMFusedLoopsCancellable(t *testing.T) {
 			name:  "range_check_uint_jump_false loop",
 			build: buildRangeCheckUintJumpFalseLoop,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
+				t.Helper()
 				requireContainsTier2SubOp(t, compiledFunction, isa.SubOpTier2RangeCheckUintJumpFalse)
 			},
 		},
@@ -180,6 +183,7 @@ func TestASMFusedLoopsCancellable(t *testing.T) {
 			name:  "add_int_jump loop",
 			build: buildAddIntJumpLoop,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
+				t.Helper()
 				requireContainsOpcode(t, compiledFunction, isa.OpAddIntJump)
 			},
 		},
@@ -187,6 +191,7 @@ func TestASMFusedLoopsCancellable(t *testing.T) {
 			name:  "eq_int_const_jump_true loop",
 			build: buildEqIntConstJumpTrueLoop,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
+				t.Helper()
 				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpEqIntConstJumpTrue)
 			},
 		},
@@ -194,15 +199,16 @@ func TestASMFusedLoopsCancellable(t *testing.T) {
 			name:  "lt_int_const_jump_false loop",
 			build: buildLtIntConstJumpFalseLoop,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
+				t.Helper()
 				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpLtIntConstJumpFalse)
 			},
 		},
 	}
-	for _, tc := range synthetic {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			compiledFunction := tc.build()
-			tc.assert(t, compiledFunction)
+			compiledFunction := tt.build()
+			tt.assert(t, compiledFunction)
 			requireFusedLoopCancelled(t, compiledFunction)
 		})
 	}
@@ -216,6 +222,7 @@ func TestASMFusedLoopsCancellable(t *testing.T) {
 			name: "counted loop",
 			code: `x := 0; for i := 0; i < 9223372036854775807; i++ { x += i }; x`,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
+				t.Helper()
 				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpLtIntConstJumpFalse)
 			},
 		},
@@ -223,6 +230,7 @@ func TestASMFusedLoopsCancellable(t *testing.T) {
 			name: "len(s) loop",
 			code: `s := "abc"; x := 0; for i := 0; i < len(s); i++ { x += int(s[i]); if x > 0 { i = 0 } }; x`,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
+				t.Helper()
 				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpLenStringLtJumpFalse)
 			},
 		},
@@ -230,6 +238,7 @@ func TestASMFusedLoopsCancellable(t *testing.T) {
 			name: "uint range-check loop",
 			code: `x := 0; u := uint(5); for u >= 1 && u <= 10 { x++; if x < 0 { u = 100 } }; x`,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
+				t.Helper()
 				requireContainsTier2SubOp(t, compiledFunction, isa.SubOpTier2RangeCheckUintJumpFalse)
 			},
 		},
@@ -237,6 +246,7 @@ func TestASMFusedLoopsCancellable(t *testing.T) {
 			name: "for x != 0 loop",
 			code: `x := 1; for x != 0 { x = x + 1 }; x`,
 			assert: func(t *testing.T, compiledFunction *program.CompiledFunction) {
+				t.Helper()
 				requireContainsTier1SubOp(t, compiledFunction, isa.SubOpJump)
 			},
 		},

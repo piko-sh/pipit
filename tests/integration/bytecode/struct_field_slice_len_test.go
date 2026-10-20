@@ -21,27 +21,28 @@
 package bytecode_test
 
 import (
-	"context"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/debug"
-
-	"github.com/stretchr/testify/require"
 )
 
 func compileForSliceLen(t *testing.T, source string) string {
 	t.Helper()
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoErrorf(t, err, "compile failed: %v", err)
 	return debug.DisassembleAssembly(compiled)
 }
 
-func TestStructFieldSliceLen_FiresOnPointerReceiverByteField(t *testing.T) {
+func TestStructFieldSliceLen(t *testing.T) {
 	t.Parallel()
-	disasm := compileForSliceLen(t, `package main
+	runDisassemblyExpectations(t, compileForSliceLen, []disassemblyExpectation{
+		{
+			name: "fires on pointer receiver byte field",
+			source: `package main
 
 type parser struct {
 	source   []byte
@@ -56,14 +57,12 @@ func EntrypointRun() int {
 		p.position++
 	}
 	return total
-}`)
-	require.Positivef(t, strings.Count(disasm, "GET_STRUCT_FIELD_SLICE_LEN"),
-		"expected GET_STRUCT_FIELD_SLICE_LEN for len(p.source) loop condition; got:\n%s", disasm)
-}
-
-func TestStructFieldSliceLen_FiresOnValueReceiverIntField(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSliceLen(t, `package main
+}`,
+			contains: []string{"GET_STRUCT_FIELD_SLICE_LEN"},
+		},
+		{
+			name: "fires on value receiver int field",
+			source: `package main
 
 type holder struct {
 	values []int
@@ -72,14 +71,12 @@ type holder struct {
 func EntrypointRun() int {
 	h := holder{values: []int{1, 2, 3}}
 	return len(h.values)
-}`)
-	require.Positivef(t, strings.Count(disasm, "GET_STRUCT_FIELD_SLICE_LEN"),
-		"expected GET_STRUCT_FIELD_SLICE_LEN for len(h.values); got:\n%s", disasm)
-}
-
-func TestStructFieldSliceLen_FiresOnMethodlessNamedSliceField(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSliceLen(t, `package main
+}`,
+			contains: []string{"GET_STRUCT_FIELD_SLICE_LEN"},
+		},
+		{
+			name: "fires on methodless named slice field",
+			source: `package main
 
 type row []int
 
@@ -90,14 +87,12 @@ type grid struct {
 func EntrypointRun() int {
 	g := grid{cells: row{4, 5}}
 	return len(g.cells)
-}`)
-	require.Positivef(t, strings.Count(disasm, "GET_STRUCT_FIELD_SLICE_LEN"),
-		"expected GET_STRUCT_FIELD_SLICE_LEN for methodless named slice field; got:\n%s", disasm)
-}
-
-func TestStructFieldSliceLen_RefusesNamedSliceWithMethods(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSliceLen(t, `package main
+}`,
+			contains: []string{"GET_STRUCT_FIELD_SLICE_LEN"},
+		},
+		{
+			name: "refuses named slice with methods",
+			source: `package main
 
 type stack []int
 
@@ -115,14 +110,12 @@ type machine struct {
 func EntrypointRun() int {
 	m := machine{operands: stack{7}}
 	return len(m.operands) + m.operands.top()
-}`)
-	require.Zerof(t, strings.Count(disasm, "GET_STRUCT_FIELD_SLICE_LEN"),
-		"named slice type with methods must refuse the fused op; got:\n%s", disasm)
-}
-
-func TestStructFieldSliceLen_RefusesMapAndArrayFields(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSliceLen(t, `package main
+}`,
+			absent: []string{"GET_STRUCT_FIELD_SLICE_LEN"},
+		},
+		{
+			name: "refuses map and array fields",
+			source: `package main
 
 type box struct {
 	index map[string]int
@@ -132,19 +125,18 @@ type box struct {
 func EntrypointRun() int {
 	b := box{index: map[string]int{"a": 1}}
 	return len(b.index) + len(b.quad)
-}`)
-	require.Zerof(t, strings.Count(disasm, "GET_STRUCT_FIELD_SLICE_LEN"),
-		"map and array fields must refuse the fused op; got:\n%s", disasm)
-}
-
-func TestStructFieldSliceLen_RefusesLocalSlice(t *testing.T) {
-	t.Parallel()
-	disasm := compileForSliceLen(t, `package main
+}`,
+			absent: []string{"GET_STRUCT_FIELD_SLICE_LEN"},
+		},
+		{
+			name: "refuses local slice",
+			source: `package main
 
 func EntrypointRun() int {
 	local := []int{1, 2, 3}
 	return len(local)
-}`)
-	require.Zerof(t, strings.Count(disasm, "GET_STRUCT_FIELD_SLICE_LEN"),
-		"len of a local slice must not use the struct-field fused op; got:\n%s", disasm)
+}`,
+			absent: []string{"GET_STRUCT_FIELD_SLICE_LEN"},
+		},
+	})
 }

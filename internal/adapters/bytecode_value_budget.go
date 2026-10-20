@@ -68,7 +68,7 @@ func (budget *bytecodeValueBudget) reconstruct(data codec.GeneralConstantDescrip
 // Takes name (string) which is the preflighted symbol name.
 // Takes registry (*symtab.SymbolRegistry) which provides the host's symbol lookups.
 //
-// Returns reflect.Value which is a fresh addressable zero.
+// Returns reflect.Value which is the zero constant (symtab.ZeroConstant).
 // Returns error when the type is not found or the budget is exceeded.
 func (budget *bytecodeValueBudget) namedZero(packagePath, name string, registry *symtab.SymbolRegistry) (reflect.Value, error) {
 	value, exists := registry.Lookup(packagePath, name)
@@ -78,14 +78,13 @@ func (budget *bytecodeValueBudget) namedZero(packagePath, name string, registry 
 	return budget.zero(value.Type().Elem())
 }
 
-// zero reserves complete object storage before reflect.New can allocate it.
+// zero reserves complete storage before symtab.ZeroConstant allocates it. Zero-size
+// values consume one unit, and reservations are never refunded.
 //
-// Zero-size values still consume one unit. Reservations are never refunded.
+// Takes resolved (reflect.Type) which is the type to allocate, including
+// host-registered named types.
 //
-// Takes resolved (reflect.Type) which is the type to allocate, including host-registered
-// named types.
-//
-// Returns reflect.Value which is the fresh zero value.
+// Returns reflect.Value which is the zero constant.
 // Returns error when the budget is exhausted.
 func (budget *bytecodeValueBudget) zero(resolved reflect.Type) (reflect.Value, error) {
 	size := max(uintptr(1), resolved.Size())
@@ -93,5 +92,5 @@ func (budget *bytecodeValueBudget) zero(resolved reflect.Type) (reflect.Value, e
 		return reflect.Value{}, fmt.Errorf("%w: zero-value storage exceeds %d bytes", errCorruptBytecodePayload, maximumDecodedValueBytes)
 	}
 	budget.remaining -= size
-	return reflect.New(resolved).Elem(), nil
+	return symtab.ZeroConstant(resolved), nil
 }

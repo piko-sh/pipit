@@ -21,14 +21,13 @@
 package bytecode_test
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/symtab"
-
-	"github.com/stretchr/testify/require"
 )
 
 type registeredMetadata struct {
@@ -70,10 +69,10 @@ func main() {}
 `
 	service := app.NewService()
 	service.UseSymbols(symbols)
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
 
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
+	result, err := service.ExecuteEntrypoint(t.Context(), cfs, "entrypoint")
 	require.NoError(t, err)
 
 	meta, ok := result.(registeredMetadata)
@@ -149,10 +148,10 @@ func main() {}
 `
 	service := app.NewService()
 	service.UseSymbols(symbols)
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
 
-	_, err = service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
+	_, err = service.ExecuteEntrypoint(t.Context(), cfs, "entrypoint")
 	require.NoError(t, err)
 
 	require.Equal(t, "Welcome Page", captured.metadata.Title,
@@ -201,10 +200,10 @@ func main() {}
 `
 	service := app.NewService()
 	service.UseSymbols(symbols)
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
 
-	err = service.ExecuteInits(context.Background(), cfs)
+	err = service.ExecuteInits(t.Context(), cfs)
 	require.NoError(t, err)
 
 	require.NotNil(t, registeredFn, "init() should have registered a function")

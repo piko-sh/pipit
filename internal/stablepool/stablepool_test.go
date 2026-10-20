@@ -19,6 +19,7 @@
 package stablepool_test
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -63,14 +64,14 @@ func takeAll(t *testing.T, p *stablepool.Pool[buffer]) []*buffer {
 		}
 		out = append(out, object)
 	}
-	t.Fatalf("pool handed out more than %d objects: Get never reports nil in this mode", takeAllLimit)
+	require.Failf(t, "the pool never runs dry", "Get handed out %d objects without reporting nil", takeAllLimit)
 	return nil
 }
 
 func TestNewRejectsBadConfiguration(t *testing.T) {
 	t.Parallel()
 	init, _ := newCounterInit()
-	cases := []struct {
+	tests := []struct {
 		name    string
 		build   func() error
 		wantErr error
@@ -129,10 +130,10 @@ func TestNewRejectsBadConfiguration(t *testing.T) {
 			wantErr: stablepool.ErrBadLink,
 		},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.ErrorIs(t, tc.build(), tc.wantErr)
+			require.ErrorIs(t, tt.build(), tt.wantErr)
 		})
 	}
 }
@@ -225,7 +226,7 @@ func TestMustGetAllocatesWhenDrained(t *testing.T) {
 func TestInFlightMetrics(t *testing.T) {
 	t.Parallel()
 	init, _ := newCounterInit()
-	cases := []struct {
+	tests := []struct {
 		name    string
 		options []stablepool.Option[buffer]
 		wantMax int64
@@ -234,17 +235,17 @@ func TestInFlightMetrics(t *testing.T) {
 		{name: "metrics disabled", options: nil, wantMax: 0},
 		{name: "metrics enabled gc-aware", options: []stablepool.Option[buffer]{stablepool.WithMetrics[buffer](), stablepool.WithMode[buffer](stablepool.ModeGCAware)}, wantMax: 2},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			pool, err := stablepool.New(init, nil, 4, tc.options...)
+			pool, err := stablepool.New(init, nil, 4, tt.options...)
 			require.NoError(t, err)
 			require.Equal(t, int64(0), pool.InFlight())
 			a := pool.Get()
 			b := pool.Get()
 			require.NotNil(t, a)
 			require.NotNil(t, b)
-			require.Equal(t, tc.wantMax, pool.InFlight())
+			require.Equal(t, tt.wantMax, pool.InFlight())
 			pool.Put(a)
 			pool.Put(b)
 			require.Equal(t, int64(0), pool.InFlight())
@@ -371,9 +372,12 @@ func TestWithShardCountRoundsUpToPowerOfTwo(t *testing.T) {
 	t.Parallel()
 	init, _ := newCounterInit()
 	for _, shards := range []int{1, 2, 3, 5, 8, 9} {
-		pool, err := stablepool.New(init, nil, 16, stablepool.WithShardCount[buffer](shards))
-		require.NoError(t, err, "shards=%d", shards)
-		require.Len(t, pool.Drain(), 16, "shards=%d", shards)
+		t.Run(fmt.Sprintf("%d shards", shards), func(t *testing.T) {
+			t.Parallel()
+			pool, err := stablepool.New(init, nil, 16, stablepool.WithShardCount[buffer](shards))
+			require.NoError(t, err)
+			require.Len(t, pool.Drain(), 16, "every object is handed out once")
+		})
 	}
 }
 

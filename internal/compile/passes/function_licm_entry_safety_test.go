@@ -155,7 +155,7 @@ func TestLicmZeroTripHoistWritesOnlyDeadRegisters(t *testing.T) {
 	body := exitTestedLoop(mk(isa.OpGetStructFieldIntT0, 6, 4, 0), mk(isa.OpLoadIntConst, 1, 0, 0))
 	compiledFunction := &program.CompiledFunction{Body: body}
 	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
-	require.Equal(t, 6, len(compiledFunction.Body))
+	require.Len(t, compiledFunction.Body, 6)
 	require.Equal(t, isa.OpGetStructFieldIntT0, compiledFunction.Body[1].Op)
 	require.Equal(t, uint8(1), compiledFunction.Body[1].A)
 	require.Equal(t, isa.OpJumpIfFalse, compiledFunction.Body[2].Op)

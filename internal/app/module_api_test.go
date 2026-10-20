@@ -19,23 +19,21 @@
 package app
 
 import (
-	"context"
 	"errors"
 	"testing"
 
-	"pipit.sh/pipit/internal/engine/program"
-	"pipit.sh/pipit/internal/verify"
-
-	"pipit.sh/pipit/internal/symtab"
-
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/module"
+	"pipit.sh/pipit/internal/symtab"
+	"pipit.sh/pipit/internal/verify"
 )
 
-func stubPacker(_ *program.CompiledFileSet) []byte {
-	return []byte("stub-packed-bytecode")
+func stubPacker(_ *program.CompiledFileSet) ([]byte, error) {
+	return []byte("stub-packed-bytecode"), nil
 }
 
 func stubUnpacker(_ []byte, _ *symtab.SymbolRegistry) (*program.CompiledFileSet, error) {
@@ -66,29 +64,39 @@ func pinnedRefFor(t *testing.T, bundle *module.Bundle) module.Ref {
 func TestPackageModuleRequiresPacker(t *testing.T) {
 	t.Parallel()
 	service := NewService()
-	_, err := service.PackageModule(context.Background(),
+	_, err := service.PackageModule(t.Context(),
 		module.Descriptor{},
 		"example.com/mod",
 		nil,
 		nil,
 	)
-	if err == nil {
-		t.Fatalf("expected error when bytecodePacker is nil")
-	}
+	require.Error(t, err, "a nil bytecode packer is refused")
+}
+
+func TestPackageModuleReportsAPackerFailure(t *testing.T) {
+	t.Parallel()
+	packFailure := errors.New("cannot pack")
+	service := NewService()
+	bundle, err := service.PackageModule(t.Context(),
+		module.Descriptor{SchemaVersion: module.DescriptorVersion, Ref: module.Ref{Path: "example.com/lib", Version: "v0.0.0"}},
+		"example.com/lib",
+		map[string]map[string]string{"": {"lib.go": "package lib\n\nfunc Add(a, b int) int { return a + b }\n"}},
+		func(*program.CompiledFileSet) ([]byte, error) { return nil, packFailure },
+	)
+	require.ErrorIs(t, err, packFailure)
+	require.Nil(t, bundle, "no bundle is built from bytecode that failed to pack")
 }
 
 func TestPackageModuleRejectsInvalidDescriptor(t *testing.T) {
 	t.Parallel()
 	service := NewService()
-	_, err := service.PackageModule(context.Background(),
+	_, err := service.PackageModule(t.Context(),
 		module.Descriptor{},
 		"example.com/mod",
 		nil,
 		stubPacker,
 	)
-	if err == nil {
-		t.Fatalf("expected validation error for empty descriptor")
-	}
+	require.Error(t, err, "an empty descriptor fails validation")
 }
 
 func TestLoadModuleVerifiesPin(t *testing.T) {
@@ -106,10 +114,8 @@ func TestLoadModuleVerifiesPin(t *testing.T) {
 		Version: bundle.Descriptor.Ref.Version,
 		Pin:     "sha256:0000000000000000000000000000000000000000000000000000000000000000",
 	}
-	_, err := service.LoadModule(context.Background(), bundle, wrongRef, nil, stubUnpacker)
-	if !errors.Is(err, module.ErrIntegrityMismatch) {
-		t.Fatalf("expected ErrIntegrityMismatch, got %v", err)
-	}
+	_, err := service.LoadModule(t.Context(), bundle, wrongRef, nil, stubUnpacker)
+	require.ErrorIs(t, err, module.ErrIntegrityMismatch, "a mismatched pin fails the integrity check")
 }
 
 func TestLoadModuleAcceptsMatchingPin(t *testing.T) {
@@ -123,21 +129,15 @@ func TestLoadModuleAcceptsMatchingPin(t *testing.T) {
 		Bytecode: []byte("payload"),
 	}
 	fingerprint, err := bundle.Fingerprint()
-	if err != nil {
-		t.Fatalf("Fingerprint error: %v", err)
-	}
+	require.NoError(t, err)
 	reference := module.Ref{
 		Path:    bundle.Descriptor.Ref.Path,
 		Version: bundle.Descriptor.Ref.Version,
 		Pin:     fingerprint,
 	}
-	loaded, err := service.LoadModule(context.Background(), bundle, reference, nil, stubUnpacker)
-	if err != nil {
-		t.Fatalf("LoadModule error: %v", err)
-	}
-	if loaded.Fingerprint != fingerprint {
-		t.Fatalf("LoadedModule.Fingerprint mismatch: got %s want %s", loaded.Fingerprint, fingerprint)
-	}
+	loaded, err := service.LoadModule(t.Context(), bundle, reference, nil, stubUnpacker)
+	require.NoError(t, err)
+	require.Equal(t, fingerprint, loaded.Fingerprint, "the loaded module keeps the bundle fingerprint")
 }
 
 func TestLoadModuleRejectsUnpinnedRefByDefault(t *testing.T) {
@@ -145,7 +145,7 @@ func TestLoadModuleRejectsUnpinnedRefByDefault(t *testing.T) {
 	service := NewService()
 	bundle := stubBundle()
 	reference := module.Ref{Path: bundle.Descriptor.Ref.Path, Version: bundle.Descriptor.Ref.Version}
-	_, err := service.LoadModule(context.Background(), bundle, reference, nil, stubUnpacker)
+	_, err := service.LoadModule(t.Context(), bundle, reference, nil, stubUnpacker)
 	require.ErrorIs(t, err, module.ErrUnpinnedRef)
 	require.ErrorContains(t, err, "example.com/mod@v1")
 }
@@ -155,7 +155,7 @@ func TestLoadModuleAllowsUnpinnedRefWhenOptedIn(t *testing.T) {
 	service := NewService(WithAllowUnpinnedModules(true))
 	bundle := stubBundle()
 	reference := module.Ref{Path: bundle.Descriptor.Ref.Path, Version: bundle.Descriptor.Ref.Version}
-	loaded, err := service.LoadModule(context.Background(), bundle, reference, nil, stubUnpacker)
+	loaded, err := service.LoadModule(t.Context(), bundle, reference, nil, stubUnpacker)
 	require.NoError(t, err)
 	require.NotEmpty(t, loaded.Fingerprint)
 }
@@ -194,7 +194,7 @@ func TestLoadModuleRunsBytecodeVerifier(t *testing.T) {
 				root.NumRegisters[isa.RegisterInt] = 2
 				return program.NewCompiledFileSet(root, nil, nil, nil), nil
 			}
-			_, err := service.LoadModule(context.Background(), bundle, pinnedRefFor(t, bundle), nil, tamperedUnpacker)
+			_, err := service.LoadModule(t.Context(), bundle, pinnedRefFor(t, bundle), nil, tamperedUnpacker)
 			require.ErrorIs(t, err, tt.wantErr)
 			require.ErrorContains(t, err, "example.com/mod")
 			require.ErrorContains(t, err, tt.wantDetail)
@@ -205,7 +205,7 @@ func TestLoadModuleRunsBytecodeVerifier(t *testing.T) {
 func TestVerifyOperandBoundsAcceptsCompiledProgram(t *testing.T) {
 	t.Parallel()
 	service := NewService()
-	cfs, err := service.CompileProgram(context.Background(), "example.com/bounds", map[string]map[string]string{
+	cfs, err := service.CompileProgram(t.Context(), "example.com/bounds", map[string]map[string]string{
 		"": {"main.go": `package main
 
 func fib(n int) int {
@@ -246,17 +246,12 @@ func TestLoadModuleConsultsCapabilityHook(t *testing.T) {
 		Bytecode: []byte("payload"),
 	}
 	reference := pinnedRefFor(t, bundle)
-	if _, err := service.LoadModule(context.Background(), bundle, reference, nil, stubUnpacker); err != nil {
-		t.Fatalf("LoadModule error: %v", err)
-	}
+	_, err := service.LoadModule(t.Context(), bundle, reference, nil, stubUnpacker)
+	require.NoError(t, err)
 	calls := hook.snapshot()
-	if len(calls) < 2 {
-		t.Fatalf("expected hook to be consulted at least twice (once per capability), got %d calls", len(calls))
-	}
+	require.GreaterOrEqual(t, len(calls), 2, "the hook is consulted once per capability")
 	for _, call := range calls {
-		if call.ModulePath != "example.com/mod" {
-			t.Errorf("hook saw modulePath=%q, want example.com/mod", call.ModulePath)
-		}
+		assert.Equal(t, "example.com/mod", call.ModulePath)
 	}
 }
 
@@ -277,16 +272,14 @@ func TestLoadModuleHookDenialBlocksLoad(t *testing.T) {
 		Bytecode: []byte("payload"),
 	}
 	reference := pinnedRefFor(t, bundle)
-	_, err := service.LoadModule(context.Background(), bundle, reference, nil, stubUnpacker)
-	if !errors.Is(err, module.ErrCapabilityDenied) {
-		t.Fatalf("expected ErrCapabilityDenied, got %v", err)
-	}
+	_, err := service.LoadModule(t.Context(), bundle, reference, nil, stubUnpacker)
+	require.ErrorIs(t, err, module.ErrCapabilityDenied, "an undeclared capability is denied")
 }
 
 func TestLoadModuleRequiresUnpacker(t *testing.T) {
 	t.Parallel()
 	service := NewService()
-	_, err := service.LoadModule(context.Background(),
+	_, err := service.LoadModule(t.Context(),
 		&module.Bundle{
 			Descriptor: &module.Descriptor{
 				SchemaVersion: module.DescriptorVersion,
@@ -298,7 +291,5 @@ func TestLoadModuleRequiresUnpacker(t *testing.T) {
 		nil,
 		nil,
 	)
-	if err == nil {
-		t.Fatalf("expected error when unpacker is nil")
-	}
+	require.Error(t, err, "a nil unpacker is refused")
 }

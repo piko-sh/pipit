@@ -38,62 +38,35 @@ func parseFirstDecl(t *testing.T, source string) ast.Decl {
 	return file.Decls[0]
 }
 
-func TestDeclNamesIn_FuncDeclSingle(t *testing.T) {
+func TestDeclNamesIn(t *testing.T) {
 	t.Parallel()
-	decl := parseFirstDecl(t, `func foo() {}`)
-	got := declNamesIn(decl)
-	require.Equal(t, []SessionDecl{{Name: "foo", Kind: SessionDeclFunc}}, got)
-}
-
-func TestDeclNamesIn_InitFuncReturnsNil(t *testing.T) {
-	t.Parallel()
-	decl := parseFirstDecl(t, `func init() {}`)
-	require.Nil(t, declNamesIn(decl), "init must not be reported as a named declaration")
-}
-
-func TestDeclNamesIn_VarSingle(t *testing.T) {
-	t.Parallel()
-	decl := parseFirstDecl(t, `var x int`)
-	require.Equal(t, []SessionDecl{{Name: "x", Kind: SessionDeclVar}}, declNamesIn(decl))
-}
-
-func TestDeclNamesIn_VarBlock(t *testing.T) {
-	t.Parallel()
-	decl := parseFirstDecl(t, `var (
-	x int
-	y string
-)`)
-	require.Equal(t,
-		[]SessionDecl{
-			{Name: "x", Kind: SessionDeclVar},
-			{Name: "y", Kind: SessionDeclVar},
+	tests := []struct {
+		name   string
+		source string
+		want   []SessionDecl
+	}{
+		{name: "function", source: `func foo() {}`, want: []SessionDecl{{Name: "foo", Kind: SessionDeclFunc}}},
+		{name: "init is not a named declaration", source: `func init() {}`, want: nil},
+		{name: "one variable", source: `var x int`, want: []SessionDecl{{Name: "x", Kind: SessionDeclVar}}},
+		{
+			name:   "variable block",
+			source: "var (\n\tx int\n\ty string\n)",
+			want: []SessionDecl{
+				{Name: "x", Kind: SessionDeclVar},
+				{Name: "y", Kind: SessionDeclVar},
+			},
 		},
-		declNamesIn(decl),
-	)
-}
-
-func TestDeclNamesIn_ConstBlock(t *testing.T) {
-	t.Parallel()
-	decl := parseFirstDecl(t, `const a = 1`)
-	require.Equal(t, []SessionDecl{{Name: "a", Kind: SessionDeclConst}}, declNamesIn(decl))
-}
-
-func TestDeclNamesIn_TypeDecl(t *testing.T) {
-	t.Parallel()
-	decl := parseFirstDecl(t, `type Point struct { X, Y int }`)
-	require.Equal(t, []SessionDecl{{Name: "Point", Kind: SessionDeclType}}, declNamesIn(decl))
-}
-
-func TestDeclNamesIn_BlankIdentSkipped(t *testing.T) {
-	t.Parallel()
-	decl := parseFirstDecl(t, `var _ = 42`)
-	require.Empty(t, declNamesIn(decl), "blank ident var must not be reported")
-}
-
-func TestDeclNamesIn_ImportReturnsNil(t *testing.T) {
-	t.Parallel()
-	decl := parseFirstDecl(t, `import "fmt"`)
-	require.Nil(t, declNamesIn(decl), "imports should produce no SessionDecl entries")
+		{name: "constant", source: `const a = 1`, want: []SessionDecl{{Name: "a", Kind: SessionDeclConst}}},
+		{name: "type", source: `type Point struct { X, Y int }`, want: []SessionDecl{{Name: "Point", Kind: SessionDeclType}}},
+		{name: "blank variable", source: `var _ = 42`, want: nil},
+		{name: "import", source: `import "fmt"`, want: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, declNamesIn(parseFirstDecl(t, tt.source)))
+		})
+	}
 }
 
 func TestDeclNamesIn_BadDeclReturnsNil(t *testing.T) {
@@ -138,57 +111,34 @@ func TestInitDeclSignature_NonInitReturnsEmpty(t *testing.T) {
 	require.Empty(t, initDeclSignature(decl))
 }
 
-func TestImportSpecsIn_SingleImport(t *testing.T) {
+func TestImportSpecsIn(t *testing.T) {
 	t.Parallel()
-	decl := parseFirstDecl(t, `import "fmt"`)
-	require.Equal(t, []sessionImport{{path: "fmt"}}, importSpecsIn(decl))
-}
-
-func TestImportSpecsIn_ImportBlock(t *testing.T) {
-	t.Parallel()
-	decl := parseFirstDecl(t, `import (
-	"fmt"
-	"strings"
-)`)
-	got := importSpecsIn(decl)
-	require.Equal(t, []sessionImport{{path: "fmt"}, {path: "strings"}}, got)
-}
-
-func TestImportSpecsIn_AliasesPreserved(t *testing.T) {
-	t.Parallel()
-	decl := parseFirstDecl(t, `import (
-	f "fmt"
-	. "strings"
-	_ "embed"
-)`)
-	got := importSpecsIn(decl)
-	require.Equal(t, []sessionImport{
-		{path: "fmt", alias: "f"},
-		{path: "strings", alias: "."},
-		{path: "embed", alias: "_"},
-	}, got)
-}
-
-func TestImportSpecsIn_NonImportReturnsNil(t *testing.T) {
-	t.Parallel()
-	decl := parseFirstDecl(t, `var x int`)
-	require.Nil(t, importSpecsIn(decl))
-}
-
-func TestImportSpecsIn_FuncDeclReturnsNil(t *testing.T) {
-	t.Parallel()
-	decl := parseFirstDecl(t, `func foo() {}`)
-	require.Nil(t, importSpecsIn(decl))
-}
-
-func TestImportSpecsIn_BacktickPathIsStripped(t *testing.T) {
-	t.Parallel()
-	wrapped := "package main\nimport `fmt`\n"
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "test.go", wrapped, 0)
-	require.NoError(t, err)
-	got := importSpecsIn(file.Decls[0])
-	require.Equal(t, []sessionImport{{path: "fmt"}}, got)
+	tests := []struct {
+		name   string
+		source string
+		want   []sessionImport
+	}{
+		{name: "one import", source: `import "fmt"`, want: []sessionImport{{path: "fmt"}}},
+		{name: "import block", source: "import (\n\t\"fmt\"\n\t\"strings\"\n)", want: []sessionImport{{path: "fmt"}, {path: "strings"}}},
+		{
+			name:   "aliases are kept",
+			source: "import (\n\tf \"fmt\"\n\t. \"strings\"\n\t_ \"embed\"\n)",
+			want: []sessionImport{
+				{path: "fmt", alias: "f"},
+				{path: "strings", alias: "."},
+				{path: "embed", alias: "_"},
+			},
+		},
+		{name: "a raw string path is unquoted", source: "import `fmt`", want: []sessionImport{{path: "fmt"}}},
+		{name: "a variable is not an import", source: `var x int`, want: nil},
+		{name: "a function is not an import", source: `func foo() {}`, want: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, importSpecsIn(parseFirstDecl(t, tt.source)))
+		})
+	}
 }
 
 func TestFuncDeclNames_AnonymousReturnsNil(t *testing.T) {

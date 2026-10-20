@@ -35,6 +35,18 @@ var (
 	// the seven scalar and general banks support spill and reload.
 	ErrSpillUnsupportedBank = errors.New("register bank does not support spilling")
 
+	// ErrRegisterOverflow is returned when a function needs more live registers in one bank
+	// than the instruction encoding can address, even after spilling its locals.
+	ErrRegisterOverflow = errors.New("register overflow")
+
+	// ErrCompileFunctionTableFull is returned when a program needs more functions, its
+	// closures included, than a function index can address.
+	ErrCompileFunctionTableFull = errors.New("too many functions in one program")
+
+	// ErrCompileSignatureTooLarge reports a function signature beyond reflect.FuncOf's
+	// limit of 128 parameters and results, including the receiver.
+	ErrCompileSignatureTooLarge = errors.New("function signature has too many parameters and results")
+
 	// ErrCompileNamedScalarPoolExhausted is returned when a program declares more named
 	// basic types of one kind than the process-wide named-scalar pool can give distinct
 	// runtime identities to. Compilation fails rather than letting the type collapse to its
@@ -46,10 +58,8 @@ var (
 	// function, a constant, or a variable registered by value).
 	ErrCompilePackageVariableNotSettable = errors.New("package symbol is not a settable variable")
 
-	// ErrCompileEmbedUnsupported is returned when a source file carries a //go:embed
-	// directive. Embedding is a build-time feature of the gc toolchain with no counterpart
-	// in an interpreter; the message points at the run-time alternatives.
-	ErrCompileEmbedUnsupported = errors.New("//go:embed is not supported; read files at run time with os.ReadFile(filepath.Join(os.Getenv(\"PIPIT_SCRIPT_DIR\"), name)) or pipit/fs")
+	// ErrCompileEmbedUnsupported reports a //go:embed directive in interpreted source.
+	ErrCompileEmbedUnsupported = errors.New("//go:embed is not supported")
 
 	// ErrCompileTypeConversionArgCount is returned when a type conversion is invoked with
 	// anything other than exactly one argument.

@@ -21,10 +21,10 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/isa"
 )
@@ -97,10 +97,10 @@ func entry() int {
 }
 `
 	service := app.NewService()
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
 
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entry")
+	result, err := service.ExecuteEntrypoint(t.Context(), cfs, "entry")
 	require.NoError(t, err, "entry must execute without crashing")
 
 	value, ok := extractInt64FromAny(result)

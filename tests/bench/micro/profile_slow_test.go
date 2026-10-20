@@ -28,9 +28,10 @@ import (
 	"runtime/pprof"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/symtab"
-
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
@@ -161,30 +162,22 @@ func runProfile(t *testing.T, name, source, profileFile string, iterations int) 
 	compiledFileSet, err := service.CompileFileSet(context.Background(), map[string]string{
 		"main.go": source,
 	})
-	if err != nil {
-		t.Fatalf("%s compile: %v", name, err)
-	}
+	require.NoError(t, err, "%s compile", name)
 
-	if _, err := service.ExecuteEntrypoint(context.Background(), compiledFileSet, "EntrypointRun"); err != nil {
-		t.Fatalf("%s warmup: %v", name, err)
-	}
+	_, err = service.ExecuteEntrypoint(context.Background(), compiledFileSet, "EntrypointRun")
+	require.NoError(t, err, "%s warmup", name)
 
 	cpuFile, err := os.Create(profileFile)
-	if err != nil {
-		t.Fatalf("create profile: %v", err)
-	}
+	require.NoError(t, err, "create profile")
 	defer cpuFile.Close()
 
 	memBefore := readAllocs()
 
-	if err := pprof.StartCPUProfile(cpuFile); err != nil {
-		t.Fatalf("start cpu profile: %v", err)
-	}
+	require.NoError(t, pprof.StartCPUProfile(cpuFile), "start cpu profile")
 
 	for range iterations {
-		if _, err := service.ExecuteEntrypoint(context.Background(), compiledFileSet, "EntrypointRun"); err != nil {
-			t.Fatalf("%s execute: %v", name, err)
-		}
+		_, err := service.ExecuteEntrypoint(context.Background(), compiledFileSet, "EntrypointRun")
+		require.NoError(t, err, "%s execute", name)
 	}
 
 	pprof.StopCPUProfile()
@@ -198,15 +191,11 @@ func runProfile(t *testing.T, name, source, profileFile string, iterations int) 
 
 	memProfFile := profileFile + ".mem"
 	memFile, err := os.Create(memProfFile)
-	if err != nil {
-		t.Fatalf("create memprof: %v", err)
-	}
+	require.NoError(t, err, "create memprof")
 	defer memFile.Close()
 
 	runtime.GC()
-	if err := pprof.WriteHeapProfile(memFile); err != nil {
-		t.Fatalf("write heap profile: %v", err)
-	}
+	require.NoError(t, pprof.WriteHeapProfile(memFile), "write heap profile")
 
 	t.Logf("%s: wrote %s + .mem", name, profileFile)
 }

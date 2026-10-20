@@ -21,14 +21,13 @@
 package bytecode_test
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestGlobalStoreInt(t *testing.T) {
@@ -104,7 +103,7 @@ func TestGlobalStoreMultipleAllocs(t *testing.T) {
 func TestGlobalStoreIsolationBetweenServices(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	svc1 := app.NewService()
 	svc2 := app.NewService()
 
@@ -135,7 +134,7 @@ func TestGlobalsPersistInStore(t *testing.T) {
 func TestServiceResetClearsGlobals(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	service := app.NewService()
 
 	_, err := service.Eval(ctx, `var x int = 42; x`)
@@ -150,7 +149,7 @@ func TestServiceResetClearsGlobals(t *testing.T) {
 func TestServiceCloneIndependentGlobals(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	service := app.NewService()
 
 	result, err := service.Eval(ctx, "1 + 1")
@@ -218,7 +217,7 @@ func TestMultipleServicesParallelEval(t *testing.T) {
 	t.Parallel()
 
 	const numServices = 10
-	ctx := context.Background()
+	ctx := t.Context()
 
 	services := make([]*app.Service, numServices)
 	for i := range numServices {
@@ -226,6 +225,7 @@ func TestMultipleServicesParallelEval(t *testing.T) {
 	}
 
 	t.Run("parallel", func(t *testing.T) {
+		t.Parallel()
 		for i := range numServices {
 			t.Run("", func(t *testing.T) {
 				t.Parallel()

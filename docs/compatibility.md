@@ -36,8 +36,9 @@ without linking the symbol tables.
 
 | Feature | Current behaviour and alternatives |
 |---|---|
-| `//go:embed` | Rejected. Read data at run time with explicitly granted filesystem access. |
+| `//go:embed` | Rejected in the files the interpreter compiles. Guard the embedding file with `//go:build !interp`; see [Embedded files](#embedded-files). |
 | Named array, slice, map, channel, or function types | Runtime identity is shared with the underlying type; interface dispatch and formatting through `any` can select or lose methods. See below. |
+| Promoted methods and native interfaces | A script value passed to native code as an interface, such as `fs.FS` or `io.Reader`, offers only the methods its type declares itself, not those promoted from an embedded field. Declare the method on the type and call the field from it. |
 | `reflect.Type` method values | Taking `rt.Field` or `rt.FieldByName` as a function bypasses source-field interception. Call the methods directly. |
 | Native package variable writes | Assignments can mutate the host's variable. Restricted feature sets reject these unsafe operations. |
 | `iter.Pull` / `iter.Pull2` | Use a parked goroutine. Call `stop` when abandoning iteration. |
@@ -45,6 +46,7 @@ without linking the symbol tables.
 | Slice capacity | Growth can differ from the native compiler's allocation policy. |
 | Recovered runtime errors | Message text follows Go, but `%T` reports Pipit's error type. |
 | Deep recursion | Interpreted frames use more memory. Set call-depth limits for your workload. |
+| Very large functions | Locals beyond the register file spill to memory. A function that still runs short of registers for one statement, such as a wide call after hundreds of live locals, is compiled again with more of its locals spilled. A single statement that needs close to 256 live values of one kind at once, such as a call with hundreds of arguments, fails with `ErrRegisterOverflow`, which names the function and the statement. A function value also carries at most 128 parameters and results. |
 
 ### Named types and native interfaces
 

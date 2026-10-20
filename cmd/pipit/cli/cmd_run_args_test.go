@@ -19,11 +19,12 @@
 package cli
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/cmd/pipit/internal/clitest"
 )
@@ -54,30 +55,16 @@ func main() {
 }
 `)
 	report := filepath.Join(t.TempDir(), "report.txt")
-	result := clitest.Run(context.Background(), RunRun, []string{file, "--", "-v", report, "beta"}, "")
-	if result.Code != 0 {
-		t.Fatalf("exit code = %d (stderr=%q)", result.Code, result.Stderr)
-	}
+	result := clitest.Run(t.Context(), RunRun, []string{file, "--", "-v", report, "beta"}, "")
+	require.Equal(t, 0, result.Code, "stderr: %q", result.Stderr)
 	written, err := os.ReadFile(report)
-	if err != nil {
-		t.Fatalf("the script did not write its report: %v", err)
-	}
+	require.NoError(t, err, "the script writes its report")
 	lines := strings.Split(string(written), "\n")
-	if len(lines) != 4 {
-		t.Fatalf("report = %q", written)
-	}
-	if lines[0] != "-v "+report+" beta" {
-		t.Fatalf("os.Args[1:] = %q", lines[0])
-	}
-	if lines[1] != "true "+report+",beta" {
-		t.Fatalf("flag parsing = %q", lines[1])
-	}
-	if lines[2] != "3 -v still-here" {
-		t.Fatalf("env overlay = %q (host variables must stay visible)", lines[2])
-	}
-	if lines[3] != filepath.Dir(file) {
-		t.Fatalf("PIPIT_SCRIPT_DIR = %q, want %q", lines[3], filepath.Dir(file))
-	}
+	require.Len(t, lines, 4, "report: %q", written)
+	require.Equal(t, "-v "+report+" beta", lines[0])
+	require.Equal(t, "true "+report+",beta", lines[1])
+	require.Equal(t, "3 -v still-here", lines[2], "host variables stay visible through the overlay")
+	require.Equal(t, filepath.Dir(file), lines[3], "PIPIT_SCRIPT_DIR")
 }
 
 func TestRunWithoutArgumentsStillSetsScriptDir(t *testing.T) {
@@ -97,15 +84,9 @@ func main() {
 	}
 }
 `)
-	result := clitest.Run(context.Background(), RunRun, []string{file}, "")
-	if result.Code != 0 {
-		t.Fatalf("exit code = %d (stderr=%q)", result.Code, result.Stderr)
-	}
+	result := clitest.Run(t.Context(), RunRun, []string{file}, "")
+	require.Equal(t, 0, result.Code, "stderr: %q", result.Stderr)
 	written, err := os.ReadFile(filepath.Join(filepath.Dir(file), "report.txt"))
-	if err != nil {
-		t.Fatalf("PIPIT_SCRIPT_DIR did not point at the script directory: %v", err)
-	}
-	if string(written) != "0 1" {
-		t.Fatalf("report = %q", written)
-	}
+	require.NoError(t, err, "PIPIT_SCRIPT_DIR points at the script directory")
+	require.Equal(t, "0 1", string(written), "report: %q", written)
 }

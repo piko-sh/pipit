@@ -25,10 +25,13 @@ import (
 	"errors"
 	"testing"
 
-	"pipit.sh/pipit/internal/debug"
-	"pipit.sh/pipit/internal/fault"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
+	"pipit.sh/pipit/internal/debug"
+	"pipit.sh/pipit/internal/debug/debugtest"
+	"pipit.sh/pipit/internal/fault"
 )
 
 func TestFullDebugSession(t *testing.T) {
@@ -46,51 +49,30 @@ func run() int {
 	return c
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	dbg.SetBreakpoint("main.go", 5)
 
-	done := make(chan struct {
-		result any
-		err    error
-	}, 1)
-	go func() {
-		result, execErr := svc.ExecuteEntrypoint(context.Background(), cfs, "run")
-		done <- struct {
-			result any
-			err    error
-		}{result: result, err: execErr}
-	}()
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+	})
 
-	snap := waitPause(t, dbg)
-	if snap.Location.Line != 5 {
-		t.Errorf("expected line 5, got %d", snap.Location.Line)
-	}
+	snap := debugtest.WaitPause(t, dbg)
+	assert.Equal(t, 5, snap.Location.Line, "the step stops at line 5")
 
-	vars := localsOf(t, dbg, snap, 0)
-	_ = vars
+	debugtest.LocalsOf(t, dbg, snap, 0)
 
 	dbg.StepIn(snap.ThreadID)
-	snap = waitPause(t, dbg)
+	snap = debugtest.WaitPause(t, dbg)
 
-	if snap.Location.Line <= 5 {
-		t.Errorf("expected StepIn to advance past line 5, got %d", snap.Location.Line)
-	}
+	assert.Greater(t, snap.Location.Line, 5, "StepIn moves past line 5")
 
 	dbg.Continue()
 
-	r := <-done
-	if r.err != nil {
-		t.Fatalf("execute: %v", r.err)
-	}
-	if r.result != nil {
-		if val, ok := r.result.(int64); ok && val != 3 {
-			t.Errorf("expected result 3, got %d", val)
-		}
-	}
+	result, execErr := execution.Wait(t)
+	require.NoError(t, execErr)
+	require.EqualValues(t, 3, result)
 }
 
 func TestDebugActionStopTerminates(t *testing.T) {
@@ -107,29 +89,20 @@ func run() int {
 	return x + y
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	dbg.SetBreakpoint("main.go", 4)
 
-	done := make(chan error, 1)
-	go func() {
-		_, execErr := svc.ExecuteEntrypoint(context.Background(), cfs, "run")
-		done <- execErr
-	}()
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+	})
 
-	waitPause(t, dbg)
+	debugtest.WaitPause(t, dbg)
 	dbg.Stop()
 
-	execErr := <-done
-	if execErr == nil {
-		t.Fatal("expected error from DebugActionStop")
-	}
-	if !errors.Is(execErr, fault.ErrDebuggerStop) {
-		t.Errorf("expected ErrDebuggerStop, got: %v", execErr)
-	}
+	_, execErr := execution.Wait(t)
+	require.ErrorIs(t, execErr, fault.ErrDebuggerStop, "DebugActionStop ends the execution with an error")
 }
 
 func TestCancelContextDuringDebug(t *testing.T) {
@@ -148,26 +121,20 @@ func run() int {
 	return sum
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	dbg.SetBreakpoint("main.go", 4)
 
-	ctx, cancel := context.WithCancelCause(context.Background())
+	ctx, cancel := context.WithCancelCause(t.Context())
 
-	done := make(chan error, 1)
-	go func() {
-		_, execErr := svc.ExecuteEntrypoint(ctx, cfs, "run")
-		done <- execErr
-	}()
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return svc.ExecuteEntrypoint(ctx, cfs, "run")
+	})
 
-	waitPause(t, dbg)
+	debugtest.WaitPause(t, dbg)
 	cancel(errors.New("test cancellation"))
 
-	execErr := <-done
-	if execErr == nil {
-		t.Fatal("expected error from context cancellation")
-	}
+	_, execErr := execution.Wait(t)
+	require.Error(t, execErr, "context cancellation ends the execution with an error")
 }

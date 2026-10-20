@@ -21,17 +21,17 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
 func TestEvalIIFEEscapedUpvalueSurvivesArenaReuse(t *testing.T) {
 	t.Parallel()
 
-	result, err := app.NewService().Eval(context.Background(), `func mk() func() int {
+	result, err := app.NewService().Eval(t.Context(), `func mk() func() int {
 	x := 10
 	f := func() func() int { return func() int { return x } }()
 	return f
@@ -48,7 +48,7 @@ a()`)
 func TestEvalIIFEEscapedStringUpvalueSurvivesArenaReuse(t *testing.T) {
 	t.Parallel()
 
-	result, err := app.NewService().Eval(context.Background(), `func mk() func() string {
+	result, err := app.NewService().Eval(t.Context(), `func mk() func() string {
 	s := "keep-me"
 	return func() func() string { return func() string { return s } }()
 }

@@ -21,6 +21,7 @@ package engine
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -34,13 +35,13 @@ func TestDebugStopRequestedIsFreeWithoutASession(t *testing.T) {
 	frame := &CallFrame{Function: &program.CompiledFunction{}}
 	require.Zero(t, testing.AllocsPerRun(1000, func() {
 		if vm.debugStopRequested(frame) {
-			t.Fatal("no session must never stop")
+			require.FailNow(t, "a VM without a debug session never stops")
 		}
 	}))
 	vm.Limits.Debug = NewDebugSession()
 	require.Zero(t, testing.AllocsPerRun(1000, func() {
 		if vm.debugStopRequested(frame) {
-			t.Fatal("an idle session must never stop")
+			require.FailNow(t, "an idle debug session never stops")
 		}
 	}), "an idle session costs one atomic load and no allocation")
 }
@@ -75,7 +76,7 @@ func TestDebugSessionIdleControlsAreRefused(t *testing.T) {
 	session := NewDebugSession()
 	require.ErrorIs(t, session.RequestPause(), fault.ErrDebugNotRunning)
 	require.ErrorIs(t, session.Resume(1, program.DebugActionContinue), fault.ErrDebugNotPaused)
-	require.ErrorIs(t, session.WaitQuiescent(context.Background()), fault.ErrDebugNotPaused)
+	require.ErrorIs(t, session.WaitQuiescent(t.Context()), fault.ErrDebugNotPaused)
 	session.Stop()
 	require.False(t, session.terminated, "stopping an idle session is a no-op")
 	require.Empty(t, session.Threads())
@@ -116,6 +117,31 @@ func TestDebugSessionRegistryTracksRunLoops(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestDebugSessionThreadJoiningAQuietStopReopensQuiescence(t *testing.T) {
+	t.Parallel()
+	session := NewDebugSession()
+	first := newTestVM(t)
+	first.Limits.Debug = session
+	first.debugKind = debugThreadGoroutine
+	first.debugEnter()
+	first.debugBlockEnter()
+	session.mu.Lock()
+	session.stopWorldLocked(first.debugThread)
+	session.mu.Unlock()
+	require.NoError(t, session.WaitQuiescent(t.Context()), "a stop whose only thread is blocked is quiescent")
+
+	late := newTestVM(t)
+	late.Limits.Debug = session
+	late.debugKind = debugThreadGoroutine
+	late.debugEnter()
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+
+	require.ErrorIs(t, session.WaitQuiescent(ctx), context.DeadlineExceeded, "a thread that joins the stop runs until it parks")
+	late.debugLeave()
+	require.NoError(t, session.WaitQuiescent(t.Context()), "the stop is quiescent again once the late thread is gone")
+}
+
 func TestDebugSessionEventQueueDropsThreadEventsFirst(t *testing.T) {
 	t.Parallel()
 	session := NewDebugSession()
@@ -142,7 +168,7 @@ func TestDebugSessionEventQueueDropsThreadEventsFirst(t *testing.T) {
 func TestDebugSessionNextEventHonoursCancellation(t *testing.T) {
 	t.Parallel()
 	session := NewDebugSession()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	_, err := session.nextEvent(ctx)
 	require.ErrorIs(t, err, context.Canceled)

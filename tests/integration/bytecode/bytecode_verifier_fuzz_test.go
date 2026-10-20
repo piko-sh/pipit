@@ -21,8 +21,9 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
@@ -41,20 +42,14 @@ func FuzzVerifier(f *testing.F) {
 	f.Add(make([]byte, 64))
 
 	f.Fuzz(func(t *testing.T, raw []byte) {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Fatalf("verifier panicked: %v", r)
+		require.NotPanics(t, func() {
+			compiledFunction := &program.CompiledFunction{
+				Name: "fuzz",
+				Body: decodeFuzzBody(raw),
 			}
-		}()
-		body := decodeFuzzBody(raw)
-		compiledFunction := &program.CompiledFunction{
-			Name: "fuzz",
-			Body: body,
-		}
-		report, err := verify.VerifyBytecode(context.Background(), compiledFunction)
-		if report == nil {
-			t.Fatalf("verifyBytecode returned nil report (err=%v)", err)
-		}
-		_ = report.Format()
+			report, err := verify.VerifyBytecode(t.Context(), compiledFunction)
+			require.NotNil(t, report, "the verifier always returns a report (error: %v)", err)
+			_ = report.Format()
+		})
 	})
 }

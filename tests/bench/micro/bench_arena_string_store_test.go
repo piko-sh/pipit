@@ -24,6 +24,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -31,14 +33,13 @@ func benchmarkEntrypoint(b *testing.B, source string) {
 	b.Helper()
 	service := app.NewService()
 	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		if _, err = service.ExecuteEntrypoint(context.Background(), cfs, "run"); err != nil {
-			b.Fatal(err)
+		_, err = service.ExecuteEntrypoint(context.Background(), cfs, "run")
+		if err != nil {
+			require.NoError(b, err)
 		}
 	}
 }

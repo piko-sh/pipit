@@ -19,8 +19,8 @@
 package engine
 
 import (
-	"context"
 	"sync/atomic"
+	"time"
 
 	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
@@ -141,17 +141,60 @@ func discardCallbackVM(vm *VM) {
 	vm.ReleaseArena()
 }
 
-// drainCallbackVMs discards the idle callback VM this VM caches, if any, and closes the
-// cache until the next execution. Nil-safe for VMs built without a cache.
+// drainCallbackVMs ends the execution, discards its idle callback VM and closes the
+// cache until the next execution.
 func (vm *VM) drainCallbackVMs() {
+	vm.endExecution()
 	if vm.callbackVMs != nil {
 		vm.callbackVMs.drain()
 	}
 }
 
-// reopenCallbackVMs lets this VM's wrappers cache callback VMs again at the start of a
-// new execution. Nil-safe for VMs built without a cache.
-func (vm *VM) reopenCallbackVMs() {
+// beginExecution starts or reuses the VM's execution and reopens its callback cache.
+//
+// Takes fresh (bool) which is true to replace an execution the VM owns.
+func (vm *VM) beginExecution(fresh bool) {
+	if !fresh && vm.ownsLink && (vm.link == nil || (vm.link.live() && vm.link.ctx == vm.ctx)) {
+		vm.reopenCallbackVMCache()
+		return
+	}
+	vm.endExecution()
+	vm.link = nil
+	vm.ownsLink = true
+	vm.spawnCtx = vm.ctx
+	vm.reopenCallbackVMCache()
+}
+
+// endExecution ends the execution the VM owns, if any. A VM that shares another's link
+// leaves it alone.
+func (vm *VM) endExecution() {
+	if !vm.ownsLink {
+		return
+	}
+	if vm.link != nil {
+		vm.link.end()
+	}
+	vm.ownsLink = false
+}
+
+// currentLink lazily creates the VM's execution link, which is live during an owned
+// execution and detached otherwise.
+//
+// Returns *executionLink which is never nil.
+func (vm *VM) currentLink() *executionLink {
+	if vm.link == nil {
+		if vm.ownsLink {
+			vm.link = newExecutionLink(vm.ctx, vm.executionCancel)
+		} else {
+			vm.link = endedExecutionLink(vm.ctx)
+		}
+	}
+	return vm.link
+}
+
+// reopenCallbackVMCache lets this VM's wrappers cache callback VMs again. Nil-safe for
+// VMs built without a cache.
+func (vm *VM) reopenCallbackVMCache() {
 	if vm.callbackVMs != nil {
 		vm.callbackVMs.reopen()
 	}
@@ -169,14 +212,13 @@ func (vm *VM) reusableAfterCallback() bool {
 		!vm.goroutinesLeaked && vm.Arena != nil
 }
 
-// callbackVMSpec is what a reflect.MakeFunc wrapper captures from the VM it was made on:
-// enough to build a callback VM after that VM is released, and the cache to reuse one.
+// callbackVMSpec captures the state needed to build or reuse a callback VM without
+// keeping the originating VM alive.
 type callbackVMSpec struct {
-	// ctx is the parent's context stripped of cancellation, so a stored wrapper still runs
-	// after the parent's execution ended.
-	ctx context.Context
+	// link identifies the execution in which the callback wrapper was created.
+	link *executionLink
 
-	// globals and symbols are the parent's shared stores.
+	// globals is the parent's shared global store.
 	globals *GlobalStore
 
 	// symbols is the parent's symbol registry, shared by all callback VMs.
@@ -190,9 +232,8 @@ type callbackVMSpec struct {
 	// tables are reset only by Execute.
 	cache *callbackVMCache
 
-	// parkDone is the wrapping VM's cancellable context's Done channel, so a callback VM
-	// parked in the debugger wakes when the parent execution is cancelled even though the
-	// callback's own context never is.
+	// parkDone is the execution context's Done channel, so a callback VM parked in the
+	// debugger wakes when the execution is cancelled.
 	parkDone <-chan struct{}
 
 	// limits are the parent's limits at wrap time.
@@ -213,14 +254,15 @@ type callbackVMSpec struct {
 //
 // Returns the spec.
 func newCallbackVMSpec(vm *VM) *callbackVMSpec {
+	link := vm.currentLink()
 	spec := &callbackVMSpec{
-		ctx:          context.WithoutCancel(vm.ctx),
+		link:         link,
 		globals:      vm.Globals,
 		symbols:      vm.symbols,
 		limits:       vm.Limits,
 		rootFunction: vm.rootFunction,
 		goroutineID:  vm.goroutineID,
-		parkDone:     vm.ctx.Done(),
+		parkDone:     link.ctx.Done(),
 		cache:        vm.callbackVMs,
 		retireBytes:  callbackArenaRetireBytes,
 	}
@@ -244,10 +286,50 @@ func (spec *callbackVMSpec) acquire(closure *RuntimeClosure) *VM {
 		if cached := spec.cache.acquire(); cached != nil {
 			cached.debugParkDone = spec.parkDone
 			cached.prepareForCallback(closure, spec.rootFunction, spec.limits)
+			cached.bindCallbackRun(spec.link, spec.limits.CallbackTimeout)
 			return cached
 		}
 	}
-	return spec.build(closure)
+	built := spec.build(closure)
+	built.bindCallbackRun(spec.link, spec.limits.CallbackTimeout)
+	return built
+}
+
+// bindCallbackRun connects a callback VM to its execution link and sets its deadline.
+// Context cancellation is checked by polling without a watcher goroutine.
+//
+// Takes link (*executionLink) which is the execution the run belongs to.
+// Takes timeout (time.Duration) which is VMLimits.CallbackTimeout; zero or negative for
+// none.
+func (vm *VM) bindCallbackRun(link *executionLink, timeout time.Duration) {
+	ctx := link.callbackContext()
+	vm.link = link
+	vm.ownsLink = false
+	vm.ctx = ctx
+	vm.ctxDone = ctx.Done()
+	vm.spawnCtx = link.spawnContext()
+	vm.Cancelled.Store(0)
+	vm.pollCause = nil
+	vm.blockCtx = nil
+	vm.blockCancel = nil
+	vm.callbackDeadline = time.Time{}
+	if timeout > 0 {
+		vm.callbackDeadline = time.Now().Add(timeout)
+	}
+	select {
+	case <-vm.ctxDone:
+		vm.Cancelled.Store(1)
+	default:
+	}
+}
+
+// finishRun releases what a callback or bound-method run held for its blocking waits.
+func (vm *VM) finishRun() {
+	if vm.blockCancel != nil {
+		vm.blockCancel()
+	}
+	vm.blockCtx = nil
+	vm.blockCancel = nil
 }
 
 // build constructs a fresh callback VM for closure with its own arena and call stack.
@@ -256,7 +338,7 @@ func (spec *callbackVMSpec) acquire(closure *RuntimeClosure) *VM {
 //
 // Returns the VM.
 func (spec *callbackVMSpec) build(closure *RuntimeClosure) *VM {
-	freshVM := NewVM(spec.ctx, spec.globals, spec.symbols)
+	freshVM := NewVM(spec.link.detached, spec.globals, spec.symbols)
 	freshVM.reentrantInterpreterVM = true
 	freshVM.goroutineID = spec.goroutineID
 	freshVM.hasGoroutines = true
@@ -278,6 +360,7 @@ func (spec *callbackVMSpec) build(closure *RuntimeClosure) *VM {
 //
 // Takes callbackVM (*VM) which acquire() returned.
 func (spec *callbackVMSpec) finish(callbackVM *VM) {
+	callbackVM.finishRun()
 	if spec.cache == nil {
 		discardCallbackVM(callbackVM)
 		return

@@ -19,11 +19,12 @@
 package cli
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/cmd/pipit/internal/clitest"
 )
@@ -61,52 +62,35 @@ func Greet(name string) string { return strings.ToUpper(greeting.Hello(name)) }
 	}
 	for name, content := range files {
 		path := filepath.Join(root, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 	}
 	return root
 }
 
 func TestRunScriptImportsLocalModulePackages(t *testing.T) {
+	t.Parallel()
 	root := writeLocalModule(t)
-	result := clitest.Run(context.Background(), RunRun, []string{"-entrypoint", "run", filepath.Join(root, "main.go")}, "")
-	if result.Code != 0 {
-		t.Fatalf("exit code = %d (stderr=%q)", result.Code, result.Stderr)
-	}
-	if strings.TrimSpace(result.Stdout) != "HELLO, PIPIT" {
-		t.Fatalf("stdout = %q", result.Stdout)
-	}
-	if !strings.Contains(result.Stderr, "local module(s): example.com/greeting, example.com/app") {
-		t.Fatalf("stderr = %q", result.Stderr)
-	}
+	result := clitest.Run(t.Context(), RunRun, []string{"-entrypoint", "run", filepath.Join(root, "main.go")}, "")
+	require.Equal(t, 0, result.Code, "stderr: %q", result.Stderr)
+	require.Equal(t, "HELLO, PIPIT", strings.TrimSpace(result.Stdout), "stdout: %q", result.Stdout)
+	require.Contains(t, result.Stderr, "local module(s): example.com/greeting, example.com/app")
 }
 
 func TestRunDirectoryImportsLocalModulePackages(t *testing.T) {
+	t.Parallel()
 	root := writeLocalModule(t)
-	result := clitest.Run(context.Background(), RunRun, []string{"-entrypoint", "run", root}, "")
-	if result.Code != 0 {
-		t.Fatalf("exit code = %d (stderr=%q)", result.Code, result.Stderr)
-	}
-	if strings.TrimSpace(result.Stdout) != "HELLO, PIPIT" {
-		t.Fatalf("stdout = %q", result.Stdout)
-	}
+	result := clitest.Run(t.Context(), RunRun, []string{"-entrypoint", "run", root}, "")
+	require.Equal(t, 0, result.Code, "stderr: %q", result.Stderr)
+	require.Equal(t, "HELLO, PIPIT", strings.TrimSpace(result.Stdout), "stdout: %q", result.Stdout)
 }
 
 func TestRunScriptMissingLocalPackageFails(t *testing.T) {
+	t.Parallel()
 	root := writeLocalModule(t)
 	script := filepath.Join(root, "broken.go")
-	if err := os.WriteFile(script, []byte("package main\n\nimport _ \"example.com/app/nowhere\"\n\nfunc main() {}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	result := clitest.Run(context.Background(), RunRun, []string{script}, "")
-	if result.Code == 0 {
-		t.Fatalf("expected a failure, stdout=%q", result.Stdout)
-	}
-	if !strings.Contains(result.Stderr, "example.com/app/nowhere") {
-		t.Fatalf("stderr = %q", result.Stderr)
-	}
+	require.NoError(t, os.WriteFile(script, []byte("package main\n\nimport _ \"example.com/app/nowhere\"\n\nfunc main() {}\n"), 0o600))
+	result := clitest.Run(t.Context(), RunRun, []string{script}, "")
+	require.NotEqual(t, 0, result.Code, "stdout: %q", result.Stdout)
+	require.Contains(t, result.Stderr, "example.com/app/nowhere")
 }

@@ -40,7 +40,7 @@ func (c *Compiler) tryEmitStructFastAppend(ctx context.Context, sliceLocation, l
 	if !ok {
 		return program.VarLocation{}, false
 	}
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
+	dest := c.allocAppendDestination(isa.RegisterGeneral, sliceLocation)
 	program.Emit(c.Function, isa.OpAppendStructFast, dest, sliceLocation.Register, location.Register)
 	program.EmitExtension(c.Function, typeIndex, 0)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, true

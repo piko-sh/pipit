@@ -19,6 +19,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -32,6 +33,7 @@ import (
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/logging"
+	"pipit.sh/pipit/internal/symtab"
 	"pipit.sh/pipit/internal/symtab/typemodel"
 
 	"pipit.sh/pipit/internal/isa"
@@ -921,8 +923,55 @@ func handleGo(vm *VM, frame *CallFrame, registers *Registers, instruction isa.In
 		return launchCompiledGoroutine(vm, closure, arguments)
 	}
 	coerceNativeGoroutineArgs(vm, closure, arguments)
-	launchNativeGoroutine(vm, vm.Limits, closure, arguments)
+	launchNativeGoroutine(newGoroutineSpawn(vm), closure, arguments)
 	return opContinue
+}
+
+// goroutineSpawn captures the parent VM state a new goroutine needs, before the parent
+// continues or serves another callback.
+type goroutineSpawn struct {
+	// ctx is the context the goroutine's VM follows (VM.spawnCtx).
+	ctx context.Context
+
+	// link is the execution the goroutine belongs to.
+	link *executionLink
+
+	// globals is the shared global store; it also receives a goroutine's panic.
+	globals *GlobalStore
+
+	// symbols is the shared symbol registry.
+	symbols *symtab.SymbolRegistry
+
+	// functions is the function table a closure without its own root dispatches against.
+	functions []*program.CompiledFunction
+
+	// rootFunction is the root a closure without its own root executes under.
+	rootFunction *program.CompiledFunction
+
+	// limits carries the goroutine limit, tracker and resource caps.
+	limits VMLimits
+
+	// usesTypedSliceBanks is the spawning VM's flag, inherited by the child.
+	usesTypedSliceBanks bool
+}
+
+// newGoroutineSpawn captures vm for a goroutine it is about to start. It must run on the
+// goroutine that owns vm.
+//
+// Takes vm (*VM) which runs the go statement.
+//
+// Returns the captured spawn.
+func newGoroutineSpawn(vm *VM) goroutineSpawn {
+	return goroutineSpawn{
+		ctx:                 vm.spawnCtx,
+		link:                vm.currentLink(),
+		globals:             vm.Globals,
+		symbols:             vm.symbols,
+		functions:           vm.functions,
+		rootFunction:        vm.rootFunction,
+		limits:              vm.Limits,
+		usesTypedSliceBanks: vm.usesTypedSliceBanks,
+	}
 }
 
 // launchCompiledGoroutine spawns a new goroutine that executes a compiled closure in a
@@ -939,26 +988,25 @@ func launchCompiledGoroutine(vm *VM, closure reflect.Value, arguments []reflect.
 		vm.Limits.Tracker.AbandonGoroutine()
 		return opContinue
 	}
-	parentLimits := vm.Limits
-	go runCompiledGoroutine(vm, parentLimits, closureValue, arguments)
+	go runCompiledGoroutine(newGoroutineSpawn(vm), closureValue, arguments)
 	return opContinue
 }
 
 // runCompiledGoroutine is the goroutine body for a compiled closure. It sets up a child
 // VM, copies arguments into the initial frame, and runs to completion.
 //
-// Takes parentVM (*VM) which is the parent VM providing shared state.
-// Takes limits (VMLimits) which carries the goroutine and resource limits.
+// Takes spawn (goroutineSpawn) which is what the spawning VM handed on.
 // Takes closure (*RuntimeClosure) which is the compiled closure to execute.
 // Takes arguments ([]reflect.Value) which holds arguments for the initial frame.
-func runCompiledGoroutine(parentVM *VM, limits VMLimits, closure *RuntimeClosure, arguments []reflect.Value) {
+func runCompiledGoroutine(spawn goroutineSpawn, closure *RuntimeClosure, arguments []reflect.Value) {
+	limits := spawn.limits
 	if limits.Tracker != nil {
 		limits.Tracker.MarkGoroutineStarted()
 		defer limits.Tracker.ReleaseGoroutine()
 	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			recordGoroutinePanicValue(parentVM, recovered)
+			recordGoroutinePanicValue(spawn, recovered)
 		}
 	}()
 	childArena := GetRegisterArena()
@@ -968,7 +1016,7 @@ func runCompiledGoroutine(parentVM *VM, limits VMLimits, closure *RuntimeClosure
 	defer func() {
 		PutRegisterArena(childArena)
 	}()
-	childVM := buildChildGoroutineVM(parentVM, limits, closure, childArena)
+	childVM := buildChildGoroutineVM(spawn, closure, childArena)
 	defer childVM.ReturnUnspentCostChunk()
 	defer childVM.FinishWatcher()
 	defer func() {
@@ -986,50 +1034,49 @@ func runCompiledGoroutine(parentVM *VM, limits VMLimits, closure *RuntimeClosure
 	}
 	placeReflectArgs(&childFrame.Registers, arguments, closure.Function.ParameterKinds, childArena)
 	if _, err := childVM.RunDispatchedGuarded(0); err != nil {
-		surfaceGoroutineRunError(parentVM, childVM, err)
+		surfaceGoroutineRunError(spawn, childVM, err)
 	}
 }
 
-// recordGoroutinePanicValue logs a recovered panic from a compiled goroutine and stores
-// it on the parent VM's globals so the host can re-raise it deterministically.
+// recordGoroutinePanicValue logs a recovered panic from a goroutine and stores it on the
+// shared globals so the host can re-raise it deterministically.
 //
-// Takes parentVM (*VM) which owns the goroutinePanic slot.
+// Takes spawn (goroutineSpawn) which owns the goroutinePanic slot.
 // Takes recovered (any) which is the non-nil recover() result.
-func recordGoroutinePanicValue(parentVM *VM, recovered any) {
+func recordGoroutinePanicValue(spawn goroutineSpawn, recovered any) {
 	stack := string(debug.Stack())
-	goroutineLogger := logging.LoggerFrom(parentVM.ctx)
+	goroutineLogger := logging.LoggerFrom(spawn.ctx)
 	goroutineLogger.Debug("Compiled goroutine panicked",
 		slog.String("panic", fmt.Sprintf("%v", recovered)),
 		slog.String("stack", stack))
-	parentVM.Globals.recordGoroutinePanic(recovered, stack)
+	spawn.globals.recordGoroutinePanic(recovered, stack)
 }
 
-// buildChildGoroutineVM constructs the child VM that executes a goroutine launched from a
-// compiled closure. The returned VM has its arena bound, ASM dispatch state seeded, and
-// the call-info base for the closure's entry function pre-populated.
+// buildChildGoroutineVM initialises a child VM for a compiled closure, including its
+// arena and dispatch state.
 //
-// Takes parentVM (*VM) which provides the shared globals, symbols and context.
-// Takes limits (VMLimits) which carries the child VM's resource caps.
+// Takes spawn (goroutineSpawn) which provides the shared state and context.
 // Takes closure (*RuntimeClosure) which is the entry closure.
 // Takes childArena (*RegisterArena) which is the freshly-acquired arena pinned to the
 // child VM's lifetime.
 //
 // Returns the fully initialised child VM.
-func buildChildGoroutineVM(parentVM *VM, limits VMLimits, closure *RuntimeClosure, childArena *RegisterArena) *VM {
-	childVM := NewVM(parentVM.ctx, parentVM.Globals, parentVM.symbols)
+func buildChildGoroutineVM(spawn goroutineSpawn, closure *RuntimeClosure, childArena *RegisterArena) *VM {
+	childVM := NewVM(spawn.ctx, spawn.globals, spawn.symbols)
+	childVM.link = spawn.link
 	childVM.debugKind = debugThreadGoroutine
-	childVM.goroutineID = parentVM.Globals.nextGoroutineID.Add(1) + rootGoroutineID
-	childVM.Limits = limits
+	childVM.goroutineID = spawn.globals.nextGoroutineID.Add(1) + rootGoroutineID
+	childVM.Limits = spawn.limits
 
 	childVM.hasGoroutines = true
 	if closure.RootFunction != nil {
 		childVM.functions = closure.RootFunction.Functions
 		childVM.rootFunction = closure.RootFunction
 	} else {
-		childVM.functions = parentVM.functions
-		childVM.rootFunction = parentVM.rootFunction
+		childVM.functions = spawn.functions
+		childVM.rootFunction = spawn.rootFunction
 	}
-	childVM.usesTypedSliceBanks = parentVM.usesTypedSliceBanks || bundleUsesTypedSliceBanks(childVM.rootFunction)
+	childVM.usesTypedSliceBanks = spawn.usesTypedSliceBanks || bundleUsesTypedSliceBanks(childVM.rootFunction)
 	childVM.Arena = childArena
 
 	childVM.sizeArenaForEntry(childVM.rootFunction, closure.Function)
@@ -1044,28 +1091,24 @@ func buildChildGoroutineVM(parentVM *VM, limits VMLimits, closure *RuntimeClosur
 	return childVM
 }
 
-// surfaceGoroutineRunError forwards a dispatch error from a compiled goroutine to the
-// parent VM's host channel.
+// surfaceGoroutineRunError reports dispatch failures through the shared goroutinePanic
+// slot. errGoexit terminates the goroutine without reporting a failure.
 //
-// errGoexit is handled silently because runtime.Goexit must terminate the goroutine
-// without re-raising. All other errors are logged and stored on the goroutinePanic slot
-// for the host to observe.
-//
-// Takes parentVM (*VM) which receives the panic record.
+// Takes spawn (goroutineSpawn) which receives the panic record.
 // Takes childVM (*VM) which holds the panicValue captured during dispatch.
 // Takes err (error) which is the dispatch error to surface.
-func surfaceGoroutineRunError(parentVM, childVM *VM, err error) {
+func surfaceGoroutineRunError(spawn goroutineSpawn, childVM *VM, err error) {
 	if errors.Is(err, fault.ErrGoexit) || errors.Is(err, fault.ErrDebuggerStop) || stoppedBecauseMainReturned(childVM.ctx, err) {
 		return
 	}
-	goroutineLogger := logging.LoggerFrom(parentVM.ctx)
+	goroutineLogger := logging.LoggerFrom(spawn.ctx)
 	goroutineLogger.Debug("Compiled goroutine returned error",
 		logging.ErrAttr(err))
 	panicValue := any(err)
 	if childVM.panicValue != nil {
 		panicValue = childVM.panicValue
 	}
-	parentVM.Globals.recordGoroutinePanic(panicValue, "")
+	spawn.globals.recordGoroutinePanic(panicValue, "")
 }
 
 // placeReflectArgs unpacks reflect.Value arguments into typed register banks according to
@@ -1166,21 +1209,20 @@ func coerceNativeGoroutineArgs(vm *VM, closure reflect.Value, arguments []reflec
 }
 
 // launchNativeGoroutine spawns a goroutine that calls a native function via reflect. A
-// panic is recorded on the parent VM's goroutinePanic slot.
+// panic is recorded on the shared goroutinePanic slot.
 //
-// Takes parentVM (*VM) which owns the goroutinePanic slot and context.
-// Takes limits (VMLimits) which carries the goroutine limit and tracker.
+// Takes spawn (goroutineSpawn) which carries the goroutine limit, tracker and panic slot.
 // Takes reflectedFunction (reflect.Value) which is the native function to call.
 // Takes arguments ([]reflect.Value) which holds the arguments to pass.
-func launchNativeGoroutine(parentVM *VM, limits VMLimits, reflectedFunction reflect.Value, arguments []reflect.Value) {
+func launchNativeGoroutine(spawn goroutineSpawn, reflectedFunction reflect.Value, arguments []reflect.Value) {
 	go func() {
-		if limits.Tracker != nil {
-			limits.Tracker.MarkGoroutineStarted()
-			defer limits.Tracker.ReleaseGoroutine()
+		if spawn.limits.Tracker != nil {
+			spawn.limits.Tracker.MarkGoroutineStarted()
+			defer spawn.limits.Tracker.ReleaseGoroutine()
 		}
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				recordGoroutinePanicValue(parentVM, recovered)
+				recordGoroutinePanicValue(spawn, recovered)
 			}
 		}()
 		reflectedFunction.Call(arguments)

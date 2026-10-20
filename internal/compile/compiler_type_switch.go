@@ -101,12 +101,14 @@ func (c *Compiler) compileTypeSwitchChain(ctx context.Context,
 	var endJumps []int
 	okRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt)
 
+	clauseMark := c.Scopes.Alloc.Snapshot()
 	for _, cc := range cases {
 		endJump, err := c.compileTypeSwitchCase(ctx, cc, sourceLocation, assignName, okRegister)
 		if err != nil {
 			return err
 		}
 		endJumps = append(endJumps, endJump)
+		c.Scopes.RestoreWatermark(clauseMark)
 	}
 
 	if defaultCase != nil {
@@ -222,13 +224,11 @@ func (c *Compiler) compileTypeSwitchCaseBody(ctx context.Context, cc *ast.CaseCl
 	if assignName != "" {
 		c.declareNarrowedTypeSwitchVar(ctx, assignName, cc.List, destinationRegister)
 	}
-	for _, bodyStmt := range cc.Body {
-		if _, err := c.compileStmt(ctx, bodyStmt); err != nil {
-			c.Scopes.PopScope()
-			return 0, err
-		}
-	}
+	_, err := c.compileStmtList(ctx, cc.Body)
 	c.Scopes.PopScope()
+	if err != nil {
+		return 0, err
+	}
 	return program.EmitTier1Jump(c.Function), nil
 }
 
@@ -283,19 +283,14 @@ func (c *Compiler) compileTypeSwitchDefault(ctx context.Context,
 	assignName string,
 ) error {
 	c.Scopes.PushScope()
+	defer c.Scopes.PopScope()
 	if assignName != "" {
 		location := c.Scopes.DeclareVar(assignName, sourceLocation.Kind)
 		c.resetSharedCellForDeclaration(ctx, assignName, location)
 		c.emitMove(ctx, location, sourceLocation)
 	}
-	for _, bodyStmt := range defaultCase.Body {
-		if _, err := c.compileStmt(ctx, bodyStmt); err != nil {
-			c.Scopes.PopScope()
-			return err
-		}
-	}
-	c.Scopes.PopScope()
-	return nil
+	_, err := c.compileStmtList(ctx, defaultCase.Body)
+	return err
 }
 
 // interfaceTargetMethodNames returns the case target's method names.

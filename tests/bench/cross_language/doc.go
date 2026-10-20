@@ -20,4 +20,4 @@
 // CPython, PyPy and native Go on twelve algorithmic workloads. The suite is opt-in via
 // build tag `crosslang` plus environment variable `RUN_CROSS_LANG_BENCH=1`; it never runs
 // as part of the default test set. See README.md for methodology and fairness rules.
-package crosslang
+package crosslang //nolint:revive // a package name cannot carry the directory's underscore

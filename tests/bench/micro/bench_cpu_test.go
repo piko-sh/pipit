@@ -24,9 +24,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/symtab"
-
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
@@ -89,15 +90,13 @@ var (
 func BenchmarkPipit_Fibonacci10(b *testing.B) {
 	service := app.NewService()
 	compiledFunction, err := service.Compile(context.Background(), fibCode10)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		_, err = service.Execute(context.Background(), compiledFunction)
 		if err != nil {
-			b.Fatal(err)
+			require.NoError(b, err)
 		}
 	}
 }
@@ -105,15 +104,13 @@ func BenchmarkPipit_Fibonacci10(b *testing.B) {
 func BenchmarkPipit_Fibonacci35(b *testing.B) {
 	service := app.NewService()
 	compiledFunction, err := service.Compile(context.Background(), fibCode35)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		_, err = service.Execute(context.Background(), compiledFunction)
 		if err != nil {
-			b.Fatal(err)
+			require.NoError(b, err)
 		}
 	}
 }
@@ -121,15 +118,13 @@ func BenchmarkPipit_Fibonacci35(b *testing.B) {
 func BenchmarkPipit_Closures(b *testing.B) {
 	service := app.NewService()
 	compiledFunction, err := service.Compile(context.Background(), closuresCode)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		_, err = service.Execute(context.Background(), compiledFunction)
 		if err != nil {
-			b.Fatal(err)
+			require.NoError(b, err)
 		}
 	}
 }
@@ -137,15 +132,13 @@ func BenchmarkPipit_Closures(b *testing.B) {
 func BenchmarkPipit_Iterations(b *testing.B) {
 	service := app.NewService()
 	compiledFunction, err := service.Compile(context.Background(), iterationsCode)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		_, err = service.Execute(context.Background(), compiledFunction)
 		if err != nil {
-			b.Fatal(err)
+			require.NoError(b, err)
 		}
 	}
 }
@@ -153,15 +146,13 @@ func BenchmarkPipit_Iterations(b *testing.B) {
 func BenchmarkPipit_Strings(b *testing.B) {
 	service := app.NewService()
 	compiledFunction, err := service.Compile(context.Background(), stringsCode)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		_, err = service.Execute(context.Background(), compiledFunction)
 		if err != nil {
-			b.Fatal(err)
+			require.NoError(b, err)
 		}
 	}
 }
@@ -191,15 +182,13 @@ func BenchmarkPipit_StringsStdlib(b *testing.B) {
 	service := app.NewService()
 	service.UseSymbols(symbols)
 	compiledFunction, err := service.Compile(context.Background(), stringsStdlibCode)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		_, err = service.Execute(context.Background(), compiledFunction)
 		if err != nil {
-			b.Fatal(err)
+			require.NoError(b, err)
 		}
 	}
 }
@@ -228,15 +217,13 @@ func BenchmarkPipit_StringsScriggo(b *testing.B) {
 	service := app.NewService()
 	service.UseSymbols(symbols)
 	compiledFunction, err := service.Compile(context.Background(), stringsScriggoCode)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		_, err = service.Execute(context.Background(), compiledFunction)
 		if err != nil {
-			b.Fatal(err)
+			require.NoError(b, err)
 		}
 	}
 }
@@ -320,15 +307,13 @@ var (
 func BenchmarkPipit_Realistic(b *testing.B) {
 	service := app.NewService()
 	compiledFunction, err := service.Compile(context.Background(), realisticCode)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		_, err = service.Execute(context.Background(), compiledFunction)
 		if err != nil {
-			b.Fatal(err)
+			require.NoError(b, err)
 		}
 	}
 }
@@ -349,15 +334,13 @@ var (
 func BenchmarkPipit_MapOps(b *testing.B) {
 	service := app.NewService()
 	compiledFunction, err := service.Compile(context.Background(), mapOpsCode)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		_, err = service.Execute(context.Background(), compiledFunction)
 		if err != nil {
-			b.Fatal(err)
+			require.NoError(b, err)
 		}
 	}
 }
@@ -382,15 +365,13 @@ var (
 func BenchmarkPipit_StructFields(b *testing.B) {
 	service := app.NewService()
 	compiledFunction, err := service.Compile(context.Background(), structFieldsCode)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		_, err = service.Execute(context.Background(), compiledFunction)
 		if err != nil {
-			b.Fatal(err)
+			require.NoError(b, err)
 		}
 	}
 }
@@ -415,15 +396,13 @@ var (
 func BenchmarkPipit_MethodCalls(b *testing.B) {
 	service := app.NewService()
 	compiledFunction, err := service.Compile(context.Background(), methodCallsCode)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		_, err = service.Execute(context.Background(), compiledFunction)
 		if err != nil {
-			b.Fatal(err)
+			require.NoError(b, err)
 		}
 	}
 }
@@ -443,15 +422,13 @@ var (
 func BenchmarkPipit_SliceAppend(b *testing.B) {
 	service := app.NewService()
 	compiledFunction, err := service.Compile(context.Background(), sliceAppendCode)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		_, err = service.Execute(context.Background(), compiledFunction)
 		if err != nil {
-			b.Fatal(err)
+			require.NoError(b, err)
 		}
 	}
 }
@@ -473,15 +450,13 @@ var (
 func BenchmarkPipit_HigherOrder(b *testing.B) {
 	service := app.NewService()
 	compiledFunction, err := service.Compile(context.Background(), higherOrderCode)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		_, err = service.Execute(context.Background(), compiledFunction)
 		if err != nil {
-			b.Fatal(err)
+			require.NoError(b, err)
 		}
 	}
 }
@@ -490,8 +465,9 @@ func BenchmarkPipit_Fibonacci10_IncludingCompilation(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		service := app.NewService()
-		if _, err := service.Eval(context.Background(), fibCode10); err != nil {
-			b.Fatal(err)
+		_, err := service.Eval(context.Background(), fibCode10)
+		if err != nil {
+			require.NoError(b, err)
 		}
 	}
 }
@@ -500,8 +476,9 @@ func BenchmarkPipit_Fibonacci35_IncludingCompilation(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		service := app.NewService()
-		if _, err := service.Eval(context.Background(), fibCode35); err != nil {
-			b.Fatal(err)
+		_, err := service.Eval(context.Background(), fibCode35)
+		if err != nil {
+			require.NoError(b, err)
 		}
 	}
 }

@@ -43,6 +43,7 @@ var sentinels = []sentinel{
 	{name: "ErrEntrypointNotFound", err: fault.ErrEntrypointNotFound},
 	{name: "ErrCallArgumentCount", err: fault.ErrCallArgumentCount},
 	{name: "ErrExecutionCancelled", err: fault.ErrExecutionCancelled},
+	{name: "ErrCallbackTimeout", err: fault.ErrCallbackTimeout},
 	{name: "ErrFeatureNotAllowed", err: fault.ErrFeatureNotAllowed},
 	{name: "ErrMainReturned", err: fault.ErrMainReturned},
 	{name: "ErrPackageNotInRegistry", err: fault.ErrPackageNotInRegistry},
@@ -76,6 +77,9 @@ var sentinels = []sentinel{
 	{name: "ErrLiteralElementLimit", err: fault.ErrLiteralElementLimit},
 	{name: "ErrSpillAreaExhausted", err: fault.ErrSpillAreaExhausted},
 	{name: "ErrSpillUnsupportedBank", err: fault.ErrSpillUnsupportedBank},
+	{name: "ErrRegisterOverflow", err: fault.ErrRegisterOverflow},
+	{name: "ErrCompileSignatureTooLarge", err: fault.ErrCompileSignatureTooLarge},
+	{name: "ErrCompileFunctionTableFull", err: fault.ErrCompileFunctionTableFull},
 	{name: "ErrCompileNamedScalarPoolExhausted", err: fault.ErrCompileNamedScalarPoolExhausted},
 	{name: "ErrCompilePackageVariableNotSettable", err: fault.ErrCompilePackageVariableNotSettable},
 	{name: "ErrCompileEmbedUnsupported", err: fault.ErrCompileEmbedUnsupported},
@@ -155,7 +159,7 @@ func TestSentinelsHaveNonEmptyDistinctMessages(t *testing.T) {
 	t.Parallel()
 	seenText := make(map[string]string, len(sentinels))
 	for _, s := range sentinels {
-		require.NotNil(t, s.err, "%s must be initialised", s.name)
+		require.Error(t, s.err, "%s must be initialised", s.name)
 		text := s.err.Error()
 		require.NotEmpty(t, text, "%s must carry a message", s.name)
 		require.Equal(t, strings.TrimSpace(text), text, "%s must not carry surrounding whitespace", s.name)

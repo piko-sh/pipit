@@ -22,16 +22,18 @@ package sandboxbroker
 
 import (
 	"context"
-	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestLinuxBrokerLandlock(t *testing.T) {
@@ -47,61 +49,43 @@ func TestLinuxBrokerLandlock(t *testing.T) {
 		t.Skip("the re-executed child cannot write a coverage profile through its own Landlock confinement")
 	}
 	if _, err := brokerLandlockABI(); err != nil {
-		if os.Getenv("PIPIT_REQUIRE_BROKER_LANDLOCK") == "1" {
-			t.Fatal(err)
-		}
-		t.Skip(err)
+		sandboxtest.SkipUnlessRequired(t, "PIPIT_REQUIRE_BROKER_LANDLOCK", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	for _, mode := range []string{"child", "recovery"} {
-		command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestLinuxBrokerLandlock$", "-test.v")
-		command.Env = append(os.Environ(), "PIPIT_TEST_BROKER_LANDLOCK="+mode, "PIPIT_TEST_BROKER_ROOT="+t.TempDir())
+		command := sandboxtest.Command(ctx, "TestLinuxBrokerLandlock", "PIPIT_TEST_BROKER_LANDLOCK="+mode, "PIPIT_TEST_BROKER_ROOT="+t.TempDir())
+		command.Args = append(command.Args, "-test.v")
 		output, err := command.CombinedOutput()
-		if err != nil {
-			t.Fatalf("Landlock %s: %v\n%s", mode, err, output)
-		}
+		require.NoError(t, err, "the Landlock %s child succeeds: %s", mode, output)
 		t.Logf("%s", output)
 	}
 }
 
 func exerciseBrokerLandlock(t *testing.T) {
+	t.Helper()
 	root := os.Getenv("PIPIT_TEST_BROKER_ROOT")
 	grants := make([]LinuxRootGrant, 0, 3)
 	for _, grant := range []struct {
 		name   string
 		rights Rights
-	}{{"read", Read}, {"write", Write}, {"list", List}} {
+	}{{name: "read", rights: Read}, {name: "write", rights: Write}, {name: "list", rights: List}} {
 		directory := filepath.Join(root, grant.name)
-		if err := os.Mkdir(directory, 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(directory, "file"), []byte("original"), 0600); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.Mkdir(directory, 0700))
+		require.NoError(t, os.WriteFile(filepath.Join(directory, "file"), []byte("original"), 0600))
 		grants = append(grants, LinuxRootGrant{Name: grant.name, Path: directory, Rights: grant.rights})
 	}
 	outside := filepath.Join(root, "outside")
-	if err := os.WriteFile(outside, []byte("secret"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(outside, []byte("secret"), 0600))
 	bootstrap, err := PrepareLinuxBootstrap(grants, FilesystemLimits{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer bootstrap.Close()
 	files, err := bootstrap.Files()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	backend, err := adoptLinuxFilesystem(files, testBrokerProc(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer backend.Close()
-	if err := bootstrap.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, bootstrap.Close())
 	ready := make(chan struct{}, 4)
 	sealed := make(chan struct{})
 	var group sync.WaitGroup
@@ -111,120 +95,90 @@ func exerciseBrokerLandlock(t *testing.T) {
 			defer runtime.UnlockOSThread()
 			ready <- struct{}{}
 			<-sealed
-			if _, err := os.ReadFile(outside); !errors.Is(err, os.ErrPermission) {
-				t.Errorf("existing thread escaped: %v", err)
-			}
-			if value, err := unix.PrctlRetInt(unix.PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0); err != nil || value != 1 {
-				t.Errorf("existing thread retained privilege escalation: %d: %v", value, err)
-			}
+			_, err := os.ReadFile(outside)
+			assert.ErrorIs(t, err, os.ErrPermission, "existing thread escaped")
+			value, err := unix.PrctlRetInt(unix.PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0)
+			assert.NoError(t, err, "the existing thread has no_new_privs")
+			assert.Equal(t, 1, value)
 		})
 	}
 	for range 4 {
 		<-ready
 	}
-	if err := backend.SealProcess(); err != nil {
+	sealErr := backend.SealProcess()
+	if sealErr != nil {
 		close(sealed)
 		group.Wait()
-		t.Fatal(err)
 	}
+	require.NoError(t, sealErr)
 	close(sealed)
 	group.Wait()
 	testLandlockDirectAccess(t, root, outside)
 	testLandlockBackendAccess(t, backend)
-	if err := backend.SealProcess(); !errors.Is(err, ErrInvalidPolicy) {
-		t.Fatal("resealed mutable policy:", err)
-	}
+	require.ErrorIs(t, backend.SealProcess(), ErrInvalidPolicy, "resealed mutable policy")
 }
 
 func testLandlockDirectAccess(t *testing.T, root, outside string) {
 	t.Helper()
 	for _, name := range []string{outside, filepath.Join(root, "write", "file"), filepath.Join(root, "list", "file")} {
-		if _, err := os.ReadFile(name); !errors.Is(err, os.ErrPermission) {
-			t.Errorf("read allowed %q: %v", name, err)
-		}
+		_, err := os.ReadFile(name)
+		assert.ErrorIs(t, err, os.ErrPermission, "read allowed %q", name)
 	}
-	if data, err := os.ReadFile(filepath.Join(root, "read", "file")); err != nil || string(data) != "original" {
-		t.Errorf("approved read: %q: %v", data, err)
-	}
-	if _, err := os.ReadDir(filepath.Join(root, "read")); !errors.Is(err, os.ErrPermission) {
-		t.Errorf("read grant listed directory: %v", err)
-	}
-	if _, err := os.ReadDir(filepath.Join(root, "list")); err != nil {
-		t.Error("approved listing:", err)
-	}
+	approvedData, approvedErr := os.ReadFile(filepath.Join(root, "read", "file"))
+	assert.NoError(t, approvedErr, "the approved read works")
+	assert.Equal(t, "original", string(approvedData))
+	_, err := os.ReadDir(filepath.Join(root, "read"))
+	assert.ErrorIs(t, err, os.ErrPermission, "read grant listed directory")
+	_, err = os.ReadDir(filepath.Join(root, "list"))
+	assert.NoError(t, err, "approved listing")
 	for _, name := range []string{outside, filepath.Join(root, "read", "file"), filepath.Join(root, "list", "file")} {
-		if err := os.WriteFile(name, []byte("changed"), 0600); !errors.Is(err, os.ErrPermission) {
-			t.Errorf("write allowed %q: %v", name, err)
-		}
+		assert.ErrorIs(t, os.WriteFile(name, []byte("changed"), 0600), os.ErrPermission, "write allowed %q", name)
 	}
 	for _, name := range []string{"read", "list", "write"} {
-		if err := unix.Mkfifo(filepath.Join(root, name, "fifo"), 0600); !errors.Is(err, unix.EACCES) {
-			t.Errorf("special file allowed: %v", err)
-		}
+		assert.ErrorIs(t, unix.Mkfifo(filepath.Join(root, name, "fifo"), 0600), unix.EACCES, "special file allowed")
 	}
 	descriptor, err := unix.Socket(unix.AF_INET, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer unix.Close(descriptor)
-	if err := unix.Bind(descriptor, &unix.SockaddrInet4{Port: 0, Addr: [4]byte{127, 0, 0, 1}}); !errors.Is(err, unix.EACCES) {
-		t.Error("TCP bind allowed:", err)
-	}
-	if err := unix.Connect(descriptor, &unix.SockaddrInet4{Port: 9, Addr: [4]byte{127, 0, 0, 1}}); !errors.Is(err, unix.EACCES) {
-		t.Error("TCP connect allowed:", err)
-	}
+	assert.ErrorIs(t, unix.Bind(descriptor, &unix.SockaddrInet4{Port: 0, Addr: [4]byte{127, 0, 0, 1}}), unix.EACCES, "TCP bind allowed")
+	assert.ErrorIs(t, unix.Connect(descriptor, &unix.SockaddrInet4{Port: 9, Addr: [4]byte{127, 0, 0, 1}}), unix.EACCES, "TCP connect allowed")
 }
 
 func testLandlockBackendAccess(t *testing.T, backend *LinuxFilesystem) {
 	t.Helper()
 	read := brokerMessage(1, `{"operation":"fs.read","root":"read","path":"file","max_bytes":64}`)
-	if result, err := backend.Execute(read); err != nil || string(result.Data) != "original" {
-		t.Fatalf("confined read: %+v: %v", result, err)
-	}
+	result, err := backend.Execute(read)
+	require.NoError(t, err, "confined read: %+v", result)
+	require.Equal(t, "original", string(result.Data))
 	write := brokerMessage(2, `{"operation":"fs.write","root":"write","path":"file","data":"bmV3"}`)
-	if result, err := backend.Execute(write); err != nil || result.Written != 3 {
-		t.Fatalf("confined staged write: %+v: %v", result, err)
-	}
+	result, err = backend.Execute(write)
+	require.NoError(t, err, "confined staged write: %+v", result)
+	require.Equal(t, 3, result.Written)
 	list := brokerMessage(3, `{"operation":"fs.list","root":"list","path":".","max_entries":16}`)
-	if result, err := backend.Execute(list); err != nil || len(result.Entries) != 1 {
-		t.Fatalf("confined listing: %+v: %v", result, err)
-	}
+	result, err = backend.Execute(list)
+	require.NoError(t, err, "confined listing: %+v", result)
+	require.Len(t, result.Entries, 1)
 	denied := brokerMessage(4, `{"operation":"fs.list","root":"write","path":".","max_entries":16}`)
-	if _, err := backend.Execute(denied); !errors.Is(err, ErrDenied) {
-		t.Fatal("native write metadata permission leaked to protocol:", err)
-	}
+	_, err = backend.Execute(denied)
+	require.ErrorIs(t, err, ErrDenied, "native write metadata permission leaked to protocol")
 	root, record := stageRecoveryRemnant(t, backend, "write", "file")
 	for range 2 {
-		if err := recoverLinuxStaging(root, backend.namespace, record); err != nil {
-			t.Fatal("confined staging cleanup or retry failed:", err)
-		}
+		require.NoError(t, recoverLinuxStaging(root, backend.namespace, record), "confined staging cleanup and retry succeed")
 	}
 }
 
 func TestLinuxBrokerRejectsLateSealing(t *testing.T) {
 	backend := openTestFilesystem(t, t.TempDir(), Read, FilesystemLimits{})
-	if _, err := backend.Execute(brokerMessage(1, readPayload)); err == nil {
-		t.Fatal("missing file read succeeded")
-	}
-	if err := backend.SealProcess(); !errors.Is(err, ErrInvalidPolicy) {
-		t.Fatal(err)
-	}
-	if _, err := backend.Execute(brokerMessage(2, readPayload)); !errors.Is(err, ErrConfinement) {
-		t.Fatal("failed sealing did not stop admission:", err)
-	}
-	if err := backend.SealProcess(); !errors.Is(err, ErrInvalidPolicy) {
-		t.Fatal("retry accepted:", err)
-	}
-	if err := backend.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := backend.SealProcess(); !errors.Is(err, ErrClosed) {
-		t.Fatal(err)
-	}
+	_, err := backend.Execute(brokerMessage(1, readPayload))
+	require.Error(t, err, "missing file read succeeded")
+	require.ErrorIs(t, backend.SealProcess(), ErrInvalidPolicy)
+	_, err = backend.Execute(brokerMessage(2, readPayload))
+	require.ErrorIs(t, err, ErrConfinement, "failed sealing did not stop admission")
+	require.ErrorIs(t, backend.SealProcess(), ErrInvalidPolicy, "retry accepted")
+	require.NoError(t, backend.Close())
+	require.ErrorIs(t, backend.SealProcess(), ErrClosed)
 	var absent *LinuxFilesystem
-	if err := absent.SealProcess(); !errors.Is(err, ErrClosed) {
-		t.Fatal(err)
-	}
+	require.ErrorIs(t, absent.SealProcess(), ErrClosed)
 }
 
 func TestBrokerLandlockRights(t *testing.T) {
@@ -235,33 +189,28 @@ func TestBrokerLandlockRights(t *testing.T) {
 		writeSet = unix.LANDLOCK_ACCESS_FS_WRITE_FILE | unix.LANDLOCK_ACCESS_FS_READ_DIR |
 			unix.LANDLOCK_ACCESS_FS_MAKE_REG | unix.LANDLOCK_ACCESS_FS_REMOVE_FILE
 	)
-	for _, test := range []struct {
+	tests := []struct {
 		name   string
 		rights Rights
 		want   uint64
 	}{
-		{"none", 0, 0},
-		{"read", Read, readFile},
-		{"list", List, readDir},
-		{"write", Write, writeSet},
-		{"read+list", Read | List, readFile | readDir},
-		{"read+write", Read | Write, readFile | writeSet},
-		{"list+write", List | Write, readDir | writeSet},
-		{"read+list+write", Read | List | Write, readFile | writeSet},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			got := brokerLandlockRights(test.rights)
-			if got != test.want {
-				t.Fatalf("rights %b -> %#x, want %#x", test.rights, got, test.want)
-			}
+		{name: "none", rights: 0, want: 0},
+		{name: "read", rights: Read, want: readFile},
+		{name: "list", rights: List, want: readDir},
+		{name: "write", rights: Write, want: writeSet},
+		{name: "read+list", rights: Read | List, want: readFile | readDir},
+		{name: "read+write", rights: Read | Write, want: readFile | writeSet},
+		{name: "list+write", rights: List | Write, want: readDir | writeSet},
+		{name: "read+list+write", rights: Read | List | Write, want: readFile | writeSet},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := brokerLandlockRights(tt.rights)
+			require.Equal(t, tt.want, got, "rights %b", tt.rights)
 
-			if got & ^uint64(brokerFilesystemAccess) != 0 {
-				t.Fatal("mask escaped the allowed set")
-			}
+			require.Equal(t, uint64(0), got & ^uint64(brokerFilesystemAccess), "the mask stays inside the allowed set")
 			for _, forbidden := range []uint64{unix.LANDLOCK_ACCESS_FS_EXECUTE, unix.LANDLOCK_ACCESS_FS_REFER, unix.LANDLOCK_ACCESS_FS_TRUNCATE} {
-				if got&forbidden != 0 {
-					t.Fatalf("mask granted a forbidden right %#x", forbidden)
-				}
+				require.Equal(t, uint64(0), got&forbidden, "mask granted a forbidden right %#x", forbidden)
 			}
 		})
 	}

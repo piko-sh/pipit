@@ -21,7 +21,6 @@
 package language_test
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"reflect"
@@ -29,9 +28,9 @@ import (
 	"strings"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/symtab"
 )
 
@@ -39,13 +38,13 @@ func TestBuiltinAppendVariants(t *testing.T) {
 	t.Parallel()
 
 	tests := []evalTestCase{
-		{expect: 3, name: "append_int_result", code: `s := []int{1}; s = append(s, 2, 3); s[2]`},
-		{expect: "b", name: "append_string", code: `s := []string{"a"}; s = append(s, "b"); s[1]`},
-		{expect: float64(2.5), name: "append_float", code: `s := []float64{1.0}; s = append(s, 2.5); s[1]`},
-		{expect: false, name: "append_bool", code: `s := []bool{true}; s = append(s, false); s[1]`},
-		{expect: 5, name: "append_len", code: `s := []int{1}; s = append(s, 2, 3, 4, 5); len(s)`},
-		{expect: 42, name: "append_empty", code: `s := make([]int, 0); s = append(s, 42); s[0]`},
-		{expect: 10, name: "append_to_nil", code: `var s []int; s = append(s, 10); s[0]`},
+		{want: 3, name: "append_int_result", code: `s := []int{1}; s = append(s, 2, 3); s[2]`},
+		{want: "b", name: "append_string", code: `s := []string{"a"}; s = append(s, "b"); s[1]`},
+		{want: float64(2.5), name: "append_float", code: `s := []float64{1.0}; s = append(s, 2.5); s[1]`},
+		{want: false, name: "append_bool", code: `s := []bool{true}; s = append(s, false); s[1]`},
+		{want: 5, name: "append_len", code: `s := []int{1}; s = append(s, 2, 3, 4, 5); len(s)`},
+		{want: 42, name: "append_empty", code: `s := make([]int, 0); s = append(s, 42); s[0]`},
+		{want: 10, name: "append_to_nil", code: `var s []int; s = append(s, 10); s[0]`},
 	}
 
 	runEvalTable(t, nil, tests)
@@ -55,9 +54,9 @@ func TestBuiltinCap(t *testing.T) {
 	t.Parallel()
 
 	tests := []evalTestCase{
-		{expect: 5, name: "cap_make_slice", code: `s := make([]int, 3, 5); cap(s)`},
-		{expect: 3, name: "cap_literal", code: `s := []int{1, 2, 3}; cap(s)`},
-		{expect: 10, name: "cap_channel", code: `ch := make(chan int, 10); cap(ch)`},
+		{want: 5, name: "cap_make_slice", code: `s := make([]int, 3, 5); cap(s)`},
+		{want: 3, name: "cap_literal", code: `s := []int{1, 2, 3}; cap(s)`},
+		{want: 10, name: "cap_channel", code: `ch := make(chan int, 10); cap(ch)`},
 	}
 
 	runEvalTable(t, nil, tests)
@@ -67,16 +66,24 @@ func TestBuiltinCopy(t *testing.T) {
 	t.Parallel()
 
 	tests := []evalTestCase{
-		{expect: 6, name: "copy_full", code: `
+		{
+			want: 6,
+			name: "copy_full",
+			code: `
 source := []int{1, 2, 3}
 destination := make([]int, 3)
 copy(destination, source)
-destination[0] + destination[1] + destination[2]`},
-		{expect: 2, name: "copy_partial", code: `
+destination[0] + destination[1] + destination[2]`,
+		},
+		{
+			want: 2,
+			name: "copy_partial",
+			code: `
 source := []int{1, 2, 3}
 destination := make([]int, 2)
 n := copy(destination, source)
-n`},
+n`,
+		},
 	}
 
 	runEvalTable(t, nil, tests)
@@ -86,8 +93,8 @@ func TestBuiltinClear(t *testing.T) {
 	t.Parallel()
 
 	tests := []evalTestCase{
-		{expect: 0, name: "clear_slice", code: `s := []int{1, 2, 3}; clear(s); s[0]`},
-		{expect: 0, name: "clear_map", code: `m := map[string]int{"a": 1, "b": 2}; clear(m); len(m)`},
+		{want: 0, name: "clear_slice", code: `s := []int{1, 2, 3}; clear(s); s[0]`},
+		{want: 0, name: "clear_map", code: `m := map[string]int{"a": 1, "b": 2}; clear(m); len(m)`},
 	}
 
 	runEvalTable(t, nil, tests)
@@ -97,8 +104,8 @@ func TestBuiltinDelete(t *testing.T) {
 	t.Parallel()
 
 	tests := []evalTestCase{
-		{expect: 1, name: "delete_existing", code: `m := map[string]int{"a": 1, "b": 2}; delete(m, "a"); len(m)`},
-		{expect: 2, name: "delete_nonexistent", code: `m := map[string]int{"a": 1, "b": 2}; delete(m, "z"); len(m)`},
+		{want: 1, name: "delete_existing", code: `m := map[string]int{"a": 1, "b": 2}; delete(m, "a"); len(m)`},
+		{want: 2, name: "delete_nonexistent", code: `m := map[string]int{"a": 1, "b": 2}; delete(m, "z"); len(m)`},
 	}
 
 	runEvalTable(t, nil, tests)
@@ -108,26 +115,42 @@ func TestMapCommaOkAcrossValueTypes(t *testing.T) {
 	t.Parallel()
 
 	tests := []evalTestCase{
-		{expect: true, name: "map_comma_ok_exists", code: `
+		{
+			want: true,
+			name: "map_comma_ok_exists",
+			code: `
 m := map[string]int{"key": 42}
 _, ok := m["key"]
-ok`},
-		{expect: false, name: "map_comma_ok_missing", code: `
+ok`,
+		},
+		{
+			want: false,
+			name: "map_comma_ok_missing",
+			code: `
 m := map[string]int{"key": 42}
 _, ok := m["other"]
-ok`},
-		{expect: 42, name: "map_comma_ok_value", code: `
+ok`,
+		},
+		{
+			want: 42,
+			name: "map_comma_ok_value",
+			code: `
 m := map[string]int{"key": 42}
 v, ok := m["key"]
 result := 0
 if ok { result = v }
-result`},
-		{expect: "hello", name: "map_string_value_comma_ok", code: `
+result`,
+		},
+		{
+			want: "hello",
+			name: "map_string_value_comma_ok",
+			code: `
 m := map[int]string{1: "hello"}
 v, ok := m[1]
 result := ""
 if ok { result = v }
-result`},
+result`,
+		},
 	}
 
 	runEvalTable(t, nil, tests)
@@ -137,18 +160,26 @@ func TestMethodExpressions(t *testing.T) {
 	t.Parallel()
 
 	tests := []evalTestCase{
-		{expect: 42, name: "method_expr_call", code: `
+		{
+			want: 42,
+			name: "method_expr_call",
+			code: `
 type Num struct { V int }
 func (n Num) Value() int { return n.V }
 x := Num{V: 42}
 f := Num.Value
-f(x)`},
-		{expect: 10, name: "method_expr_pointer", code: `
+f(x)`,
+		},
+		{
+			want: 10,
+			name: "method_expr_pointer",
+			code: `
 type Box struct { V int }
 func (b *Box) Get() int { return b.V }
 b := &Box{V: 10}
 f := (*Box).Get
-f(b)`},
+f(b)`,
+		},
 	}
 
 	runEvalTable(t, nil, tests)
@@ -158,9 +189,9 @@ func TestSliceAppendCopyAndReslice(t *testing.T) {
 	t.Parallel()
 
 	tests := []evalTestCase{
-		{expect: "hello", name: "slice_string_set_get", code: `s := make([]string, 2); s[0] = "hello"; s[0]`},
-		{expect: true, name: "slice_bool_set_get", code: `s := make([]bool, 2); s[0] = true; s[0]`},
-		{expect: false, name: "slice_bool_default", code: `s := make([]bool, 2); s[1]`},
+		{want: "hello", name: "slice_string_set_get", code: `s := make([]string, 2); s[0] = "hello"; s[0]`},
+		{want: true, name: "slice_bool_set_get", code: `s := make([]bool, 2); s[0] = true; s[0]`},
+		{want: false, name: "slice_bool_default", code: `s := make([]bool, 2); s[1]`},
 	}
 
 	runEvalTable(t, nil, tests)
@@ -170,9 +201,9 @@ func TestMapIntKeys(t *testing.T) {
 	t.Parallel()
 
 	tests := []evalTestCase{
-		{expect: 30, name: "map_int_int", code: `m := map[int]int{1: 10}; m[2] = 20; m[1] + m[2]`},
-		{expect: 99, name: "map_int_overwrite", code: `m := map[int]int{1: 10}; m[1] = 99; m[1]`},
-		{expect: 3, name: "map_int_len", code: `m := map[int]int{}; m[1] = 1; m[2] = 2; m[3] = 3; len(m)`},
+		{want: 30, name: "map_int_int", code: `m := map[int]int{1: 10}; m[2] = 20; m[1] + m[2]`},
+		{want: 99, name: "map_int_overwrite", code: `m := map[int]int{1: 10}; m[1] = 99; m[1]`},
+		{want: 3, name: "map_int_len", code: `m := map[int]int{}; m[1] = 1; m[2] = 2; m[3] = 3; len(m)`},
 	}
 
 	runEvalTable(t, nil, tests)
@@ -182,21 +213,33 @@ func TestIndirectCalls(t *testing.T) {
 	t.Parallel()
 
 	tests := []evalTestCase{
-		{expect: 42, name: "call_func_var", code: `
+		{
+			want: 42,
+			name: "call_func_var",
+			code: `
 f := func(x int) int { return x * 2 }
-f(21)`},
-		{expect: 31, name: "call_func_in_slice", code: `
+f(21)`,
+		},
+		{
+			want: 31,
+			name: "call_func_in_slice",
+			code: `
 fns := []func(int) int{
 	func(x int) int { return x + 1 },
 	func(x int) int { return x * 2 },
 }
-fns[0](10) + fns[1](10)`},
-		{expect: 15, name: "call_func_from_map", code: `
+fns[0](10) + fns[1](10)`,
+		},
+		{
+			want: 15,
+			name: "call_func_from_map",
+			code: `
 m := map[string]func(int) int{
 	"double": func(x int) int { return x * 2 },
 	"add5":   func(x int) int { return x + 5 },
 }
-m["add5"](10)`},
+m["add5"](10)`,
+		},
 	}
 
 	runEvalTable(t, nil, tests)
@@ -206,11 +249,18 @@ func TestSelectStatements(t *testing.T) {
 	t.Parallel()
 
 	tests := []evalTestCase{
-		{expect: 42, name: "select_send", code: `
+		{
+			want: 42,
+			name: "select_send",
+			code: `
 ch := make(chan int, 1)
 select { case ch <- 42: }
-<-ch`},
-		{expect: -1, name: "select_default", code: `
+<-ch`,
+		},
+		{
+			want: -1,
+			name: "select_default",
+			code: `
 ch := make(chan int)
 x := 0
 select {
@@ -219,8 +269,12 @@ case v := <-ch:
 default:
 	x = -1
 }
-x`},
-		{expect: 42, name: "select_recv_value", code: `
+x`,
+		},
+		{
+			want: 42,
+			name: "select_recv_value",
+			code: `
 ch := make(chan int, 1)
 ch <- 42
 x := 0
@@ -228,7 +282,8 @@ select {
 case v := <-ch:
 	x = v
 }
-x`},
+x`,
+		},
 	}
 
 	runEvalTable(t, nil, tests)
@@ -238,12 +293,12 @@ func TestCompoundAssignAcrossOperators(t *testing.T) {
 	t.Parallel()
 
 	tests := []evalTestCase{
-		{expect: "hello world", name: "compound_string_concat", code: `s := "hello"; s += " world"; s`},
-		{expect: 0xFF, name: "compound_bitor", code: `x := 0xF0; x |= 0x0F; x`},
-		{expect: 0x0F, name: "compound_bitand", code: `x := 0xFF; x &= 0x0F; x`},
-		{expect: 16, name: "compound_shl", code: `x := 1; x <<= 4; x`},
-		{expect: 4, name: "compound_shr", code: `x := 16; x >>= 2; x`},
-		{expect: 0xF0, name: "compound_xor", code: `x := 0xFF; x ^= 0x0F; x`},
+		{want: "hello world", name: "compound_string_concat", code: `s := "hello"; s += " world"; s`},
+		{want: 0xFF, name: "compound_bitor", code: `x := 0xF0; x |= 0x0F; x`},
+		{want: 0x0F, name: "compound_bitand", code: `x := 0xFF; x &= 0x0F; x`},
+		{want: 16, name: "compound_shl", code: `x := 1; x <<= 4; x`},
+		{want: 4, name: "compound_shr", code: `x := 16; x >>= 2; x`},
+		{want: 0xF0, name: "compound_xor", code: `x := 0xFF; x ^= 0x0F; x`},
 	}
 
 	runEvalTable(t, nil, tests)
@@ -253,18 +308,26 @@ func TestInterfaceMethodCalls(t *testing.T) {
 	t.Parallel()
 
 	tests := []evalTestCase{
-		{expect: 42, name: "interface_method_call", code: `
+		{
+			want: 42,
+			name: "interface_method_call",
+			code: `
 type Getter interface { Get() int }
 type Box struct { V int }
 func (b Box) Get() int { return b.V }
 var g Getter = Box{V: 42}
-g.Get()`},
-		{expect: "hello", name: "interface_string_method", code: `
+g.Get()`,
+		},
+		{
+			want: "hello",
+			name: "interface_string_method",
+			code: `
 type Stringer interface { String() string }
 type Name struct { S string }
 func (n Name) String() string { return n.S }
 var s Stringer = Name{S: "hello"}
-s.String()`},
+s.String()`,
+		},
 	}
 
 	runEvalTable(t, nil, tests)
@@ -274,22 +337,22 @@ func TestCrossBankMoves(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "any_to_int", code: `var x any = 42; x.(int)`, expect: int(42)},
-		{name: "any_to_string", code: `var x any = "hello"; x.(string)`, expect: "hello"},
-		{name: "any_to_float", code: `var x any = 3.14; x.(float64)`, expect: float64(3.14)},
+		{name: "any_to_int", code: `var x any = 42; x.(int)`, want: int(42)},
+		{name: "any_to_string", code: `var x any = "hello"; x.(string)`, want: "hello"},
+		{name: "any_to_float", code: `var x any = 3.14; x.(float64)`, want: float64(3.14)},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -337,29 +400,28 @@ func TestNativeFastpathAcrossArgumentShapes(t *testing.T) {
 	})
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
+		{name: "strings_Replace", code: "import \"strings\"\nstrings.Replace(\"aaa\", \"a\", \"b\", 2)", want: "bba"},
+		{name: "strings_ToTitle", code: "import \"strings\"\nstrings.ToTitle(\"hello world\")", want: "HELLO WORLD"},
+		{name: "strings_TrimLeft", code: "import \"strings\"\nstrings.TrimLeft(\"  hello\", \" \")", want: "hello"},
+		{name: "strings_TrimRight", code: "import \"strings\"\nstrings.TrimRight(\"hello  \", \" \")", want: "hello"},
 
-		{name: "strings_Replace", code: "import \"strings\"\nstrings.Replace(\"aaa\", \"a\", \"b\", 2)", expect: "bba"},
-		{name: "strings_ToTitle", code: "import \"strings\"\nstrings.ToTitle(\"hello world\")", expect: "HELLO WORLD"},
-		{name: "strings_TrimLeft", code: "import \"strings\"\nstrings.TrimLeft(\"  hello\", \" \")", expect: "hello"},
-		{name: "strings_TrimRight", code: "import \"strings\"\nstrings.TrimRight(\"hello  \", \" \")", expect: "hello"},
+		{name: "strconv_Atoi", code: "import \"strconv\"\nv, _ := strconv.Atoi(\"42\")\nv", want: 42},
+		{name: "strconv_ParseBool", code: "import \"strconv\"\nv, _ := strconv.ParseBool(\"true\")\nv", want: true},
 
-		{name: "strconv_Atoi", code: "import \"strconv\"\nv, _ := strconv.Atoi(\"42\")\nv", expect: 42},
-		{name: "strconv_ParseBool", code: "import \"strconv\"\nv, _ := strconv.ParseBool(\"true\")\nv", expect: true},
-
-		{name: "fmt_Sprintf_int", code: "import \"fmt\"\nfmt.Sprintf(\"%d\", 42)", expect: "42"},
+		{name: "fmt_Sprintf_int", code: "import \"fmt\"\nfmt.Sprintf(\"%d\", 42)", want: "42"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			localService := service.Clone()
-			result, err := localService.Eval(context.Background(), tt.code)
+			result, err := localService.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -368,8 +430,8 @@ func TestBuildTagFiltering(t *testing.T) {
 	t.Parallel()
 
 	tests := []evalTestCase{
-		{expect: 42, name: "basic_eval", code: `42`},
-		{expect: 3, name: "simple_addition", code: `1 + 2`},
+		{want: 42, name: "basic_eval", code: `42`},
+		{want: 3, name: "simple_addition", code: `1 + 2`},
 	}
 
 	runEvalTable(t, nil, tests)

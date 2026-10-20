@@ -29,35 +29,26 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/sandboxhost"
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestIsolatedEmbeddingNative(t *testing.T) {
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires an explicitly delegated cgroup-v2 parent")
-	}
-	executable := os.Getenv("PIPIT_TEST_WORKER_BINARY")
-	if executable == "" {
-		t.Fatal("requires the static worker fixture")
-	}
+	parent := sandboxtest.CgroupParent(t)
+	executable := sandboxtest.RequiredBinary(t, "PIPIT_TEST_WORKER_BINARY", "the static worker fixture")
 	source, err := os.Open(executable)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	digest := sha256.New()
 	_, readErr := io.Copy(digest, source)
-	if err := errors.Join(readErr, source.Close()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, errors.Join(readErr, source.Close()))
 	var config sandboxhost.IsolatedConfig
 	config.WorkerPath = executable
 	config.WorkerSHA256 = [sha256.Size]byte(digest.Sum(nil))
 	config.WatchdogPath = os.Getenv("PIPIT_TEST_HOST_WATCHDOG_BINARY")
 	watchdogImage, err := os.ReadFile(config.WatchdogPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	config.WatchdogSHA256 = sha256.Sum256(watchdogImage)
 	config.LinuxCgroupParent = parent
 	config.Imports = []string{"math"}
@@ -67,17 +58,14 @@ func TestIsolatedEmbeddingNative(t *testing.T) {
 	if worker != nil {
 		defer worker.Close()
 	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	config.Imports[0] = "os"
 	result, err := worker.Eval("import \"math\"\nmath.Sqrt(49)")
 	if err != nil || string(result.Value) != "7" {
-		t.Fatalf("native result=%+v error=%v diagnostics=%s", result, err, worker.Diagnostics())
+		require.Failf(t, "the native worker returns 7", "result=%+v error=%v diagnostics=%s", result, err, worker.Diagnostics())
 	}
-	if _, err := worker.Eval("1"); !errors.Is(err, sandboxhost.ErrIsolatedUsed) {
-		t.Fatalf("native worker was reused: %v", err)
-	}
+	_, err = worker.Eval("1")
+	require.ErrorIs(t, err, sandboxhost.ErrIsolatedUsed, "native worker was reused")
 	sessionConfig := config
 	sessionConfig.Imports = []string{"math"}
 	t.Run("persistent session", func(t *testing.T) { testIsolatedSessionNative(t, sessionConfig) })
@@ -92,32 +80,24 @@ func TestIsolatedEmbeddingNative(t *testing.T) {
 	if unavailable != nil {
 		defer unavailable.Close()
 	}
-	if !errors.Is(err, sandboxhost.ErrIsolatedUnavailable) {
-		t.Fatalf("missing cgroup boundary did not fail closed: %v", err)
-	}
+	require.ErrorIs(t, err, sandboxhost.ErrIsolatedUnavailable, "a missing cgroup boundary fails closed")
 }
 
 func privateStateDirectory(t *testing.T) string {
 	t.Helper()
 	directory := t.TempDir()
-	if err := os.Chmod(directory, 0700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Chmod(directory, 0700))
 	return directory
 }
 
 func launchRecords(t *testing.T, stateDirectory string) []string {
 	t.Helper()
 	records, err := filepath.Glob(filepath.Join(stateDirectory, "*", "*"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return records
 }
 
 func assertLaunchRecordsClean(t *testing.T, stateDirectory string) {
 	t.Helper()
-	if records := launchRecords(t, stateDirectory); len(records) != 0 {
-		t.Fatal("clean close left launch records:", records)
-	}
+	require.Empty(t, launchRecords(t, stateDirectory), "clean close left launch records")
 }

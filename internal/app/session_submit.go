@@ -145,10 +145,9 @@ func (sess *Session) compileSubmission(ctx context.Context, code string) (func(c
 	lastExpr, hasResult := sess.service.rewriteLastExprStmt(file)
 
 	info := frontend.NewTypesInfo()
-	conf := sess.service.newTypesConfig()
-	conf.DisableUnusedImportCheck = true
-	if _, err := conf.Check(mainPackageName, sess.service.fileSet, []*ast.File{file}, info); err != nil {
-		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, sess.service.enrichTypeCheckError(err, []*ast.File{file}, nil))
+	options := typeCheckOptions{interpretedPaths: nil, allowUnusedImports: true}
+	if _, err := sess.service.checkPackageTypes(mainPackageName, []*ast.File{file}, info, options); err != nil {
+		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, err)
 	}
 	hasResult = hasResult && expressionYieldsValue(info, lastExpr)
 
@@ -183,6 +182,9 @@ func (sess *Session) parseCombinedSource(source string) (*ast.File, error) {
 	file, err := parser.ParseFile(sess.service.fileSet, evalFileName, source, 0)
 	if err != nil {
 		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrParse, err)
+	}
+	if err := rejectGoEmbedSource(evalFileName, source); err != nil {
+		return nil, err
 	}
 	if err := sess.service.checkFileImports(nil, file); err != nil {
 		return nil, err

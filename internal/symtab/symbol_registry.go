@@ -202,14 +202,13 @@ func (r *SymbolRegistry) LookupPackage(packagePath string) (map[string]reflect.V
 	return pkg, ok
 }
 
-// ZeroValueForType returns the zero Value for a typed-nil pointer symbol's element type.
-//
-// Yields a zero Value and false when the symbol is not a typed-nil pointer.
+// ZeroValueForType returns the zero constant for a typed-nil pointer symbol's element
+// type.
 //
 // Takes packagePath (string) which is the import path.
 // Takes name (string) which is the symbol name.
 //
-// Returns reflect.Value which wraps a fresh zero Value of the element type.
+// Returns reflect.Value which is the element type's zero constant.
 // Returns bool which is true when the symbol is a typed-nil pointer.
 func (r *SymbolRegistry) ZeroValueForType(packagePath, name string) (reflect.Value, bool) {
 	value, ok := r.Lookup(packagePath, name)
@@ -221,7 +220,7 @@ func (r *SymbolRegistry) ZeroValueForType(packagePath, name string) (reflect.Val
 		return reflect.Value{}, false
 	}
 
-	return reflect.New(reflectType.Elem()).Elem(), true
+	return ZeroConstant(reflectType.Elem()), true
 }
 
 // HasPackage reports whether the registry has any symbols registered under packagePath.
@@ -375,7 +374,7 @@ func (r *SymbolRegistry) ReflectTypeForNamedByPackageName(packageName, typeName 
 	defer r.mu.RUnlock()
 
 	for packagePath, pkg := range r.symbols {
-		if path.Base(packagePath) != packageName {
+		if r.packageNameLocked(packagePath) != packageName {
 			continue
 		}
 		value, ok := pkg[typeName]
@@ -389,6 +388,20 @@ func (r *SymbolRegistry) ReflectTypeForNamedByPackageName(packageName, typeName 
 	}
 
 	return nil, false
+}
+
+// PackageName returns the registered package name, then symbol-table metadata, then
+// AssumedPackageName, falling back to the final path element.
+//
+// Takes importPath (string) which is the import path to name.
+//
+// Returns string which is the declared or assumed package name.
+//
+// Concurrency: acquires the registry read lock for the duration of the call.
+func (r *SymbolRegistry) PackageName(importPath string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.packageNameLocked(importPath)
 }
 
 // ProtectPackage marks packagePath as immutable.
@@ -586,6 +599,24 @@ func (r *SymbolRegistry) remapReflectTypesToPackage(packagePath string, pkg *typ
 	}
 }
 
+// packageNameLocked is PackageName for a caller that already holds the registry lock.
+//
+// Takes importPath (string) which is the import path to name.
+//
+// Returns string which is the declared or assumed package name.
+func (r *SymbolRegistry) packageNameLocked(importPath string) string {
+	if pkg, ok := r.synthesised[importPath]; ok && pkg != nil && isValidPackageName(pkg.Name()) {
+		return pkg.Name()
+	}
+	if name, ok := declaredPackageName(r.symbols[importPath]); ok {
+		return name
+	}
+	if name := AssumedPackageName(importPath); name != "" {
+		return name
+	}
+	return path.Base(importPath)
+}
+
 // synthesisePackage builds a go/types.Package from reflect exports.
 //
 // Takes importPath (string) which is the synthesised package path.
@@ -593,8 +624,7 @@ func (r *SymbolRegistry) remapReflectTypesToPackage(packagePath string, pkg *typ
 //
 // Returns *types.Package which is the completed synthesised package.
 func (r *SymbolRegistry) synthesisePackage(importPath string, exports map[string]reflect.Value) *types.Package {
-	packageName := path.Base(importPath)
-	pkg := types.NewPackage(importPath, packageName)
+	pkg := types.NewPackage(importPath, r.PackageName(importPath))
 
 	converter := &reflectTypeConverter{seen: make(map[reflect.Type]types.Type),
 		pkg:        pkg,
@@ -679,6 +709,9 @@ func (*SymbolRegistry) registerFunctionsAndVariables(
 		reflectType := value.Type()
 
 		switch {
+		case name == PackageNameSymbol:
+			continue
+
 		case reflectType.Kind() == reflect.Pointer && value.IsNil():
 			continue
 
@@ -750,18 +783,22 @@ func classifyAllowlistEntries(allowlist []string) (map[string]struct{}, map[stri
 }
 
 // filterPackageSymbols returns a new map containing only the entries of packageSymbols
-// whose name appears in nameSet.
+// whose name appears in nameSet, plus the PackageNameSymbol entry so a scoped package
+// keeps its declared name.
 //
 // Takes packageSymbols (map[string]reflect.Value) which is the source symbol map.
 // Takes nameSet (map[string]struct{}) which is the allowed-name set.
 //
 // Returns map[string]reflect.Value which is the filtered map.
 func filterPackageSymbols(packageSymbols map[string]reflect.Value, nameSet map[string]struct{}) map[string]reflect.Value {
-	filteredPkg := make(map[string]reflect.Value, len(nameSet))
+	filteredPkg := make(map[string]reflect.Value, len(nameSet)+1)
 	for name := range nameSet {
 		if value, ok := packageSymbols[name]; ok {
 			filteredPkg[name] = value
 		}
+	}
+	if value, ok := packageSymbols[PackageNameSymbol]; ok {
+		filteredPkg[PackageNameSymbol] = value
 	}
 	return filteredPkg
 }

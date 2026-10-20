@@ -21,13 +21,11 @@
 package session_test
 
 import (
-	"context"
 	"testing"
-
-	"pipit.sh/pipit/internal/app"
 
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
@@ -35,7 +33,7 @@ func evalFmt(t *testing.T, source string) any {
 	t.Helper()
 	s := app.NewService()
 	s.UseSymbolProviders(stdlib.Providers()...)
-	result, err := s.EvalFile(context.Background(), source, "run")
+	result, err := s.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	return result
 }

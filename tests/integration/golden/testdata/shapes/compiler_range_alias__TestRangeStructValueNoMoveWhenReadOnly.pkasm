@@ -4,7 +4,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function sum
-;   registers: int=4 float=7 general=2
+;   registers: int=4 float=5 general=2
 ;   dispatch:  asm=13 shim=1 exit=0 go=1
 ;   params:    (general)
 ;   returns:   (float)
@@ -24,9 +24,9 @@
 0007 A 1:MOVE_FLOAT                36   2   1    ; CSE'd from PC 6
 0008 A 0:MUL_FLOAT                  3   1   2
 0009 A 0:GET_STRUCT_FIELD_FLOAT_T0   4   1   1
-0010 A 0:ADD_FLOAT                  5   3   4
-0011 A 0:ADD_FLOAT                  6   0   5
-0012 A 1:MOVE_FLOAT                36   0   6
+0010 A 0:ADD_FLOAT                  3   3   4
+0011 A 0:ADD_FLOAT                  4   0   3
+0012 A 1:MOVE_FLOAT                36   0   4
 0013 A 0:ADD_INT_CONST              1   1   1    ; const = 1
 0014 A 1:JUMP                      74 244 255    ; goto -12
 0015 A 2:TIER2_RETURN               0  10   1    ; 1 values

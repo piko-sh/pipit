@@ -106,7 +106,7 @@ func CompileDebugExpression(ctx context.Context, config CompilerConfig, spec Deb
 // Takes parameters ([]DebugParameter) which are the frame variables, in argument order.
 func (c *Compiler) declareDebugParameters(parameters []DebugParameter) {
 	for _, parameter := range parameters {
-		location := c.Scopes.DeclareVar(parameter.Name, parameter.Kind)
+		location := c.Scopes.DeclareParameter(parameter.Name, parameter.Kind)
 		if isa.IsTypedSliceKind(parameter.Kind) {
 			if c.typedSliceLocals == nil {
 				c.typedSliceLocals = make(map[string]isa.RegisterKind)

@@ -95,7 +95,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function TwoOut.M
-;   registers: int=2 general=3
+;   registers: int=2 general=2
 ;   dispatch:  asm=5 shim=0 exit=0 go=1
 ;   params:    (general, int)
 ;   returns:   (int, general)
@@ -103,9 +103,9 @@
 
 0000 A 1:MOVE_INT                  35   1   0
 0001 G 2:TIER2_LOAD_NIL             0   9   1
-0002 A 0:MOVE_GENERAL               2   1   1
+0002 A 0:MOVE_GENERAL               1   1   1
 0003 A 1:MOVE_INT                  35   0   1
-0004 A 0:MOVE_GENERAL               0   2   0
+0004 A 0:MOVE_GENERAL               0   1   0
 0005 A 2:TIER2_RETURN               0  10   2    ; 2 values
 
 ; ═════════════════════════════════════════════════════════════
@@ -167,7 +167,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function <closure>
-;   registers: string=5 general=3
+;   registers: string=4 general=3
 ;   dispatch:  asm=3 shim=5 exit=1 go=1
 ;   params:    (string, general)
 ;   returns:   (none)
@@ -183,13 +183,13 @@
 0004 S 0:CONCAT_STRING              2   0   1
 0005 A 1:CALL                     128   0   0    ; call closure general[0] (site 0)
 0006 S 2:SYNC_CLOSURE_UPVALUES      0  15   0
-0007 S 0:CONCAT_STRING              4   2   3
-0008 X 0:APPEND_STRING_FAST         2   1   4
+0007 S 0:CONCAT_STRING              2   2   3
+0008 X 0:APPEND_STRING_FAST         2   1   2
 0009 S 0:SET_UPVALUE                2   0   3
 
 ; ═════════════════════════════════════════════════════════════
 ; function <closure>
-;   registers: int=1 string=5 general=4
+;   registers: int=1 string=4 general=3
 ;   dispatch:  asm=4 shim=5 exit=1 go=2
 ;   params:    (none)
 ;   returns:   (none)
@@ -207,9 +207,9 @@
 0006 S 0:CONCAT_STRING              2   0   1
 0007 S 0:LOAD_GENERAL_CONST         2   0   0
 0008 G 1:CALL_NATIVE              130   0   0    ; call native general[2] (site 0)
-0009 S 0:CONCAT_STRING              4   2   3
-0010 X 0:APPEND_STRING_FAST         3   1   4
-0011 S 0:SET_UPVALUE                3   0   3
+0009 S 0:CONCAT_STRING              2   2   3
+0010 X 0:APPEND_STRING_FAST         2   1   2
+0011 S 0:SET_UPVALUE                2   0   3
 
 ; ═════════════════════════════════════════════════════════════
 ; function <closure>
@@ -352,7 +352,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function <closure>
-;   registers: int=7 string=2 general=6 bool=1
+;   registers: int=6 string=2 general=5 bool=1
 ;   dispatch:  asm=20 shim=10 exit=3 go=6
 ;   params:    (none)
 ;   returns:   (string)
@@ -388,15 +388,15 @@
 0023   0:EXT                        4   0   0
 0024 A 0:MOVE_GENERAL               3   4   0
 0025 A 1:MOVE_INT                  35   3   4
-0026 S 0:LOAD_GENERAL_CONST         5   1   0
+0026 S 0:LOAD_GENERAL_CONST         3   1   0
 0027 G 1:INT_TO_BOOL               54   0   3
-0028 G 1:CALL_NATIVE              130   0   0    ; call native general[5] (site 0)
+0028 G 1:CALL_NATIVE              130   0   0    ; call native general[3] (site 0)
 0029 X 0:APPEND_STRING_FAST         1   1   0
-0030 A 1:LOAD_BOOL                 76   5   0    ; ints[5] = false
-0031 S 0:TYPE_ASSERT                5   2   6
+0030 A 1:LOAD_BOOL                 76   4   0    ; ints[4] = false
+0031 S 0:TYPE_ASSERT                3   2   5
 0032   0:EXT                        4   0   2
-0033 A 0:BIT_OR                     5   5   6
-0034 A 0:JUMP_IF_FALSE              5   3   0    ; if ints[5] == 0 goto +3
+0033 A 0:BIT_OR                     4   4   5
+0034 A 0:JUMP_IF_FALSE              4   3   0    ; if ints[4] == 0 goto +3
 0035 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "H"
 0036 X 0:APPEND_STRING_FAST         1   1   0
 0037 A 1:JUMP                      74   2   0    ; goto 2

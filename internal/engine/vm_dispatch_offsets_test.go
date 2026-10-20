@@ -228,7 +228,7 @@ func TestStructFieldLayoutFlagConstants(t *testing.T) {
 
 func TestReflectValueFlagConstants(t *testing.T) {
 	t.Parallel()
-	assert.Equalf(t, uintptr(0x1F), flagKindMask, "flagKindMask")
-	assert.Equalf(t, uintptr(0x80), flagIndir, "flagIndir")
-	assert.Equalf(t, uintptr(0x100), flagAddr, "flagAddr")
+	assert.Equalf(t, flagKindMask, uintptr(0x1F), "flagKindMask")
+	assert.Equalf(t, flagIndir, uintptr(0x80), "flagIndir")
+	assert.Equalf(t, flagAddr, uintptr(0x100), "flagAddr")
 }

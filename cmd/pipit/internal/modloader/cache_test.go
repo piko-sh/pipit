@@ -30,89 +30,75 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseCacheMode(t *testing.T) {
 	t.Parallel()
+	_, err := ParseCacheMode("localdir")
+	require.Error(t, err, "an unknown keyword is rejected")
 	for _, in := range []string{"off", "on", "home", "gopath"} {
-		mode, err := ParseCacheMode(in)
-		if err != nil {
-			t.Fatalf("ParseCacheMode(%q) error: %v", in, err)
-		}
-		if string(mode) != in {
-			t.Fatalf("ParseCacheMode(%q) = %q", in, mode)
-		}
-	}
-	if _, err := ParseCacheMode("localdir"); err == nil {
-		t.Fatalf("ParseCacheMode(%q) accepted unknown keyword", "localdir")
+		t.Run(in, func(t *testing.T) {
+			t.Parallel()
+			mode, err := ParseCacheMode(in)
+			require.NoError(t, err)
+			require.Equal(t, in, string(mode))
+		})
 	}
 }
 
 func TestParseCacheSpec_Keywords(t *testing.T) {
 	t.Parallel()
 	for _, in := range []string{"off", "on", "home", "gopath"} {
-		spec, err := ParseCacheSpec(in)
-		if err != nil {
-			t.Fatalf("ParseCacheSpec(%q): %v", in, err)
-		}
-		if string(spec.Mode) != in || spec.Path != "" {
-			t.Fatalf("ParseCacheSpec(%q) = %+v", in, spec)
-		}
+		t.Run(in, func(t *testing.T) {
+			t.Parallel()
+			spec, err := ParseCacheSpec(in)
+			require.NoError(t, err)
+			require.Equal(t, in, string(spec.Mode))
+			require.Empty(t, spec.Path)
+		})
 	}
 }
 
 func TestParseCacheSpec_PathsPosix(t *testing.T) {
 	t.Parallel()
-	cwd, _ := os.Getwd()
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
 	home, _ := os.UserHomeDir()
-	cases := []struct {
+	if home != "" {
+		spec, err := ParseCacheSpec("~/.pipit-test")
+		require.NoError(t, err)
+		require.Equal(t, filepath.Join(home, ".pipit-test"), spec.Path)
+		spec, err = ParseCacheSpec("~")
+		require.NoError(t, err)
+		require.Equal(t, home, spec.Path)
+	}
+	tests := []struct {
+		name string
 		in   string
 		want string
 	}{
-		{"/tmp/foo", "/tmp/foo"},
-		{"./relative", filepath.Join(cwd, "relative")},
-		{"../sibling", filepath.Clean(filepath.Join(cwd, "..", "sibling"))},
+		{name: "absolute", in: "/tmp/foo", want: "/tmp/foo"},
+		{name: "relative", in: "./relative", want: filepath.Join(cwd, "relative")},
+		{name: "parent-relative", in: "../sibling", want: filepath.Clean(filepath.Join(cwd, "..", "sibling"))},
 	}
-	for _, c := range cases {
-		spec, err := ParseCacheSpec(c.in)
-		if err != nil {
-			t.Fatalf("ParseCacheSpec(%q): %v", c.in, err)
-		}
-		if spec.Mode != CacheCustom {
-			t.Fatalf("ParseCacheSpec(%q).Mode = %q, want custom", c.in, spec.Mode)
-		}
-		if spec.Path != c.want {
-			t.Fatalf("ParseCacheSpec(%q).Path = %q, want %q", c.in, spec.Path, c.want)
-		}
-	}
-	if home != "" {
-		spec, err := ParseCacheSpec("~/.pipit-test")
-		if err != nil {
-			t.Fatalf("ParseCacheSpec(~/.pipit-test): %v", err)
-		}
-		want := filepath.Join(home, ".pipit-test")
-		if spec.Path != want {
-			t.Fatalf("ParseCacheSpec(~/.pipit-test).Path = %q, want %q", spec.Path, want)
-		}
-		spec, err = ParseCacheSpec("~")
-		if err != nil {
-			t.Fatalf("ParseCacheSpec(~): %v", err)
-		}
-		if spec.Path != home {
-			t.Fatalf("ParseCacheSpec(~).Path = %q, want %q", spec.Path, home)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			spec, err := ParseCacheSpec(tt.in)
+			require.NoError(t, err)
+			require.Equal(t, CacheCustom, spec.Mode)
+			require.Equal(t, tt.want, spec.Path)
+		})
 	}
 }
 
 func TestParseCacheSpec_BareWordRejected(t *testing.T) {
 	t.Parallel()
 	_, err := ParseCacheSpec("localdir")
-	if err == nil {
-		t.Fatalf("ParseCacheSpec(localdir) should reject bare word; want explicit ./ or /")
-	}
-	if !strings.Contains(err.Error(), "localdir") {
-		t.Fatalf("error message %q should mention the input", err)
-	}
+	require.Error(t, err, "a bare word is not a cache path; it needs ./ or /")
+	require.Contains(t, err.Error(), "localdir", "the error %q names the input", err)
 }
 
 func TestIsPathSpec_WindowsLike(t *testing.T) {
@@ -120,15 +106,11 @@ func TestIsPathSpec_WindowsLike(t *testing.T) {
 
 	winLike := []string{`.\foo`, `..\foo`, `~\foo`}
 	for _, in := range winLike {
-		if !isPathSpec(in) {
-			t.Fatalf("isPathSpec(%q) = false, want true", in)
-		}
+		require.True(t, isPathSpec(in), "isPathSpec(%q)", in)
 	}
 	if runtime.GOOS == "windows" {
 		for _, in := range []string{`C:\foo`, `\\server\share`} {
-			if !isPathSpec(in) {
-				t.Fatalf("isPathSpec(%q) = false on Windows, want true", in)
-			}
+			require.True(t, isPathSpec(in), "isPathSpec(%q) on Windows", in)
 		}
 	}
 }
@@ -136,9 +118,8 @@ func TestIsPathSpec_WindowsLike(t *testing.T) {
 func TestResolveCacheSpec_Off(t *testing.T) {
 	t.Parallel()
 	root, mode := ResolveCacheSpec(CacheSpec{Mode: CacheOff}, "", io.Discard)
-	if root != "" || mode != CacheOff {
-		t.Fatalf("got (%q, %q), want (\"\", off)", root, mode)
-	}
+	require.Empty(t, root)
+	require.Equal(t, CacheOff, mode)
 }
 
 func TestResolveCacheSpec_OnWritable(t *testing.T) {
@@ -146,16 +127,11 @@ func TestResolveCacheSpec_OnWritable(t *testing.T) {
 	scriptDir := t.TempDir()
 	scriptPath := filepath.Join(scriptDir, "script.go")
 	root, mode := ResolveCacheSpec(CacheSpec{Mode: CacheOn}, scriptPath, io.Discard)
-	if mode != CacheOn {
-		t.Fatalf("mode = %q, want on", mode)
-	}
+	require.Equal(t, CacheOn, mode)
 	want := filepath.Join(scriptDir, ".pipit", "cache", "download")
-	if root != want {
-		t.Fatalf("root = %q, want %q", root, want)
-	}
-	if _, err := os.Stat(root); err != nil {
-		t.Fatalf("cache root not created: %v", err)
-	}
+	require.Equal(t, want, root)
+	_, err := os.Stat(root)
+	require.NoError(t, err, "the cache root is created")
 }
 
 func TestResolveCacheSpec_OnUnwritableFallsBackToOff(t *testing.T) {
@@ -167,18 +143,13 @@ func TestResolveCacheSpec_OnUnwritableFallsBackToOff(t *testing.T) {
 	}
 	t.Parallel()
 	scriptDir := t.TempDir()
-	if err := os.Chmod(scriptDir, 0o500); err != nil {
-		t.Fatalf("chmod: %v", err)
-	}
+	require.NoError(t, os.Chmod(scriptDir, 0o500))
 	t.Cleanup(func() { _ = os.Chmod(scriptDir, 0o700) })
 	var stderr bytes.Buffer
 	root, mode := ResolveCacheSpec(CacheSpec{Mode: CacheOn}, filepath.Join(scriptDir, "s.go"), &stderr)
-	if root != "" || mode != CacheOff {
-		t.Fatalf("got (%q, %q), want (\"\", off)", root, mode)
-	}
-	if !strings.Contains(stderr.String(), "disabling cache") {
-		t.Fatalf("stderr missing fallback log: %q", stderr.String())
-	}
+	require.Empty(t, root)
+	require.Equal(t, CacheOff, mode)
+	require.Contains(t, stderr.String(), "disabling cache", "stderr holds the fallback log")
 }
 
 func TestResolveCacheSpec_HomeUsesXDG(t *testing.T) {
@@ -186,9 +157,8 @@ func TestResolveCacheSpec_HomeUsesXDG(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", xdg)
 	root, mode := ResolveCacheSpec(CacheSpec{Mode: CacheHome}, "", io.Discard)
 	want := filepath.Join(xdg, "pipit", "cache", "download")
-	if root != want || mode != CacheHome {
-		t.Fatalf("got (%q, %q), want (%q, home)", root, mode, want)
-	}
+	require.Equal(t, want, root)
+	require.Equal(t, CacheHome, mode)
 }
 
 func TestResolveCacheSpec_GopathFallsBackWhenUnset(t *testing.T) {
@@ -198,65 +168,58 @@ func TestResolveCacheSpec_GopathFallsBackWhenUnset(t *testing.T) {
 	var stderr bytes.Buffer
 	root, mode := ResolveCacheSpec(CacheSpec{Mode: CacheGopath}, filepath.Join(scriptDir, "s.go"), &stderr)
 
-	if mode != CacheGopath {
-		t.Fatalf("mode = %q, want gopath (HOME default kicked in)", mode)
-	}
-	if !strings.Contains(root, "go/pkg/mod/cache/download") {
-		t.Fatalf("unexpected gopath root: %q", root)
-	}
+	require.Equal(t, CacheGopath, mode)
+	require.Contains(t, root, "go/pkg/mod/cache/download")
 }
 
 func TestResolveCacheSpec_Custom(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	root, mode := ResolveCacheSpec(CacheSpec{Mode: CacheCustom, Path: dir}, "", io.Discard)
-	if mode != CacheCustom {
-		t.Fatalf("mode = %q, want custom", mode)
-	}
-	if root != dir {
-		t.Fatalf("root = %q, want %q", root, dir)
-	}
+	require.Equal(t, CacheCustom, mode)
+	require.Equal(t, dir, root)
 }
 
 func TestResolveCacheSpec_CustomEmptyPathDisables(t *testing.T) {
 	t.Parallel()
 	root, mode := ResolveCacheSpec(CacheSpec{Mode: CacheCustom, Path: ""}, "", io.Discard)
-	if root != "" || mode != CacheOff {
-		t.Fatalf("got (%q, %q), want (\"\", off)", root, mode)
-	}
+	require.Empty(t, root)
+	require.Equal(t, CacheOff, mode)
 }
 
 func TestLockPathFor(t *testing.T) {
 	t.Parallel()
+	atLatest := lockPathFor(filepath.FromSlash("/cache/github.com/foo/bar/@latest"))
+	require.True(t, strings.HasSuffix(atLatest, "@latest.lock"), "the @latest lock path: %q", atLatest)
 	root := filepath.FromSlash("/cache/github.com/foo/bar/@v")
 	for _, ext := range []string{".zip", ".mod", ".info", ".ziphash"} {
-		got := lockPathFor(filepath.Join(root, "v1.2.3"+ext))
-		want := filepath.Join(root, "v1.2.3.lock")
-		if got != want {
-			t.Fatalf("lockPathFor(v1.2.3%s) = %q, want %q", ext, got, want)
-		}
-	}
-	atLatest := lockPathFor(filepath.FromSlash("/cache/github.com/foo/bar/@latest"))
-	if !strings.HasSuffix(atLatest, "@latest.lock") {
-		t.Fatalf("@latest lock derivation wrong: %q", atLatest)
+		t.Run(ext, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, filepath.Join(root, "v1.2.3.lock"), lockPathFor(filepath.Join(root, "v1.2.3"+ext)))
+		})
 	}
 }
 
 func TestSplitArtifactPath(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
-		in, mod, ver string
+	tests := []struct {
+		name        string
+		in          string
+		wantModule  string
+		wantVersion string
 	}{
-		{"github.com/foo/bar/@v/v1.2.3.zip", "github.com/foo/bar", "v1.2.3"},
-		{"github.com/foo/bar/@v/v1.2.3.mod", "github.com/foo/bar", "v1.2.3"},
-		{"github.com/foo/bar/@latest", "github.com/foo/bar", ""},
-		{"github.com/foo/bar/@v/list", "github.com/foo/bar", ""},
+		{name: "zip", in: "github.com/foo/bar/@v/v1.2.3.zip", wantModule: "github.com/foo/bar", wantVersion: "v1.2.3"},
+		{name: "mod", in: "github.com/foo/bar/@v/v1.2.3.mod", wantModule: "github.com/foo/bar", wantVersion: "v1.2.3"},
+		{name: "latest", in: "github.com/foo/bar/@latest", wantModule: "github.com/foo/bar", wantVersion: ""},
+		{name: "list", in: "github.com/foo/bar/@v/list", wantModule: "github.com/foo/bar", wantVersion: ""},
 	}
-	for _, c := range cases {
-		mod, ver := splitArtifactPath(c.in)
-		if mod != c.mod || ver != c.ver {
-			t.Fatalf("splitArtifactPath(%q) = (%q,%q), want (%q,%q)", c.in, mod, ver, c.mod, c.ver)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			module, version := splitArtifactPath(tt.in)
+			require.Equal(t, tt.wantModule, module)
+			require.Equal(t, tt.wantVersion, version)
+		})
 	}
 }
 
@@ -276,31 +239,19 @@ func TestCachingFS_HitDoesNotReachUpstream(t *testing.T) {
 
 	relPath := filepath.FromSlash("github.com/foo/bar/@v/v1.0.0.mod")
 	full := filepath.Join(root, relPath)
-	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(full), 0o755))
 	want := []byte("module github.com/foo/bar\n")
-	if err := os.WriteFile(full, want, 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
+	require.NoError(t, os.WriteFile(full, want, 0o644))
 
 	upstream := &hitCountingFS{files: fstest.MapFS{}}
 	cfs := newCachingFS(upstream, root, true, nil)
 	file, err := cfs.Open("github.com/foo/bar/@v/v1.0.0.mod")
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
+	require.NoError(t, err)
 	got, err := io.ReadAll(file)
 	file.Close()
-	if err != nil {
-		t.Fatalf("Read: %v", err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Fatalf("contents = %q, want %q", got, want)
-	}
-	if upstream.opens != 0 {
-		t.Fatalf("upstream Open count = %d, want 0 (cache hit should skip upstream)", upstream.opens)
-	}
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+	require.Equal(t, 0, upstream.opens)
 }
 
 func TestCachingFS_MissOfflineErrors(t *testing.T) {
@@ -310,15 +261,9 @@ func TestCachingFS_MissOfflineErrors(t *testing.T) {
 	cfs := newCachingFS(upstream, root, false, nil)
 
 	_, err := cfs.Open("github.com/foo/bar/@v/v1.0.0.mod")
-	if err == nil {
-		t.Fatalf("expected error on offline miss")
-	}
-	if !IsCacheMissOffline(err) {
-		t.Fatalf("error %v should satisfy IsCacheMissOffline", err)
-	}
-	if upstream.opens != 0 {
-		t.Fatalf("upstream should not be opened when offline")
-	}
+	require.Error(t, err, "an offline miss fails")
+	require.True(t, IsCacheMissOffline(err), "%v is an offline cache miss", err)
+	require.Equal(t, 0, upstream.opens, "offline mode never opens upstream")
 }
 
 func TestCachingFS_MissPersistsAndComputesZiphash(t *testing.T) {
@@ -328,15 +273,10 @@ func TestCachingFS_MissPersistsAndComputesZiphash(t *testing.T) {
 	var buffer bytes.Buffer
 	zw := zip.NewWriter(&buffer)
 	f, err := zw.Create("github.com/foo/bar@v1.0.0/go.mod")
-	if err != nil {
-		t.Fatalf("zip create: %v", err)
-	}
-	if _, err := f.Write([]byte("module github.com/foo/bar\n")); err != nil {
-		t.Fatalf("zip write: %v", err)
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatalf("zip close: %v", err)
-	}
+	require.NoError(t, err)
+	_, err = f.Write([]byte("module github.com/foo/bar\n"))
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
 
 	upstream := fstest.MapFS{
 		"github.com/foo/bar/@v/v1.0.0.zip": {Data: buffer.Bytes()},
@@ -345,31 +285,20 @@ func TestCachingFS_MissPersistsAndComputesZiphash(t *testing.T) {
 	cfs := newCachingFS(upstream, root, true, rec)
 
 	file, err := cfs.Open("github.com/foo/bar/@v/v1.0.0.zip")
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	gotZip, _ := io.ReadAll(file)
+	require.NoError(t, err)
+	gotZip, err := io.ReadAll(file)
 	file.Close()
-	if !bytes.Equal(gotZip, buffer.Bytes()) {
-		t.Fatalf("served zip differs from upstream bytes")
-	}
+	require.NoError(t, err)
+	require.Equal(t, buffer.Bytes(), gotZip, "the cache serves the upstream bytes")
 
 	zipPath := filepath.Join(root, filepath.FromSlash("github.com/foo/bar/@v/v1.0.0.zip"))
-	if _, err := os.Stat(zipPath); err != nil {
-		t.Fatalf("zip not persisted: %v", err)
-	}
+	require.FileExists(t, zipPath, "the zip is persisted")
 	hashPath := zipPath + "hash"
 	hashBytes, err := os.ReadFile(hashPath)
-	if err != nil {
-		t.Fatalf("ziphash not written: %v", err)
-	}
-	if !bytes.HasPrefix(hashBytes, []byte("h1:")) {
-		t.Fatalf("ziphash should start with h1:, got %q", hashBytes)
-	}
+	require.NoError(t, err, "the ziphash is written")
+	require.True(t, bytes.HasPrefix(hashBytes, []byte("h1:")), "the ziphash is an h1 hash: %q", hashBytes)
 
-	if len(rec.misses) != 1 {
-		t.Fatalf("expected 1 recorded miss, got %d", len(rec.misses))
-	}
+	require.Len(t, rec.misses, 1)
 }
 
 func TestCachingFS_EmptyRootIsPassthrough(t *testing.T) {
@@ -381,21 +310,13 @@ func TestCachingFS_EmptyRootIsPassthrough(t *testing.T) {
 	}
 	cfs := newCachingFS(upstream, "", true, nil)
 	file, err := cfs.Open("foo/bar/@latest")
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
+	require.NoError(t, err)
 	file.Close()
-	if upstream.opens != 1 {
-		t.Fatalf("empty root should delegate exactly once, got %d opens", upstream.opens)
-	}
+	require.Equal(t, 1, upstream.opens, "an empty root delegates exactly once")
 }
 
 func TestIsCacheMissOffline_FalseOnUnrelated(t *testing.T) {
 	t.Parallel()
-	if IsCacheMissOffline(errors.New("other")) {
-		t.Fatalf("unrelated error should not satisfy IsCacheMissOffline")
-	}
-	if IsCacheMissOffline(nil) {
-		t.Fatalf("nil error should not satisfy IsCacheMissOffline")
-	}
+	require.False(t, IsCacheMissOffline(errors.New("other")), "an unrelated error is not an offline cache miss")
+	require.False(t, IsCacheMissOffline(nil), "a nil error is not an offline cache miss")
 }

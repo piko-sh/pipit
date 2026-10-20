@@ -197,7 +197,7 @@ func (c *Compiler) emitGlobalZeroGeneral(ctx context.Context, name *ast.Ident, g
 	}
 	if zeroValue, ok := c.zeroValueForCompositeType(ctx, typeObject.Type()); ok {
 		c.emitGlobalGeneralConst(ctx, gv, zeroValue, descriptor.GeneralConstantDescriptor{Kind: descriptor.GeneralConstantCompositeZero,
-			TypeDescriptor: descriptor.ReflectTypeToDescriptor(c.TypeToReflect(ctx, typeObject.Type())), PackagePath: "", SymbolName: ""})
+			TypeDescriptor: descriptor.TypeDescriptor{}, PackagePath: "", SymbolName: ""})
 	}
 }
 

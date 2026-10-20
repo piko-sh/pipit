@@ -21,18 +21,19 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
 func TestGenericSpecialisationDistinctNamedTypes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name   string
-		code   string
-		expect string
+		name string
+		code string
+		want string
 	}{
 		{
 			name: "float_underlying_named_types",
@@ -43,7 +44,7 @@ type Fahrenheit float64
 func (f Fahrenheit) Unit() string { return "F" }
 func unitOf[T Uniter](v T) string { return v.Unit() }
 unitOf(Celsius(1)) + unitOf(Fahrenheit(1))`,
-			expect: "CF",
+			want: "CF",
 		},
 		{
 			name: "int_underlying_named_types_reverse_order",
@@ -54,16 +55,17 @@ type PostID int
 func (p PostID) Kind() string { return "post" }
 func kindOf[T Ider](v T) string { return v.Kind() }
 kindOf(PostID(1)) + "-" + kindOf(UserID(1))`,
-			expect: "post-user",
+			want: "post-user",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

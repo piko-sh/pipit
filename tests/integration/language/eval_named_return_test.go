@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalNamedReturn(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "bare_return",
@@ -43,7 +43,7 @@ func TestEvalNamedReturn(t *testing.T) {
 	return
 }
 f()`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "bare_return_default",
@@ -51,7 +51,7 @@ f()`,
 	return
 }
 f()`,
-			expect: 0,
+			want: 0,
 		},
 
 		{
@@ -61,7 +61,7 @@ f()`,
 	return x + 5
 }
 f()`,
-			expect: 15,
+			want: 15,
 		},
 	}
 
@@ -69,9 +69,9 @@ f()`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

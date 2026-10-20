@@ -4,7 +4,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function classify
-;   registers: int=2 general=7
+;   registers: int=2 general=2
 ;   dispatch:  asm=43 shim=6 exit=0 go=0
 ;   params:    (general)
 ;   returns:   (int)
@@ -23,7 +23,7 @@
 0007 A 2:TIER2_RETURN               0  10   1    ; 1 values
 0008 A 1:JUMP                      74  44   0    ; goto 44
 0009 A 1:LOAD_BOOL                 76   0   0    ; ints[0] = false
-0010 S 0:TYPE_ASSERT                2   0   1
+0010 S 0:TYPE_ASSERT                1   0   1
 0011   0:EXT                        1   0   2
 0012 A 0:BIT_OR                     0   0   1
 0013 A 0:JUMP_IF_FALSE              0   4   0    ; if ints[0] == 0 goto +4
@@ -32,7 +32,7 @@
 0016 A 2:TIER2_RETURN               0  10   1    ; 1 values
 0017 A 1:JUMP                      74  35   0    ; goto 35
 0018 A 1:LOAD_BOOL                 76   0   0    ; ints[0] = false
-0019 S 0:TYPE_ASSERT                3   0   1
+0019 S 0:TYPE_ASSERT                1   0   1
 0020   0:EXT                        2   0   2
 0021 A 0:BIT_OR                     0   0   1
 0022 A 0:JUMP_IF_FALSE              0   4   0    ; if ints[0] == 0 goto +4
@@ -41,7 +41,7 @@
 0025 A 2:TIER2_RETURN               0  10   1    ; 1 values
 0026 A 1:JUMP                      74  26   0    ; goto 26
 0027 A 1:LOAD_BOOL                 76   0   0    ; ints[0] = false
-0028 S 0:TYPE_ASSERT                4   0   1
+0028 S 0:TYPE_ASSERT                1   0   1
 0029   0:EXT                        3   0   2
 0030 A 0:BIT_OR                     0   0   1
 0031 A 0:JUMP_IF_FALSE              0   4   0    ; if ints[0] == 0 goto +4
@@ -50,7 +50,7 @@
 0034 A 2:TIER2_RETURN               0  10   1    ; 1 values
 0035 A 1:JUMP                      74  17   0    ; goto 17
 0036 A 1:LOAD_BOOL                 76   0   0    ; ints[0] = false
-0037 S 0:TYPE_ASSERT                5   0   1
+0037 S 0:TYPE_ASSERT                1   0   1
 0038   0:EXT                        4   0   2
 0039 A 0:BIT_OR                     0   0   1
 0040 A 0:JUMP_IF_FALSE              0   4   0    ; if ints[0] == 0 goto +4
@@ -59,7 +59,7 @@
 0043 A 2:TIER2_RETURN               0  10   1    ; 1 values
 0044 A 1:JUMP                      74   8   0    ; goto 8
 0045 A 1:LOAD_BOOL                 76   0   0    ; ints[0] = false
-0046 S 0:TYPE_ASSERT                6   0   1
+0046 S 0:TYPE_ASSERT                1   0   1
 0047   0:EXT                        5   0   2
 0048 A 0:BIT_OR                     0   0   1
 0049 A 0:JUMP_IF_FALSE              0   3   0    ; if ints[0] == 0 goto +3

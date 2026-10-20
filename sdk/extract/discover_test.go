@@ -230,9 +230,50 @@ func TestCollectSourceImportsSkipsToolDirectories(t *testing.T) {
 		"sub/also_kept.go": "package sub\n\nimport \"example.com/also-kept\"\n",
 	})
 
-	imports, err := collectSourceImports(context.Background(), root, []string{"."}, []SourceScanner{GoFileScanner{}})
+	imports, err := collectSourceImports(context.Background(), root, []string{"."}, []SourceScanner{GoFileScanner{}}, DefaultFileFilter(nil))
 	require.NoError(t, err)
 	require.Equal(t, []string{"example.com/also-kept", "example.com/kept"}, sortedKeys(imports))
+}
+
+func TestDiscoverScansOnlyFilesTheInterpreterCompiles(t *testing.T) {
+	t.Parallel()
+
+	root := writeFixtureProject(t, fixtureFiles{
+		"main.go":        "package main\n\nimport \"example.com/kept\"\n",
+		"main_test.go":   "package main\n\nimport \"example.com/tested\"\n",
+		"native.go":      "//go:build !interp\n\npackage main\n\nimport \"example.com/native\"\n",
+		"interp.go":      "//go:build interp\n\npackage main\n\nimport \"example.com/interp\"\n",
+		"cgo.go":         "package main\n\nimport (\n\t\"C\"\n\t\"example.com/cgo\"\n)\n",
+		"doc.go":         "package documentation\n\nimport \"example.com/doc\"\n",
+		"tagged.go":      "//go:build pro\n\npackage main\n\nimport \"example.com/pro\"\n",
+		"malformed.go":   "//go:build (\n\npackage main\n\nimport \"example.com/malformed\"\n",
+		".dotted.go":     "package main\n\nimport \"example.com/dotted\"\n",
+		"sub/kept.go":    "package sub\n\nimport \"example.com/sub\"\n",
+		"sub/ignored.go": "//go:build ignore\n\npackage sub\n\nimport \"example.com/ignored\"\n",
+	})
+
+	want := []string{"example.com/interp", "example.com/kept", "example.com/malformed", "example.com/sub", "example.com/tested"}
+	imports, err := collectSourceImports(t.Context(), root, []string{"."}, []SourceScanner{GoFileScanner{}}, DefaultFileFilter(nil))
+	require.NoError(t, err)
+	require.Equal(t, want, sortedKeys(imports), "a malformed constraint keeps the file, so compiling it reports the error")
+
+	imports, err = collectSourceImports(t.Context(), root, []string{"."}, []SourceScanner{GoFileScanner{}}, DefaultFileFilter([]string{"pro"}))
+	require.NoError(t, err)
+	require.Contains(t, sortedKeys(imports), "example.com/pro")
+}
+
+func TestDiscoverUsesTheSuppliedFileFilter(t *testing.T) {
+	t.Parallel()
+
+	root := writeFixtureProject(t, fixtureFiles{
+		"go.mod":  fixtureModule,
+		"main.go": "package main\n\nimport (\n\t\"expvar\"\n\t\"net/rpc\"\n)\n",
+		"skip.go": "package main\n\nimport \"log/syslog\"\n",
+	})
+	skipOne := func(name string, _ []byte) (bool, error) { return !strings.HasSuffix(name, "skip.go"), nil }
+	result, err := Discover(t.Context(), DiscoverOptions{Root: root, FileFilter: skipOne})
+	require.NoError(t, err)
+	require.Equal(t, []string{"expvar", "net/rpc"}, result.RequiredImports)
 }
 
 func TestGoFileScannerIgnoresGeneratedFiles(t *testing.T) {
@@ -261,6 +302,28 @@ func TestReadBoundedFileRejectsOversize(t *testing.T) {
 
 	_, err = readBoundedFile(root, "huge.go", 1024)
 	require.ErrorIs(t, err, errSourceFileTooLarge)
+}
+
+func TestReadBoundedFileRejectsANonRegularFile(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(tmp, "directory.go"), 0o750))
+
+	root, err := os.OpenRoot(tmp)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, root.Close()) }()
+
+	_, err = readBoundedFile(root, "directory.go", 1024)
+	require.ErrorIs(t, err, errNotRegularFile)
+}
+
+func TestUnresolvedReasonCountsTheOtherErrors(t *testing.T) {
+	t.Parallel()
+
+	pkg := &packages.Package{Errors: []packages.Error{{Msg: "first"}, {Msg: "second"}, {Msg: "third"}}}
+	require.Equal(t, "first (and 2 more errors)", unresolvedReason(pkg, true))
+	require.Equal(t, "the package loader did not return it", unresolvedReason(nil, false))
 }
 
 func TestReadBoundedFileAcceptsUnderLimit(t *testing.T) {
@@ -390,4 +453,35 @@ func (scriptBlockScanner) Imports(_ context.Context, path string, data []byte) (
 
 func testProvidedPaths() []string {
 	return []string{"fmt", "strings"}
+}
+
+func TestDiscoverDropsCgoPseudoPackage(t *testing.T) {
+	t.Parallel()
+
+	root := writeFixtureProject(t, fixtureFiles{
+		"go.mod":  fixtureModule,
+		"main.go": "package main\n\nimport (\n\t\"C\"\n\t\"expvar\"\n)\n\nvar _ = expvar.Do\n",
+	})
+	keepEverything := func(string, []byte) (bool, error) { return true, nil }
+
+	result, err := Discover(t.Context(), DiscoverOptions{Root: root, FileFilter: keepEverything})
+	require.NoError(t, err)
+	require.Equal(t, []string{"expvar"}, result.RequiredImports, "C is cgo's pseudo-package, not a package to register")
+}
+
+func TestDiscoverReportsUnresolvedImports(t *testing.T) {
+	t.Parallel()
+
+	root := writeFixtureProject(t, fixtureFiles{
+		"go.mod":                    fixtureModule,
+		"pkg/not_a_package/doc.txt": "this folder has no Go files",
+		"main.go":                   "package main\n\nimport (\n\t\"expvar\"\n\t_ \"example.com/fixture/pkg/not_a_package\"\n)\n\nvar _ = expvar.Do\n",
+	})
+
+	result, err := Discover(t.Context(), DiscoverOptions{Root: root})
+	require.NoError(t, err)
+	require.Equal(t, []string{"expvar"}, result.RequiredImports)
+	require.Len(t, result.Unresolved, 1)
+	require.Equal(t, "example.com/fixture/pkg/not_a_package", result.Unresolved[0].ImportPath)
+	require.NotEmpty(t, result.Unresolved[0].Reason)
 }

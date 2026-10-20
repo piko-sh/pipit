@@ -22,6 +22,8 @@ import (
 	"errors"
 	"net"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 type accountingFixture struct {
@@ -49,14 +51,13 @@ func TestExchangeChargesScriptOutput(t *testing.T) {
 		response, err := Exchange(stream, Configuration{Profile: Profile, Imports: nil},
 			Request{Kind: "expression", Source: "println(\"hello\")\n7", Entrypoint: ""})
 		_ = host.Close()
-		if !errors.Is(err, accountErr) || stream.charged != len("hello\n")+len("7") {
-			t.Fatalf("error=%v charged=%d", err, stream.charged)
+		require.ErrorIs(t, err, accountErr)
+		require.Equal(t, int(len("hello\n")+len("7")), stream.charged)
+		if accountErr != nil {
+			require.Empty(t, response.Code, "an over-budget result does not escape the host boundary")
+			require.Empty(t, response.Output)
+			require.Nil(t, response.Value)
 		}
-		if accountErr != nil && (response.Code != "" || response.Output != "" || response.Value != nil) {
-			t.Fatal("over-budget script result escaped the host boundary")
-		}
-		if err := <-done; err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, <-done)
 	}
 }

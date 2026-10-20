@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 )
@@ -57,6 +58,7 @@ func main() {
 `
 
 func TestGenericMultiReturnCallsSpecialise(t *testing.T) {
+	t.Parallel()
 	cfs := compileFileSource(t, genericMultiReturnSource)
 	functions := program.ExportFunctions(cfs.Root())
 
@@ -70,21 +72,22 @@ func TestGenericMultiReturnCallsSpecialise(t *testing.T) {
 		{name: "define", caller: "main", wantCallee: "pick[spec:int]", wantResult: isa.RegisterInt, unwantedNames: []string{"pick", "forward"}},
 		{name: "forwarding return", caller: "forward[spec:int64]", wantCallee: "pick[spec:int64]", wantResult: isa.RegisterInt, unwantedNames: []string{"pick"}},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			caller := findCompiledFunctionByName(t, cfs, tc.caller)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			caller := findCompiledFunctionByName(t, cfs, tt.caller)
 			if caller == nil {
-				caller = findExportedFunctionNamed(functions, tc.caller)
+				caller = findExportedFunctionNamed(functions, tt.caller)
 			}
-			require.NotNil(t, caller, "caller %q missing", tc.caller)
+			require.NotNil(t, caller, "caller %q missing", tt.caller)
 			targets := calleeNamesOf(caller, functions)
-			require.Contains(t, targets, tc.wantCallee)
-			for _, unwanted := range tc.unwantedNames {
-				require.NotContains(t, targets, unwanted, "erased template %q still called from %q", unwanted, tc.caller)
+			require.Contains(t, targets, tt.wantCallee)
+			for _, unwanted := range tt.unwantedNames {
+				require.NotContains(t, targets, unwanted, "erased template %q still called from %q", unwanted, tt.caller)
 			}
-			callee := findExportedFunctionNamed(functions, tc.wantCallee)
+			callee := findExportedFunctionNamed(functions, tt.wantCallee)
 			require.NotNil(t, callee)
-			require.Equal(t, tc.wantResult, callee.ResultKinds[0])
+			require.Equal(t, tt.wantResult, callee.ResultKinds[0])
 		})
 	}
 }

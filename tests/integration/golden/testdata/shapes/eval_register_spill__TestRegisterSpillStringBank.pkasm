@@ -1636,10 +1636,10 @@
 1620   0:EXT                       14   0   0
 1621 A 0:LOAD_STRING_CONST        246   5   1    ; strings[246] = "-"
 1622 S 0:CONCAT_STRING            247   0 246
-1623 S 0:CONCAT_STRING            248 247 130
-1624 A 0:LOAD_STRING_CONST        249   5   1    ; strings[249] = "-"
-1625 S 0:CONCAT_STRING            250 248 249
-1626 G 1:RELOAD                    85 251   2
+1623 S 0:CONCAT_STRING            247 247 130
+1624 A 0:LOAD_STRING_CONST        248   5   1    ; strings[248] = "-"
+1625 S 0:CONCAT_STRING            247 247 248
+1626 G 1:RELOAD                    85 248   2
 1627   0:EXT                       13   0   0
-1628 S 0:CONCAT_STRING              0 250 251
+1628 S 0:CONCAT_STRING              0 247 248
 1629 A 2:TIER2_RETURN               0  10   1    ; 1 values

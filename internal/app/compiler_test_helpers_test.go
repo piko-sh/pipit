@@ -19,17 +19,17 @@
 package app
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/engine/program"
 )
 
 func compileExpression(t *testing.T, code string) *program.CompiledFunction {
 	t.Helper()
 	service := NewService()
-	compiledFunction, err := service.Compile(context.Background(), code)
+	compiledFunction, err := service.Compile(t.Context(), code)
 	require.NoError(t, err)
 	return compiledFunction
 }
@@ -38,7 +38,7 @@ func compileFileSource(t *testing.T, source string) *program.CompiledFileSet {
 	t.Helper()
 	service := NewService()
 	sources := map[string]string{"main.go": source}
-	cfs, err := service.CompileFileSet(context.Background(), sources)
+	cfs, err := service.CompileFileSet(t.Context(), sources)
 	require.NoError(t, err)
 	return cfs
 }

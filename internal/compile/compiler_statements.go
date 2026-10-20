@@ -196,25 +196,30 @@ func (c *Compiler) registerMethodReceiver(ctx context.Context, signature *types.
 //
 // Returns an error if the body compilation fails.
 func (c *Compiler) compileFunctionBody(ctx context.Context, declaration *ast.FuncDecl, compiledFunction *program.CompiledFunction) error {
-	sub := newFunctionCompiler(ctx, c.programContext, compiledFunction, functionOptions{
-		scopeName:         declaration.Name.Name,
-		upvalues:          nil,
-		substitutions:     nil,
-		substitutionCache: nil,
-		rangeOverFunction: nil,
-	})
-	sub.prepareBody(bodySpec{body: declaration.Body, signature: declaration.Type, resultTypes: resolveResultTypes(c.Info, declaration)})
+	attempt := func(settings registerSettings) (*Compiler, error) {
+		sub := newFunctionCompiler(ctx, c.programContext, compiledFunction, functionOptions{
+			scopeName:         declaration.Name.Name,
+			upvalues:          nil,
+			substitutions:     nil,
+			substitutionCache: nil,
+			rangeOverFunction: nil,
+		})
+		sub.prepareBody(bodySpec{body: declaration.Body, receiver: declaration.Recv, signature: declaration.Type, resultTypes: resolveResultTypes(c.Info, declaration)})
 
-	c.compileFunctionParams(ctx, sub, declaration)
-	sub.declareNamedResults(ctx, declaration.Type.Results, compiledFunction)
+		c.compileFunctionParams(ctx, sub, declaration)
+		sub.declareNamedResults(ctx, declaration.Type.Results, compiledFunction)
+		sub.applyRegisterSettings(settings)
 
-	if _, err := sub.compileStmtList(ctx, declaration.Body.List); err != nil {
+		_, err := sub.compileStmtList(ctx, declaration.Body.List)
+		return sub, err
+	}
+	finish := func(sub *Compiler) error {
+		return sub.finishBody(ctx, compiledFunction, declaration.Body, finishFlags{tailCall: true, finaliseDefer: true, classifyEscapes: true})
+	}
+	unit := retryUnit{function: compiledFunction, node: declaration, substitutions: nil}
+	if err := c.compileBodyWithRetry(ctx, unit, attempt, finish); err != nil {
 		return fmt.Errorf(compileFunctionWrapFormat, declaration.Name.Name, err)
 	}
-	if err := sub.finishBody(ctx, compiledFunction, declaration.Body, finishFlags{tailCall: true, finaliseDefer: true, classifyEscapes: true}); err != nil {
-		return fmt.Errorf(compileFunctionWrapFormat, declaration.Name.Name, err)
-	}
-
 	return nil
 }
 
@@ -242,20 +247,26 @@ func (c *Compiler) compileSpecialisedBody(
 	specCF := c.RootFunction.Functions[specFunctionIndex]
 	cache := map[types.Type]types.Type{}
 	c.populateSpecialisationStub(ctx, specCF, genericCF, subs, cache)
-	sub := c.buildSpecialisationSubCompiler(ctx, specCF, declaration, subs, cache)
 
-	escape.ApplySpecialisationTypedSliceSurvivors(sub.EscapeContext(), declaration, specCF)
+	attempt := func(settings registerSettings) (*Compiler, error) {
+		sub := c.buildSpecialisationSubCompiler(ctx, specCF, declaration, subs, cache)
 
-	c.compileFunctionParams(ctx, sub, declaration)
-	sub.declareNamedResults(ctx, declaration.Type.Results, specCF)
+		escape.ApplySpecialisationTypedSliceSurvivors(sub.EscapeContext(), declaration, specCF)
 
-	if _, err := sub.compileStmtList(ctx, declaration.Body.List); err != nil {
+		c.compileFunctionParams(ctx, sub, declaration)
+		sub.declareNamedResults(ctx, declaration.Type.Results, specCF)
+		sub.applyRegisterSettings(settings)
+
+		_, err := sub.compileStmtList(ctx, declaration.Body.List)
+		return sub, err
+	}
+	finish := func(sub *Compiler) error {
+		return sub.finishBody(ctx, specCF, declaration.Body, finishFlags{tailCall: true, finaliseDefer: true, classifyEscapes: true})
+	}
+	unit := retryUnit{function: specCF, node: declaration, substitutions: subs}
+	if err := c.compileBodyWithRetry(ctx, unit, attempt, finish); err != nil {
 		return fmt.Errorf("compiling specialisation %s: %w", specCF.Name, err)
 	}
-	if err := sub.finishBody(ctx, specCF, declaration.Body, finishFlags{tailCall: true, finaliseDefer: true, classifyEscapes: true}); err != nil {
-		return fmt.Errorf("compiling specialisation %s: %w", specCF.Name, err)
-	}
-
 	return nil
 }
 
@@ -365,7 +376,7 @@ func (c *Compiler) buildSpecialisationSubCompiler(
 		substitutionCache: cache,
 		rangeOverFunction: nil,
 	})
-	sub.prepareBody(bodySpec{body: declaration.Body, signature: declaration.Type, resultTypes: resolveResultTypes(c.Info, declaration)})
+	sub.prepareBody(bodySpec{body: declaration.Body, receiver: declaration.Recv, signature: declaration.Type, resultTypes: resolveResultTypes(c.Info, declaration)})
 	return sub
 }
 
@@ -440,7 +451,7 @@ func (*Compiler) declareFunctionReceiver(ctx context.Context, sub *Compiler, dec
 	}
 	field := declaration.Recv.List[0]
 	if len(field.Names) > 0 {
-		location := sub.Scopes.DeclareVar(field.Names[0].Name, isa.RegisterGeneral)
+		location := sub.Scopes.DeclareParameter(field.Names[0].Name, isa.RegisterGeneral)
 		recordParam(location)
 		sub.tryHeapPromoteCapturedLocal(ctx, field.Names[0].Name, field.Names[0])
 		return
@@ -472,7 +483,7 @@ func (c *Compiler) declareFunctionParameter(ctx context.Context, sub *Compiler, 
 	if sub.Function != nil && parameterPosition < len(sub.Function.ParameterKinds) {
 		kind = sub.Function.ParameterKinds[parameterPosition]
 	}
-	location := sub.Scopes.DeclareVar(name.Name, kind)
+	location := sub.Scopes.DeclareParameter(name.Name, kind)
 	recordParam(location)
 	sub.tryHeapPromoteCapturedLocal(ctx, name.Name, name)
 	return parameterPosition + 1
@@ -538,7 +549,7 @@ func (c *Compiler) declareNamedResult(ctx context.Context, compiledFunction *pro
 		return
 	}
 	kind := c.kindForCallSlot(typeObject.Type())
-	location := c.Scopes.DeclareVar(name.Name, kind)
+	location := c.Scopes.DeclareParameter(name.Name, kind)
 	compiledFunction.NamedResultLocations = append(compiledFunction.NamedResultLocations, location)
 	compiledFunction.NamedResultNames = append(compiledFunction.NamedResultNames, name.Name)
 	c.emitNamedResultZero(ctx, compiledFunction, location, typeObject)
@@ -578,7 +589,7 @@ func (c *Compiler) declareSyntheticResults(ctx context.Context, compiledFunction
 // Takes kind (isa.RegisterKind) which is the result's register bank.
 func (c *Compiler) declareSyntheticResult(ctx context.Context, compiledFunction *program.CompiledFunction, index int, kind isa.RegisterKind) {
 	name := scope.SyntheticNamePrefix + "r" + strconv.Itoa(index)
-	location := c.Scopes.DeclareVar(name, kind)
+	location := c.Scopes.DeclareParameter(name, kind)
 	compiledFunction.NamedResultLocations = append(compiledFunction.NamedResultLocations, location)
 	compiledFunction.NamedResultNames = append(compiledFunction.NamedResultNames, name)
 	var typeObject types.Object
@@ -950,6 +961,7 @@ func (c *Compiler) compileDeferArgs(ctx context.Context, args []ast.Expr) ([]pro
 		if err != nil {
 			return nil, err
 		}
+		c.detachIndexedRead(argument, location)
 		argumentLocations[i] = location
 	}
 	return argumentLocations, nil

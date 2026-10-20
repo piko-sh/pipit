@@ -22,12 +22,13 @@ package sandboxbroker
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
 	"pipit.sh/pipit/internal/sandboxwire"
@@ -36,13 +37,9 @@ import (
 func openTestFilesystem(t *testing.T, root string, rights Rights, limits FilesystemLimits) *LinuxFilesystem {
 	t.Helper()
 	backend, err := OpenLinuxFilesystem([]LinuxRootGrant{{Name: "data", Path: root, Rights: rights}}, limits)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		if err := backend.Close(); err != nil {
-			t.Error(err)
-		}
+		assert.NoError(t, backend.Close())
 	})
 	return backend
 }
@@ -59,155 +56,121 @@ func filesystemMessage(t *testing.T, id uint64, operation Operation, path string
 		payload["data"] = ""
 	}
 	encoded, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return sandboxwire.Message{Kind: sandboxwire.Call, ID: id, Payload: encoded}
 }
 
 func TestLinuxFilesystemReadAndList(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "file"), []byte("abcdef"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), []byte("abcdef"), 0600))
 	backend := openTestFilesystem(t, root, Read|List, FilesystemLimits{})
 	result, err := backend.Execute(filesystemMessage(t, 1, ReadFile, "file", 4))
-	if err != nil || string(result.Data) != "abcd" || len(result.Entries) != 0 {
-		t.Fatalf("%+v: %v", result, err)
-	}
+	require.NoError(t, err, "%+v", result)
+	require.Equal(t, "abcd", string(result.Data))
+	require.Empty(t, result.Entries)
 	for _, id := range []uint64{2, 3} {
 		result, err = backend.Execute(filesystemMessage(t, id, ListDirectory, ".", 1))
-		if err != nil || len(result.Entries) != 1 || result.Entries[0] != "file" {
-			t.Fatalf("listing offset leaked: %+v: %v", result, err)
-		}
+		require.NoError(t, err, "listing offset leaked: %+v", result)
+		require.Len(t, result.Entries, 1)
+		require.Equal(t, "file", result.Entries[0])
 	}
-	if err := backend.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := backend.Execute(filesystemMessage(t, 4, ReadFile, "file", 4)); !errors.Is(err, ErrClosed) {
-		t.Fatal(err)
-	}
+	require.NoError(t, backend.Close())
+	_, err = backend.Execute(filesystemMessage(t, 4, ReadFile, "file", 4))
+	require.ErrorIs(t, err, ErrClosed)
 }
 
 func TestLinuxFilesystemRejectsNonRegularObjects(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	outside := t.TempDir()
 	target := filepath.Join(outside, "secret")
-	if err := os.WriteFile(target, []byte("secret"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(target, filepath.Join(root, "symlink")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(outside, filepath.Join(root, "directory-link")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Link(target, filepath.Join(root, "hardlink")); err != nil {
-		t.Fatal(err)
-	}
-	if err := unix.Mkfifo(filepath.Join(root, "fifo"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(filepath.Join(root, "directory"), 0700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(target, []byte("secret"), 0600))
+	require.NoError(t, os.Symlink(target, filepath.Join(root, "symlink")))
+	require.NoError(t, os.Symlink(outside, filepath.Join(root, "directory-link")))
+	require.NoError(t, os.Link(target, filepath.Join(root, "hardlink")))
+	require.NoError(t, unix.Mkfifo(filepath.Join(root, "fifo"), 0600))
+	require.NoError(t, os.Mkdir(filepath.Join(root, "directory"), 0700))
 	backend := openTestFilesystem(t, root, Read|List, FilesystemLimits{})
 	for index, path := range []string{"symlink", "directory-link/secret", "hardlink", "fifo", "directory", "missing"} {
 		result, err := backend.Execute(filesystemMessage(t, uint64(index+1), ReadFile, path, 64))
-		if err == nil || len(result.Data) != 0 || len(result.Entries) != 0 {
-			t.Fatalf("opened %s: %+v, %v", path, result, err)
-		}
+		require.Error(t, err, "opened %s: %+v", path, result)
+		require.Empty(t, result.Data)
+		require.Empty(t, result.Entries)
 	}
-	if _, err := backend.Execute(filesystemMessage(t, 7, ListDirectory, "directory-link", 1)); err == nil {
-		t.Fatal("listed a symlink")
-	}
+	_, err := backend.Execute(filesystemMessage(t, 7, ListDirectory, "directory-link", 1))
+	require.Error(t, err, "listed a symlink")
 }
 
 func TestLinuxFilesystemPinsRootIdentity(t *testing.T) {
+	t.Parallel()
 	parent := t.TempDir()
 	original, moved := filepath.Join(parent, "root"), filepath.Join(parent, "moved")
-	if err := os.Mkdir(original, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(original, "file"), []byte("approved"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(original, 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(original, "file"), []byte("approved"), 0600))
 	backend := openTestFilesystem(t, original, Read, FilesystemLimits{})
-	if err := os.Rename(original, moved); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(original, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(original, "file"), []byte("replacement"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Rename(original, moved))
+	require.NoError(t, os.Mkdir(original, 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(original, "file"), []byte("replacement"), 0600))
 	result, err := backend.Execute(filesystemMessage(t, 1, ReadFile, "file", 64))
-	if err != nil || string(result.Data) != "approved" {
-		t.Fatalf("root identity changed: %+v: %v", result, err)
-	}
+	require.NoError(t, err, "root identity changed: %+v", result)
+	require.Equal(t, "approved", string(result.Data))
 }
 
 func TestLinuxFilesystemRejectsMountCrossing(t *testing.T) {
+	t.Parallel()
 	backend := openTestFilesystem(t, "/", Read|List, FilesystemLimits{})
 	for index, test := range []struct {
 		operation Operation
 		path      string
 	}{
-		{ReadFile, "proc/version"}, {ListDirectory, "proc"},
+		{operation: ReadFile, path: "proc/version"}, {operation: ListDirectory, path: "proc"},
 	} {
 		result, err := backend.Execute(filesystemMessage(t, uint64(index+1), test.operation, test.path, 1))
-		if !errors.Is(err, unix.EXDEV) || len(result.Data) != 0 || len(result.Entries) != 0 {
-			t.Fatalf("mount traversal: %+v, %v", result, err)
-		}
+		require.ErrorIs(t, err, unix.EXDEV, "mount traversal: %+v", result)
+		require.Empty(t, result.Data)
+		require.Empty(t, result.Entries)
 	}
 }
 
 func TestLinuxFilesystemLimitsAndRights(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "file"), []byte("a"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), []byte("a"), 0600))
 	backend := openTestFilesystem(t, root, Read, FilesystemLimits{ReadBytes: 4})
-	if _, err := backend.Execute(filesystemMessage(t, 1, ListDirectory, ".", 1)); !errors.Is(err, ErrDenied) {
-		t.Fatal(err)
-	}
-	if _, err := backend.Execute(filesystemMessage(t, 2, WriteFile, "file", 0)); !errors.Is(err, ErrDenied) {
-		t.Fatal(err)
-	}
-	if _, err := backend.Execute(filesystemMessage(t, 3, ReadFile, "missing", 4)); err == nil {
-		t.Fatal("missing read succeeded")
-	}
-	if _, err := backend.Execute(filesystemMessage(t, 4, ReadFile, "file", 1)); !errors.Is(err, errLimit) {
-		t.Fatal("failed I/O refunded quota:", err)
-	}
+	_, err := backend.Execute(filesystemMessage(t, 1, ListDirectory, ".", 1))
+	require.ErrorIs(t, err, ErrDenied)
+	_, err = backend.Execute(filesystemMessage(t, 2, WriteFile, "file", 0))
+	require.ErrorIs(t, err, ErrDenied)
+	_, err = backend.Execute(filesystemMessage(t, 3, ReadFile, "missing", 4))
+	require.Error(t, err, "missing read succeeded")
+	_, err = backend.Execute(filesystemMessage(t, 4, ReadFile, "file", 1))
+	require.ErrorIs(t, err, errLimit, "failed I/O refunded quota")
 }
 
 func TestLinuxFilesystemSkipsInvalidListing(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	for _, name := range []string{"invalid\nname", "valid", "CON"} {
-		if err := os.WriteFile(filepath.Join(root, name), nil, 0600); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.WriteFile(filepath.Join(root, name), nil, 0600))
 	}
 	backend := openTestFilesystem(t, root, List, FilesystemLimits{})
 	result, err := backend.Execute(filesystemMessage(t, 1, ListDirectory, ".", 3))
-	if err != nil || len(result.Entries) != 1 || result.Entries[0] != "valid" || result.skipped != 2 {
-		t.Fatalf("mixed names: %+v: %v", result, err)
-	}
+	require.NoError(t, err, "mixed names: %+v", result)
+	require.Len(t, result.Entries, 1)
+	require.Equal(t, "valid", result.Entries[0])
+	require.Equal(t, 2, result.skipped)
 
 	result, err = backend.Execute(filesystemMessage(t, 2, ListDirectory, ".", 1))
-	if err != nil || len(result.Entries)+result.skipped != 1 {
-		t.Fatalf("bounded mixed listing: %+v: %v", result, err)
-	}
+	require.NoError(t, err, "bounded mixed listing: %+v", result)
+	require.Equal(t, 1, len(result.Entries)+result.skipped)
 }
 
 func TestLinuxFilesystemInvalidConfiguration(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	link := filepath.Join(t.TempDir(), "link")
-	if err := os.Symlink(root, link); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Symlink(root, link))
 	for _, grants := range [][]LinuxRootGrant{
 		{{Name: "data", Path: root, Rights: 0}},
 		{{Name: "data", Path: "relative", Rights: Read}},
@@ -215,79 +178,67 @@ func TestLinuxFilesystemInvalidConfiguration(t *testing.T) {
 		{{Name: "data", Path: root, Rights: Read}, {Name: "missing", Path: filepath.Join(root, "absent"), Rights: Read}},
 	} {
 		backend, err := OpenLinuxFilesystem(grants, FilesystemLimits{})
-		if err == nil || backend != nil {
-			t.Fatalf("invalid grant accepted: %+v: %v", grants, err)
-		}
+		require.Error(t, err, "invalid grant accepted: %+v", grants)
+		require.Nil(t, backend)
 	}
 	var backend *LinuxFilesystem
-	if err := backend.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := backend.Execute(brokerMessage(1, readPayload)); !errors.Is(err, ErrClosed) {
-		t.Fatal(err)
-	}
+	require.NoError(t, backend.Close())
+	_, err := backend.Execute(brokerMessage(1, readPayload))
+	require.ErrorIs(t, err, ErrClosed)
 }
 
 func TestLinuxFilesystemCloseRace(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "file"), []byte("data"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), []byte("data"), 0600))
 	backend := openTestFilesystem(t, root, Read, FilesystemLimits{})
 	message := filesystemMessage(t, 1, ReadFile, "file", 4)
 	var group sync.WaitGroup
 	group.Go(func() {
 		result, err := backend.Execute(message)
-		if err != nil && !errors.Is(err, ErrClosed) {
-			t.Error(err)
-		}
-		if err == nil && string(result.Data) != "data" {
-			t.Error("partial result")
+		if err != nil {
+			assert.ErrorIs(t, err, ErrClosed)
+		} else {
+			assert.Equal(t, "data", string(result.Data), "a concurrent close leaves no partial result")
 		}
 	})
 	group.Go(func() {
-		if err := backend.Close(); err != nil {
-			t.Error(err)
-		}
+		assert.NoError(t, backend.Close())
 	})
 	group.Wait()
 }
 
 func TestLinuxFilesystemSymlinkReplacementRace(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	secret := filepath.Join(t.TempDir(), "secret")
-	if err := os.WriteFile(secret, []byte("outside"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(secret, []byte("outside"), 0600))
 	target := filepath.Join(root, "file")
 	backend := openTestFilesystem(t, root, Read|Write, FilesystemLimits{})
 	var group sync.WaitGroup
 	group.Go(func() {
 		for range 100 {
 			candidate := filepath.Join(root, "candidate")
-			if err := os.Symlink(secret, candidate); err != nil {
-				t.Error(err)
+			if !assert.NoError(t, os.Symlink(secret, candidate)) {
 				return
 			}
-			if err := os.Rename(candidate, target); err != nil {
-				t.Error(err)
+			if !assert.NoError(t, os.Rename(candidate, target)) {
 				return
 			}
 		}
 	})
 	for index := range 48 {
 		write := filesystemWriteMessage(t, uint64(index*2+1), "file", []byte("inside"))
-		if result, err := backend.Execute(write); err == nil && result.Written != 6 {
-			t.Error("incorrect successful write count")
+		if result, err := backend.Execute(write); err == nil {
+			assert.Equal(t, 6, result.Written, "a successful write counts every byte")
 		}
 		read := filesystemMessage(t, uint64(index*2+2), ReadFile, "file", 64)
-		if result, err := backend.Execute(read); err == nil && string(result.Data) != "inside" {
-			t.Errorf("read escaped the root: %q", result.Data)
+		if result, err := backend.Execute(read); err == nil {
+			assert.Equal(t, "inside", string(result.Data), "the read stays inside the root")
 		}
 	}
 	group.Wait()
 	data, err := os.ReadFile(secret)
-	if err != nil || string(data) != "outside" {
-		t.Fatalf("write followed a raced symlink: %q: %v", data, err)
-	}
+	require.NoError(t, err, "write followed a raced symlink: %q", data)
+	require.Equal(t, "outside", string(data))
 }

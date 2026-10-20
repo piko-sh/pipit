@@ -19,7 +19,6 @@
 package engine
 
 import (
-	"errors"
 	"math"
 	"testing"
 
@@ -77,7 +76,7 @@ func TestChargeArenaAllocation_PanicsAfterMinorGCFails(t *testing.T) {
 		require.NotNil(t, recovered, "expected panic when budget cannot be honoured")
 		recoveredErr, ok := recovered.(error)
 		require.True(t, ok, "expected error-typed panic, got %T", recovered)
-		require.True(t, errors.Is(recoveredErr, fault.ErrArenaBudgetExceeded),
+		require.ErrorIs(t, recoveredErr, fault.ErrArenaBudgetExceeded,
 			"panic should wrap errArenaBudgetExceeded, got %v", recoveredErr)
 	}()
 
@@ -137,7 +136,7 @@ func TestChargeArenaAllocation_OverflowGuard(t *testing.T) {
 		require.NotNil(t, recovered, "expected overflow panic")
 		recoveredErr, ok := recovered.(error)
 		require.True(t, ok, "expected error-typed panic, got %T", recovered)
-		require.True(t, errors.Is(recoveredErr, fault.ErrArenaBudgetExceeded),
+		require.ErrorIs(t, recoveredErr, fault.ErrArenaBudgetExceeded,
 			"overflow guard must wrap errArenaBudgetExceeded")
 	}()
 

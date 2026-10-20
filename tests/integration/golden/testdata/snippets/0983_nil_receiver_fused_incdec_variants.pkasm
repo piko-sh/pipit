@@ -82,7 +82,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: string=8
+;   registers: string=4
 ;   dispatch:  asm=6 shim=4 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (string)
@@ -95,11 +95,11 @@
 0001 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "\n"
 0002 S 0:CONCAT_STRING              2   0   1
 0003 A 1:CALL_SCALAR              134   1   0
-0004 S 0:CONCAT_STRING              4   2   3
-0005 A 0:LOAD_STRING_CONST          5   0   0    ; strings[5] = "\n"
-0006 S 0:CONCAT_STRING              6   4   5
+0004 S 0:CONCAT_STRING              2   2   3
+0005 A 0:LOAD_STRING_CONST          3   0   0    ; strings[3] = "\n"
+0006 S 0:CONCAT_STRING              2   2   3
 0007 A 1:CALL_SCALAR              134   2   0
-0008 S 0:CONCAT_STRING              0   6   7
+0008 S 0:CONCAT_STRING              0   2   3
 0009 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════

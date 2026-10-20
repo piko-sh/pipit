@@ -19,12 +19,10 @@
 package adapters
 
 import (
-	"context"
-	"errors"
-	"strings"
 	"testing"
 
 	flatbuffers "github.com/google/flatbuffers/go"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/schema/schemagen"
 	"pipit.sh/pipit/internal/symtab"
@@ -57,6 +55,7 @@ func TestBytecodeFunctionVectorCensus(t *testing.T) {
 	}
 	for name, setter := range setters {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			builder := flatbuffers.NewBuilder(128)
 			builder.StartVector(4, 3, 4)
 			for range 3 {
@@ -69,10 +68,9 @@ func TestBytecodeFunctionVectorCensus(t *testing.T) {
 			builder.Finish(function)
 			payload := builder.FinishedBytes()
 			budget := bytecodeExpansionBudget{vectors: 2}
-			err := validateFunctionVectors(context.Background(), schemagen.GetRootAsCompiledFunction(payload, 0), len(payload), &budget)
-			if !errors.Is(err, errCorruptBytecodePayload) || !strings.Contains(err.Error(), "vector expansion exceeds") {
-				t.Fatal("vector was not charged before access:", err)
-			}
+			err := validateFunctionVectors(t.Context(), schemagen.GetRootAsCompiledFunction(payload, 0), len(payload), &budget)
+			require.ErrorIs(t, err, errCorruptBytecodePayload, "the vector is charged before access")
+			require.Contains(t, err.Error(), "vector expansion exceeds")
 		})
 	}
 }
@@ -135,14 +133,13 @@ func TestBytecodeRejectsNestedVectorAmplification(t *testing.T) {
 	t.Parallel()
 	for _, mode := range []string{"calls", "interfaces", "functions"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			payload := nestedVectorPayload(mode)
-			if len(payload) > 32768 {
-				t.Fatal("fixture is no longer compact")
-			}
-			loaded, err := decodeCompiledFileSet(context.Background(), payload, symtab.NewSymbolRegistry(nil))
-			if loaded != nil || !errors.Is(err, errCorruptBytecodePayload) || !strings.Contains(err.Error(), "vector expansion exceeds") {
-				t.Fatal("aliased vectors reached reconstruction:", err)
-			}
+			require.LessOrEqual(t, len(payload), 32768, "the fixture stays compact")
+			loaded, err := decodeCompiledFileSet(t.Context(), payload, symtab.NewSymbolRegistry(nil))
+			require.Nil(t, loaded, "aliased vectors stop before reconstruction")
+			require.ErrorIs(t, err, errCorruptBytecodePayload)
+			require.Contains(t, err.Error(), "vector expansion exceeds")
 		})
 	}
 }
@@ -150,17 +147,26 @@ func TestBytecodeRejectsNestedVectorAmplification(t *testing.T) {
 func TestBytecodeVectorBudgetArithmetic(t *testing.T) {
 	t.Parallel()
 	budget := bytecodeExpansionBudget{vectors: 10}
-	if err := budget.chargeVectors(10, 4, 6); err != nil || budget.vectors != 0 {
-		t.Fatal(err)
+	require.NoError(t, budget.chargeVectors(10, 4, 6))
+	require.Equal(t, 0, budget.vectors)
+	err := budget.chargeVectors(10, 1)
+	require.ErrorIs(t, err, errCorruptBytecodePayload, "a charge past the budget is rejected")
+	require.Equal(t, 0, budget.vectors, "an exhausted budget stays at zero")
+	tests := []struct {
+		name  string
+		count int
+	}{
+		{name: "negative count", count: -1},
+		{name: "count above the declared length", count: 11},
 	}
-	if err := budget.chargeVectors(10, 1); !errors.Is(err, errCorruptBytecodePayload) || budget.vectors != 0 {
-		t.Fatal("exhausted budget wrapped:", err)
-	}
-	for _, count := range []int{-1, 11} {
-		budget.vectors = 100
-		if err := budget.chargeVectors(10, count); !errors.Is(err, errCorruptBytecodePayload) || budget.vectors != 100 {
-			t.Fatal("invalid declared vector admitted:", err)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			budget := bytecodeExpansionBudget{vectors: 100}
+			err := budget.chargeVectors(10, tt.count)
+			require.ErrorIs(t, err, errCorruptBytecodePayload, "an invalid declared vector is rejected")
+			require.Equal(t, 100, budget.vectors)
+		})
 	}
 }
 
@@ -173,16 +179,17 @@ func TestBytecodeFileVectorCensus(t *testing.T) {
 	}
 	for name, setter := range setters {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			builder := flatbuffers.NewBuilder(1024)
 			entries := builder.CreateByteVector(make([]byte, maximumDecodedVectorElements+1))
 			schemagen.CompiledFileSetStart(builder)
 			setter(builder, entries)
 			root := schemagen.CompiledFileSetEnd(builder)
 			builder.Finish(root)
-			loaded, err := decodeCompiledFileSet(context.Background(), builder.FinishedBytes(), symtab.NewSymbolRegistry(nil))
-			if loaded != nil || !errors.Is(err, errCorruptBytecodePayload) || !strings.Contains(err.Error(), "vector expansion exceeds") {
-				t.Fatal("file vector not charged before access:", err)
-			}
+			loaded, err := decodeCompiledFileSet(t.Context(), builder.FinishedBytes(), symtab.NewSymbolRegistry(nil))
+			require.Nil(t, loaded, "the file vector is charged before access")
+			require.ErrorIs(t, err, errCorruptBytecodePayload)
+			require.Contains(t, err.Error(), "vector expansion exceeds")
 		})
 	}
 }

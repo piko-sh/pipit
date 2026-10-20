@@ -4,7 +4,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=1 string=12 general=3 bool=2 uint=1
+;   registers: int=1 string=8 general=3 bool=2 uint=1
 ;   dispatch:  asm=61 shim=44 exit=0 go=23
 ;   params:    (none)
 ;   returns:   (string)
@@ -99,50 +99,50 @@
 0081 A 0:LOAD_STRING_CONST          3  22   0    ; strings[3] = "key=value"
 0082 A 0:LOAD_STRING_CONST          4  23   0    ; strings[4] = "="
 0083 G 1:CALL_NATIVE              130  13   0    ; call native general[0] (site 13)
-0084 S 0:LOAD_GENERAL_CONST         1  14   0
-0085 A 0:LOAD_STRING_CONST          5  24   0    ; strings[5] = "cut:%q/%q/%v;"
-0086 G 1:CALL_NATIVE              130  14   0    ; call native general[1] (site 14)
-0087 S 0:CONCAT_STRING              7   0   6
-0088 A 1:MOVE_STRING               37   0   7
-0089 S 0:LOAD_GENERAL_CONST         1  15   0
-0090 A 0:LOAD_STRING_CONST          5  25   0    ; strings[5] = "nodelim"
-0091 A 0:LOAD_STRING_CONST          6  23   0    ; strings[6] = "="
-0092 G 1:CALL_NATIVE              130  15   0    ; call native general[1] (site 15)
-0093 S 0:LOAD_GENERAL_CONST         2  16   0
-0094 A 0:LOAD_STRING_CONST          7  26   0    ; strings[7] = "cutNo:%q/%q/%v;"
-0095 G 1:CALL_NATIVE              130  16   0    ; call native general[2] (site 16)
-0096 S 0:CONCAT_STRING              9   0   8
-0097 A 1:MOVE_STRING               37   0   9
-0098 S 0:LOAD_GENERAL_CONST         2  17   0
-0099 A 0:LOAD_STRING_CONST          7  27   0    ; strings[7] = "contains:%v;"
-0100 A 0:LOAD_STRING_CONST          8  13   0    ; strings[8] = "hello"
-0101 A 0:LOAD_STRING_CONST          9  28   0    ; strings[9] = "ell"
-0102 S 0:STR_CONTAINS               1   8   9
-0103 G 1:CALL_NATIVE              130  17   0    ; call native general[2] (site 17)
-0104 S 0:CONCAT_STRING             11   0  10
-0105 A 1:MOVE_STRING               37   0  11
-0106 S 0:LOAD_GENERAL_CONST         2  18   0
-0107 A 0:LOAD_STRING_CONST          7  29   0    ; strings[7] = "eqFold:%v;"
-0108 A 0:LOAD_STRING_CONST          8  30   0    ; strings[8] = "HELLO"
-0109 A 0:LOAD_STRING_CONST          9  13   0    ; strings[9] = "hello"
-0110 S 0:STR_EQUAL_FOLD             1   8   9
-0111 G 1:CALL_NATIVE              130  18   0    ; call native general[2] (site 18)
-0112 S 0:CONCAT_STRING             11   0  10
-0113 A 1:MOVE_STRING               37   0  11
-0114 S 0:LOAD_GENERAL_CONST         2  19   0
-0115 A 0:LOAD_STRING_CONST          7  31   0    ; strings[7] = "toLower:%q;"
-0116 A 0:LOAD_STRING_CONST          8  32   0    ; strings[8] = "ÜBER"
-0117 G 1:STR_TO_LOWER              68   9   8
-0118 G 1:CALL_NATIVE              130  19   0    ; call native general[2] (site 19)
-0119 S 0:CONCAT_STRING             11   0  10
-0120 A 1:MOVE_STRING               37   0  11
-0121 S 0:LOAD_GENERAL_CONST         2  20   0
-0122 A 0:LOAD_STRING_CONST          7  33   0    ; strings[7] = "toUpper:%q"
-0123 A 0:LOAD_STRING_CONST          8  13   0    ; strings[8] = "hello"
-0124 G 1:STR_TO_UPPER              67   9   8
-0125 G 1:CALL_NATIVE              130  20   0    ; call native general[2] (site 20)
-0126 S 0:CONCAT_STRING             11   0  10
-0127 A 1:MOVE_STRING               37   0  11
+0084 S 0:LOAD_GENERAL_CONST         0  14   0
+0085 A 0:LOAD_STRING_CONST          3  24   0    ; strings[3] = "cut:%q/%q/%v;"
+0086 G 1:CALL_NATIVE              130  14   0    ; call native general[0] (site 14)
+0087 S 0:CONCAT_STRING              5   0   4
+0088 A 1:MOVE_STRING               37   0   5
+0089 S 0:LOAD_GENERAL_CONST         0  15   0
+0090 A 0:LOAD_STRING_CONST          3  25   0    ; strings[3] = "nodelim"
+0091 A 0:LOAD_STRING_CONST          4  23   0    ; strings[4] = "="
+0092 G 1:CALL_NATIVE              130  15   0    ; call native general[0] (site 15)
+0093 S 0:LOAD_GENERAL_CONST         0  16   0
+0094 A 0:LOAD_STRING_CONST          3  26   0    ; strings[3] = "cutNo:%q/%q/%v;"
+0095 G 1:CALL_NATIVE              130  16   0    ; call native general[0] (site 16)
+0096 S 0:CONCAT_STRING              5   0   4
+0097 A 1:MOVE_STRING               37   0   5
+0098 S 0:LOAD_GENERAL_CONST         0  17   0
+0099 A 0:LOAD_STRING_CONST          3  27   0    ; strings[3] = "contains:%v;"
+0100 A 0:LOAD_STRING_CONST          4  13   0    ; strings[4] = "hello"
+0101 A 0:LOAD_STRING_CONST          5  28   0    ; strings[5] = "ell"
+0102 S 0:STR_CONTAINS               1   4   5
+0103 G 1:CALL_NATIVE              130  17   0    ; call native general[0] (site 17)
+0104 S 0:CONCAT_STRING              7   0   6
+0105 A 1:MOVE_STRING               37   0   7
+0106 S 0:LOAD_GENERAL_CONST         0  18   0
+0107 A 0:LOAD_STRING_CONST          3  29   0    ; strings[3] = "eqFold:%v;"
+0108 A 0:LOAD_STRING_CONST          4  30   0    ; strings[4] = "HELLO"
+0109 A 0:LOAD_STRING_CONST          5  13   0    ; strings[5] = "hello"
+0110 S 0:STR_EQUAL_FOLD             1   4   5
+0111 G 1:CALL_NATIVE              130  18   0    ; call native general[0] (site 18)
+0112 S 0:CONCAT_STRING              7   0   6
+0113 A 1:MOVE_STRING               37   0   7
+0114 S 0:LOAD_GENERAL_CONST         0  19   0
+0115 A 0:LOAD_STRING_CONST          3  31   0    ; strings[3] = "toLower:%q;"
+0116 A 0:LOAD_STRING_CONST          4  32   0    ; strings[4] = "ÜBER"
+0117 G 1:STR_TO_LOWER              68   5   4
+0118 G 1:CALL_NATIVE              130  19   0    ; call native general[0] (site 19)
+0119 S 0:CONCAT_STRING              7   0   6
+0120 A 1:MOVE_STRING               37   0   7
+0121 S 0:LOAD_GENERAL_CONST         0  20   0
+0122 A 0:LOAD_STRING_CONST          3  33   0    ; strings[3] = "toUpper:%q"
+0123 A 0:LOAD_STRING_CONST          4  13   0    ; strings[4] = "hello"
+0124 G 1:STR_TO_UPPER              67   5   4
+0125 G 1:CALL_NATIVE              130  20   0    ; call native general[0] (site 20)
+0126 S 0:CONCAT_STRING              7   0   6
+0127 A 1:MOVE_STRING               37   0   7
 0128 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════

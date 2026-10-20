@@ -21,33 +21,27 @@
 package bytecode_test
 
 import (
-	"context"
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/fault"
-
-	"github.com/stretchr/testify/require"
 	"pipit.sh/pipit/internal/isa"
 )
 
 func execGoDispatch(t *testing.T, compiledFunction *program.CompiledFunction) (any, error) {
 	t.Helper()
 	service := app.NewService(app.WithForceGoDispatch())
-	return service.Execute(context.Background(), compiledFunction)
+	return service.Execute(t.Context(), compiledFunction)
 }
 
 func requireGoDispatchResult(t *testing.T, compiledFunction *program.CompiledFunction, expect any) {
 	t.Helper()
 	result, err := execGoDispatch(t, compiledFunction)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result != expect {
-		t.Fatalf("expected %v, got %v", expect, result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, expect, result)
 }
 
 func TestStringIndexToInt(t *testing.T) {
@@ -88,8 +82,7 @@ func TestStringIndexToInt(t *testing.T) {
 		bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
 		_, err := execSynthetic(t, bb.build())
-		require.Error(t, err)
-		require.True(t, errors.Is(err, fault.ErrIndexOutOfRange), "expected errIndexOutOfRange, got: %v", err)
+		require.ErrorIs(t, err, fault.ErrIndexOutOfRange)
 	})
 
 	t.Run("out of bounds negative", func(t *testing.T) {
@@ -104,8 +97,7 @@ func TestStringIndexToInt(t *testing.T) {
 		bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
 		_, err := execSynthetic(t, bb.build())
-		require.Error(t, err)
-		require.True(t, errors.Is(err, fault.ErrIndexOutOfRange), "expected errIndexOutOfRange, got: %v", err)
+		require.ErrorIs(t, err, fault.ErrIndexOutOfRange)
 	})
 
 	t.Run("empty string index zero", func(t *testing.T) {
@@ -119,8 +111,7 @@ func TestStringIndexToInt(t *testing.T) {
 		bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
 		_, err := execSynthetic(t, bb.build())
-		require.Error(t, err)
-		require.True(t, errors.Is(err, fault.ErrIndexOutOfRange), "expected errIndexOutOfRange, got: %v", err)
+		require.ErrorIs(t, err, fault.ErrIndexOutOfRange)
 	})
 
 	t.Run("multi-byte UTF-8 returns byte not rune", func(t *testing.T) {
@@ -219,8 +210,7 @@ func TestSliceString(t *testing.T) {
 		bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
 		_, err := execSynthetic(t, bb.build())
-		require.Error(t, err)
-		require.True(t, errors.Is(err, fault.ErrSliceOutOfRange), "expected errSliceOutOfRange, got: %v", err)
+		require.ErrorIs(t, err, fault.ErrSliceOutOfRange)
 	})
 
 	t.Run("high less than low panics", func(t *testing.T) {
@@ -236,8 +226,7 @@ func TestSliceString(t *testing.T) {
 		bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
 		_, err := execSynthetic(t, bb.build())
-		require.Error(t, err)
-		require.True(t, errors.Is(err, fault.ErrSliceOutOfRange), "expected errSliceOutOfRange, got: %v", err)
+		require.ErrorIs(t, err, fault.ErrSliceOutOfRange)
 	})
 
 	t.Run("high exceeds length panics", func(t *testing.T) {
@@ -252,8 +241,7 @@ func TestSliceString(t *testing.T) {
 		bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
 		_, err := execSynthetic(t, bb.build())
-		require.Error(t, err)
-		require.True(t, errors.Is(err, fault.ErrSliceOutOfRange), "expected errSliceOutOfRange, got: %v", err)
+		require.ErrorIs(t, err, fault.ErrSliceOutOfRange)
 	})
 
 	t.Run("empty string full slice", func(t *testing.T) {
@@ -359,8 +347,7 @@ func TestStringIndexToIntAcrossUTF8Widths(t *testing.T) {
 		bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
 		_, err := execSynthetic(t, bb.build())
-		require.Error(t, err)
-		require.True(t, errors.Is(err, fault.ErrIndexOutOfRange))
+		require.ErrorIs(t, err, fault.ErrIndexOutOfRange)
 	})
 }
 
@@ -464,8 +451,7 @@ func TestStringDataOpsMatchUnderGoDispatch(t *testing.T) {
 		bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
 		_, err := execGoDispatch(t, bb.build())
-		require.Error(t, err)
-		require.True(t, errors.Is(err, fault.ErrIndexOutOfRange), "expected errIndexOutOfRange, got: %v", err)
+		require.ErrorIs(t, err, fault.ErrIndexOutOfRange)
 	})
 
 	t.Run("SliceString no bounds", func(t *testing.T) {
@@ -533,7 +519,6 @@ func TestStringDataOpsMatchUnderGoDispatch(t *testing.T) {
 		bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
 		_, err := execGoDispatch(t, bb.build())
-		require.Error(t, err)
-		require.True(t, errors.Is(err, fault.ErrSliceOutOfRange), "expected errSliceOutOfRange, got: %v", err)
+		require.ErrorIs(t, err, fault.ErrSliceOutOfRange)
 	})
 }

@@ -19,11 +19,11 @@
 package cli
 
 import (
-	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/cmd/pipit/internal/clitest"
 )
@@ -50,12 +50,8 @@ func writeTestPackage(t *testing.T, files map[string]string) string {
 	root := t.TempDir()
 	for name, content := range files {
 		path := filepath.Join(root, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 	}
 	return root
 }
@@ -103,20 +99,12 @@ func Testify(t *testing.T) { t.Fatal("not a test: lower-case rune after the pref
 `,
 	})
 	t.Setenv("REPORT", report)
-	result := clitest.Run(context.Background(), RunTest, []string{root}, "")
-	if result.Code != 0 {
-		t.Fatalf("exit code = %d (stderr=%q)", result.Code, result.Stderr)
-	}
-	if strings.Join(*names, ",") != "TestAdd,TestSubtests,TestReport" {
-		t.Fatalf("discovered %v", *names)
-	}
+	result := clitest.Run(t.Context(), RunTest, []string{root}, "")
+	require.Equal(t, 0, result.Code, "stderr: %q", result.Stderr)
+	require.Equal(t, []string{"TestAdd", "TestSubtests", "TestReport"}, *names, "the suites run in source order")
 	written, err := os.ReadFile(report)
-	if err != nil {
-		t.Fatalf("the suite did not write its report: %v", err)
-	}
-	if got := string(written); got != "TestAdd\nTestSubtests/one\nTestSubtests/two\nTestReport" {
-		t.Fatalf("report = %q", got)
-	}
+	require.NoError(t, err, "the suite writes its report")
+	require.Equal(t, "TestAdd\nTestSubtests/one\nTestSubtests/two\nTestReport", string(written))
 }
 
 func TestPipitTestReportsFailuresAndHonoursRunFilter(t *testing.T) {
@@ -134,15 +122,12 @@ func TestFails(t *testing.T) { t.Errorf("expected failure") }
 func TestPanics(t *testing.T) { panic("boom") }
 `,
 	})
-	if result := clitest.Run(context.Background(), RunTest, []string{root}, ""); result.Code != 1 {
-		t.Fatalf("a failing suite must exit 1, got %d (stderr=%q)", result.Code, result.Stderr)
-	}
-	if result := clitest.Run(context.Background(), RunTest, []string{"-run", "TestPasses$", root}, ""); result.Code != 0 {
-		t.Fatalf("-run must select only the passing test, got %d (stderr=%q)", result.Code, result.Stderr)
-	}
-	if result := clitest.Run(context.Background(), RunTest, []string{"-run", "TestPanics", root}, ""); result.Code != 1 {
-		t.Fatalf("an interpreted panic must fail the test, got %d", result.Code)
-	}
+	result := clitest.Run(t.Context(), RunTest, []string{root}, "")
+	require.Equal(t, 1, result.Code, "a failing suite exits 1: %q", result.Stderr)
+	result = clitest.Run(t.Context(), RunTest, []string{"-run", "TestPasses$", root}, "")
+	require.Equal(t, 0, result.Code, "-run selects only the passing test: %q", result.Stderr)
+	result = clitest.Run(t.Context(), RunTest, []string{"-run", "TestPanics", root}, "")
+	require.Equal(t, 1, result.Code, "an interpreted panic fails the test")
 }
 
 func TestPipitTestRefusesExternalTestPackagesAndBadSignatures(t *testing.T) {
@@ -151,35 +136,51 @@ func TestPipitTestRefusesExternalTestPackagesAndBadSignatures(t *testing.T) {
 		"calc.go":      "package calc\n",
 		"calc_test.go": "package calc_test\n\nimport \"testing\"\n\nfunc TestX(t *testing.T) {}\n",
 	})
-	result := clitest.Run(context.Background(), RunTest, []string{external}, "")
-	if result.Code != 1 || !strings.Contains(result.Stderr, "external test packages") {
-		t.Fatalf("external package: code=%d stderr=%q", result.Code, result.Stderr)
-	}
+	result := clitest.Run(t.Context(), RunTest, []string{external}, "")
+	require.Equal(t, 1, result.Code)
+	require.Contains(t, result.Stderr, "external test packages")
 	signature := writeTestPackage(t, map[string]string{
 		"calc.go":      "package calc\n",
 		"calc_test.go": "package calc\n\nfunc TestX() {}\n",
 	})
-	result = clitest.Run(context.Background(), RunTest, []string{signature}, "")
-	if result.Code != 1 || !strings.Contains(result.Stderr, "wrong signature for TestX") {
-		t.Fatalf("signature: code=%d stderr=%q", result.Code, result.Stderr)
-	}
-	if len(*names) != 0 {
-		t.Fatalf("no suite should have run, got %v", *names)
-	}
+	result = clitest.Run(t.Context(), RunTest, []string{signature}, "")
+	require.Equal(t, 1, result.Code)
+	require.Contains(t, result.Stderr, "wrong signature for TestX")
+	require.Empty(t, *names, "no suite runs")
 }
 
 func TestPipitTestResolvesLocalModulePackages(t *testing.T) {
 	names := captureTestRunner(t)
 	root := writeLocalModule(t)
 	testFile := "package main\n\nimport (\n\t\"testing\"\n\n\t\"example.com/app/internal/util\"\n)\n\nfunc TestGreet(t *testing.T) {\n\tif util.Greet(\"x\") != \"HELLO, X\" {\n\t\tt.Fatal(util.Greet(\"x\"))\n\t}\n}\n"
-	if err := os.WriteFile(filepath.Join(root, "main_test.go"), []byte(testFile), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	result := clitest.Run(context.Background(), RunTest, []string{root}, "")
-	if result.Code != 0 {
-		t.Fatalf("exit code = %d (stderr=%q)", result.Code, result.Stderr)
-	}
-	if strings.Join(*names, ",") != "TestGreet" {
-		t.Fatalf("discovered %v", *names)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main_test.go"), []byte(testFile), 0o600))
+	result := clitest.Run(t.Context(), RunTest, []string{root}, "")
+	require.Equal(t, 0, result.Code, "stderr: %q", result.Stderr)
+	require.Equal(t, []string{"TestGreet"}, *names)
+}
+
+func TestPipitTestGoEmbedPointsAtTheScriptDirectory(t *testing.T) {
+	captureTestRunner(t)
+	root := writeTestPackage(t, map[string]string{
+		"calc.go":      "package calc\n\nimport \"embed\"\n\n//go:embed calc.go\nvar self embed.FS\n",
+		"calc_test.go": "package calc\n\nimport \"testing\"\n\nfunc TestNothing(t *testing.T) {}\n",
+	})
+	result := clitest.Run(t.Context(), RunTest, []string{root}, "")
+	require.Equal(t, 1, result.Code, "stderr: %q", result.Stderr)
+	require.Contains(t, result.Stderr, "//go:embed is not supported")
+	require.Contains(t, result.Stderr, "PIPIT_SCRIPT_DIR")
+}
+
+func TestPipitTestSkipsFilesTheInterpreterExcludes(t *testing.T) {
+	names := captureTestRunner(t)
+	root := writeTestPackage(t, map[string]string{
+		"calc.go":             "package calc\n\nfunc Add(a, b int) int { return a + b }\n",
+		"calc_test.go":        "package calc\n\nimport \"testing\"\n\nfunc TestAdd(t *testing.T) {\n\tif Add(1, 2) != 3 {\n\t\tt.Fatal(\"add\")\n\t}\n}\n",
+		"native_test.go":      "//go:build !interp\n\npackage calc\n\nimport \"testing\"\n\nfunc TestNative(t *testing.T) { t.Fatal(\"compiled by the interpreter\") }\n",
+		"external_test.go":    "//go:build !interp\n\npackage calc_test\n\nimport \"testing\"\n\nfunc TestExternal(t *testing.T) {}\n",
+		"interp_only_test.go": "//go:build interp\n\npackage calc\n\nimport \"testing\"\n\nfunc TestInterp(t *testing.T) {}\n",
+	})
+	result := clitest.Run(t.Context(), RunTest, []string{root}, "")
+	require.Equal(t, 0, result.Code, "stderr: %q", result.Stderr)
+	require.Equal(t, []string{"TestAdd", "TestInterp"}, *names)
 }

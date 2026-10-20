@@ -21,54 +21,44 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/app"
 )
 
-func TestInlining_VoidNoop_NoOpCall(t *testing.T) {
-	withInlineEnabled(t, func() {
-		service := app.NewService()
-		code := `func noop() {}
+func TestInlining(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		code string
+		want any
+	}{
+		{
+			name: "void no-op call",
+			code: `func noop() {}
 noop()
-42`
-		result, err := service.Eval(context.Background(), code)
-		require.NoError(t, err)
-		require.Equal(t, 42, result)
-	})
-}
-
-func TestInlining_SmallLeaf_ProducesCorrectResult(t *testing.T) {
-	withInlineEnabled(t, func() {
-		service := app.NewService()
-		code := `func double(x int) int { return x + x }
-double(21)`
-		result, err := service.Eval(context.Background(), code)
-		require.NoError(t, err)
-		require.Equal(t, 42, result)
-	})
-}
-
-func TestInlining_MultipleCallsToSameFunction(t *testing.T) {
-	withInlineEnabled(t, func() {
-		service := app.NewService()
-		code := `func add(a, b int) int { return a + b }
+42`,
+			want: 42,
+		},
+		{
+			name: "small leaf produces correct result",
+			code: `func double(x int) int { return x + x }
+double(21)`,
+			want: 42,
+		},
+		{
+			name: "multiple calls to same function",
+			code: `func add(a, b int) int { return a + b }
 x := add(1, 2)
 y := add(x, 3)
-add(y, 4)`
-		result, err := service.Eval(context.Background(), code)
-		require.NoError(t, err)
-		require.Equal(t, 10, result)
-	})
-}
-
-func TestInlining_ConditionalReturns(t *testing.T) {
-	withInlineEnabled(t, func() {
-		service := app.NewService()
-		code := `func absVal(x int) int {
+add(y, 4)`,
+			want: 10,
+		},
+		{
+			name: "conditional returns",
+			code: `func absVal(x int) int {
 	if x < 0 {
 		return -x
 	}
@@ -76,87 +66,63 @@ func TestInlining_ConditionalReturns(t *testing.T) {
 }
 a := absVal(-5)
 b := absVal(7)
-a + b`
-		result, err := service.Eval(context.Background(), code)
-		require.NoError(t, err)
-		require.Equal(t, 12, result)
-	})
-}
-
-func TestInlining_RecursiveFunctionRefused(t *testing.T) {
-	withInlineEnabled(t, func() {
-		service := app.NewService()
-		code := `func fact(n int) int {
+a + b`,
+			want: 12,
+		},
+		{
+			name: "recursive function refused",
+			code: `func fact(n int) int {
 	if n <= 1 {
 		return 1
 	}
 	return n * fact(n-1)
 }
-fact(5)`
-		result, err := service.Eval(context.Background(), code)
-		require.NoError(t, err)
-		require.Equal(t, 120, result)
-	})
-}
-
-func TestInlining_ClosureRefused_StillCorrect(t *testing.T) {
-	withInlineEnabled(t, func() {
-		service := app.NewService()
-		code := `func makeAdder(n int) func(int) int {
+fact(5)`,
+			want: 120,
+		},
+		{
+			name: "refused closure still correct",
+			code: `func makeAdder(n int) func(int) int {
 	return func(x int) int { return x + n }
 }
 add5 := makeAdder(5)
-add5(10)`
-		result, err := service.Eval(context.Background(), code)
-		require.NoError(t, err)
-		require.Equal(t, 15, result)
-	})
-}
-
-func TestInlining_MultiReturn_SameBank(t *testing.T) {
-	withInlineEnabled(t, func() {
-		service := app.NewService()
-		code := `func swap(a, b int) (int, int) { return b, a }
+add5(10)`,
+			want: 15,
+		},
+		{
+			name: "multi return same bank",
+			code: `func swap(a, b int) (int, int) { return b, a }
 x, y := swap(3, 7)
-x * 10 + y`
-		result, err := service.Eval(context.Background(), code)
-		require.NoError(t, err)
-		require.Equal(t, 73, result)
-	})
-}
-
-func TestInlining_MultiReturn_MixedBanks(t *testing.T) {
-	withInlineEnabled(t, func() {
-		service := app.NewService()
-		code := `func split(x int) (int, string) { return x * 2, "ok" }
+x * 10 + y`,
+			want: 73,
+		},
+		{
+			name: "multi return mixed banks",
+			code: `func split(x int) (int, string) { return x * 2, "ok" }
 n, s := split(21)
-n + len(s)`
-		result, err := service.Eval(context.Background(), code)
-		require.NoError(t, err)
-		require.Equal(t, 44, result)
-	})
-}
-
-func TestInlining_ValueReturnFromTempRegister(t *testing.T) {
-	withInlineEnabled(t, func() {
-		service := app.NewService()
-
-		code := `func f(a int) int {
+n + len(s)`,
+			want: 44,
+		},
+		{
+			name: "value return from temp register",
+			code: `func f(a int) int {
 	x := a + 1
 	y := a * 2
 	_ = x
 	return y
 }
-f(5)`
-		result, err := service.Eval(context.Background(), code)
-		require.NoError(t, err)
-		require.Equal(t, 10, result)
-	})
-}
-
-func withInlineEnabled(t *testing.T, fn func()) {
-	t.Helper()
-	fn()
+f(5)`,
+			want: 10,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := app.NewService().Eval(t.Context(), tt.code)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, result)
+		})
+	}
 }
 
 const (
@@ -225,10 +191,8 @@ c.size`
 )
 
 func TestInlining_LRUDiagnostic(t *testing.T) {
-	withInlineEnabled(t, func() {
-		service := app.NewService()
-		result, err := service.Eval(context.Background(), lruSourceForInliner)
-		require.NoError(t, err)
-		require.Equal(t, 3, result, "result should be size after 3 puts")
-	})
+	t.Parallel()
+	result, err := app.NewService().Eval(t.Context(), lruSourceForInliner)
+	require.NoError(t, err)
+	require.Equal(t, 3, result, "the cache holds three entries after three puts")
 }

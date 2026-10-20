@@ -30,6 +30,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestCgroupNativeAggregateTasks(t *testing.T) {
@@ -140,8 +142,7 @@ func TestCgroupNativeAggregateMemory(t *testing.T) {
 
 func aggregateMemoryCommand(t *testing.T, ctx context.Context, group *Group, awaitReady bool) *exec.Cmd {
 	t.Helper()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestCgroupNativeAggregateMemory$")
-	command.Env = append(os.Environ(), "PIPIT_AGGREGATE_MEMORY_CHILD=1")
+	command := sandboxtest.Command(ctx, "TestCgroupNativeAggregateMemory", "PIPIT_AGGREGATE_MEMORY_CHILD=1")
 	output, err := command.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -166,10 +167,7 @@ func aggregateMemoryCommand(t *testing.T, ctx context.Context, group *Group, awa
 
 func aggregateGroupFixture(t *testing.T, limits Limits) (*Group, context.Context) {
 	t.Helper()
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires explicitly delegated cgroup v2")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	aggregate, err := newGroup(parent, limits)
 	if err != nil {
 		t.Fatal(err)

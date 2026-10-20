@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
 	"pipit.sh/pipit/internal/sandboxwire"
@@ -34,160 +35,117 @@ import (
 func filesystemWriteMessage(t *testing.T, id uint64, path string, data []byte) sandboxwire.Message {
 	t.Helper()
 	encoded, err := json.Marshal(map[string]any{"operation": WriteFile, "root": "data", "path": path, "data": data})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return sandboxwire.Message{Kind: sandboxwire.Call, ID: id, Payload: encoded}
 }
 
 func TestLinuxFilesystemStagedWrite(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	target := filepath.Join(root, "file")
-	if err := os.WriteFile(target, []byte("original"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(target, []byte("original"), 0644))
 	original, err := os.Open(target)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer original.Close()
 	before, err := original.Stat()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	backend := openTestFilesystem(t, root, Write, FilesystemLimits{})
 	result, err := backend.Execute(filesystemWriteMessage(t, 1, "file", []byte("replacement")))
-	if err != nil || result.Written != 11 || len(result.Data) != 0 || len(result.Entries) != 0 {
-		t.Fatalf("%+v: %v", result, err)
-	}
+	require.NoError(t, err, "%+v", result)
+	require.Equal(t, 11, result.Written)
+	require.Empty(t, result.Data)
+	require.Empty(t, result.Entries)
 	after, err := os.Stat(target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if os.SameFile(before, after) || after.Mode().Perm() != 0600 {
-		t.Fatal("write was not a new private inode")
-	}
+	require.NoError(t, err)
+	require.False(t, os.SameFile(before, after), "write was not a new private inode")
+	require.Equal(t, os.FileMode(0600), after.Mode().Perm())
 	data, err := os.ReadFile(target)
-	if err != nil || string(data) != "replacement" {
-		t.Fatalf("%q: %v", data, err)
-	}
+	require.NoError(t, err, "%q", data)
+	require.Equal(t, "replacement", string(data))
 	buffer := make([]byte, 8)
-	if _, err := original.Read(buffer); err != nil || string(buffer) != "original" {
-		t.Fatalf("original inode modified: %q: %v", buffer, err)
-	}
+	_, err = original.Read(buffer)
+	require.NoError(t, err, "original inode modified: %q", buffer)
+	require.Equal(t, "original", string(buffer))
 	entries, err := os.ReadDir(root)
-	if err != nil || len(entries) != 1 || entries[0].Name() != "file" {
-		t.Fatalf("staging remnant: %v: %v", entries, err)
-	}
-	if _, err := backend.Execute(filesystemWriteMessage(t, 2, "empty", []byte{})); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "staging remnant")
+	require.Len(t, entries, 1)
+	require.Equal(t, "file", entries[0].Name())
+	_, err = backend.Execute(filesystemWriteMessage(t, 2, "empty", []byte{}))
+	require.NoError(t, err)
 	empty, err := os.Stat(filepath.Join(root, "empty"))
-	if err != nil || empty.Size() != 0 {
-		t.Fatalf("empty write: %v: %v", empty, err)
-	}
+	require.NoError(t, err, "empty write: %v", empty)
+	require.Equal(t, int64(0), empty.Size())
 }
 
 func TestLinuxFilesystemWriteRejectsEscapes(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	outside := t.TempDir()
 	target := filepath.Join(outside, "secret")
-	if err := os.WriteFile(target, []byte("secret"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(target, filepath.Join(root, "symlink")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(outside, filepath.Join(root, "directory-link")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Link(target, filepath.Join(root, "hardlink")); err != nil {
-		t.Fatal(err)
-	}
-	if err := unix.Mkfifo(filepath.Join(root, "fifo"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(filepath.Join(root, "directory"), 0700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(target, []byte("secret"), 0600))
+	require.NoError(t, os.Symlink(target, filepath.Join(root, "symlink")))
+	require.NoError(t, os.Symlink(outside, filepath.Join(root, "directory-link")))
+	require.NoError(t, os.Link(target, filepath.Join(root, "hardlink")))
+	require.NoError(t, unix.Mkfifo(filepath.Join(root, "fifo"), 0600))
+	require.NoError(t, os.Mkdir(filepath.Join(root, "directory"), 0700))
 	backend := openTestFilesystem(t, root, Write, FilesystemLimits{})
 	for index, path := range []string{"symlink", "directory-link/secret", "hardlink", "fifo", "directory", "missing/file"} {
 		result, err := backend.Execute(filesystemWriteMessage(t, uint64(index+1), path, []byte("changed")))
-		if err == nil || result.Written != 0 {
-			t.Fatalf("write accepted %s: %+v: %v", path, result, err)
-		}
+		require.Error(t, err, "write accepted %s: %+v", path, result)
+		require.Equal(t, 0, result.Written)
 	}
 	data, err := os.ReadFile(target)
-	if err != nil || string(data) != "secret" {
-		t.Fatalf("outside target changed: %q: %v", data, err)
-	}
+	require.NoError(t, err, "outside target changed: %q", data)
+	require.Equal(t, "secret", string(data))
 	entries, err := os.ReadDir(root)
-	if err != nil || len(entries) != 5 {
-		t.Fatalf("failed write left files: %v: %v", entries, err)
-	}
+	require.NoError(t, err, "failed write left files")
+	require.Len(t, entries, 5)
 }
 
 func TestLinuxFilesystemStagingCleanup(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
-	if err := os.Mkdir(filepath.Join(root, "directory"), 0700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(filepath.Join(root, "directory"), 0700))
 	backend := openTestFilesystem(t, root, Write, FilesystemLimits{})
 	parent, err := openLinuxBeneath(backend.roots["data"], ".", unix.O_RDONLY|unix.O_DIRECTORY)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer parent.Close()
 	temporary, err := createLinuxStagingFile(parent)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer temporary.Close()
-	if _, err := temporary.WriteString("staged"); err != nil {
-		t.Fatal(err)
-	}
-	if err := backend.publish(parent, temporary, "directory", 1); err == nil {
-		t.Fatal("replaced directory")
-	}
+	_, err = temporary.WriteString("staged")
+	require.NoError(t, err)
+	require.Error(t, backend.publish(parent, temporary, "directory", 1), "replaced directory")
 	entries, err := os.ReadDir(root)
-	if err != nil || len(entries) != 1 || entries[0].Name() != "directory" {
-		t.Fatalf("failed publication leaked staging entry: %v: %v", entries, err)
-	}
+	require.NoError(t, err, "failed publication leaked staging entry")
+	require.Len(t, entries, 1)
+	require.Equal(t, "directory", entries[0].Name())
 }
 
 func TestLinuxFilesystemStagingCollision(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	backend := openTestFilesystem(t, root, Write, FilesystemLimits{})
 	staging, err := StagingName(backend.namespace, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, staging), []byte("not ours"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := backend.Execute(filesystemWriteMessage(t, 1, "file", []byte("replacement"))); err == nil {
-		t.Fatal("publication replaced an existing staging entry")
-	}
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(root, staging), []byte("not ours"), 0600))
+	_, err = backend.Execute(filesystemWriteMessage(t, 1, "file", []byte("replacement")))
+	require.Error(t, err, "publication replaced an existing staging entry")
 	data, err := os.ReadFile(filepath.Join(root, staging))
-	if err != nil || string(data) != "not ours" {
-		t.Fatalf("collision altered existing file: %q: %v", data, err)
-	}
-	if _, err := os.Stat(filepath.Join(root, "file")); !os.IsNotExist(err) {
-		t.Fatal("collision published destination:", err)
-	}
+	require.NoError(t, err, "collision altered existing file: %q", data)
+	require.Equal(t, "not ours", string(data))
+	_, err = os.Stat(filepath.Join(root, "file"))
+	require.True(t, os.IsNotExist(err), "collision published destination: %v", err)
 }
 
 func TestLinuxFilesystemWriteNested(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
-	if err := os.Mkdir(filepath.Join(root, "directory"), 0700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(filepath.Join(root, "directory"), 0700))
 	backend := openTestFilesystem(t, root, Write, FilesystemLimits{})
-	if _, err := backend.Execute(filesystemWriteMessage(t, 1, "directory/file", []byte("nested"))); err != nil {
-		t.Fatal(err)
-	}
+	_, err := backend.Execute(filesystemWriteMessage(t, 1, "directory/file", []byte("nested")))
+	require.NoError(t, err)
 	data, err := os.ReadFile(filepath.Join(root, "directory", "file"))
-	if err != nil || string(data) != "nested" {
-		t.Fatalf("%q: %v", data, err)
-	}
+	require.NoError(t, err, "%q", data)
+	require.Equal(t, "nested", string(data))
 }

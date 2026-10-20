@@ -19,28 +19,26 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"reflect"
 	"strconv"
 	"testing"
 
-	"pipit.sh/pipit/internal/engine"
-
-	"pipit.sh/pipit/internal/symtab"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/isa"
+	"pipit.sh/pipit/internal/symtab"
 )
 
 func TestEvalMethodValues(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		name string
+		code string
+		want any
 	}{
 		{
 			name: "method value on instance",
@@ -49,7 +47,7 @@ func (c Counter) Get() int { return c.V }
 co := Counter{V: 42}
 f := co.Get
 f()`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "method value with arguments",
@@ -58,7 +56,7 @@ func (a Adder) Add(x int) int { return a.Base + x }
 ad := Adder{Base: 10}
 f := ad.Add
 f(5)`,
-			expect: 15,
+			want: 15,
 		},
 		{
 			name: "method value string return",
@@ -67,7 +65,7 @@ func (n Named) Greet() string { return n.Name }
 nn := Named{Name: "alice"}
 f := nn.Greet
 f()`,
-			expect: "alice",
+			want: "alice",
 		},
 	}
 
@@ -75,9 +73,9 @@ f()`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -86,9 +84,9 @@ func TestEvalPromotedMethods(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		name string
+		code string
+		want any
 	}{
 		{
 			name: "promoted method direct call",
@@ -97,7 +95,7 @@ func (i Inner) Get() int { return i.V }
 type Outer struct { Inner }
 o := Outer{Inner{V: 99}}
 o.Get()`,
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "promoted field access",
@@ -105,7 +103,7 @@ o.Get()`,
 type Outer struct { Inner }
 o := Outer{Inner{V: 55}}
 o.V`,
-			expect: 55,
+			want: 55,
 		},
 		{
 			name: "interface via promoted method",
@@ -115,7 +113,7 @@ func (b Base) Get() int { return b.V }
 type Wrapper struct { Base }
 var g Getter = Wrapper{Base{V: 77}}
 g.Get()`,
-			expect: 77,
+			want: 77,
 		},
 		{
 			name: "promoted method with arguments",
@@ -124,7 +122,7 @@ func (b Base) Add(x int) int { return b.V + x }
 type Extended struct { Base }
 e := Extended{Base{V: 10}}
 e.Add(5)`,
-			expect: 15,
+			want: 15,
 		},
 	}
 
@@ -132,9 +130,9 @@ e.Add(5)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -143,21 +141,21 @@ func TestEvalFuncsInCollections(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		name string
+		code string
+		want any
 	}{
 		{
 			name: "func in slice",
 			code: `fns := []func(int) int{func(x int) int { return x * 2 }}
 fns[0](5)`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "func in map",
 			code: `m := map[string]func(int) int{"double": func(x int) int { return x * 2 }}
 m["double"](5)`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "variadic spread",
@@ -170,7 +168,7 @@ m["double"](5)`,
 }
 arguments := []int{1, 2, 3, 4, 5}
 sum(arguments...)`,
-			expect: 15,
+			want: 15,
 		},
 		{
 			name: "variadic spread with fixed params",
@@ -184,7 +182,7 @@ sum(arguments...)`,
 }
 words := []string{"a", "b", "c"}
 join("-", words...)`,
-			expect: "a-b-c",
+			want: "a-b-c",
 		},
 	}
 
@@ -192,9 +190,9 @@ join("-", words...)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -203,9 +201,9 @@ func TestEvalMapCommaOkIfInit(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		name string
+		code string
+		want any
 	}{
 		{
 			name: "if-init map hit",
@@ -215,7 +213,7 @@ if v, ok := m["a"]; ok {
 	result = v
 }
 result`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "if-init map miss",
@@ -225,7 +223,7 @@ if _, ok := m["b"]; ok {
 	result = 99
 }
 result`,
-			expect: -1,
+			want: -1,
 		},
 		{
 			name: "map comma-ok in assignment",
@@ -233,14 +231,14 @@ result`,
 v, ok := m["x"]
 _ = ok
 v`,
-			expect: 7,
+			want: 7,
 		},
 		{
 			name: "map comma-ok false",
 			code: `m := map[string]int{"x": 7}
 _, ok := m["y"]
 ok`,
-			expect: false,
+			want: false,
 		},
 	}
 
@@ -248,9 +246,9 @@ ok`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -259,9 +257,9 @@ func TestEvalMethodExpressions(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		name string
+		code string
+		want any
 	}{
 		{
 			name: "basic value receiver",
@@ -269,7 +267,7 @@ func TestEvalMethodExpressions(t *testing.T) {
 func (s S) Get() int { return s.V }
 f := S.Get
 f(S{V: 42})`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "with arguments",
@@ -277,14 +275,14 @@ f(S{V: 42})`,
 func (a A) Add(x int) int { return a.Base + x }
 f := A.Add
 f(A{Base: 10}, 5)`,
-			expect: 15,
+			want: 15,
 		},
 		{
 			name: "direct call no variable",
 			code: `type S struct { V int }
 func (s S) Get() int { return s.V }
 S.Get(S{V: 7})`,
-			expect: 7,
+			want: 7,
 		},
 		{
 			name: "string return",
@@ -292,7 +290,7 @@ S.Get(S{V: 7})`,
 func (n N) Greet() string { return "hello " + n.Name }
 f := N.Greet
 f(N{Name: "world"})`,
-			expect: "hello world",
+			want: "hello world",
 		},
 		{
 			name: "promoted method",
@@ -301,7 +299,7 @@ func (i Inner) Get() int { return i.V }
 type Outer struct { Inner }
 f := Outer.Get
 f(Outer{Inner{V: 99}})`,
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "passed as argument",
@@ -309,7 +307,7 @@ f(Outer{Inner{V: 99}})`,
 func (p P) Sum() int { return p.A + p.B }
 apply := func(f func(P) int, p P) int { return f(p) }
 apply(P.Sum, P{A: 3, B: 4})`,
-			expect: 7,
+			want: 7,
 		},
 	}
 
@@ -317,9 +315,9 @@ apply(P.Sum, P{A: 3, B: 4})`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -328,9 +326,9 @@ func TestEvalMultipleReturnValues(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		name string
+		code string
+		want any
 	}{
 		{
 			name: "three return values int",
@@ -341,7 +339,7 @@ a, b, c := triple(5)
 _ = b
 _ = c
 a`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "three return values string",
@@ -352,7 +350,7 @@ a, b, c := triple(5)
 _ = a
 _ = c
 b`,
-			expect: "ok",
+			want: "ok",
 		},
 		{
 			name: "three return values bool",
@@ -363,7 +361,7 @@ a, b, c := triple(5)
 _ = a
 _ = b
 c`,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "four return values",
@@ -372,7 +370,7 @@ c`,
 }
 a, b, c, d := quad()
 a + b + c + d`,
-			expect: 10,
+			want: 10,
 		},
 	}
 
@@ -380,9 +378,9 @@ a + b + c + d`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -391,9 +389,9 @@ func TestEvalChainedMethodCalls(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		name string
+		code string
+		want any
 	}{
 		{
 			name: "chained builder pattern",
@@ -401,7 +399,7 @@ func TestEvalChainedMethodCalls(t *testing.T) {
 func (b Builder) Add(x int) Builder { return Builder{V: b.V + x} }
 func (b Builder) Result() int { return b.V }
 Builder{V: 0}.Add(3).Add(4).Result()`,
-			expect: 7,
+			want: 7,
 		},
 		{
 			name: "chain with double",
@@ -409,7 +407,7 @@ Builder{V: 0}.Add(3).Add(4).Result()`,
 func (s S) Double() S { return S{V: s.V * 2} }
 func (s S) Get() int { return s.V }
 S{V: 5}.Double().Double().Get()`,
-			expect: 20,
+			want: 20,
 		},
 	}
 
@@ -417,9 +415,9 @@ S{V: 5}.Double().Double().Get()`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -428,9 +426,9 @@ func TestEvalCommaOkTypeAssertionInIfInit(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		name string
+		code string
+		want any
 	}{
 		{
 			name: "type assertion hit",
@@ -440,7 +438,7 @@ if v, ok := x.(int); ok {
 	result = v
 }
 result`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "type assertion miss",
@@ -450,7 +448,7 @@ if _, ok := x.(int); ok {
 	result = 99
 }
 result`,
-			expect: -1,
+			want: -1,
 		},
 		{
 			name: "type assertion string",
@@ -460,7 +458,7 @@ if v, ok := x.(string); ok {
 	result = v
 }
 result`,
-			expect: "hello",
+			want: "hello",
 		},
 	}
 
@@ -468,9 +466,9 @@ result`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -479,9 +477,9 @@ func TestEvalComplexCompositeLiterals(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		name string
+		code string
+		want any
 	}{
 		{
 			name: "struct with func field in map",
@@ -493,7 +491,7 @@ m := map[string]Handler{
 	"triple": {Invoke: func(x int) int { return x * 3 }},
 }
 m["double"].Invoke(5) + m["triple"].Invoke(3)`,
-			expect: 19,
+			want: 19,
 		},
 		{
 			name: "nested struct with func fields",
@@ -504,7 +502,7 @@ o := Outer{
 	B: Inner{Fn: func() int { return 20 }},
 }
 o.A.Fn() + o.B.Fn()`,
-			expect: 30,
+			want: 30,
 		},
 		{
 			name: "map of pointer-to-struct with elided literals",
@@ -514,21 +512,21 @@ m := map[string]*Info{
 	"b": {Icon: "y", Title: "Beta"},
 }
 m["a"].Title + "-" + m["b"].Icon`,
-			expect: "Alpha-y",
+			want: "Alpha-y",
 		},
 		{
 			name: "slice of pointer-to-struct with elided literals",
 			code: `type P struct { V int }
 s := []*P{{V: 10}, {V: 20}, {V: 30}}
 s[0].V + s[1].V + s[2].V`,
-			expect: 60,
+			want: 60,
 		},
 		{
 			name: "array of pointer-to-struct with elided literals",
 			code: `type P struct { V int }
 a := [2]*P{{V: 7}, {V: 35}}
 a[0].V + a[1].V`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "elided and explicit address-of forms coexist",
@@ -538,7 +536,7 @@ m := map[string]*P{
 	"explicit": &P{V: 10},
 }
 m["elided"].V + m["explicit"].V`,
-			expect: 11,
+			want: 11,
 		},
 		{
 			name: "mutate field through pointer retrieved from map",
@@ -546,7 +544,7 @@ m["elided"].V + m["explicit"].V`,
 m := map[string]*P{"k": {V: 5}}
 m["k"].V = 99
 m["k"].V`,
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "nested struct with pointer-elided inner values",
@@ -554,7 +552,7 @@ m["k"].V`,
 type Outer struct { A *Inner; B *Inner }
 o := Outer{A: &Inner{V: 3}, B: &Inner{V: 4}}
 o.A.V * o.B.V`,
-			expect: 12,
+			want: 12,
 		},
 	}
 
@@ -562,9 +560,9 @@ o.A.V * o.B.V`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -573,51 +571,51 @@ func TestEvalElidedPointerCompositeLiterals(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		name string
+		code string
+		want any
 	}{
 		{
 			name: "empty map of pointer-to-struct",
 			code: `type P struct { V int }
 m := map[string]*P{}
 len(m)`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "empty slice of pointer-to-struct",
 			code: `type P struct { V int }
 s := []*P{}
 len(s)`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "single-field elided struct pointer",
 			code: `type P struct { V int }
 m := map[string]*P{"only": {V: 7}}
 m["only"].V`,
-			expect: 7,
+			want: 7,
 		},
 		{
 			name: "pointer-to-array element with elided literal",
 			code: `m := map[string]*[3]int{"row": {10, 20, 30}}
 a := *m["row"]
 a[0] + a[1] + a[2]`,
-			expect: 60,
+			want: 60,
 		},
 		{
 			name: "pointer-to-slice element with elided literal",
 			code: `m := map[string]*[]int{"row": {1, 2, 3, 4}}
 s := *m["row"]
 s[0] + s[1] + s[2] + s[3]`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "pointer-to-map element with elided literal",
 			code: `m := map[string]*map[string]int{"grp": {"a": 5, "b": 9}}
 inner := *m["grp"]
 inner["a"] + inner["b"]`,
-			expect: 14,
+			want: 14,
 		},
 		{
 			name: "slice of pointer-to-array with elided literal",
@@ -625,7 +623,7 @@ inner["a"] + inner["b"]`,
 first := *s[0]
 second := *s[1]
 first[0] + first[1] + first[2] + second[0] + second[1] + second[2]`,
-			expect: 21,
+			want: 21,
 		},
 		{
 			name: "array of pointer-to-struct iterated",
@@ -636,7 +634,7 @@ for i := 0; i < len(a); i++ {
 	total += a[i].V
 }
 total`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "slice of pointer-to-struct range iteration",
@@ -651,7 +649,7 @@ for _, it := range items {
 	total += it.Qty
 }
 total`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "map of pointer-to-struct with not-ok branch",
@@ -664,7 +662,7 @@ if info, ok := m["missing"]; ok {
 	result = m["a"].V
 }
 result`,
-			expect: 42,
+			want: 42,
 		},
 	}
 
@@ -672,22 +670,63 @@ result`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
 
-func TestEvalUintSliceIndex(t *testing.T) {
+func TestEvalExpressionResults(t *testing.T) {
 	t.Parallel()
-
-	service := NewService()
-	result, err := service.Eval(context.Background(), `s := []int{10, 20, 30}
+	tests := []struct {
+		name string
+		code string
+		want any
+	}{
+		{
+			name: "uint slice index",
+			code: `s := []int{10, 20, 30}
 var i uint = 1
-s[i]`)
-	require.NoError(t, err)
-	require.Equal(t, 20, result)
+s[i]`,
+			want: 20,
+		},
+		{
+			name: "uint negation",
+			code: `var u uint = 1
+-u`,
+			want: ^uint(0),
+		},
+		{
+			name: "range over a uint",
+			code: `var total uint
+for i := range uint(5) {
+	total += i
+}
+total`,
+			want: uint(10),
+		},
+		{
+			name: "channel capacity",
+			code: `ch := make(chan int, 10)
+cap(ch)`,
+			want: 10,
+		},
+		{
+			name: "missing map key",
+			code: `m := map[string]int{"a": 1}
+m["missing"]`,
+			want: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := NewService().Eval(t.Context(), tt.code)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, result)
+		})
+	}
 }
 
 func TestRegisterArenaSlabGrowth(t *testing.T) {
@@ -732,24 +771,24 @@ func TestEvalBoolComparison(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		name string
+		code string
+		want any
 	}{
 		{
-			name:   "bool equals true",
-			code:   `a := true; b := true; a == b`,
-			expect: true,
+			name: "bool equals true",
+			code: `a := true; b := true; a == b`,
+			want: true,
 		},
 		{
-			name:   "bool equals false",
-			code:   `a := true; b := false; a == b`,
-			expect: false,
+			name: "bool equals false",
+			code: `a := true; b := false; a == b`,
+			want: false,
 		},
 		{
-			name:   "bool not equals",
-			code:   `a := true; b := false; a != b`,
-			expect: true,
+			name: "bool not equals",
+			code: `a := true; b := false; a != b`,
+			want: true,
 		},
 	}
 
@@ -757,82 +796,47 @@ func TestEvalBoolComparison(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
 
-func TestEvalUintNegation(t *testing.T) {
+func TestEvalSliceIndexOutOfRange(t *testing.T) {
 	t.Parallel()
-
-	service := NewService()
-	result, err := service.Eval(context.Background(), `var u uint = 1
--u`)
-	require.NoError(t, err)
-	require.Equal(t, ^uint(0), result)
-}
-
-func TestEvalRangeOverUint(t *testing.T) {
-	t.Parallel()
-
-	service := NewService()
-	result, err := service.Eval(context.Background(), `var total uint
-for i := range uint(5) {
-	total += i
-}
-total`)
-	require.NoError(t, err)
-	require.Equal(t, uint(10), result)
-}
-
-func TestEvalSliceSetOutOfBounds(t *testing.T) {
-	t.Parallel()
-
-	service := NewService()
-	_, err := service.Eval(context.Background(), `s := []int{1, 2, 3}
+	tests := []struct {
+		name string
+		code string
+	}{
+		{
+			name: "store at a negative index",
+			code: `s := []int{1, 2, 3}
 s[-1] = 99
-s[0]`)
-	require.Error(t, err)
-}
-
-func TestEvalSliceGetOutOfBounds(t *testing.T) {
-	t.Parallel()
-
-	service := NewService()
-	_, err := service.Eval(context.Background(), `s := []int{1, 2, 3}
-s[5]`)
-	require.Error(t, err)
-}
-
-func TestEvalCapChannel(t *testing.T) {
-	t.Parallel()
-
-	service := NewService()
-	result, err := service.Eval(context.Background(), `ch := make(chan int, 10)
-cap(ch)`)
-	require.NoError(t, err)
-	require.Equal(t, 10, result)
-}
-
-func TestEvalMapMissDefault(t *testing.T) {
-	t.Parallel()
-
-	service := NewService()
-	result, err := service.Eval(context.Background(), `m := map[string]int{"a": 1}
-m["missing"]`)
-	require.NoError(t, err)
-	require.Equal(t, 0, result)
+s[0]`,
+		},
+		{
+			name: "load past the end",
+			code: `s := []int{1, 2, 3}
+s[5]`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := NewService().Eval(t.Context(), tt.code)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestEvalRangeValueTypes(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		name string
+		code string
+		want any
 	}{
 		{
 			name: "range float slice",
@@ -842,7 +846,7 @@ for _, v := range s {
 	total += v
 }
 total`,
-			expect: 6.0,
+			want: 6.0,
 		},
 		{
 			name: "range bool slice",
@@ -852,7 +856,7 @@ for _, v := range s {
 	if v { count++ }
 }
 count`,
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "range string map values",
@@ -862,7 +866,7 @@ for _, v := range m {
 	result += v
 }
 len(result)`,
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "range uint slice",
@@ -872,7 +876,7 @@ for _, v := range s {
 	total += v
 }
 total`,
-			expect: uint(60),
+			want: uint(60),
 		},
 	}
 
@@ -880,115 +884,45 @@ total`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
-}
-
-func TestEvalCrossPackageStringConst(t *testing.T) {
-	t.Parallel()
-
-	sources := map[string]map[string]string{
-		"": {
-			"main.go": `package main
-
-import (
-	"testmod/lib"
-)
-
-func entrypoint() bool {
-	return lib.Flag
-}
-
-func main() {}
-`,
-		},
-		"lib": {
-			"lib.go": `package lib
-
-const Flag = true
-`,
-		},
-	}
-
-	service := NewService()
-	cfs, err := service.CompileProgram(context.Background(), "testmod", sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	require.NoError(t, err)
-	require.Equal(t, "true", fmt.Sprint(result))
-}
-
-func TestEvalCrossPackageFloatConstUsage(t *testing.T) {
-	t.Parallel()
-
-	sources := map[string]map[string]string{
-		"": {
-			"main.go": `package main
-
-import (
-	"testmod/lib"
-)
-
-func entrypoint() float64 {
-	return lib.Pi * 2
-}
-
-func main() {}
-`,
-		},
-		"lib": {
-			"lib.go": `package lib
-
-const Pi = 3.14
-`,
-		},
-	}
-
-	service := NewService()
-	cfs, err := service.CompileProgram(context.Background(), "testmod", sources)
-	require.NoError(t, err)
-
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "entrypoint")
-	require.NoError(t, err)
-	require.Equal(t, "6.28", fmt.Sprint(result))
 }
 
 func TestEvalComments(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		name string
+		code string
+		want any
 	}{
 		{
-			name:   "single-line comment after code",
-			code:   "x := 42 // this is a comment\nx",
-			expect: 42,
+			name: "single-line comment after code",
+			code: "x := 42 // this is a comment\nx",
+			want: 42,
 		},
 		{
-			name:   "comment before statement",
-			code:   "// compute\nx := 10 + 5\nx",
-			expect: 15,
+			name: "comment before statement",
+			code: "// compute\nx := 10 + 5\nx",
+			want: 15,
 		},
 		{
-			name:   "multi-line comment inline",
-			code:   "x := /* inline */ 7\nx",
-			expect: 7,
+			name: "multi-line comment inline",
+			code: "x := /* inline */ 7\nx",
+			want: 7,
 		},
 		{
-			name:   "comment-only lines",
-			code:   "// a\n// b\nx := 1\nx",
-			expect: 1,
+			name: "comment-only lines",
+			code: "// a\n// b\nx := 1\nx",
+			want: 1,
 		},
 		{
-			name:   "comment inside function",
-			code:   "func f() int {\n// body\nreturn 3\n}\nf()",
-			expect: 3,
+			name: "comment inside function",
+			code: "func f() int {\n// body\nreturn 3\n}\nf()",
+			want: 3,
 		},
 	}
 
@@ -996,9 +930,9 @@ func TestEvalComments(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -1022,7 +956,7 @@ func TestEvalWithEnv(t *testing.T) {
 		t.Parallel()
 		service := NewService(WithEnv(map[string]string{"MY_VAR": "hello"}))
 		service.UseSymbols(newOSSymbols())
-		result, err := service.Eval(context.Background(), "import \"os\"\nos.Getenv(\"MY_VAR\")")
+		result, err := service.Eval(t.Context(), "import \"os\"\nos.Getenv(\"MY_VAR\")")
 		require.NoError(t, err)
 		require.Equal(t, "hello", result)
 	})
@@ -1031,9 +965,10 @@ func TestEvalWithEnv(t *testing.T) {
 		t.Parallel()
 		service := NewService(WithEnv(map[string]string{"A": "1"}))
 		service.UseSymbols(newOSSymbols())
-		result, err := service.Eval(context.Background(), "import \"os\"\nos.Getenv(\"MISSING\")")
+		result, err := service.Eval(t.Context(), "import \"os\"\nos.Getenv(\"MISSING\")")
 		require.NoError(t, err)
-		require.Equal(t, "", result)
+		require.IsType(t, "", result)
+		require.Empty(t, result)
 	})
 
 	t.Run("Setenv then Getenv", func(t *testing.T) {
@@ -1049,7 +984,7 @@ func Run() string {
 	return os.Getenv("NEW_KEY")
 }
 `
-		result, err := service.EvalFile(context.Background(), source, "Run")
+		result, err := service.EvalFile(t.Context(), source, "Run")
 		require.NoError(t, err)
 		require.Equal(t, "new_val", fmt.Sprint(result))
 	})
@@ -1058,7 +993,7 @@ func Run() string {
 		t.Parallel()
 		service := NewService(WithEnv(map[string]string{"SANDBOXED": "yes"}))
 		service.UseSymbols(newOSSymbols())
-		result, err := service.Eval(context.Background(), "import \"os\"\nos.Getenv(\"SANDBOXED\")")
+		result, err := service.Eval(t.Context(), "import \"os\"\nos.Getenv(\"SANDBOXED\")")
 		require.NoError(t, err)
 		require.Equal(t, "yes", result)
 	})
@@ -1067,7 +1002,7 @@ func Run() string {
 		t.Parallel()
 		service := NewService(WithSealedEnv(map[string]string{"X": "1", "Y": "2"}))
 		service.UseSymbols(newOSSymbols())
-		result, err := service.Eval(context.Background(), "import \"os\"\nlen(os.Environ())")
+		result, err := service.Eval(t.Context(), "import \"os\"\nlen(os.Environ())")
 		require.NoError(t, err)
 		require.Equal(t, 2, result)
 	})
@@ -1090,7 +1025,7 @@ func TestMultiReturnSelectorCall(t *testing.T) {
 		t.Parallel()
 		service := NewService(WithEnv(map[string]string{"TEST_KEY": "test_val"}))
 		service.UseSymbols(newOSSymbols())
-		result, err := service.Eval(context.Background(), "import \"os\"\nv, _ := os.LookupEnv(\"TEST_KEY\")\nv")
+		result, err := service.Eval(t.Context(), "import \"os\"\nv, _ := os.LookupEnv(\"TEST_KEY\")\nv")
 		require.NoError(t, err)
 		require.Equal(t, "test_val", result)
 	})
@@ -1099,7 +1034,7 @@ func TestMultiReturnSelectorCall(t *testing.T) {
 		t.Parallel()
 		service := NewService(WithEnv(map[string]string{"TEST_KEY": "test_val"}))
 		service.UseSymbols(newOSSymbols())
-		result, err := service.Eval(context.Background(), "import \"os\"\n_, ok := os.LookupEnv(\"TEST_KEY\")\nok")
+		result, err := service.Eval(t.Context(), "import \"os\"\n_, ok := os.LookupEnv(\"TEST_KEY\")\nok")
 		require.NoError(t, err)
 		require.Equal(t, true, result)
 	})
@@ -1108,7 +1043,7 @@ func TestMultiReturnSelectorCall(t *testing.T) {
 		t.Parallel()
 		service := NewService(WithEnv(map[string]string{}))
 		service.UseSymbols(newOSSymbols())
-		result, err := service.Eval(context.Background(), "import \"os\"\n_, ok := os.LookupEnv(\"MISSING\")\nok")
+		result, err := service.Eval(t.Context(), "import \"os\"\n_, ok := os.LookupEnv(\"MISSING\")\nok")
 		require.NoError(t, err)
 		require.Equal(t, false, result)
 	})
@@ -1117,7 +1052,7 @@ func TestMultiReturnSelectorCall(t *testing.T) {
 		t.Parallel()
 		service := NewService()
 		service.UseSymbols(newStrconvSymbols())
-		result, err := service.Eval(context.Background(), "import \"strconv\"\nn, _ := strconv.Atoi(\"42\")\nn")
+		result, err := service.Eval(t.Context(), "import \"strconv\"\nn, _ := strconv.Atoi(\"42\")\nn")
 		require.NoError(t, err)
 		require.Equal(t, 42, result)
 	})
@@ -1126,7 +1061,7 @@ func TestMultiReturnSelectorCall(t *testing.T) {
 		t.Parallel()
 		service := NewService()
 		service.UseSymbols(newStrconvSymbols())
-		result, err := service.Eval(context.Background(), "import \"strconv\"\n_, err := strconv.Atoi(\"bad\")\nerr != nil")
+		result, err := service.Eval(t.Context(), "import \"strconv\"\n_, err := strconv.Atoi(\"bad\")\nerr != nil")
 		require.NoError(t, err)
 		require.Equal(t, true, result)
 	})
@@ -1135,7 +1070,7 @@ func TestMultiReturnSelectorCall(t *testing.T) {
 		t.Parallel()
 		service := NewService()
 		service.UseSymbols(newStrconvSymbols())
-		result, err := service.Eval(context.Background(), "import \"strconv\"\nv, _ := strconv.ParseBool(\"true\")\nv")
+		result, err := service.Eval(t.Context(), "import \"strconv\"\nv, _ := strconv.ParseBool(\"true\")\nv")
 		require.NoError(t, err)
 		require.Equal(t, true, result)
 	})
@@ -1152,7 +1087,7 @@ func (p Point) Coords() (int, int) { return p.X, p.Y }
 p := Point{X: 3, Y: 7}
 a, b := p.Coords()
 a + b`
-		result, err := service.Eval(context.Background(), code)
+		result, err := service.Eval(t.Context(), code)
 		require.NoError(t, err)
 		require.Equal(t, 10, result)
 	})
@@ -1165,7 +1100,7 @@ func (p *Pair) Values() (string, string) { return p.A, p.B }
 pp := &Pair{A: "hello", B: "world"}
 a, b := pp.Values()
 a + " " + b`
-		result, err := service.Eval(context.Background(), code)
+		result, err := service.Eval(t.Context(), code)
 		require.NoError(t, err)
 		require.Equal(t, "hello world", result)
 	})
@@ -1181,7 +1116,7 @@ func (p Parser) Parse(s string) (int, bool) {
 pr := Parser{Prefix: "ok"}
 v, _ := pr.Parse("ok")
 v`
-		result, err := service.Eval(context.Background(), code)
+		result, err := service.Eval(t.Context(), code)
 		require.NoError(t, err)
 		require.Equal(t, 1, result)
 	})
@@ -1198,7 +1133,7 @@ func split() (int, bool) { return 42, true }
 var r Result
 r.Val, r.Ok = split()
 r.Val`
-		result, err := service.Eval(context.Background(), code)
+		result, err := service.Eval(t.Context(), code)
 		require.NoError(t, err)
 		require.Equal(t, 42, result)
 	})
@@ -1211,7 +1146,7 @@ func split() (int, bool) { return 42, true }
 var r Result
 r.Val, r.Ok = split()
 r.Ok`
-		result, err := service.Eval(context.Background(), code)
+		result, err := service.Eval(t.Context(), code)
 		require.NoError(t, err)
 		require.Equal(t, true, result)
 	})
@@ -1224,7 +1159,7 @@ m := map[string]string{}
 var ok bool
 m["k"], ok = pair()
 m["k"]`
-		result, err := service.Eval(context.Background(), code)
+		result, err := service.Eval(t.Context(), code)
 		require.NoError(t, err)
 		require.Equal(t, "yes", result)
 	})
@@ -1238,7 +1173,7 @@ var s State
 var ok bool
 s.N, ok = work()
 s.N`
-		result, err := service.Eval(context.Background(), code)
+		result, err := service.Eval(t.Context(), code)
 		require.NoError(t, err)
 		require.Equal(t, 99, result)
 	})
@@ -1250,7 +1185,7 @@ s.N`
 m := map[string]string{}
 _, m["k"] = pair()
 m["k"]`
-		result, err := service.Eval(context.Background(), code)
+		result, err := service.Eval(t.Context(), code)
 		require.NoError(t, err)
 		require.Equal(t, "v", result)
 	})
@@ -1264,7 +1199,7 @@ type Res struct { Val string; Ok bool }
 var r Res
 r.Val, r.Ok = os.LookupEnv("KEY")
 r.Val`
-		result, err := service.Eval(context.Background(), code)
+		result, err := service.Eval(t.Context(), code)
 		require.NoError(t, err)
 		require.Equal(t, "value", result)
 	})

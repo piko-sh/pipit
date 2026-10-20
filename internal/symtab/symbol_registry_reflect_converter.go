@@ -195,6 +195,9 @@ func (c *reflectTypeConverter) toGoType(reflectType reflect.Type) types.Type {
 	if cached, ok := c.seen[reflectType]; ok {
 		return cached
 	}
+	if reflectType == errorReflectType {
+		return types.Universe.Lookup("error").Type()
+	}
 
 	c.depth++
 	defer func() { c.depth-- }()

@@ -306,8 +306,7 @@ type dispatchContext struct {
 	// arenaSliceUintIndex mirrors RegisterArena.SlicesUintIndex.
 	arenaSliceUintIndex int64
 
-	// pollBudget is decremented by the ASM dispatch loop on each tier-1 back edge. When it
-	// reaches zero the loop exits with exitPoll.
+	// pollBudget counts tier-1 back edges and exits to Go before the next context poll.
 	pollBudget int64
 
 	// currentFrame is the address of the active callFrame in vm.CallStack, cached so the

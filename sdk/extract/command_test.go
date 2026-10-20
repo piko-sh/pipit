@@ -21,6 +21,7 @@ package extract
 import (
 	"bytes"
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -554,4 +555,139 @@ func TestRenderInitManifestRoundTripsThroughLoadManifest(t *testing.T) {
 	require.Equal(t, flags.packageName, loaded.Package)
 	require.Equal(t, flags.generatedDir, loaded.Output)
 	require.Len(t, loaded.Packages, len(result.RequiredImports))
+}
+
+func TestRunDiscoverFollowsProjectImportsUnlessIncludeProject(t *testing.T) {
+	t.Parallel()
+
+	root := writeFixtureProject(t, fixtureFiles{
+		"go.mod":                 fixtureModule,
+		"pkg/helpers/helpers.go": "package helpers\n\nimport \"expvar\"\n\nvar _ = expvar.Do\n\nfunc Double(x int) int { return x * 2 }\n",
+		"cmd/app/main.go":        "package main\n\nimport \"example.com/fixture/pkg/helpers\"\n\nvar _ = helpers.Double\n",
+	})
+
+	config := testConfig
+	config.SourceDirs = []string{"cmd"}
+	config.IgnoreProjectModule = true
+	config.FollowProjectImports = true
+
+	var stdout, stderr bytes.Buffer
+	code := RunCommand(t.Context(), []string{"discover", "--root", root}, &stdout, &stderr, config)
+	require.Equal(t, 0, code, stderr.String())
+	require.Equal(t, "expvar\n", stdout.String())
+
+	stdout.Reset()
+	stderr.Reset()
+	code = RunCommand(t.Context(), []string{"discover", "--root", root, "--include-project"}, &stdout, &stderr, config)
+	require.Equal(t, 0, code, stderr.String())
+	require.Equal(t, "example.com/fixture/pkg/helpers\n", stdout.String())
+}
+
+func TestRunDiscoverWarnsAboutUnresolvedImports(t *testing.T) {
+	t.Parallel()
+
+	root := writeFixtureProject(t, fixtureFiles{
+		"go.mod":                    fixtureModule,
+		"pkg/not_a_package/doc.txt": "this folder has no Go files",
+		"main.go":                   "package main\n\nimport _ \"example.com/fixture/pkg/not_a_package\"\n",
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := RunCommand(t.Context(), []string{"discover", "--root", root}, &stdout, &stderr, testConfig)
+	require.Equal(t, 0, code, stderr.String())
+	require.Empty(t, stdout.String())
+	require.Contains(t, stderr.String(), "warning: example.com/fixture/pkg/not_a_package cannot be extracted:")
+}
+
+func TestIncludeProjectFlagIsDocumentedWhenItMatters(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	config := testConfig
+	config.FollowProjectImports = true
+	for _, subcommand := range []string{"discover", "init", "check"} {
+		stdout.Reset()
+		require.Equal(t, 0, RunCommand(t.Context(), []string{subcommand, "--help"}, &stdout, &stderr, config))
+		require.Contains(t, stdout.String(), "--include-project", subcommand)
+	}
+
+	require.Contains(t, stdout.String(), "following their imports", "the help describes following")
+
+	stdout.Reset()
+	config = testConfig
+	config.IgnoreProjectModule = true
+	require.Equal(t, 0, RunCommand(t.Context(), []string{"discover", "--help"}, &stdout, &stderr, config))
+	require.Contains(t, stdout.String(), "--include-project")
+	require.Contains(t, stdout.String(), "leaving them out")
+	require.NotContains(t, stdout.String(), "following their imports", "nothing is followed in this mode")
+
+	stdout.Reset()
+	require.Equal(t, 0, RunCommand(t.Context(), []string{"discover", "--help"}, &stdout, &stderr, testConfig))
+	require.NotContains(t, stdout.String(), "--include-project")
+}
+
+func TestProjectModulePath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		goMod   string
+		want    string
+		wantErr error
+	}{
+		{name: "a module path", goMod: fixtureModule, want: "example.com/fixture"},
+		{name: "no module path", goMod: "go 1.22\n", wantErr: errNoModulePath},
+		{name: "no go.mod", wantErr: fs.ErrNotExist},
+		{name: "a go.mod too large to read", goMod: fixtureModule + strings.Repeat("//\n", maxGoModSizeBytes), wantErr: errSourceFileTooLarge},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			files := fixtureFiles{"main.go": "package main\n"}
+			if tt.goMod != "" {
+				files[goModFileName] = tt.goMod
+			}
+			modulePath, err := projectModulePath(writeFixtureProject(t, files))
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, modulePath)
+		})
+	}
+}
+
+func TestDiscoverOptionsIgnoresTheProjectModule(t *testing.T) {
+	t.Parallel()
+
+	config := testConfig
+	config.IgnoreProjectModule = true
+
+	root := writeFixtureProject(t, fixtureFiles{"go.mod": fixtureModule})
+	options, err := config.discoverOptions(root, nil)
+	require.NoError(t, err)
+	require.Equal(t, []string{"example.com/fixture"}, options.IgnoredPrefixes)
+
+	options, err = config.discoverOptions(writeFixtureProject(t, fixtureFiles{"main.go": "package main\n"}), nil)
+	require.NoError(t, err, "a project without go.mod has nothing to ignore")
+	require.Empty(t, options.IgnoredPrefixes)
+
+	options, err = config.includingProject().discoverOptions(root, nil)
+	require.NoError(t, err)
+	require.Empty(t, options.IgnoredPrefixes)
+	require.False(t, options.FollowProjectImports)
+}
+
+func TestDiscoverOptionsReportsAnUnreadableGoMod(t *testing.T) {
+	t.Parallel()
+
+	config := testConfig
+	config.IgnoreProjectModule = true
+	root := writeFixtureProject(t, fixtureFiles{"main.go": "package main\n"})
+	require.NoError(t, os.Mkdir(filepath.Join(root, goModFileName), 0o750))
+
+	_, err := config.discoverOptions(root, nil)
+	require.ErrorIs(t, err, errNotRegularFile)
 }

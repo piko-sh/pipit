@@ -20,8 +20,9 @@ package sandboxwire_test
 
 import (
 	"encoding/json"
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/sandboxwire"
 )
@@ -43,17 +44,13 @@ func observe(machine *sandboxwire.Machine, step transition) error {
 func idleMachine(t *testing.T, limits sandboxwire.SessionLimits) *sandboxwire.Machine {
 	t.Helper()
 	machine, err := sandboxwire.NewMachine(limits)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, step := range []transition{
 		{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Hello, identifier: 0},
 		{direction: sandboxwire.HostToWorker, kind: sandboxwire.Configure, identifier: 0},
 		{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Ready, identifier: 0},
 	} {
-		if err := observe(machine, step); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, observe(machine, step))
 	}
 	return machine
 }
@@ -72,59 +69,68 @@ func TestMachineValidSession(t *testing.T) {
 		{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Result, identifier: 2},
 		{direction: sandboxwire.HostToWorker, kind: sandboxwire.Close, identifier: 0},
 	} {
-		if err := observe(machine, step); err != nil {
-			t.Fatalf("step=%+v err=%v", step, err)
-		}
+		require.NoError(t, observe(machine, step), "step %+v is valid", step)
 	}
-	if machine.State() != sandboxwire.Closed {
-		t.Fatal("session did not close")
-	}
-	if err := observe(machine, transition{direction: sandboxwire.HostToWorker, kind: sandboxwire.Run, identifier: 3}); !errors.Is(err, sandboxwire.ErrClosed) {
-		t.Fatalf("closed session reopened: %v", err)
-	}
+	require.Equal(t, sandboxwire.Closed, machine.State(), "the session ends closed")
+	require.ErrorIs(t, observe(machine, transition{direction: sandboxwire.HostToWorker, kind: sandboxwire.Run, identifier: 3}), sandboxwire.ErrClosed, "a closed session refuses new runs")
 }
 
 func TestMachineRejectsHandshakeViolations(t *testing.T) {
 	t.Parallel()
-	for _, steps := range [][]transition{
-		{{direction: sandboxwire.HostToWorker, kind: sandboxwire.Run, identifier: 1}},
-		{{direction: sandboxwire.HostToWorker, kind: sandboxwire.Hello, identifier: 0}},
-		{{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Ready, identifier: 0}},
-		{{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Hello, identifier: 1}},
-		{{direction: "unknown", kind: sandboxwire.Hello, identifier: 0}},
-		{{direction: sandboxwire.WorkerToHost, kind: "unknown", identifier: 0}},
-		{
+	tests := []struct {
+		name  string
+		steps []transition
+	}{
+		{name: "run before hello", steps: []transition{
+			{direction: sandboxwire.HostToWorker, kind: sandboxwire.Run, identifier: 1},
+		}},
+		{name: "hello from the host", steps: []transition{
+			{direction: sandboxwire.HostToWorker, kind: sandboxwire.Hello, identifier: 0},
+		}},
+		{name: "ready before hello", steps: []transition{
+			{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Ready, identifier: 0},
+		}},
+		{name: "hello with a non-zero id", steps: []transition{
+			{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Hello, identifier: 1},
+		}},
+		{name: "unknown direction", steps: []transition{
+			{direction: "unknown", kind: sandboxwire.Hello, identifier: 0},
+		}},
+		{name: "unknown kind", steps: []transition{
+			{direction: sandboxwire.WorkerToHost, kind: "unknown", identifier: 0},
+		}},
+		{name: "configure from the worker", steps: []transition{
 			{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Hello, identifier: 0},
 			{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Configure, identifier: 0},
-		},
-		{
+		}},
+		{name: "run before ready", steps: []transition{
 			{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Hello, identifier: 0},
 			{direction: sandboxwire.HostToWorker, kind: sandboxwire.Configure, identifier: 0},
 			{direction: sandboxwire.HostToWorker, kind: sandboxwire.Run, identifier: 1},
-		},
-	} {
-		machine, err := sandboxwire.NewMachine(sandboxwire.SessionLimits{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		for index, step := range steps {
-			err = observe(machine, step)
-			if index < len(steps)-1 && err != nil {
-				t.Fatalf("precondition failed: %v", err)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			machine, err := sandboxwire.NewMachine(sandboxwire.SessionLimits{})
+			require.NoError(t, err)
+			for index, step := range tt.steps {
+				err = observe(machine, step)
+				if index < len(tt.steps)-1 {
+					require.NoError(t, err, "every step before the last is valid")
+				}
 			}
-		}
-		if !errors.Is(err, sandboxwire.ErrProtocol) || machine.State() != sandboxwire.Failed {
-			t.Fatalf("invalid handshake survived: state=%s err=%v", machine.State(), err)
-		}
-		if err := observe(machine, transition{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Hello, identifier: 0}); !errors.Is(err, sandboxwire.ErrClosed) {
-			t.Fatalf("failed handshake reusable: %v", err)
-		}
+			require.ErrorIs(t, err, sandboxwire.ErrProtocol, "an invalid handshake is a protocol error")
+			require.Equal(t, sandboxwire.Failed, machine.State(), "an invalid handshake fails the session")
+			hello := transition{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Hello, identifier: 0}
+			require.ErrorIs(t, observe(machine, hello), sandboxwire.ErrClosed, "a failed session refuses a new handshake")
+		})
 	}
 }
 
 func TestMachineRejectsExecutionViolations(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct {
+	tests := []struct {
 		name  string
 		steps []transition
 	}{
@@ -192,20 +198,19 @@ func TestMachineRejectsExecutionViolations(t *testing.T) {
 			{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Result, identifier: ^uint64(0)},
 			{direction: sandboxwire.HostToWorker, kind: sandboxwire.Run, identifier: 1},
 		}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			machine := idleMachine(t, sandboxwire.SessionLimits{MaxCallsPerRun: 2, MaxOutstandingCalls: 2})
-			for index, step := range test.steps {
+			for index, step := range tt.steps {
 				err := observe(machine, step)
-				if index < len(test.steps)-1 {
-					if err != nil {
-						t.Fatalf("precondition failed: %v", err)
-					}
+				if index < len(tt.steps)-1 {
+					require.NoError(t, err)
 					continue
 				}
-				if !errors.Is(err, sandboxwire.ErrProtocol) || machine.State() != sandboxwire.Failed {
-					t.Fatalf("violation accepted: state=%s err=%v", machine.State(), err)
-				}
+				require.ErrorIs(t, err, sandboxwire.ErrProtocol, "the violation is a protocol error")
+				require.Equal(t, sandboxwire.Failed, machine.State(), "the violation fails the session")
 			}
 		})
 	}
@@ -219,25 +224,29 @@ func TestMachineHostCanCloseDuringExecution(t *testing.T) {
 		{direction: sandboxwire.WorkerToHost, kind: sandboxwire.Call, identifier: 1},
 		{direction: sandboxwire.HostToWorker, kind: sandboxwire.Close, identifier: 0},
 	} {
-		if err := observe(machine, step); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, observe(machine, step))
 	}
-	if machine.State() != sandboxwire.Closed {
-		t.Fatal("close was blocked by a pending broker call")
-	}
+	require.Equal(t, sandboxwire.Closed, machine.State(), "a pending broker call does not block close")
 }
 
 func TestMachineRejectsInvalidLimits(t *testing.T) {
 	t.Parallel()
-	for _, limits := range []sandboxwire.SessionLimits{
-		{MaxCallsPerRun: -1}, {MaxOutstandingCalls: -1},
-		{MaxCallsPerRun: 65537}, {MaxOutstandingCalls: 1025},
-		{MaxCallsPerRun: 1, MaxOutstandingCalls: 2},
-	} {
-		if _, err := sandboxwire.NewMachine(limits); !errors.Is(err, sandboxwire.ErrInvalidLimits) {
-			t.Fatalf("invalid limits accepted: %+v err=%v", limits, err)
-		}
+	tests := []struct {
+		name   string
+		limits sandboxwire.SessionLimits
+	}{
+		{name: "negative calls per run", limits: sandboxwire.SessionLimits{MaxCallsPerRun: -1}},
+		{name: "negative outstanding calls", limits: sandboxwire.SessionLimits{MaxOutstandingCalls: -1}},
+		{name: "calls per run above the ceiling", limits: sandboxwire.SessionLimits{MaxCallsPerRun: 65537}},
+		{name: "outstanding calls above the ceiling", limits: sandboxwire.SessionLimits{MaxOutstandingCalls: 1025}},
+		{name: "more outstanding calls than calls per run", limits: sandboxwire.SessionLimits{MaxCallsPerRun: 1, MaxOutstandingCalls: 2}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := sandboxwire.NewMachine(tt.limits)
+			require.ErrorIs(t, err, sandboxwire.ErrInvalidLimits)
+		})
 	}
 }
 
@@ -250,9 +259,7 @@ func FuzzMachineTransitions(fuzzer *testing.F) {
 			return
 		}
 		machine, err := sandboxwire.NewMachine(sandboxwire.SessionLimits{})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		kinds := []sandboxwire.Kind{sandboxwire.Hello, sandboxwire.Configure, sandboxwire.Ready, sandboxwire.Run, sandboxwire.Result, sandboxwire.Call, sandboxwire.Reply, sandboxwire.Close}
 		terminal := false
 		for _, value := range data {
@@ -261,12 +268,12 @@ func FuzzMachineTransitions(fuzzer *testing.F) {
 				direction = sandboxwire.WorkerToHost
 			}
 			err := observe(machine, transition{direction: direction, kind: kinds[value&7], identifier: uint64(value >> 4)})
-			if terminal && !errors.Is(err, sandboxwire.ErrClosed) {
-				t.Fatalf("terminal state reopened: %v", err)
+			if terminal {
+				require.ErrorIs(t, err, sandboxwire.ErrClosed, "a terminal state stays closed")
 			}
 			state := machine.State()
-			if err != nil && state != sandboxwire.Failed && state != sandboxwire.Closed {
-				t.Fatalf("error left a reusable state: %s", state)
+			if err != nil {
+				require.Contains(t, []sandboxwire.State{sandboxwire.Failed, sandboxwire.Closed}, state, "an error leaves the session failed or closed")
 			}
 			terminal = state == sandboxwire.Failed || state == sandboxwire.Closed
 		}

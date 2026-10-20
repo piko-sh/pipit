@@ -16,6 +16,9 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+// Command sweep_jsonl converts cross-language benchmark reports (latest.json) into one
+// JSON Lines file with a row per runner, benchmark and mode. A later report replaces
+// every row of the runners it measured.
 package main
 
 import (

@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalChannels(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "buffered channel send and receive",
@@ -42,7 +42,7 @@ func TestEvalChannels(t *testing.T) {
 ch <- 42
 v := <-ch
 v`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "channel with goroutine",
@@ -52,7 +52,7 @@ go func() {
 }()
 v := <-ch
 v`,
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "select with default",
@@ -66,7 +66,7 @@ default:
 	result = -1
 }
 result`,
-			expect: 7,
+			want: 7,
 		},
 		{
 			name: "select send case",
@@ -79,7 +79,7 @@ default:
 	result = -1
 }
 result`,
-			expect: 1,
+			want: 1,
 		},
 	}
 
@@ -87,9 +87,9 @@ result`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -98,9 +98,9 @@ func TestEvalChannelTyped(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "string channel",
@@ -108,7 +108,7 @@ func TestEvalChannelTyped(t *testing.T) {
 ch <- "hello"
 v := <-ch
 v`,
-			expect: "hello",
+			want: "hello",
 		},
 		{
 			name: "float channel",
@@ -116,7 +116,7 @@ v`,
 ch <- 3.14
 v := <-ch
 v`,
-			expect: 3.14,
+			want: 3.14,
 		},
 		{
 			name: "bool channel",
@@ -124,7 +124,7 @@ v`,
 ch <- true
 v := <-ch
 v`,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "select recv string channel",
@@ -138,7 +138,7 @@ default:
 	result = "none"
 }
 result`,
-			expect: "world",
+			want: "world",
 		},
 	}
 
@@ -146,9 +146,9 @@ result`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -157,9 +157,9 @@ func TestEvalChanRecvCommaOk(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "recv ok true",
@@ -168,7 +168,7 @@ ch <- 42
 v, ok := <-ch
 _ = v
 ok`,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "recv ok value",
@@ -177,7 +177,7 @@ ch <- 99
 v, ok := <-ch
 _ = ok
 v`,
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "recv closed ok false",
@@ -185,7 +185,7 @@ v`,
 close(ch)
 _, ok := <-ch
 ok`,
-			expect: false,
+			want: false,
 		},
 	}
 
@@ -193,9 +193,9 @@ ok`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

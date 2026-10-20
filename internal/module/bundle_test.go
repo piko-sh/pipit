@@ -19,8 +19,9 @@
 package module
 
 import (
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func fixtureBundle() *Bundle {
@@ -37,26 +38,18 @@ func fixtureBundle() *Bundle {
 func TestBundleValidate(t *testing.T) {
 	t.Parallel()
 	good := fixtureBundle()
-	if err := good.Validate(); err != nil {
-		t.Fatalf("well-formed bundle failed validation: %v", err)
-	}
+	require.NoError(t, good.Validate(), "a well-formed bundle validates")
 
 	var nilBundle *Bundle
-	if err := nilBundle.Validate(); err == nil {
-		t.Fatalf("nil bundle should fail Validate")
-	}
+	require.Error(t, nilBundle.Validate(), "a nil bundle is invalid")
 
 	noDescriptor := *good
 	noDescriptor.Descriptor = nil
-	if err := noDescriptor.Validate(); err == nil {
-		t.Fatalf("bundle without descriptor should fail Validate")
-	}
+	require.Error(t, noDescriptor.Validate(), "a bundle without a descriptor is invalid")
 
 	noBytecode := *good
 	noBytecode.Bytecode = nil
-	if err := noBytecode.Validate(); err == nil {
-		t.Fatalf("bundle without bytecode should fail Validate")
-	}
+	require.Error(t, noBytecode.Validate(), "a bundle without bytecode is invalid")
 }
 
 func TestBundleFingerprintStability(t *testing.T) {
@@ -65,77 +58,48 @@ func TestBundleFingerprintStability(t *testing.T) {
 	b := fixtureBundle()
 
 	fpA, err := a.Fingerprint()
-	if err != nil {
-		t.Fatalf("Fingerprint(a) error: %v", err)
-	}
+	require.NoError(t, err)
 	fpB, err := b.Fingerprint()
-	if err != nil {
-		t.Fatalf("Fingerprint(b) error: %v", err)
-	}
-	if fpA != fpB {
-		t.Fatalf("equivalent bundles must share fingerprint: a=%s b=%s", fpA, fpB)
-	}
+	require.NoError(t, err)
+	require.Equal(t, fpB, fpA, "equivalent bundles share a fingerprint")
 
 	c := fixtureBundle()
 	c.Bytecode = append([]byte(nil), c.Bytecode...)
 	c.Bytecode[0] ^= 0xff
 	fpC, err := c.Fingerprint()
-	if err != nil {
-		t.Fatalf("Fingerprint(c) error: %v", err)
-	}
-	if fpC == fpA {
-		t.Fatalf("mutated bytecode should change fingerprint")
-	}
+	require.NoError(t, err)
+	require.NotEqual(t, fpA, fpC, "changed bytecode changes the fingerprint")
 
 	d := fixtureBundle()
 	d.Descriptor = new(*d.Descriptor)
 	d.Descriptor.Capabilities = CapabilitySet{{Axis: "exec"}}
 	fpD, err := d.Fingerprint()
-	if err != nil {
-		t.Fatalf("Fingerprint(d) error: %v", err)
-	}
-	if fpD == fpA {
-		t.Fatalf("mutated descriptor should change fingerprint")
-	}
+	require.NoError(t, err)
+	require.NotEqual(t, fpA, fpD, "a changed descriptor changes the fingerprint")
 }
 
 func TestBundleVerifyAgainstRef(t *testing.T) {
 	t.Parallel()
 	bundle := fixtureBundle()
 	fingerprint, err := bundle.Fingerprint()
-	if err != nil {
-		t.Fatalf("Fingerprint error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if err := bundle.VerifyAgainstRef(Ref{Path: bundle.Descriptor.Ref.Path}); err != nil {
-		t.Fatalf("empty-pin reference should pass verification, got %v", err)
-	}
+	require.NoError(t, bundle.VerifyAgainstRef(Ref{Path: bundle.Descriptor.Ref.Path}), "a reference without a pin verifies")
 
 	matchingRef := Ref{Path: bundle.Descriptor.Ref.Path, Pin: fingerprint}
-	if err := bundle.VerifyAgainstRef(matchingRef); err != nil {
-		t.Fatalf("matching pin should pass verification, got %v", err)
-	}
+	require.NoError(t, bundle.VerifyAgainstRef(matchingRef), "a matching pin verifies")
 
 	mismatchRef := Ref{Path: bundle.Descriptor.Ref.Path, Pin: "sha256:0000000000000000000000000000000000000000000000000000000000000000"}
 	err = bundle.VerifyAgainstRef(mismatchRef)
-	if err == nil {
-		t.Fatalf("mismatched pin should fail verification")
-	}
-	if !errors.Is(err, ErrIntegrityMismatch) {
-		t.Fatalf("mismatched-pin error %v does not wrap ErrIntegrityMismatch", err)
-	}
+	require.ErrorIs(t, err, ErrIntegrityMismatch, "a mismatched pin fails verification")
 }
 
 func TestBundleBytecodeDigestRoundTrip(t *testing.T) {
 	t.Parallel()
 	a := fixtureBundle()
 	b := fixtureBundle()
-	if a.BytecodeDigest() != b.BytecodeDigest() {
-		t.Fatalf("equal bytecode should produce equal digests")
-	}
+	require.Equal(t, a.BytecodeDigest(), b.BytecodeDigest(), "equal bytecode gives equal digests")
 	c := fixtureBundle()
 	c.Bytecode = append(c.Bytecode, 0x01)
-	if c.BytecodeDigest() == a.BytecodeDigest() {
-		t.Fatalf("modified bytecode should produce different digest")
-	}
+	require.NotEqual(t, a.BytecodeDigest(), c.BytecodeDigest(), "changed bytecode changes the digest")
 }

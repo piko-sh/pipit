@@ -25,7 +25,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"runtime"
 	"syscall"
 	"testing"
@@ -33,6 +32,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/unix"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestNativeWorkerPrivileges(t *testing.T) {
@@ -40,8 +41,7 @@ func TestNativeWorkerPrivileges(t *testing.T) {
 	if os.Getenv("PIPIT_PRIVILEGES_CHILD") != "1" {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestNativeWorkerPrivileges$")
-		command.Env = append(os.Environ(), "PIPIT_PRIVILEGES_CHILD=1")
+		command := sandboxtest.Command(ctx, "TestNativeWorkerPrivileges", "PIPIT_PRIVILEGES_CHILD=1")
 		output, err := command.CombinedOutput()
 		if err != nil {
 			t.Fatalf("worker privilege fixture failed: %v\n%s", err, output)
@@ -59,8 +59,7 @@ func TestNativeSealedWorkerPrivileges(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestNativeSealedWorkerPrivileges$")
-	command.Env = append(os.Environ(), "PIPIT_SEALED_PRIVILEGES_CHILD=1")
+	command := sandboxtest.Command(ctx, "TestNativeSealedWorkerPrivileges", "PIPIT_SEALED_PRIVILEGES_CHILD=1")
 	command.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags:                 unix.CLONE_NEWUSER,
 		UidMappings:                []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getuid(), Size: 1}},

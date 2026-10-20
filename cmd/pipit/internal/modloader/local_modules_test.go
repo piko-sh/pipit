@@ -19,10 +19,10 @@
 package modloader
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -74,7 +74,7 @@ func TestResolveScriptLoadsLocalPackagesWithoutNetwork(t *testing.T) {
 	t.Parallel()
 	root := writeLocalModuleFixture(t)
 
-	resolution, err := ResolveScript(context.Background(), filepath.Join(root, "main.go"), ScriptResolverOptions{StdlibPackages: map[string]struct{}{"fmt": {}, "strings": {}}})
+	resolution, err := ResolveScript(t.Context(), filepath.Join(root, "main.go"), ScriptResolverOptions{StdlibPackages: map[string]struct{}{"fmt": {}, "strings": {}}})
 	require.NoError(t, err)
 
 	require.Equal(t, []string{"example.com/other", "example.com/app"}, resolution.LocalModules, "the replaced module loads before the module that imports it")
@@ -100,7 +100,7 @@ func TestResolveScriptFindsAncestorGoMod(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(script), 0o750))
 	require.NoError(t, os.WriteFile(script, []byte("package main\n\nimport \"example.com/app/lib\"\n\nfunc main() { _ = lib.Suffix }\n"), 0o600))
 
-	resolution, err := ResolveScript(context.Background(), script, ScriptResolverOptions{})
+	resolution, err := ResolveScript(t.Context(), script, ScriptResolverOptions{})
 	require.NoError(t, err)
 	require.Equal(t, []string{"example.com/app"}, resolution.LocalModules)
 	require.Equal(t, []string{"lib"}, resolution.Modules[0].PackageOrder)
@@ -113,7 +113,7 @@ func TestResolveScriptLocalPackageRemoteImportNeedsNetwork(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "lib", "remote.go"), []byte("package lib\n\nimport _ \"github.com/never/fetched\"\n"), 0o600))
 	require.NoError(t, os.WriteFile(script, []byte("package main\n\nimport \"example.com/app/lib\"\n\nfunc main() { _ = lib.Suffix }\n"), 0o600))
 
-	_, err := ResolveScript(context.Background(), script, ScriptResolverOptions{})
+	_, err := ResolveScript(t.Context(), script, ScriptResolverOptions{})
 	require.ErrorIs(t, err, ErrNetworkNotAllowed, "a remote import inside a local package still needs --allow-network")
 }
 
@@ -123,7 +123,7 @@ func TestResolveScriptReportsMissingLocalPackage(t *testing.T) {
 	script := filepath.Join(root, "missing.go")
 	require.NoError(t, os.WriteFile(script, []byte("package main\n\nimport _ \"example.com/app/nowhere\"\n\nfunc main() {}\n"), 0o600))
 
-	_, err := ResolveScript(context.Background(), script, ScriptResolverOptions{})
+	_, err := ResolveScript(t.Context(), script, ScriptResolverOptions{})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "example.com/app/nowhere")
 }
@@ -134,7 +134,7 @@ func TestResolveDirectoryLoadsLocalPackages(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join(root, "main.go"))
 	require.NoError(t, err)
 
-	resolution, err := ResolveDirectory(context.Background(), root, map[string]string{"main.go": string(source)}, ScriptResolverOptions{})
+	resolution, err := ResolveDirectory(t.Context(), root, map[string]string{"main.go": string(source)}, ScriptResolverOptions{})
 	require.NoError(t, err)
 	require.Equal(t, []string{"example.com/other", "example.com/app"}, resolution.LocalModules)
 	require.Equal(t, string(source), resolution.MainSources["main.go"])
@@ -161,7 +161,7 @@ func TestResolveScriptSnapshotServesLocalPackagesFromCapture(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(filepath.Join(root, "lib", "lib.go"), []byte("package lib\n\nconst Suffix = \"changed\"\n"), 0o600))
 
-	resolution, err := ResolveScript(context.Background(), script, ScriptResolverOptions{Snapshot: snapshot})
+	resolution, err := ResolveScript(t.Context(), script, ScriptResolverOptions{Snapshot: snapshot})
 	require.NoError(t, err)
 	require.Equal(t, []string{"example.com/other", "example.com/app"}, resolution.LocalModules)
 	require.Equal(t, "package lib\n\nconst Suffix = \"!\"\n", resolution.Modules[1].Packages["lib"]["lib.go"], "the approved bytes win over the live tree")
@@ -180,12 +180,41 @@ func TestResolveScriptSnapshotRefusesReplaceOutsideRoot(t *testing.T) {
 
 	snapshot, err := CaptureInvocation(script, nil, "main", nil)
 	require.NoError(t, err)
-	_, err = ResolveScript(context.Background(), script, ScriptResolverOptions{Snapshot: snapshot})
+	_, err = ResolveScript(t.Context(), script, ScriptResolverOptions{Snapshot: snapshot})
 	require.Error(t, err, "a gated run must not read outside the approved root")
 	require.True(t, errors.Is(err, os.ErrNotExist) || err != nil)
 	require.Contains(t, err.Error(), "approved source snapshot")
 
-	live, err := ResolveScript(context.Background(), script, ScriptResolverOptions{})
+	live, err := ResolveScript(t.Context(), script, ScriptResolverOptions{})
 	require.NoError(t, err, "the trusted path may follow the replace")
 	require.Equal(t, []string{"example.com/sibling"}, live.LocalModules)
+}
+
+func TestCompilableForHostFollowsTheInterpreter(t *testing.T) {
+	t.Parallel()
+
+	otherOS := "windows"
+	if runtime.GOOS == otherOS {
+		otherOS = "linux"
+	}
+	tests := []struct {
+		name string
+		file string
+		src  string
+		want bool
+	}{
+		{name: "an interp file", file: "a.go", src: "//go:build interp\n\npackage p\n", want: true},
+		{name: "a file kept from the interpreter", file: "a.go", src: "//go:build !interp\n\npackage p\n", want: false},
+		{name: "a file that needs cgo", file: "a.go", src: "//go:build cgo\n\npackage p\n", want: false},
+		{name: "a file for this OS", file: "a_" + runtime.GOOS + ".go", src: "package p\n", want: true},
+		{name: "a file for another OS", file: "a_" + otherOS + ".go", src: "package p\n", want: false},
+		{name: "a malformed constraint is kept for the compiler to report", file: "a.go", src: "//go:build (\n\npackage p\n", want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tt.want, compilableForHost(tt.file, tt.src))
+		})
+	}
 }

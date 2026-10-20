@@ -27,6 +27,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/symtab"
 )
@@ -37,28 +39,28 @@ func BenchmarkEval(b *testing.B) {
 		code string
 	}{
 		{
-			"arithmetic_simple",
-			`1 + 2 * 3`,
+			name: "arithmetic_simple",
+			code: `1 + 2 * 3`,
 		},
 		{
-			"arithmetic_complex",
-			`((1+2)*3-4)/5 + 6*7 - 8`,
+			name: "arithmetic_complex",
+			code: `((1+2)*3-4)/5 + 6*7 - 8`,
 		},
 		{
-			"variable_assignment",
-			`x := 10
+			name: "variable_assignment",
+			code: `x := 10
 y := 20
 z := x + y
 z * 2`,
 		},
 		{
-			"function_call",
-			`func add(a, b int) int { return a + b }
+			name: "function_call",
+			code: `func add(a, b int) int { return a + b }
 add(3, 4)`,
 		},
 		{
-			"recursive_fibonacci",
-			`func fib(n int) int {
+			name: "recursive_fibonacci",
+			code: `func fib(n int) int {
 	if n <= 1 {
 		return n
 	}
@@ -67,8 +69,8 @@ add(3, 4)`,
 fib(20)`,
 		},
 		{
-			"recursive_factorial",
-			`func fact(n int) int {
+			name: "recursive_factorial",
+			code: `func fact(n int) int {
 	if n <= 1 {
 		return 1
 	}
@@ -77,8 +79,8 @@ fib(20)`,
 fact(100)`,
 		},
 		{
-			"closure_adder",
-			`func makeAdder(x int) func(int) int {
+			name: "closure_adder",
+			code: `func makeAdder(x int) func(int) int {
 	return func(y int) int {
 		return x + y
 	}
@@ -87,8 +89,8 @@ add5 := makeAdder(5)
 add5(10)`,
 		},
 		{
-			"for_loop_sum",
-			`func sum() int {
+			name: "for_loop_sum",
+			code: `func sum() int {
 	s := 0
 	for i := 0; i < 1000; i++ {
 		s += i
@@ -98,8 +100,8 @@ add5(10)`,
 sum()`,
 		},
 		{
-			"string_concat",
-			`func concat() string {
+			name: "string_concat",
+			code: `func concat() string {
 	s := ""
 	for i := 0; i < 100; i++ {
 		s += "x"
@@ -109,8 +111,8 @@ sum()`,
 concat()`,
 		},
 		{
-			"slice_append",
-			`func build() int {
+			name: "slice_append",
+			code: `func build() int {
 	s := make([]int, 0, 100)
 	for i := 0; i < 100; i++ {
 		s = append(s, i)
@@ -120,8 +122,8 @@ concat()`,
 build()`,
 		},
 		{
-			"map_operations",
-			`func mapOps() int {
+			name: "map_operations",
+			code: `func mapOps() int {
 	m := map[string]int{}
 	m["a"] = 1
 	m["b"] = 2
@@ -131,8 +133,8 @@ build()`,
 mapOps()`,
 		},
 		{
-			"goroutine_channel",
-			`func roundTrip() int {
+			name: "goroutine_channel",
+			code: `func roundTrip() int {
 	ch := make(chan int, 1)
 	go func() {
 		ch <- 42
@@ -142,8 +144,8 @@ mapOps()`,
 roundTrip()`,
 		},
 		{
-			"type_switch",
-			`func classify(v interface{}) string {
+			name: "type_switch",
+			code: `func classify(v interface{}) string {
 	switch v.(type) {
 	case int:
 		return "int"
@@ -158,8 +160,8 @@ roundTrip()`,
 classify(42)`,
 		},
 		{
-			"compound_assign_loop",
-			`func sum() int {
+			name: "compound_assign_loop",
+			code: `func sum() int {
 	x := 0
 	for i := 0; i < 1000; i++ {
 		x += i
@@ -177,7 +179,7 @@ sum()`,
 				service := app.NewService()
 				_, err := service.Eval(context.Background(), bm.code)
 				if err != nil {
-					b.Fatal(err)
+					require.NoError(b, err)
 				}
 			}
 		})
@@ -203,13 +205,13 @@ func BenchmarkNativeCall(b *testing.B) {
 		code string
 	}{
 		{
-			"single_call",
-			`import "strings"
+			name: "single_call",
+			code: `import "strings"
 strings.ToUpper("hello")`,
 		},
 		{
-			"repeated_calls",
-			`import "strings"
+			name: "repeated_calls",
+			code: `import "strings"
 func transform() string {
 	s := strings.ToUpper("hello")
 	s = strings.TrimSpace(s)
@@ -218,8 +220,8 @@ func transform() string {
 transform()`,
 		},
 		{
-			"call_in_loop",
-			`import "strings"
+			name: "call_in_loop",
+			code: `import "strings"
 func bench() string {
 	s := "hello"
 	for i := 0; i < 100; i++ {
@@ -230,13 +232,13 @@ func bench() string {
 bench()`,
 		},
 		{
-			"multi_arg_call",
-			`import "strings"
+			name: "multi_arg_call",
+			code: `import "strings"
 strings.Contains("hello world", "world")`,
 		},
 		{
-			"sprintf",
-			`import "fmt"
+			name: "sprintf",
+			code: `import "fmt"
 fmt.Sprintf("value: %d, name: %s", 42, "test")`,
 		},
 	}
@@ -249,7 +251,7 @@ fmt.Sprintf("value: %d, name: %s", 42, "test")`,
 				service.UseSymbols(symbols)
 				_, err := service.Eval(context.Background(), bm.code)
 				if err != nil {
-					b.Fatal(err)
+					require.NoError(b, err)
 				}
 			}
 		})

@@ -106,8 +106,7 @@ pipit run --allow-network examples/module_gjson/main.go
 
 Dumps a nested order/customer/address struct with
 `github.com/davecgh/go-spew`, via `Dump`, `Sdump`, and a `ConfigState` with
-`MaxDepth: 1`. Known gap: `spew.Printf("%#+v")` prints spew's own formatter
-internals instead of the value passed to it.
+`MaxDepth: 1`, and `spew.Printf("%#+v")`.
 
 ```sh
 pipit run --allow-network examples/module_spew/main.go
@@ -127,9 +126,7 @@ pipit run --allow-network examples/module_testify/main.go
 ## module_decimal/
 
 Exact invoice arithmetic with `github.com/shopspring/decimal`: line totals,
-20% VAT, and the `0.1 + 0.2 == 0.3` check that floats get wrong. Known gap:
-`Div` loses precision in the tail, so `1/3` at 20 dp prints
-`0.33333333333333330000`.
+20% VAT, and the `0.1 + 0.2 == 0.3` check that floats get wrong.
 
 ```sh
 pipit run --allow-network examples/module_decimal/main.go
@@ -138,9 +135,7 @@ pipit run --allow-network examples/module_decimal/main.go
 ## module_cast/
 
 `github.com/spf13/cast` converting between strings, numbers, slices,
-`map[any]any`, times, and durations. Known gap: `ToBool` returns false for
-every input, including `"true"`, `"yes"`, and `1`; the other conversions
-match native Go.
+`map[any]any`, times, and durations.
 
 ```sh
 pipit run --allow-network examples/module_cast/main.go
@@ -150,8 +145,7 @@ pipit run --allow-network examples/module_cast/main.go
 
 Parses, sorts, and constraint-checks semver strings with
 `github.com/hashicorp/go-version`, the version arithmetic from terraform and
-vault. Known gap: sorting a `version.Collection` collapses it - all six
-entries print as `1.10.0` afterwards.
+vault.
 
 ```sh
 pipit run --allow-network examples/module_version/main.go

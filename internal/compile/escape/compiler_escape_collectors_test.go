@@ -51,7 +51,7 @@ func checkedBody(t *testing.T, source string) (*ast.BlockStmt, *types.Info) {
 			return function.Body, info
 		}
 	}
-	t.Fatal("the fixture source must declare a function named f")
+	require.FailNow(t, "the fixture source must declare a function named f")
 	return nil, nil
 }
 

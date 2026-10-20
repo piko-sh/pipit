@@ -25,10 +25,13 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 const recoveryCrashEnvironment = "PIPIT_TEST_RECOVERY_CRASH"
@@ -41,56 +44,33 @@ func TestRecoveryJournalProcessDeath(t *testing.T) {
 	for _, mode := range []string{"durable", "anonymous"} {
 		t.Run(mode, func(t *testing.T) {
 			directory := testRecoveryDirectory(t)
-			executable, err := os.Executable()
-			if err != nil {
-				t.Fatal(err)
-			}
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			command := exec.CommandContext(ctx, executable, "-test.run=^TestRecoveryJournalProcessDeath$")
-			command.Env = append(os.Environ(), recoveryCrashEnvironment+"="+mode, "PIPIT_TEST_RECOVERY_DIRECTORY="+directory)
+			command := sandboxtest.Command(ctx, "TestRecoveryJournalProcessDeath", recoveryCrashEnvironment+"="+mode, "PIPIT_TEST_RECOVERY_DIRECTORY="+directory)
 			command.Stderr = os.Stderr
 			output, err := command.StdoutPipe()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := command.Start(); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+			require.NoError(t, command.Start())
 			t.Cleanup(func() {
 				_ = command.Process.Kill()
 				_ = command.Wait()
 			})
-			ready, err := bufio.NewReader(output).ReadString('\n')
-			if err != nil || ready != "ready\n" {
-				t.Fatal("child did not reach crash point:", ready, err)
-			}
-			if err := command.Process.Kill(); err != nil {
-				t.Fatal(err)
-			}
-			if err := command.Wait(); err == nil {
-				t.Fatal("child was not killed")
-			}
+			sandboxtest.WaitForLine(t, bufio.NewReader(output), "ready", "the child reaches the crash point")
+			require.NoError(t, command.Process.Kill())
+			require.Error(t, command.Wait(), "the child is killed before it wakes")
 			owner, err := OpenLinuxRecoveryJournal(directory, recoveryRecordFixture().Namespace)
-			if err != nil {
-				t.Fatal("crash retained lease or damaged journal:", err)
-			}
+			require.NoError(t, err, "a crash keeps no lease and leaves the journal intact")
 			defer owner.Close()
 			records, err := owner.Records()
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			expected := 0
 			if mode == "durable" {
 				expected = 1
 			}
-			if len(records) != expected {
-				t.Fatal("unexpected crash records:", records)
-			}
+			require.Len(t, records, expected)
 			entries, err := os.ReadDir(directory)
-			if err != nil || len(entries) != expected {
-				t.Fatal("partial publication or anonymous remnant:", entries, err)
-			}
+			require.NoError(t, err, "partial publication or anonymous remnant")
+			require.Len(t, entries, expected)
 		})
 	}
 }
@@ -99,58 +79,39 @@ func TestRecoveryJournalPinnedDirectory(t *testing.T) {
 	directory := testRecoveryDirectory(t)
 	record := recoveryRecordFixture()
 	owner, err := OpenLinuxRecoveryJournal(directory, record.Namespace)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer owner.Close()
 	moved := filepath.Join(t.TempDir(), "original")
-	if err := os.Rename(directory, moved); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(directory, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := owner.appendRecord(record); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Rename(directory, moved))
+	require.NoError(t, os.Mkdir(directory, 0700))
+	require.NoError(t, owner.appendRecord(record))
 	replacement, err := os.ReadDir(directory)
-	if err != nil || len(replacement) != 0 {
-		t.Fatal("journal followed replacement directory:", replacement, err)
-	}
+	require.NoError(t, err, "journal followed replacement directory")
+	require.Empty(t, replacement)
 	original, err := os.ReadDir(moved)
-	if err != nil || len(original) != 1 {
-		t.Fatal("journal lost pinned directory:", original, err)
-	}
+	require.NoError(t, err, "journal lost pinned directory")
+	require.Len(t, original, 1)
 }
 
 func recoveryJournalCrashChild(t *testing.T, mode string) {
 	t.Helper()
 	owner, err := OpenLinuxRecoveryJournal(os.Getenv("PIPIT_TEST_RECOVERY_DIRECTORY"), recoveryRecordFixture().Namespace)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer owner.Close()
 	switch mode {
 	case "durable":
-		if err := owner.appendRecord(recoveryRecordFixture()); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, owner.appendRecord(recoveryRecordFixture()))
 	case "anonymous":
 		temporary, err := createLinuxStagingFile(owner.directory)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		defer temporary.Close()
-		if _, err := temporary.Write([]byte("incomplete")); err != nil {
-			t.Fatal(err)
-		}
-		if err := temporary.Sync(); err != nil {
-			t.Fatal(err)
-		}
+		_, err = temporary.Write([]byte("incomplete"))
+		require.NoError(t, err)
+		require.NoError(t, temporary.Sync())
 	default:
-		t.Fatal("unknown crash point")
+		require.FailNow(t, "the crash point is known")
 	}
 	fmt.Println("ready")
 	time.Sleep(time.Hour)
-	t.Fatal("child was not killed")
+	require.FailNow(t, "the child is killed before it wakes")
 }

@@ -122,7 +122,7 @@ func TestVerifyOperandBoundsExtensionWords(t *testing.T) {
 		return isa.NewInstruction(isa.OpExt, 0, register, uint8(kind))
 	}
 	badInt := isa.NewInstruction(isa.OpAddInt, outOfRange, 0, 1)
-	cases := []struct {
+	tests := []struct {
 		name  string
 		body  []isa.Instruction
 		valid bool
@@ -168,10 +168,10 @@ func TestVerifyOperandBoundsExtensionWords(t *testing.T) {
 			valid: true,
 		},
 	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			compiledFunction := &program.CompiledFunction{Name: "f", Body: testCase.body}
+			compiledFunction := &program.CompiledFunction{Name: "f", Body: tt.body}
 			compiledFunction.NumRegisters[isa.RegisterInt] = intCount
 			compiledFunction.NumRegisters[isa.RegisterGeneral] = generalCount
 			compiledFunction.NumRegisters[isa.RegisterString] = 1
@@ -179,7 +179,7 @@ func TestVerifyOperandBoundsExtensionWords(t *testing.T) {
 			compiledFunction.NumRegisters[isa.RegisterSliceFloat] = 1
 
 			err := VerifyOperandBounds(compiledFunction)
-			if testCase.valid {
+			if tt.valid {
 				require.NoError(t, err)
 				return
 			}

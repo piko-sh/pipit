@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalTypedSliceHeaderPropagatesThroughReturn(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 
@@ -44,7 +44,7 @@ func TestEvalTypedSliceHeaderPropagatesThroughReturn(t *testing.T) {
 }
 xs := []int64{1, 2, 3}
 appendOne(xs, 4)[3]`,
-			expect: int64(4),
+			want: int64(4),
 		},
 		{
 
@@ -54,7 +54,7 @@ appendOne(xs, 4)[3]`,
 }
 xs := []float64{1.0, 2.0, 3.0}
 appendOne(xs, 4.0)[3]`,
-			expect: float64(4),
+			want: float64(4),
 		},
 		{
 
@@ -64,7 +64,7 @@ appendOne(xs, 4.0)[3]`,
 }
 xs := []uint64{1, 2, 3}
 appendOne(xs, 4)[3]`,
-			expect: uint64(4),
+			want: uint64(4),
 		},
 		{
 
@@ -74,7 +74,7 @@ appendOne(xs, 4)[3]`,
 }
 xs := []string{"a", "b", "c"}
 appendOne(xs, "d")[3]`,
-			expect: "d",
+			want: "d",
 		},
 		{
 
@@ -84,7 +84,7 @@ appendOne(xs, "d")[3]`,
 }
 xs := []bool{true, false, true}
 appendOne(xs, true)[3]`,
-			expect: true,
+			want: true,
 		},
 		{
 
@@ -94,7 +94,7 @@ appendOne(xs, true)[3]`,
 }
 xs := []byte{1, 2, 3}
 appendOne(xs, 4)[3]`,
-			expect: uint8(4),
+			want: uint8(4),
 		},
 		{
 
@@ -104,7 +104,7 @@ appendOne(xs, 4)[3]`,
 }
 xs := []int64{1, 2, 3}
 appendOne(xs, 4)[3]`,
-			expect: int64(4),
+			want: int64(4),
 		},
 	}
 
@@ -112,9 +112,9 @@ appendOne(xs, 4)[3]`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

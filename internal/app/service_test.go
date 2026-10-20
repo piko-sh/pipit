@@ -19,23 +19,22 @@
 package app
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
-	"pipit.sh/pipit/internal/symtab"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/symtab"
 )
 
 func TestServiceCompileAndExecute(t *testing.T) {
 	t.Parallel()
 	service := NewService()
-	compiledFunction, err := service.Compile(context.Background(), "1 + 2")
+	compiledFunction, err := service.Compile(t.Context(), "1 + 2")
 	require.NoError(t, err)
 	require.NotNil(t, compiledFunction)
 
-	result, err := service.Execute(context.Background(), compiledFunction)
+	result, err := service.Execute(t.Context(), compiledFunction)
 	require.NoError(t, err)
 	require.Equal(t, 3, result)
 }
@@ -43,51 +42,62 @@ func TestServiceCompileAndExecute(t *testing.T) {
 func TestServiceCompileError(t *testing.T) {
 	t.Parallel()
 	service := NewService()
-	_, err := service.Compile(context.Background(), "func {{{")
+	_, err := service.Compile(t.Context(), "func {{{")
 	require.Error(t, err)
 }
 
 func TestServiceExecuteMultipleTimes(t *testing.T) {
 	t.Parallel()
 	service := NewService()
-	compiledFunction, err := service.Compile(context.Background(), "2 * 3")
+	compiledFunction, err := service.Compile(t.Context(), "2 * 3")
 	require.NoError(t, err)
 
 	for range 5 {
-		result, err := service.Execute(context.Background(), compiledFunction)
+		result, err := service.Execute(t.Context(), compiledFunction)
 		require.NoError(t, err)
 		require.Equal(t, 6, result)
 	}
 }
 
-func TestServiceCompileStatements(t *testing.T) {
+func TestServiceCompile(t *testing.T) {
 	t.Parallel()
-	service := NewService()
-	compiledFunction, err := service.Compile(context.Background(), "x := 10; y := 20; x + y")
-	require.NoError(t, err)
-	result, err := service.Execute(context.Background(), compiledFunction)
-	require.NoError(t, err)
-	require.Equal(t, 30, result)
-}
-
-func TestServiceCompileMixed(t *testing.T) {
-	t.Parallel()
-	service := NewService()
-	compiledFunction, err := service.Compile(context.Background(), `func double(x int) int { return x * 2 }
-double(21)`)
-	require.NoError(t, err)
-	result, err := service.Execute(context.Background(), compiledFunction)
-	require.NoError(t, err)
-	require.Equal(t, 42, result)
+	tests := []struct {
+		name string
+		code string
+		want any
+	}{
+		{
+			name: "statements",
+			code: "x := 10; y := 20; x + y",
+			want: 30,
+		},
+		{
+			name: "a declaration and an expression",
+			code: `func double(x int) int { return x * 2 }
+double(21)`,
+			want: 42,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			service := NewService()
+			compiledFunction, err := service.Compile(t.Context(), tt.code)
+			require.NoError(t, err)
+			result, err := service.Execute(t.Context(), compiledFunction)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, result)
+		})
+	}
 }
 
 func TestServiceReset(t *testing.T) {
 	t.Parallel()
 	service := NewService()
-	_, err := service.Eval(context.Background(), "1 + 1")
+	_, err := service.Eval(t.Context(), "1 + 1")
 	require.NoError(t, err)
 	service.Reset()
-	result, err := service.Eval(context.Background(), "2 + 2")
+	result, err := service.Eval(t.Context(), "2 + 2")
 	require.NoError(t, err)
 	require.Equal(t, 4, result)
 }
@@ -96,7 +106,7 @@ func TestServiceClone(t *testing.T) {
 	t.Parallel()
 	service := NewService()
 	clone := service.Clone()
-	result, err := clone.Eval(context.Background(), "3 + 4")
+	result, err := clone.Eval(t.Context(), "3 + 4")
 	require.NoError(t, err)
 	require.Equal(t, 7, result)
 }
@@ -128,10 +138,10 @@ func TestServicePackageLevelVarInit(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect     any
 		name       string
 		source     string
 		entrypoint string
+		want       any
 	}{
 		{
 			name: "variable with literal init",
@@ -141,7 +151,7 @@ func run() int { return x }
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     42,
+			want:       42,
 		},
 		{
 			name: "variable with expression init",
@@ -151,7 +161,7 @@ func run() int { return x }
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     42,
+			want:       42,
 		},
 		{
 			name: "multiple variables with init",
@@ -164,7 +174,7 @@ func run() int { return b }
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     30,
+			want:       30,
 		},
 		{
 			name: "string variable",
@@ -174,7 +184,7 @@ func run() string { return greeting }
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "hello",
+			want:       "hello",
 		},
 	}
 
@@ -182,9 +192,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := newTestService(t)
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -203,10 +213,10 @@ func helper() int { return 42 }
 	}
 
 	service := newTestService(t)
-	cfs, err := service.CompileFileSet(context.Background(), sources)
+	cfs, err := service.CompileFileSet(t.Context(), sources)
 	require.NoError(t, err)
 
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "run")
+	result, err := service.ExecuteEntrypoint(t.Context(), cfs, "run")
 	require.NoError(t, err)
 	require.Equal(t, 42, result)
 }
@@ -217,7 +227,7 @@ func TestServiceCompileErrorWrapping(t *testing.T) {
 	t.Run("syntax error", func(t *testing.T) {
 		t.Parallel()
 		service := newTestService(t)
-		_, err := service.EvalFile(context.Background(), `package main
+		_, err := service.EvalFile(t.Context(), `package main
 func run() int { return }
 func main() {}
 `, "run")
@@ -227,7 +237,7 @@ func main() {}
 	t.Run("type error", func(t *testing.T) {
 		t.Parallel()
 		service := newTestService(t)
-		_, err := service.EvalFile(context.Background(), `package main
+		_, err := service.EvalFile(t.Context(), `package main
 func run() int { return "hello" }
 func main() {}
 `, "run")
@@ -237,7 +247,7 @@ func main() {}
 	t.Run("unknown entrypoint", func(t *testing.T) {
 		t.Parallel()
 		service := newTestService(t)
-		_, err := service.EvalFile(context.Background(), `package main
+		_, err := service.EvalFile(t.Context(), `package main
 func main() {}
 `, "nonexistent")
 		require.Error(t, err)
@@ -248,7 +258,7 @@ func TestServiceInitFunctions(t *testing.T) {
 	t.Parallel()
 
 	service := newTestService(t)
-	result, err := service.EvalFile(context.Background(), `package main
+	result, err := service.EvalFile(t.Context(), `package main
 
 var order []int
 
@@ -294,7 +304,7 @@ func run() int {
 }
 func main() {}
 `
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 42, result)
 }
@@ -305,12 +315,12 @@ func TestServiceCloneAndReset(t *testing.T) {
 	t.Run("clone preserves symbols", func(t *testing.T) {
 		t.Parallel()
 		service := NewService()
-		_, err := service.Eval(context.Background(), "x := 42; x")
+		_, err := service.Eval(t.Context(), "x := 42; x")
 		require.NoError(t, err)
 
 		clone := service.Clone()
 
-		result, err := clone.Eval(context.Background(), "1 + 2")
+		result, err := clone.Eval(t.Context(), "1 + 2")
 		require.NoError(t, err)
 		require.Equal(t, 3, result)
 	})
@@ -318,12 +328,12 @@ func TestServiceCloneAndReset(t *testing.T) {
 	t.Run("reset clears state", func(t *testing.T) {
 		t.Parallel()
 		service := NewService()
-		_, err := service.Eval(context.Background(), "x := 42; x")
+		_, err := service.Eval(t.Context(), "x := 42; x")
 		require.NoError(t, err)
 
 		service.Reset()
 
-		result, err := service.Eval(context.Background(), "1 + 1")
+		result, err := service.Eval(t.Context(), "1 + 1")
 		require.NoError(t, err)
 		require.Equal(t, 2, result)
 	})
@@ -348,22 +358,27 @@ func main() {}
 `,
 	}
 
-	cfs, err := service.CompileFileSet(context.Background(), sources)
+	cfs, err := service.CompileFileSet(t.Context(), sources)
 	require.NoError(t, err)
 
-	err = service.ExecuteInits(context.Background(), cfs)
+	err = service.ExecuteInits(t.Context(), cfs)
 	require.NoError(t, err)
 
-	result, err := service.ExecuteEntrypoint(context.Background(), cfs, "run")
+	result, err := service.ExecuteEntrypoint(t.Context(), cfs, "run")
 	require.NoError(t, err)
 	require.Equal(t, 3, result)
 }
 
-func TestServiceVarInitWithFunctionCall(t *testing.T) {
+func TestServiceEvalFileStatements(t *testing.T) {
 	t.Parallel()
-
-	service := newTestService(t)
-	source := `package main
+	tests := []struct {
+		name   string
+		source string
+		want   any
+	}{
+		{
+			name: "a variable initialised by a call",
+			source: `package main
 
 func compute() int { return 21 * 2 }
 
@@ -371,18 +386,12 @@ var x = compute()
 
 func run() int { return x }
 func main() {}
-`
-	result, err := service.EvalFile(context.Background(), source, "run")
-	require.NoError(t, err)
-	require.Equal(t, 42, result)
-}
-
-func TestServiceSelectRecvAssign(t *testing.T) {
-	t.Parallel()
-
-	service := newTestService(t)
-
-	source := `package main
+`,
+			want: 42,
+		},
+		{
+			name: "a select receive into an existing variable",
+			source: `package main
 
 func run() int {
 	ch := make(chan int, 1)
@@ -396,18 +405,12 @@ func run() int {
 }
 
 func main() {}
-`
-	result, err := service.EvalFile(context.Background(), source, "run")
-	require.NoError(t, err)
-	require.Equal(t, 42, result)
-}
-
-func TestServiceSelectRecvDefine(t *testing.T) {
-	t.Parallel()
-
-	service := newTestService(t)
-
-	source := `package main
+`,
+			want: 42,
+		},
+		{
+			name: "a select receive defining a variable",
+			source: `package main
 
 func run() int {
 	ch := make(chan int, 1)
@@ -422,18 +425,12 @@ func run() int {
 }
 
 func main() {}
-`
-	result, err := service.EvalFile(context.Background(), source, "run")
-	require.NoError(t, err)
-	require.Equal(t, 42, result)
-}
-
-func TestServiceSendStatement(t *testing.T) {
-	t.Parallel()
-
-	service := newTestService(t)
-
-	source := `package main
+`,
+			want: 42,
+		},
+		{
+			name: "a channel send",
+			source: `package main
 
 func run() int {
 	ch := make(chan int, 1)
@@ -442,10 +439,18 @@ func run() int {
 }
 
 func main() {}
-`
-	result, err := service.EvalFile(context.Background(), source, "run")
-	require.NoError(t, err)
-	require.Equal(t, 42, result)
+`,
+			want: 42,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := newTestService(t).EvalFile(t.Context(), tt.source, "run")
+			require.NoError(t, err)
+			require.Equal(t, tt.want, result)
+		})
+	}
 }
 
 func TestServiceDebugInfoSourceMapOptimisation(t *testing.T) {
@@ -470,7 +475,7 @@ func main() {}
 `,
 	}
 
-	cfs, err := service.CompileFileSet(context.Background(), sources)
+	cfs, err := service.CompileFileSet(t.Context(), sources)
 	require.NoError(t, err)
 
 	fn, err := cfs.FindFunction("fibonacci")
@@ -479,5 +484,5 @@ func main() {}
 
 	file, line, _ := fn.DebugSourcePosition(0)
 	require.NotEmpty(t, file)
-	require.Greater(t, line, 0)
+	require.Positive(t, line)
 }

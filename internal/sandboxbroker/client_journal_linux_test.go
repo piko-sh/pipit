@@ -21,18 +21,21 @@
 package sandboxbroker
 
 import (
-	"context"
 	"encoding/json"
 	"net"
 	"sync/atomic"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 func TestJournalledClientRejectsUntrustedPreparation(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"missing", "root", "namespace", "identity", "malformed", "duplicate", "read"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			authority := testRecoveryAuthority(t, Read|Write)
 			journal := testRecoveryAuthorityJournal(t, authority)
 			record := testRecoveryAuthorityRecord(t, authority, 1)
@@ -43,9 +46,7 @@ func TestJournalledClientRejectsUntrustedPreparation(t *testing.T) {
 				record.Namespace = "invalid"
 			}
 			encoded, err := json.Marshal(record)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			if mode == "malformed" {
 				encoded = []byte("{}")
 			}
@@ -95,30 +96,27 @@ func TestJournalledClientRejectsUntrustedPreparation(t *testing.T) {
 				_, _ = connection.codec.Read()
 			}()
 			stream := &clientTestTransport{Conn: host, done: done, closes: atomic.Int32{}}
-			client, err := OpenJournalledFilesystemClient(context.Background(), stream, authority, journal)
-			if err != nil {
-				t.Fatal(err)
-			}
+			client, err := OpenJournalledFilesystemClient(t.Context(), stream, authority, journal)
+			require.NoError(t, err)
 			defer client.Close()
 			payload := recoveryWritePayload
 			if mode == "read" {
 				payload = readPayload
 			}
-			response, err := client.Execute(context.Background(), []byte(payload))
-			if err == nil || response.Written != 0 || response.Data != nil || !client.closed.Load() {
-				t.Fatal("untrusted preparation accepted:", response, err)
-			}
+			response, err := client.Execute(t.Context(), []byte(payload))
+			require.Error(t, err, "untrusted preparation accepted: %v", response)
+			require.Equal(t, 0, response.Written)
+			require.Nil(t, response.Data)
+			require.True(t, client.closed.Load())
 			expected := int32(0)
 			if mode == "duplicate" {
 				expected = 1
 			}
-			if acknowledgements.Load() != expected {
-				t.Fatal("unexpected acknowledgement count:", acknowledgements.Load())
-			}
+			require.Equal(t, expected, acknowledgements.Load())
 			records, err := journal.Records()
-			if err != nil || len(records) != int(expected) || authority.budget.outstanding != 0 {
-				t.Fatal("invalid preparation changed accounting:", records, err)
-			}
+			require.NoError(t, err, "invalid preparation changed accounting")
+			require.Len(t, records, int(expected))
+			require.Equal(t, 0, authority.budget.outstanding)
 		})
 	}
 }

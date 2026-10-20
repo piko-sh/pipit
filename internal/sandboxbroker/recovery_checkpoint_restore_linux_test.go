@@ -23,11 +23,12 @@ package sandboxbroker
 import (
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 type checkpointRestoreFixture struct {
@@ -40,13 +41,13 @@ type checkpointRestoreFixture struct {
 }
 
 func TestCheckpointRecoveryRejectsUnapprovedIntents(t *testing.T) {
+	t.Parallel()
 	fixture := prepareCheckpointRestoreFixture(t)
 	var original recoveryCheckpoint
-	if err := json.Unmarshal(fixture.encoded, &original); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(fixture.encoded, &original))
 	for _, mode := range []string{"namespace", "root", "inode", "mount", "operation", "path", "bytes", "duplicate", "read-only", "call-budget"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			policy := original
 			policy.Roots = append([]filesystemBootstrapRoot(nil), original.Roots...)
 			record := fixture.record
@@ -74,120 +75,90 @@ func TestCheckpointRecoveryRejectsUnapprovedIntents(t *testing.T) {
 			if mode == "duplicate" {
 				records = append(records, record)
 			}
-			if _, err := checkpointRecoveryPolicy(policy, records); err == nil {
-				t.Fatal("unapproved intent became cleanup authority")
-			}
+			_, err := checkpointRecoveryPolicy(policy, records)
+			require.Error(t, err, "unapproved intent became cleanup authority")
 		})
 	}
 }
 
 func TestCheckpointRecoveryChecksApprovalBeforeOpeningRoots(t *testing.T) {
+	t.Parallel()
 	fixture := prepareCheckpointRestoreFixture(t)
 	fixture.approved[0] ^= 1
 	fixture.grants[0].Path = filepath.Join(t.TempDir(), "missing", "root")
 	bootstrap, err := PrepareCheckpointRecovery(fixture.encoded, fixture.approved, fixture.binding, fixture.journal, fixture.grants)
-	if bootstrap != nil || !errors.Is(err, ErrDenied) {
-		if bootstrap != nil {
-			_ = bootstrap.Close()
-		}
-		t.Fatal("host roots opened before independent approval validation:", err)
+	if bootstrap != nil {
+		_ = bootstrap.Close()
 	}
+	require.Nil(t, bootstrap, "host roots stay closed before independent approval validation")
+	require.ErrorIs(t, err, ErrDenied)
 }
 
 func prepareCheckpointRestoreFixture(t *testing.T) checkpointRestoreFixture {
 	t.Helper()
 	grants := []LinuxRootGrant{{Name: "data", Path: testRecoveryDirectory(t), Rights: Read | Write | List}}
 	original, err := PrepareLinuxBootstrap(grants, FilesystemLimits{WriteBytes: 3})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	authority, err := original.RecoveryAuthority()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer authority.Close()
-	if err := original.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, original.Close())
 	directory := testRecoveryDirectory(t)
 	journal, err := OpenLinuxRecoveryJournal(directory, authority.namespace)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer journal.Close()
 	binding := [sha256.Size]byte{1}
 	encoded, err := authority.checkpoint(journal, binding)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	record := testRecoveryAuthorityRecord(t, authority, 1)
 	call, err := authority.admit(brokerMessage(1, recoveryWritePayload))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := authority.record(journal, call, record); err != nil {
-		t.Fatal(err)
-	}
-	if err := call.Finish(0); err != nil {
-		t.Fatal(err)
-	}
-	if err := authority.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := journal.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, authority.record(journal, call, record))
+	require.NoError(t, call.Finish(0))
+	require.NoError(t, authority.Close())
+	require.NoError(t, journal.Close())
 	reopened, err := OpenLinuxRecoveryJournal(directory, authority.namespace)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = reopened.Close() })
 	return checkpointRestoreFixture{encoded: encoded, grants: grants, journal: reopened, record: record,
 		binding: binding, approved: sha256.Sum256(encoded)}
 }
 
 func TestCheckpointRecoveryRestoresOnlyCleanup(t *testing.T) {
+	t.Parallel()
 	fixture := prepareCheckpointRestoreFixture(t)
 	bootstrap, err := PrepareCheckpointRecovery(fixture.encoded, fixture.approved, fixture.binding, fixture.journal, fixture.grants)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer bootstrap.Close()
-	if !bootstrap.RecoveryOnly() || bootstrap.StagingNamespace() != fixture.record.Namespace {
-		t.Fatal("restored wrong role or namespace")
+	require.True(t, bootstrap.RecoveryOnly(), "restored wrong role or namespace")
+	require.Equal(t, fixture.record.Namespace, bootstrap.StagingNamespace())
+	restored, err := bootstrap.RecoveryAuthority()
+	if restored != nil {
+		_ = restored.Close()
 	}
-	if authority, err := bootstrap.RecoveryAuthority(); authority != nil || !errors.Is(err, ErrInvalidPolicy) {
-		if authority != nil {
-			_ = authority.Close()
-		}
-		t.Fatal("recovery restored normal execution authority:", err)
-	}
+	require.Nil(t, restored, "recovery does not restore normal execution authority")
+	require.ErrorIs(t, err, ErrInvalidPolicy)
 	files, err := bootstrap.Files()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	policy, err := readLinuxBootstrap(files[0])
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	records, err := decodeBootstrapRecovery(policy)
-	if err != nil || len(records) != 1 || records[0] != fixture.record {
-		t.Fatal("restored wrong intents:", records, err)
-	}
-	if len(policy.Roots) != 1 || policy.Roots[0].Rights != Write || policy.Limits.WriteBytes != 3 {
-		t.Fatal("restored authority widened:", policy)
-	}
-	if err := fixture.journal.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := linuxBootstrapRootIdentity(files[1]); err != nil {
-		t.Fatal("restored bootstrap lost independent root pin:", err)
-	}
+	require.NoError(t, err, "restored wrong intents")
+	require.Len(t, records, 1)
+	require.Equal(t, fixture.record, records[0])
+	require.Len(t, policy.Roots, 1, "restored authority widened: %v", policy)
+	require.Equal(t, Write, policy.Roots[0].Rights)
+	require.Equal(t, 3, policy.Limits.WriteBytes)
+	require.NoError(t, fixture.journal.Close())
+	_, err = linuxBootstrapRootIdentity(files[1])
+	require.NoError(t, err, "restored bootstrap lost independent root pin")
 }
 
 func TestCheckpointRecoveryRejectsChangedAuthority(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"approval", "binding", "journal", "root", "rights", "name", "missing-root", "extra-root", "closed-journal", "empty-journal"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			fixture := prepareCheckpointRestoreFixture(t)
 			switch mode {
 			case "approval":
@@ -196,19 +167,13 @@ func TestCheckpointRecoveryRejectsChangedAuthority(t *testing.T) {
 				fixture.binding[0] ^= 1
 			case "journal":
 				other, err := OpenLinuxRecoveryJournal(testRecoveryDirectory(t), fixture.record.Namespace)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				defer other.Close()
 				fixture.journal = other
 			case "root":
 				moved := filepath.Join(t.TempDir(), "original")
-				if err := os.Rename(fixture.grants[0].Path, moved); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Mkdir(fixture.grants[0].Path, 0700); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Rename(fixture.grants[0].Path, moved))
+				require.NoError(t, os.Mkdir(fixture.grants[0].Path, 0700))
 			case "rights":
 				fixture.grants[0].Rights = Read
 			case "name":
@@ -218,26 +183,19 @@ func TestCheckpointRecoveryRejectsChangedAuthority(t *testing.T) {
 			case "extra-root":
 				fixture.grants = append(fixture.grants, LinuxRootGrant{Name: "extra", Path: testRecoveryDirectory(t), Rights: Write})
 			case "closed-journal":
-				if err := fixture.journal.Close(); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, fixture.journal.Close())
 			case "empty-journal":
 				fixture.journal.records = nil
 				name, err := recoveryRecordName(fixture.record)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Remove(filepath.Join("/proc/self/fd", strconv.Itoa(int(fixture.journal.directory.Fd())), name)); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
+				require.NoError(t, os.Remove(filepath.Join("/proc/self/fd", strconv.Itoa(int(fixture.journal.directory.Fd())), name)))
 			}
 			bootstrap, err := PrepareCheckpointRecovery(fixture.encoded, fixture.approved, fixture.binding, fixture.journal, fixture.grants)
 			if bootstrap != nil {
 				_ = bootstrap.Close()
 			}
-			if bootstrap != nil || err == nil {
-				t.Fatal("changed authority restored")
-			}
+			require.Nil(t, bootstrap, "changed authority restored")
+			require.Error(t, err)
 		})
 	}
 }

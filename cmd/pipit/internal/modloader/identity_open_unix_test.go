@@ -23,47 +23,35 @@ package modloader
 import (
 	"context"
 	"os"
-	"os/exec"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestIdentityReadRejectsFIFOWithoutBlocking(t *testing.T) {
 	if os.Getenv("PIPIT_IDENTITY_FIFO_FIXTURE") == "1" {
 		scan, path, expected := identityFileFixture(t)
-		if err := os.Remove(path); err != nil {
-			t.Fatal(err)
-		}
-		if err := unix.Mkfifo(path, 0600); err != nil {
-			t.Fatal(err)
-		}
-		if err := scan.addFile(path, expected); err == nil {
-			t.Fatal("FIFO replacement was accepted as regular source")
-		}
+		require.NoError(t, os.Remove(path))
+		require.NoError(t, unix.Mkfifo(path, 0600))
+		require.Error(t, scan.addFile(path, expected), "a FIFO replacement is not regular source")
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestIdentityReadRejectsFIFOWithoutBlocking$")
-	command.Env = append(os.Environ(), "PIPIT_IDENTITY_FIFO_FIXTURE=1")
+	command := sandboxtest.Command(ctx, "TestIdentityReadRejectsFIFOWithoutBlocking", "PIPIT_IDENTITY_FIFO_FIXTURE=1")
 	output, err := command.CombinedOutput()
-	if ctx.Err() != nil || err != nil {
-		t.Fatalf("source FIFO blocked or escaped rejection: context=%v error=%v output=%s", ctx.Err(), err, output)
-	}
+	require.NoError(t, ctx.Err(), "a FIFO source is rejected without blocking: %s", output)
+	require.NoError(t, err)
 }
 
 func TestIdentityReadRefusesSymlinkEvenToOriginal(t *testing.T) {
 	t.Parallel()
 	scan, path, expected := identityFileFixture(t)
-	if err := os.Rename(path, path+".original"); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(path+".original", path); err != nil {
-		t.Fatal(err)
-	}
-	if err := scan.addFile(path, expected); err == nil {
-		t.Fatal("final-component symlink was followed during source hashing")
-	}
+	require.NoError(t, os.Rename(path, path+".original"))
+	require.NoError(t, os.Symlink(path+".original", path))
+	require.Error(t, scan.addFile(path, expected), "source hashing does not follow a final symlink")
 }

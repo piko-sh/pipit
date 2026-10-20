@@ -21,10 +21,10 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine/program"
 )
@@ -80,7 +80,7 @@ func entrypoint() int {
 
 func compileTinyLeafFixture(t *testing.T) (*program.CompiledFileSet, map[string]*program.CompiledFunction) {
 	t.Helper()
-	compiled, err := app.NewService().CompileFileSet(context.Background(), map[string]string{"main.go": tinyLeafMutateSource})
+	compiled, err := app.NewService().CompileFileSet(t.Context(), map[string]string{"main.go": tinyLeafMutateSource})
 	require.NoError(t, err)
 	byName := map[string]*program.CompiledFunction{}
 	for _, f := range program.ExportFunctions(compiled.Root()) {
@@ -110,14 +110,14 @@ func TestClassifyTinyLeafSetScalarFieldFromArg(t *testing.T) {
 func TestTinyLeafSetFieldFromArg(t *testing.T) {
 	t.Parallel()
 	compiled, _ := compileTinyLeafFixture(t)
-	result, err := app.NewService().ExecuteEntrypoint(context.Background(), compiled, "entrypoint")
+	result, err := app.NewService().ExecuteEntrypoint(t.Context(), compiled, "entrypoint")
 	require.NoError(t, err)
 	require.EqualValues(t, 8, result, "n is set to k, incremented, then set to Get()+1 on every iteration")
 }
 
 func TestTinyLeafIncFieldNilReceiverPanics(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := t.Context()
 	_, err := app.NewService().Eval(ctx, `type C struct{ n int }
 func (c *C) Inc() { c.n++ }
 type I interface{ Inc() }

@@ -23,6 +23,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"maps"
 	"reflect"
 
 	"piko.sh/safeconv"
@@ -93,6 +94,10 @@ type programContext struct {
 	// enabled. The root compiler allocates it; sub-compilers reuse the pointer.
 	debugFiles *[]string
 
+	// keptRegisterSettings retains each body's successful settings for retries of an
+	// enclosing body.
+	keptRegisterSettings map[keptSettingsKey]registerSettings
+
 	// runtimePackageName qualifies runtime function names: the import path of the package
 	// being compiled, or its package name for main and path-less packages.
 	runtimePackageName string
@@ -104,6 +109,10 @@ type programContext struct {
 	// sliceFlowDeclarations holds every function and method declaration, in declaration
 	// order, for the slice-flow analysis.
 	sliceFlowDeclarations []*ast.FuncDecl
+
+	// freeFunctionSlots holds discarded function indices, reusing the latest attempt's
+	// smallest index first.
+	freeFunctionSlots []uint16
 
 	// sliceFlowsDeclared is the sliceFlowDeclarations count sliceFlows was computed from.
 	sliceFlowsDeclared int
@@ -164,6 +173,8 @@ func newProgramContext(config CompilerConfig) *programContext {
 		maxExpressionDepth:    config.MaxExpressionDepth,
 		reflectTypeCache:      nil,
 		debugFiles:            nil,
+		freeFunctionSlots:     nil,
+		keptRegisterSettings:  make(map[keptSettingsKey]registerSettings),
 	})
 }
 
@@ -231,6 +242,9 @@ type bodySpec struct {
 	// body is the function body.
 	body *ast.BlockStmt
 
+	// receiver is the method receiver list, or nil for a function or literal.
+	receiver *ast.FieldList
+
 	// signature is the function's signature: its parameter list feeds the in-place append
 	// alias analysis, and its extent tells the slice-flow analysis locals from captured
 	// variables.
@@ -266,22 +280,76 @@ func (c *Compiler) withLoopPost(initDecls map[loopPostDeclKey]struct{}, fn func(
 	return fn()
 }
 
-// prepareBody pushes the body scope and runs the per-body analyses every function kind
-// needs: heap promotion, closure capture, written locals, typed-slice locals, in-place
-// append aliases, recover detection, and the body and result types the emitters consult.
+// unspillableNames returns locals that must stay in registers for closures or
+// range-over-func loops.
+//
+// Takes body (*ast.BlockStmt) which is the body.
+// Takes closureCaptured (map[string]bool) which are the names inner closures capture.
+//
+// Returns map[string]bool which is the set, or nil when it is empty.
+func (c *Compiler) unspillableNames(body *ast.BlockStmt, closureCaptured map[string]bool) map[string]bool {
+	names := maps.Clone(closureCaptured)
+	ast.Inspect(body, func(node ast.Node) bool {
+		switch typed := node.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.RangeStmt:
+			if c.rangesOverFunction(typed) {
+				if names == nil {
+					names = make(map[string]bool)
+				}
+				collectRangeBodyCaptures(typed, names)
+			}
+		}
+		return true
+	})
+	return names
+}
+
+// rangesOverFunction reports whether a range statement ranges over a function, which
+// compiles its body as a yield closure.
+//
+// Takes statement (*ast.RangeStmt) which is the range statement.
+//
+// Returns bool which is true for a range over a function.
+func (c *Compiler) rangesOverFunction(statement *ast.RangeStmt) bool {
+	rangeType, ok := c.underlyingTypeOf(statement.X)
+	if !ok {
+		return false
+	}
+	_, isSignature := rangeType.(*types.Signature)
+	return isSignature
+}
+
+// prepareBody pushes the body scope and runs the per-body analyses (analyseBody).
 //
 // Takes spec (bodySpec) which names the body, its parameters and its result types.
 func (c *Compiler) prepareBody(spec bodySpec) {
 	c.Scopes.PushScope()
+	c.analyseBody(spec)
+}
+
+// analyseBody runs the shared per-body analyses and records the type information used
+// by emitters.
+//
+// Takes spec (bodySpec) which names the body, its parameters and its result types.
+func (c *Compiler) analyseBody(spec bodySpec) {
 	c.heapPromotedNames = escape.CollectHeapPromotedNames(c.EscapeContext(), spec.body)
 	c.closureCapturedNames = escape.CollectClosureCapturedNamesAll(spec.body)
+	c.Scopes.SetUnspillableNames(c.unspillableNames(spec.body, c.closureCapturedNames))
 	c.flowingSliceNames = escape.CollectFlowingSliceNames(c.Info, spec.signature, spec.body, c.lookupSliceFlow)
 	c.writtenLocalNames = escape.CollectWrittenLocalNames(spec.body)
 	if checkCaptureEnabled {
 		c.captureCheckNames = escape.CollectDirectlyAssignedNames(c.Info, spec.body)
 	}
 	c.classifyTypedSliceLocals(spec.body)
-	c.inPlaceAppendAliases = appendlower.CollectAliases(c.Info, spec.signature.Params, spec.body)
+	c.inPlaceAppendAliases = appendlower.CollectAliases(c.Info, appendlower.Body{
+		Receiver:   spec.receiver,
+		Parameters: spec.signature.Params,
+		Entry:      nil,
+		Block:      spec.body,
+		Repeats:    false,
+	})
 	c.hasRecover = bodyContainsRecoverCall(c.Info, spec.body)
 	c.Function.HasRecover = c.hasRecover
 	c.Function.InspectsCallStack = bodyInspectsCallStack(c.Info, spec.body)
@@ -404,4 +472,35 @@ func resultTypesOf(signature *types.Signature) []types.Type {
 		out[i] = results.At(i).Type()
 	}
 	return out
+}
+
+// collectRangeBodyCaptures adds to captured the names the body of a range-over-func loop
+// uses from outside it, including the loop variables when the statement assigns rather
+// than declares them. The body is seen as the yield closure it compiles to, whose
+// parameters are the declared loop variables.
+//
+// Takes statement (*ast.RangeStmt) which is the range statement.
+// Takes captured (map[string]bool) which receives the names.
+func collectRangeBodyCaptures(statement *ast.RangeStmt, captured map[string]bool) {
+	var parameters []*ast.Ident
+	for _, loopVariable := range []ast.Expr{statement.Key, statement.Value} {
+		identifier, ok := loopVariable.(*ast.Ident)
+		if !ok || identifier.Name == "_" {
+			continue
+		}
+		if statement.Tok == token.DEFINE {
+			parameters = append(parameters, identifier)
+			continue
+		}
+		captured[identifier.Name] = true
+	}
+	yieldBody := &ast.FuncLit{
+		Type: &ast.FuncType{Func: token.NoPos, TypeParams: nil, Params: &ast.FieldList{
+			Opening: token.NoPos,
+			List:    []*ast.Field{{Doc: nil, Names: parameters, Type: nil, Tag: nil, Comment: nil}},
+			Closing: token.NoPos,
+		}, Results: nil},
+		Body: statement.Body,
+	}
+	escape.CollectFreeVarsForLit(yieldBody, captured)
 }

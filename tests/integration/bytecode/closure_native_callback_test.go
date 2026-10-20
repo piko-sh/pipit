@@ -21,15 +21,14 @@
 package bytecode_test
 
 import (
-	"context"
 	"reflect"
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/symtab"
-
-	"github.com/stretchr/testify/require"
 )
 
 func concurrentCallbackSymbols(fanOut int) *symtab.SymbolRegistry {
@@ -63,7 +62,7 @@ func TestInterpretedClosureConcurrentNativeCallback(t *testing.T) {
 
 	service := app.NewService()
 	service.UseSymbols(concurrentCallbackSymbols(fanOut))
-	ctx := context.Background()
+	ctx := t.Context()
 
 	source := `package main
 

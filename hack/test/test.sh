@@ -26,6 +26,7 @@
 #   ./hack/test/test.sh race               The race detector
 #   ./hack/test/test.sh torture            Both GC-torture lanes
 #   ./hack/test/test.sh torture-paranoid   GC torture plus arena poisoning
+#   ./hack/test/test.sh spill-torture      Most locals spilled, every body compiled twice
 #   ./hack/test/test.sh golden             Golden disassembly snapshots
 #   ./hack/test/test.sh integration        The integration suites
 #   ./hack/test/test.sh isolation          Linux sandbox tests, no skip fallback
@@ -143,6 +144,16 @@ test_torture_paranoid() {
     GOGC=1 GODEBUG=clobberfree=1 PIPIT_SELFHOST_ARGS="-report ${SELFHOST_SCRATCH_REPORT}" run_suites integration,pipit_arena_paranoid -count=1 -timeout=60m
 }
 
+# test_spill_torture runs the Go-parity corpus with most locals forced into the spill
+# area.
+test_spill_torture() {
+    local limit
+    for limit in 16 4 1; do
+        PIPIT_FORCE_SPILL_LIMIT="$limit" run_suite_dir tests/integration/snippets -count=1 -timeout=40m
+    done
+    PIPIT_REGISTER_RETRY_CHECK=1 run_suite_dir tests/integration/golden -count=1
+}
+
 # test_golden compares the golden disassembly snapshots.
 test_golden() {
     run_suite_dir tests/integration/golden -count=1
@@ -248,6 +259,7 @@ Commands:
     torture-default      Run the GC-torture lane over the default build
     torture-safe         Run the GC-torture lane over the pure-Go build
     torture-paranoid     Run GC torture plus register-arena poisoning
+    spill-torture        Run with most locals spilled and every body compiled twice
     golden               Compare the golden disassembly snapshots
     golden-update        Re-record the golden disassembly snapshots
     integration          Run the integration suites
@@ -300,6 +312,10 @@ main() {
 
         torture-paranoid)
             test_torture_paranoid
+            ;;
+
+        spill-torture)
+            test_spill_torture
             ;;
 
         golden)

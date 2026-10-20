@@ -40,4 +40,8 @@ var (
 	// CompiledFunction.methodTable would exceed the configured maximum. Defends against
 	// pathological method declarations.
 	errMethodTableExhausted = errors.New("method table exhausted")
+
+	// errSpilledCallOperand reports a spill-slot argument or result where the call
+	// sequence requires a register.
+	errSpilledCallOperand = errors.New("call site operand is in the spill area")
 )

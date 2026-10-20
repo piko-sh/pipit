@@ -21,13 +21,12 @@
 package bytecode_test
 
 import (
-	"context"
 	"strings"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 )
@@ -36,9 +35,9 @@ func TestEvalGenericSpecialisationTypedSliceSurvivors(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 
@@ -52,7 +51,7 @@ func TestEvalGenericSpecialisationTypedSliceSurvivors(t *testing.T) {
 }
 xs := []int64{1, 2, 3, 4, 5}
 sum(xs)`,
-			expect: int64(15),
+			want: int64(15),
 		},
 		{
 
@@ -64,7 +63,7 @@ xs := []int64{1, 2, 3}
 more := []int64{4, 5}
 result := appendSpread(xs, more)
 result[4]`,
-			expect: int64(5),
+			want: int64(5),
 		},
 		{
 
@@ -75,7 +74,7 @@ result[4]`,
 xs := []int64{1, 2, 3}
 result := appendOne(xs, 4)
 result[3]`,
-			expect: int64(4),
+			want: int64(4),
 		},
 		{
 
@@ -86,7 +85,7 @@ result[3]`,
 }
 xs := []int64{7, 8, 9}
 passThrough(xs)[0]`,
-			expect: int64(7),
+			want: int64(7),
 		},
 		{
 
@@ -100,7 +99,7 @@ passThrough(xs)[0]`,
 }
 xs := []int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 gsum(xs)`,
-			expect: int64(55),
+			want: int64(55),
 		},
 	}
 
@@ -108,9 +107,9 @@ gsum(xs)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -149,7 +148,7 @@ func main() {
 }
 `
 	service := app.NewService()
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
 
 	baseline := findCompiledFunctionByName(t, cfs, "sumTypedSurvives")

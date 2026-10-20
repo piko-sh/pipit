@@ -69,7 +69,7 @@ func TestAbandonEscapedSlabsLeavesEscapedMemoryIntact(t *testing.T) {
 	require.Equal(t, []int64{7, 9}, backing, "an escaped backing must survive the reset")
 	require.NotSame(t, &oldByteSlab[0], &arena.byteSlab[0], "the byte slab must be a fresh allocation")
 	require.NotSame(t, &oldIntBacking[0], &arena.intBackingSlab[0], "the int backing must be a fresh allocation")
-	require.Equal(t, InitialByteSlabSize, len(arena.byteSlab))
+	require.Len(t, arena.byteSlab, InitialByteSlabSize)
 	require.Zero(t, arena.byteIndex)
 	require.Zero(t, arena.intBackingIndex)
 }

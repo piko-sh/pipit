@@ -46,16 +46,16 @@ func TestBytecodeVersionMinorIsOne(t *testing.T) {
 func TestDrillMarkersAtIotaZero(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, Opcode(0), OpDrillTier1,
+	require.Zero(t, OpDrillTier1,
 		"opDrillTier1 must occupy main-iota 0 so the dispatch loop "+
 			"can treat byte == 0 as the descent into tier 1")
-	require.Equal(t, SubOpcode(0), SubOpDrillTier2,
+	require.Zero(t, SubOpDrillTier2,
 		"subOpDrillTier2 must occupy tier-1 iota 0 so operand A == 0 "+
 			"means descend into tier 2")
-	require.Equal(t, SubOpcodeTier2(0), SubOpTier2DrillTier3,
+	require.Zero(t, SubOpTier2DrillTier3,
 		"subOpTier2DrillTier3 must occupy tier-2 iota 0 so operand B == 0 "+
 			"means descend into tier 3")
-	require.Equal(t, SubOpcodeTier3(0), SubOpTier3Nop,
+	require.Zero(t, SubOpTier3Nop,
 		"subOpTier3Nop must occupy tier-3 iota 0 so the all-drill word "+
 			"{0,0,0,0} encodes the no-op")
 }
@@ -69,7 +69,7 @@ func TestOpNopAliasesDrillTier1(t *testing.T) {
 			"is the all-drill word {opDrillTier1, subOpDrillTier2, "+
 			"subOpTier2DrillTier3, subOpTier3Nop} = {0,0,0,0} and is "+
 			"fast-path-dispatched by the flat dispatch macro inline")
-	require.Equal(t, Opcode(0), OpNop,
+	require.Zero(t, OpNop,
 		"opNop must remain at opcode value 0 so existing "+
 			"makeInstruction(opNop, 0, 0, 0) padding sites continue "+
 			"emitting the all-zero word")

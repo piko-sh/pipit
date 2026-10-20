@@ -157,6 +157,23 @@ The store must be rooted at the file's parent directory. Programs using host
 packages need compatible registrations when loaded. The format is versioned;
 see [bytecode compatibility](compatibility.md#bytecode-compatibility).
 
+## Choose a package's files
+
+`CompileFileSet` and `CompileProgram` leave out the files that `go build` would leave
+out for the host with the `interp` tag set and cgo off. A host that collects files
+itself can ask the same question first, so it does not read or resolve the imports of
+a file the interpreter would skip.
+
+```go
+interp := pipit.NewInterpreter(pipit.WithBuildTags("pro"))
+compiled, err := interp.MatchFile("content_native.go", source)
+```
+
+`pipit.NewFileFilter(tags...)` returns the same check as a function, for code that
+has no interpreter. See [build constraints](compatibility.md#build-constraints) for
+the rules. A file whose build constraints are malformed, whose header cannot be read,
+or which is a test file importing `"C"` gives an error that wraps `ErrParse`.
+
 ## Retain state between submissions
 
 An interpreter owns mutable execution state, including package globals. Reuse it
@@ -299,6 +316,23 @@ func run() error {
 	return nil
 }
 ```
+
+A timeout or a cancelled context stops all interpreted code in the evaluation. This
+includes closures that native code calls, however deeply they are nested. A closure
+that a host goroutine is still running when the evaluation returns is not stopped,
+and it finishes its work.
+
+A closure the host keeps and calls later, after `Eval` has returned, is bounded only
+by `WithCallbackTimeout`. The bound also covers time the closure spends blocked on a
+channel, in `select` or in `time.Sleep`. See the
+[options reference](api-reference.md#options).
+
+What the caller sees when a closure is stopped depends on the closure's signature. If
+its last result is an `error`, the closure returns the stop as that error. Otherwise
+the stop fails the evaluation that is still running, and `Eval` returns the error. If
+that evaluation has already returned, the closure returns zero values. An error from a
+callback timeout matches both `ErrCallbackTimeout` and `ErrExecutionCancelled` with
+`errors.Is`.
 
 ## Restrict imports and capabilities
 

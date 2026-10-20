@@ -159,8 +159,9 @@ func mergeGeneralConstIndex(caller, callee *program.CompiledFunction, oldIndex u
 	return newIndex, indexFits(newIndex, encodingByte)
 }
 
-// mergeTypeTableIndex merges a callee typeTable entry into the caller's pool. See
-// mergePoolIndex for the broader contract.
+// mergeTypeTableIndex merges a callee's type-table entry and interface methods into the
+// caller's pool. Those methods distinguish implementations of interpreted interfaces
+// represented as any.
 //
 // Takes caller (*CompiledFunction) which is the inlining caller whose pool receives the
 // merged entry.
@@ -168,13 +169,17 @@ func mergeGeneralConstIndex(caller, callee *program.CompiledFunction, oldIndex u
 // Takes oldIndex (uint16) which is the entry's index in the callee pool.
 // Takes encodingByte (bool) which is true when the result must fit in a single byte.
 //
-// Returns the new caller-side index for the merged entry and true when the merge fits the
-// requested encoding.
+// Returns the new caller-side index for the merged entry and true when the merge fits
+// the requested encoding.
 func mergeTypeTableIndex(caller, callee *program.CompiledFunction, oldIndex uint16, encodingByte bool) (uint16, bool) {
 	if int(oldIndex) >= len(callee.TypeTable) {
 		return 0, false
 	}
-	newIndex, err := program.AddTypeRef(caller, callee.TypeTable[oldIndex])
+	var methods []string
+	if int(oldIndex) < len(callee.TypeTableInterfaceMethods) {
+		methods = callee.TypeTableInterfaceMethods[oldIndex]
+	}
+	newIndex, err := program.AddTypeRefWithMethods(caller, callee.TypeTable[oldIndex], methods)
 	if err != nil {
 		return 0, false
 	}

@@ -20,15 +20,17 @@ package verify
 
 import (
 	"context"
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 )
 
 func TestVerifierContextCancellationSurfacesError(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
 	compiledFunction := &program.CompiledFunction{
@@ -37,10 +39,5 @@ func TestVerifierContextCancellationSurfacesError(t *testing.T) {
 	}
 
 	_, err := VerifyBytecode(ctx, compiledFunction)
-	if err == nil {
-		t.Fatalf("expected cancellation error, got nil")
-	}
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("expected wrapped context.Canceled, got %v", err)
-	}
+	require.ErrorIs(t, err, context.Canceled, "the verifier reports the cancelled context")
 }

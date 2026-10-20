@@ -48,23 +48,38 @@ func TestSetScalarFromValueRefusesAMismatchedSource(t *testing.T) {
 	}{
 		{
 			name: "a signed source into a signed field", field: "Signed", source: reflect.ValueOf(42), want: true,
-			check: func(t *testing.T, target *scalars) { require.Equal(t, int32(42), target.Signed) },
+			check: func(t *testing.T, target *scalars) {
+				t.Helper()
+				require.Equal(t, int32(42), target.Signed)
+			},
 		},
 		{
 			name: "an unsigned source into an unsigned field", field: "Unsigned", source: reflect.ValueOf(uint8(7)), want: true,
-			check: func(t *testing.T, target *scalars) { require.Equal(t, uint16(7), target.Unsigned) },
+			check: func(t *testing.T, target *scalars) {
+				t.Helper()
+				require.Equal(t, uint16(7), target.Unsigned)
+			},
 		},
 		{
 			name: "a float source into a float field", field: "Ratio", source: reflect.ValueOf(1.5), want: true,
-			check: func(t *testing.T, target *scalars) { require.InDelta(t, 1.5, float64(target.Ratio), 0.001) },
+			check: func(t *testing.T, target *scalars) {
+				t.Helper()
+				require.InDelta(t, 1.5, float64(target.Ratio), 0.001)
+			},
 		},
 		{
 			name: "a string source into a string field", field: "Text", source: reflect.ValueOf("pipit"), want: true,
-			check: func(t *testing.T, target *scalars) { require.Equal(t, "pipit", target.Text) },
+			check: func(t *testing.T, target *scalars) {
+				t.Helper()
+				require.Equal(t, "pipit", target.Text)
+			},
 		},
 		{
 			name: "a boolean source into a boolean field", field: "Flag", source: reflect.ValueOf(true), want: true,
-			check: func(t *testing.T, target *scalars) { require.True(t, target.Flag) },
+			check: func(t *testing.T, target *scalars) {
+				t.Helper()
+				require.True(t, target.Flag)
+			},
 		},
 		{name: "a string source into a signed field is refused", field: "Signed", source: reflect.ValueOf("x")},
 		{name: "a signed source into a string field is refused", field: "Text", source: reflect.ValueOf(1)},

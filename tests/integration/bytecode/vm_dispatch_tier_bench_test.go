@@ -21,8 +21,9 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/isa"
@@ -41,14 +42,12 @@ func BenchmarkDispatchOpNopMainTier(b *testing.B) {
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	compiled := builder.build()
 	service := app.NewService()
-	ctx := context.Background()
+	ctx := b.Context()
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		_, err := service.Execute(ctx, compiled)
-		if err != nil {
-			b.Fatalf("execute: %v", err)
-		}
+		require.NoError(b, err)
 	}
 }
 
@@ -61,14 +60,12 @@ func BenchmarkDispatchOpNopTier3Form(b *testing.B) {
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	compiled := builder.build()
 	service := app.NewService()
-	ctx := context.Background()
+	ctx := b.Context()
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		_, err := service.Execute(ctx, compiled)
-		if err != nil {
-			b.Fatalf("execute: %v", err)
-		}
+		require.NoError(b, err)
 	}
 }
 
@@ -85,14 +82,12 @@ func BenchmarkDispatchTier0SliceGetIntDirect(b *testing.B) {
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	compiled := builder.build()
 	service := app.NewService()
-	ctx := context.Background()
+	ctx := b.Context()
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		_, err := service.Execute(ctx, compiled)
-		if err != nil {
-			b.Fatalf("execute: %v", err)
-		}
+		require.NoError(b, err)
 	}
 }
 
@@ -107,13 +102,11 @@ func BenchmarkDispatchTier0AddInt(b *testing.B) {
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	compiled := builder.build()
 	service := app.NewService()
-	ctx := context.Background()
+	ctx := b.Context()
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		_, err := service.Execute(ctx, compiled)
-		if err != nil {
-			b.Fatalf("execute: %v", err)
-		}
+		require.NoError(b, err)
 	}
 }

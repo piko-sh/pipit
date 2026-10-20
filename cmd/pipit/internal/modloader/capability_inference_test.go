@@ -19,8 +19,10 @@
 package modloader
 
 import (
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/sdk/module"
 )
@@ -39,9 +41,7 @@ func Use() { _ = http.Get }`,
 		{Axis: "network.dial"},
 		{Axis: "network.listen"},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("InferCapabilities() = %+v, want %+v", got, want)
-	}
+	require.Equal(t, want, got)
 }
 
 func TestInferCapabilitiesDetectsOSImports(t *testing.T) {
@@ -59,9 +59,7 @@ func Use() { _ = os.Open }`,
 		axes[capability.Axis] = true
 	}
 	for _, want := range []string{"filesystem.read", "filesystem.write", "env.read", "env.write"} {
-		if !axes[want] {
-			t.Errorf("InferCapabilities missing %q", want)
-		}
+		assert.True(t, axes[want], "InferCapabilities finds %q", want)
 	}
 }
 
@@ -78,9 +76,7 @@ func Use() { _ = filepath.Join; _ = url.Parse }`,
 		},
 	}
 	got := InferCapabilities(sources)
-	if len(got) != 0 {
-		t.Fatalf("path/filepath + net/url should infer no capabilities, got %+v", got)
-	}
+	require.Empty(t, got, "path/filepath and net/url need no capabilities")
 }
 
 func TestInferCapabilitiesTolerantOfParseErrors(t *testing.T) {
@@ -94,9 +90,7 @@ func Use() { _ = http.Get }`,
 		},
 	}
 	got := InferCapabilities(sources)
-	if len(got) == 0 {
-		t.Fatalf("expected capabilities to be inferred from the valid file")
-	}
+	require.NotEmpty(t, got, "capabilities are inferred from the valid file")
 }
 
 func TestMergeCapabilitiesDeduplicatesAndSorts(t *testing.T) {
@@ -115,15 +109,11 @@ func TestMergeCapabilitiesDeduplicatesAndSorts(t *testing.T) {
 		{Axis: "filesystem.read"},
 		{Axis: "network.dial"},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("MergeCapabilities() = %+v, want %+v", got, want)
-	}
+	require.Equal(t, want, got)
 }
 
 func TestInferCapabilitiesEmptySources(t *testing.T) {
 	t.Parallel()
 	got := InferCapabilities(nil)
-	if len(got) != 0 {
-		t.Fatalf("empty sources should produce no capabilities, got %+v", got)
-	}
+	require.Empty(t, got, "empty sources need no capabilities")
 }

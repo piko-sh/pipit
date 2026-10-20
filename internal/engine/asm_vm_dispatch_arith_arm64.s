@@ -156,6 +156,9 @@ TEXT ·handlerLoadFloatConst(SB), NOSPLIT|NOFRAME, $0
 
 // handlerLoadStringConst loads stringConstants[B|(C<<8)] into strings[A].
 TEXT ·handlerLoadStringConst(SB), NOSPLIT|NOFRAME, $0
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, wb_fallback
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -171,6 +174,8 @@ TEXT ·handlerLoadStringConst(SB), NOSPLIT|NOFRAME, $0
 	MOVD R9, (R7)
 	MOVD R10, 8(R7)
 	DISPATCH_NEXT()
+wb_fallback:
+	B    ·pathBFallback(SB)
 
 // handlerLoadBoolConst loads boolConstants[C] into bools[B].
 TEXT ·handlerLoadBoolConst(SB), NOSPLIT|NOFRAME, $0

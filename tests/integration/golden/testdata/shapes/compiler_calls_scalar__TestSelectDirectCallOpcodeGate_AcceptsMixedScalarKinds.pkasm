@@ -4,7 +4,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function mix
-;   registers: int=6 float=1 string=1 bool=1 uint=1
+;   registers: int=4 float=1 string=1 bool=1 uint=1
 ;   dispatch:  asm=10 shim=0 exit=0 go=2
 ;   params:    (int, uint, float, bool, string)
 ;   returns:   (int)
@@ -18,9 +18,9 @@
 0002 G 1:UINT_TO_INT               56   1   0
 0003 A 0:ADD_INT                    2   0   1
 0004 A 1:FLOAT_TO_INT              51   3   0
-0005 A 0:ADD_INT                    4   2   3
-0006 A 1:LEN_STRING                65   5   0
-0007 A 0:ADD_INT                    0   4   5
+0005 A 0:ADD_INT                    2   2   3
+0006 A 1:LEN_STRING                65   3   0
+0007 A 0:ADD_INT                    0   2   3
 0008 A 2:TIER2_RETURN               0  10   1    ; 1 values
 0009 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
 0010 A 1:MOVE_INT                  35   0   1

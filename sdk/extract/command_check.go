@@ -32,6 +32,10 @@ type checkFlags struct {
 
 	// root is the project root directory to discover from.
 	root string
+
+	// includeProject reports the project's own packages as required instead of ignoring them
+	// and following their imports.
+	includeProject bool
 }
 
 // runCheck verifies that the manifest covers every package the project needs. Missing
@@ -59,7 +63,15 @@ func runCheck(ctx context.Context, arguments []string, stdout, stderr io.Writer,
 		return 1
 	}
 
-	result, err := Discover(ctx, config.discoverOptions(flags.root, nil))
+	if flags.includeProject {
+		config = config.includingProject()
+	}
+	options, err := config.discoverOptions(flags.root, nil)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "Error discovering project: %s\n", err)
+		return 1
+	}
+	result, err := Discover(ctx, options)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "Error discovering project: %s\n", err)
 		return 1
@@ -93,6 +105,7 @@ func reportCheckResult(stdout, stderr io.Writer, manifestPath string, manifest *
 	for _, path := range diff.Unused {
 		_, _ = fmt.Fprintf(stderr, "warning: %s is declared in %s but not used by the project\n", path, manifestPath)
 	}
+	reportDiscoverWarnings(stderr, result)
 
 	if len(diff.Missing) == 0 {
 		_, _ = fmt.Fprintf(stdout, "%s is up-to-date (%d package(s)).\n", manifestPath, len(manifest.Packages))
@@ -116,8 +129,9 @@ func reportCheckResult(stdout, stderr io.Writer, manifestPath string, manifest *
 // Returns the parsed flags and a parseStatus describing the outcome.
 func parseCheckArgs(arguments []string, stderr io.Writer, config Config) (checkFlags, parseStatus) {
 	flags := checkFlags{
-		manifest: config.DefaultManifest,
-		root:     ".",
+		manifest:       config.DefaultManifest,
+		root:           ".",
+		includeProject: false,
 	}
 
 	for i := 0; i < len(arguments); i++ {
@@ -136,6 +150,9 @@ func parseCheckArgs(arguments []string, stderr io.Writer, config Config) (checkF
 			flags.manifest, ok = flagValue(arguments, &i, stderr)
 		case "--root":
 			flags.root, ok = flagValue(arguments, &i, stderr)
+		case includeProjectFlag:
+			flags.includeProject = true
+			ok = true
 		default:
 			_, _ = fmt.Fprintf(stderr, "Unknown flag: %s\n\n", argument)
 			checkUsage(stderr, config)
@@ -167,7 +184,7 @@ warnings but do not fail the check.
 Flags:
   --manifest <path>    Path to YAML manifest (default: %[2]s)
   --root <dir>         Project root directory (default: .)
-  -h, --help           Show this help message
+%[3]s  -h, --help           Show this help message
 
-`, config.ToolName, config.DefaultManifest)
+`, config.ToolName, config.DefaultManifest, includeProjectUsage(config))
 }

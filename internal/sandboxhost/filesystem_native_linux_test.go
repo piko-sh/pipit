@@ -27,30 +27,25 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/sandboxhost"
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func testIsolatedFilesystemNative(t *testing.T, workerConfig sandboxhost.IsolatedConfig) {
 	t.Helper()
-	executable := os.Getenv("PIPIT_TEST_FILESYSTEM_BROKER_BINARY")
-	if executable == "" {
-		t.Fatal("requires the approved static broker fixture")
-	}
+	executable := sandboxtest.RequiredBinary(t, "PIPIT_TEST_FILESYSTEM_BROKER_BINARY", "the approved static broker fixture")
 	image, err := os.ReadFile(executable)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, mode := range []string{"success", "write", "denied-write", "source-approval-failure", "state-permissions", "recovery-retry"} {
 		t.Run(mode, func(t *testing.T) {
 			root := t.TempDir()
-			if err := os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0600); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0600))
 			state := privateStateDirectory(t)
 			config := sandboxhost.IsolatedFilesystemConfig{
 				Worker: workerConfig, BrokerPath: executable, BrokerSHA256: sha256.Sum256(image),
@@ -62,9 +57,7 @@ func testIsolatedFilesystemNative(t *testing.T, workerConfig sandboxhost.Isolate
 				config.Worker.WorkerSHA256[0] ^= 1
 			}
 			if mode == "state-permissions" {
-				if err := os.Chmod(state, 0755); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Chmod(state, 0755))
 			}
 			if mode == "write" || mode == "recovery-retry" {
 				config.Roots[0].Rights |= sandboxhost.FilesystemWrite
@@ -76,35 +69,26 @@ func testIsolatedFilesystemNative(t *testing.T, workerConfig sandboxhost.Isolate
 			}
 			if mode == "source-approval-failure" || mode == "state-permissions" {
 
-				if worker != nil || !errors.Is(err, sandboxhost.ErrInvalidIsolatedConfig) {
-					t.Fatalf("partial failure was not cleaned up: %v: %v", worker, err)
-				}
+				require.Nil(t, worker, "partial failure was not cleaned up")
+				require.ErrorIs(t, err, sandboxhost.ErrInvalidIsolatedConfig)
 				assertFilesystemGroupsClean(t, workerConfig.LinuxCgroupParent, before)
 				assertLaunchRecordsClean(t, state)
 				return
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			assertFilesystemAggregate(t, workerConfig.LinuxCgroupParent, before)
 			records := launchRecords(t, state)
-			if len(records) != 1 {
-				t.Fatal("launch did not record exactly one launch:", records)
-			}
+			require.Len(t, records, 1, "a launch records exactly one launch")
 			journal := filepath.Join(records[0], "journal")
 			checkpoint, err := os.ReadFile(filepath.Join(records[0], "checkpoint", "checkpoint.json"))
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			var captured struct{ Context []byte }
-			if err := json.Unmarshal(checkpoint, &captured); err != nil || len(captured.Context) == 0 {
-				t.Fatal("worker launched without original service identity:", err)
-			}
+			require.NoError(t, json.Unmarshal(checkpoint, &captured), "worker launched without original service identity")
+			require.NotEmpty(t, captured.Context)
 			for _, directory := range []string{"checkpoint", "approval"} {
 				entries, err := os.ReadDir(filepath.Join(records[0], directory))
-				if err != nil || len(entries) != 1 {
-					t.Fatal("worker launched without durable recovery metadata:", entries, err)
-				}
+				require.NoError(t, err, "worker launched without durable recovery metadata")
+				require.Len(t, entries, 1)
 			}
 			if mode == "success" {
 				assertFilesystemAdmissionHeld(t, config)
@@ -117,9 +101,8 @@ func testIsolatedFilesystemNative(t *testing.T, workerConfig sandboxhost.Isolate
 			config.Roots[0].HostPath = t.TempDir()
 			switch mode {
 			case "denied-write":
-				if _, err := worker.Eval("import \"pipit/fs\"\nfs.Write(\"data\",\"file\",[]byte(\"bad\"))"); err == nil {
-					t.Fatal("write grant widened")
-				}
+				_, err := worker.Eval("import \"pipit/fs\"\nfs.Write(\"data\",\"file\",[]byte(\"bad\"))")
+				require.Error(t, err, "the write grant is not widened")
 			case "write":
 				result, err := worker.EvalFile(`package main
 import "pipit/fs"
@@ -127,9 +110,8 @@ func answer() string {
  if err := fs.Write("data","file",[]byte("new")); err != nil { return "failed" }
  return "written"
 }`, "answer")
-				if err != nil || string(result.Value) != `"written"` {
-					t.Fatalf("journalled public write: %+v: %v", result, err)
-				}
+				require.NoError(t, err, "journalled public write: %+v", result)
+				require.Equal(t, `"written"`, string(result.Value))
 
 				assertLaunchRecordsClean(t, state)
 			default:
@@ -142,26 +124,21 @@ func answer() string {
  if math.Sqrt(49) != 7 { return "wrong helper" }
  return string(data)
 }`, "answer")
-				if err != nil || string(result.Value) != `"original"` {
-					t.Fatalf("public result: %+v: %v", result, err)
-				}
-				if err := worker.Close(); err != nil {
-					t.Fatal("successful cleanup:", err)
-				}
+				require.NoError(t, err, "public result: %+v", result)
+				require.Equal(t, `"original"`, string(result.Value))
+				require.NoError(t, worker.Close(), "successful cleanup")
 				assertLaunchRecordsClean(t, state)
 			}
-			if _, err := worker.Eval("1"); !errors.Is(err, sandboxhost.ErrIsolatedUsed) {
-				t.Fatal("owner reused:", err)
-			}
+			_, err = worker.Eval("1")
+			require.ErrorIs(t, err, sandboxhost.ErrIsolatedUsed, "owner reused")
 			assertFilesystemGroupsClean(t, workerConfig.LinuxCgroupParent, before)
 			data, err := os.ReadFile(filepath.Join(root, "file"))
 			expected := "original"
 			if mode == "write" {
 				expected = "new"
 			}
-			if err != nil || string(data) != expected {
-				t.Fatalf("unexpected mutation: %q: %v", data, err)
-			}
+			require.NoError(t, err, "unexpected mutation: %q", data)
+			require.Equal(t, expected, string(data))
 		})
 	}
 }
@@ -192,14 +169,12 @@ func main() {
 	for collision == "" {
 		select {
 		case outcome := <-done:
-			t.Fatal("evaluation ended before recovery fault injection:", outcome.err)
+			require.FailNow(t, "the evaluation runs until recovery fault injection", "%v", outcome.err)
 		case <-deadline.C:
-			t.Fatal("no journalled write reached publication")
+			require.FailNow(t, "a journalled write reaches publication")
 		case <-ticker.C:
 			entries, err := os.ReadDir(journal)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			if len(entries) == 0 {
 				continue
 			}
@@ -208,74 +183,52 @@ func main() {
 			if errors.Is(err, os.ErrExist) {
 				continue
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			_, writeErr := file.WriteString("collision")
-			if err := errors.Join(writeErr, file.Close()); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, errors.Join(writeErr, file.Close()))
 			collision = name
 		}
 	}
 	result := <-done
-	if result.err == nil || result.result.Value != nil || result.result.Output != "" {
-		t.Fatal("failed recovery exposed a result:", result)
-	}
-	if current := filesystemNativeGroups(t, parent); len(current) != len(before)+1 {
-		t.Fatal("failed recovery discarded aggregate ownership:", current)
-	}
+	require.Error(t, result.err, "failed recovery exposed a result: %v", result)
+	require.Nil(t, result.result.Value)
+	require.Empty(t, result.result.Output)
+	require.Len(t, filesystemNativeGroups(t, parent), len(before)+1, "a failed recovery keeps aggregate ownership")
 	assertFilesystemAdmissionHeld(t, config)
 	data, err := os.ReadFile(collision)
-	if err != nil || string(data) != "collision" {
-		t.Fatal("recovery changed a colliding inode:", string(data), err)
-	}
+	require.NoError(t, err, "recovery changed a colliding inode")
+	require.Equal(t, "collision", string(data))
 	target, err := os.ReadFile(filepath.Join(root, "file"))
-	if err != nil || string(target) != "new" && string(target) != "original" {
-		t.Fatal("write was not atomic:", string(target), err)
-	}
-	if err := os.Remove(collision); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "the write is atomic")
+	require.Contains(t, []string{"new", "original"}, string(target))
+	require.NoError(t, os.Remove(collision))
 	var blocker string
 	for name := range filesystemNativeGroups(t, parent) {
 		if !before[name] {
 			blocker = filepath.Join(parent, name, "cleanup-blocker")
 		}
 	}
-	if blocker == "" {
-		t.Fatal("failed recovery lost its aggregate")
-	}
-	if err := os.Mkdir(blocker, 0700); err != nil {
-		t.Fatal(err)
-	}
+	require.NotEmpty(t, blocker, "a failed recovery keeps its aggregate")
+	require.NoError(t, os.Mkdir(blocker, 0700))
 	defer os.Remove(blocker)
-	if err := worker.Close(); err == nil {
-		t.Fatal("aggregate cleanup ignored a retained child")
-	}
-	if current := filesystemNativeGroups(t, parent); len(current) != len(before)+1 {
-		t.Fatal("failed parent cleanup discarded aggregate ownership:", current)
-	}
+	require.Error(t, worker.Close(), "aggregate cleanup notices a retained child")
+	require.Len(t, filesystemNativeGroups(t, parent), len(before)+1, "a failed parent cleanup keeps aggregate ownership")
 	assertFilesystemAdmissionHeld(t, config)
-	if err := os.Remove(blocker); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Remove(blocker))
 	_ = worker.Close()
 	assertFilesystemGroupsClean(t, parent, before)
 	config.Worker.LinuxCgroupParent = filepath.Join(t.TempDir(), "missing")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	next, launchErr := sandboxhost.NewIsolatedFilesystemWorker(ctx, config)
-	if next != nil || !errors.Is(launchErr, sandboxhost.ErrIsolatedUnavailable) {
-		if next != nil {
-			_ = next.Close()
-		}
-		t.Fatal("successful retry retained aggregate admission:", launchErr)
+	if next != nil {
+		_ = next.Close()
 	}
+	require.Nil(t, next, "a successful retry does not keep aggregate admission")
+	require.ErrorIs(t, launchErr, sandboxhost.ErrIsolatedUnavailable)
 	after, err := os.ReadFile(filepath.Join(root, "file"))
-	if err != nil || string(after) != string(target) {
-		t.Fatal("retry changed destination:", string(after), err)
-	}
+	require.NoError(t, err, "retry changed destination")
+	require.Equal(t, string(target), string(after))
 }
 
 func assertFilesystemAdmissionHeld(t *testing.T, config sandboxhost.IsolatedFilesystemConfig) {
@@ -284,20 +237,17 @@ func assertFilesystemAdmissionHeld(t *testing.T, config sandboxhost.IsolatedFile
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	next, err := sandboxhost.NewIsolatedFilesystemWorker(ctx, config)
-	if next != nil || !errors.Is(err, context.DeadlineExceeded) {
-		if next != nil {
-			_ = next.Close()
-		}
-		t.Fatal("occupied aggregate allowed native preparation:", err)
+	if next != nil {
+		_ = next.Close()
 	}
+	require.Nil(t, next, "an occupied aggregate refuses native preparation")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func filesystemNativeGroups(t *testing.T, parent string) map[string]bool {
 	t.Helper()
 	entries, err := os.ReadDir(parent)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	groups := make(map[string]bool)
 	for _, entry := range entries {
 		if entry.IsDir() && strings.HasPrefix(entry.Name(), "pipit-") {
@@ -309,9 +259,7 @@ func filesystemNativeGroups(t *testing.T, parent string) map[string]bool {
 
 func assertFilesystemGroupsClean(t *testing.T, parent string, before map[string]bool) {
 	t.Helper()
-	if after := filesystemNativeGroups(t, parent); !reflect.DeepEqual(before, after) {
-		t.Fatalf("aggregate ownership leaked: before=%v after=%v", before, after)
-	}
+	require.Equal(t, before, filesystemNativeGroups(t, parent), "aggregate ownership does not leak")
 }
 
 func assertFilesystemAggregate(t *testing.T, parent string, before map[string]bool) {
@@ -320,30 +268,22 @@ func assertFilesystemAggregate(t *testing.T, parent string, before map[string]bo
 	for name := range before {
 		delete(current, name)
 	}
-	if len(current) != 1 {
-		t.Fatalf("expected one shared resource parent: %v", current)
-	}
+	require.Len(t, current, 1, "the workers share one resource parent")
 	for name := range current {
 		root := filepath.Join(parent, name)
 		children := filesystemNativeGroups(t, root)
-		if len(children) != 2 {
-			t.Fatalf("source and broker are not both beneath parent: %v", children)
-		}
+		require.Len(t, children, 2, "source and broker are not both beneath parent")
 		for child := range children {
 			container := filepath.Join(root, child)
 			members, err := os.ReadFile(filepath.Join(container, "cgroup.procs"))
-			if err != nil || len(strings.Fields(string(members))) != 0 {
-				t.Fatalf("protected aggregate process membership: %q: %v", members, err)
-			}
+			require.NoError(t, err, "protected aggregate process membership: %q", members)
+			require.Empty(t, strings.Fields(string(members)))
 			roles := filesystemNativeGroups(t, container)
-			if len(roles) != 2 {
-				t.Fatalf("protected process and watchdog must share aggregate: %v", roles)
-			}
+			require.Len(t, roles, 2, "protected process and watchdog must share aggregate")
 			for role := range roles {
 				members, err := os.ReadFile(filepath.Join(container, role, "cgroup.procs"))
-				if err != nil || len(strings.Fields(string(members))) != 1 {
-					t.Fatalf("protected role process membership: %q: %v", members, err)
-				}
+				require.NoError(t, err, "protected role process membership: %q", members)
+				require.Len(t, strings.Fields(string(members)), 1)
 			}
 		}
 		for control, expected := range map[string]string{
@@ -351,9 +291,8 @@ func assertFilesystemAggregate(t *testing.T, parent string, before map[string]bo
 			"cpu.max": "100000 100000", "pids.max": "64",
 		} {
 			data, err := os.ReadFile(filepath.Join(root, control))
-			if err != nil || strings.TrimSpace(string(data)) != expected {
-				t.Fatalf("aggregate %s: %q: %v", control, data, err)
-			}
+			require.NoError(t, err, "aggregate %s: %q", control, data)
+			require.Equal(t, expected, strings.TrimSpace(string(data)))
 		}
 	}
 }

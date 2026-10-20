@@ -66,12 +66,16 @@ type argumentTypeContext struct {
 // native call: the callee's parameter types and the call-site classification (fmt
 // printing or scanning, encoding marshaller, MakeFunc closure).
 type nativeArgShaping struct {
-	// parameterTypes lists the callee's declared parameter types.
-	parameterTypes []reflect.Type
-
 	// variadicElementType is the element type of a variadic parameter, or nil when the
 	// callee is not variadic.
 	variadicElementType reflect.Type
+
+	// parameterTypes lists the callee's declared parameter types.
+	parameterTypes []reflect.Type
+
+	// fmtFormat is the format string of an fmt print that spreads a slice, whose verbs are
+	// only known once the slice length is read; empty otherwise.
+	fmtFormat string
 
 	// fmtVerbs holds the per-argument verb bytes extracted from the format string, or nil
 	// when the call is not an fmt print.
@@ -106,8 +110,9 @@ type nativeArgShaping struct {
 func newNativeArgShaping(registers *Registers, site *program.CallSite, reflectedFunction reflect.Value) nativeArgShaping {
 	parameterTypes := site.NativeParamTypes()
 	shaping := nativeArgShaping{
-		parameterTypes:       parameterTypes,
 		variadicElementType:  variadicElementTypeForSite(site),
+		parameterTypes:       parameterTypes,
+		fmtFormat:            "",
 		fmtVerbs:             nil,
 		parameterCount:       len(parameterTypes),
 		fmtArguments:         false,
@@ -120,7 +125,9 @@ func newNativeArgShaping(registers *Registers, site *program.CallSite, reflected
 		shaping.fmtPrinting = cache.FmtArguments && !cache.FmtScan
 		shaping.encodingArguments = cache.EncodingArguments
 	}
-	if shaping.fmtPrinting {
+	if shaping.fmtPrinting && site.IsEllipsisSpread {
+		shaping.fmtFormat, _ = fmtFormatOperand(registers, site, parameterTypes)
+	} else if shaping.fmtPrinting {
 		shaping.fmtVerbs = fmtVerbsForCall(registers, site, parameterTypes)
 	}
 	return shaping
@@ -146,7 +153,7 @@ func (shaping nativeArgShaping) shape(vm *VM, site *program.CallSite, i int, raw
 	}
 	switch {
 	case site.IsEllipsisSpread && i == shaping.parameterCount-1 && shaping.parameterCount > 0 && shaping.parameterTypes[shaping.parameterCount-1].Kind() == reflect.Slice:
-		return coerceVariadicSpreadSlice(vm, raw, shaping.parameterTypes[shaping.parameterCount-1])
+		return shaping.adaptSpreadElements(vm, coerceVariadicSpreadSlice(vm, raw, shaping.parameterTypes[shaping.parameterCount-1]))
 	case shaping.variadicElementType != nil && variadic:
 		argument := coerceReflectArgument(vm, raw, shaping.variadicElementType, typeCtx)
 		if shaping.fmtPrinting {
@@ -165,6 +172,57 @@ func (shaping nativeArgShaping) shape(vm *VM, site *program.CallSite, i int, raw
 	default:
 		return raw
 	}
+}
+
+// adaptSpreadElements gives each element of a slice spread into an interface-typed
+// variadic parameter the adapter and fmt wrapper a separately passed operand gets. The
+// slice is copied when an element changes, so the script's own slice is never written.
+//
+// Takes vm (*VM) which resolves adapters.
+// Takes spread (reflect.Value) which is the spread slice, already of the parameter type.
+//
+// Returns reflect.Value which is spread, or a copy holding the adapted elements.
+func (shaping nativeArgShaping) adaptSpreadElements(vm *VM, spread reflect.Value) reflect.Value {
+	if !spread.IsValid() || spread.Kind() != reflect.Slice || spread.Type().Elem().Kind() != reflect.Interface {
+		return spread
+	}
+	elementType := spread.Type().Elem()
+	typeCtx := argumentTypeContext{
+		staticTypeName:       "",
+		staticTypeString:     "",
+		skipInterfaceAdapter: shaping.skipInterfaceAdapter || shaping.fmtPrinting,
+		keepClosures:         shaping.fmtArguments,
+	}
+	var verbs []byte
+	if shaping.fmtPrinting {
+		verbs = fmtArgumentVerbs(shaping.fmtFormat, spread.Len())
+	}
+	adapted := spread
+	copied := false
+	for j := range spread.Len() {
+		element := spread.Index(j)
+		if element.IsNil() {
+			continue
+		}
+		value := element.Elem()
+		argument := coerceReflectArgument(vm, value, elementType, typeCtx)
+		switch {
+		case shaping.fmtPrinting:
+			argument = wrapFmtArgumentForVerb(vm, argument, fmtVerbAt(verbs, j), "")
+		case shaping.fmtArguments:
+			argument = wrapFmtArgument(vm, argument, "")
+		}
+		if !argument.IsValid() || argument.Type() == value.Type() || !argument.Type().AssignableTo(elementType) {
+			continue
+		}
+		if !copied {
+			adapted = reflect.MakeSlice(spread.Type(), spread.Len(), spread.Len())
+			reflect.Copy(adapted, spread)
+			copied = true
+		}
+		adapted.Index(j).Set(argument)
+	}
+	return adapted
 }
 
 // buildNativeBackedErasurePointees scans every registered symbol for
@@ -951,8 +1009,9 @@ func interfaceOrNil(argument reflect.Value) any {
 	return argument.Interface()
 }
 
-// wrapFmtArgument routes a coerced `...any` argument through wrapPipitSynthesisedFmtArg
-// so fmt sees adapters for synthesised types. Nil interfaces are left untouched.
+// wrapFmtArgument routes a coerced `...any` argument of a fmt scanning call through
+// wrapPipitSynthesisedFmtArg so fmt sees adapters for synthesised types. Nil interfaces
+// are left untouched, and so is an adapter, which a Scan method needs.
 //
 // Takes vm (*VM) which provides the method registry for adapters.
 // Takes argument (reflect.Value) which is the coerced argument.
@@ -960,7 +1019,9 @@ func interfaceOrNil(argument reflect.Value) any {
 //
 // Returns the argument, wrapped when its dynamic type is pipit-synthesised.
 func wrapFmtArgument(vm *VM, argument reflect.Value, staticTypeName string) reflect.Value {
-	return wrapFmtArgumentForVerb(vm, argument, 'v', staticTypeName)
+	return wrapFmtOperand(argument, func(operand any) any {
+		return wrapPipitSynthesisedFmtArg(vm, operand, staticTypeName)
+	})
 }
 
 // wrapFmtArgumentForVerb is wrapFmtArgument for an operand whose verb is known (see
@@ -973,10 +1034,24 @@ func wrapFmtArgument(vm *VM, argument reflect.Value, staticTypeName string) refl
 //
 // Returns reflect.Value which is the operand to hand to fmt.
 func wrapFmtArgumentForVerb(vm *VM, argument reflect.Value, verb byte, staticTypeName string) reflect.Value {
+	return wrapFmtOperand(argument, func(operand any) any {
+		return wrapPipitSynthesisedFmtArgForVerb(vm, operand, verb, staticTypeName)
+	})
+}
+
+// wrapFmtOperand applies wrap to an operand that fmt can receive, keeping the operand
+// when it is invalid, cannot be turned into an interface, is a nil interface, or wrap
+// returns nil.
+//
+// Takes argument (reflect.Value) which is the operand.
+// Takes wrap (func(any) any) which returns the operand's wrapper, or nil.
+//
+// Returns reflect.Value which is the operand to hand to fmt.
+func wrapFmtOperand(argument reflect.Value, wrap func(operand any) any) reflect.Value {
 	if !argument.IsValid() || !argument.CanInterface() || isNilInterfaceValue(argument) {
 		return argument
 	}
-	wrapped := wrapPipitSynthesisedFmtArgForVerb(vm, argument.Interface(), verb, staticTypeName)
+	wrapped := wrap(argument.Interface())
 	if wrapped == nil {
 		return argument
 	}
@@ -993,19 +1068,36 @@ func wrapFmtArgumentForVerb(vm *VM, argument reflect.Value, verb byte, staticTyp
 //
 // Returns []byte which is nil or one verb per variadic operand.
 func fmtVerbsForCall(registers *Registers, site *program.CallSite, parameterTypes []reflect.Type) []byte {
-	formatIndex := len(parameterTypes) - 2
-	if formatIndex < 0 || parameterTypes[formatIndex].Kind() != reflect.String || formatIndex >= len(site.Arguments) {
+	format, ok := fmtFormatOperand(registers, site, parameterTypes)
+	if !ok {
 		return nil
 	}
-	formatLocation := site.Arguments[formatIndex]
-	if formatLocation.Kind != isa.RegisterString {
-		return nil
-	}
-	variadicCount := len(site.Arguments) - (formatIndex + 1)
+	variadicCount := len(site.Arguments) - (len(parameterTypes) - 1)
 	if variadicCount <= 0 {
 		return nil
 	}
-	return fmtArgumentVerbs(registers.Strings[formatLocation.Register], variadicCount)
+	return fmtArgumentVerbs(format, variadicCount)
+}
+
+// fmtFormatOperand reads a string-register format argument immediately before the
+// variadic parameter of a Printf-style call.
+//
+// Takes registers (*Registers) which hold the operands.
+// Takes site (*program.CallSite) which describes the call.
+// Takes parameterTypes ([]reflect.Type) which are the callee's parameter types.
+//
+// Returns string which is the format string.
+// Returns bool which is false when the call has no format operand.
+func fmtFormatOperand(registers *Registers, site *program.CallSite, parameterTypes []reflect.Type) (string, bool) {
+	formatIndex := len(parameterTypes) - 2
+	if formatIndex < 0 || parameterTypes[formatIndex].Kind() != reflect.String || formatIndex >= len(site.Arguments) {
+		return "", false
+	}
+	formatLocation := site.Arguments[formatIndex]
+	if formatLocation.Kind != isa.RegisterString {
+		return "", false
+	}
+	return registers.Strings[formatLocation.Register], true
 }
 
 // fmtVerbAt returns the verb recorded for variadic operand index, or 'v' when the call
@@ -1160,6 +1252,9 @@ func coerceReflectArgument(vm *VM, argument reflect.Value, expectedType reflect.
 	if argument.Type() == expectedType {
 		return argument
 	}
+	if argument.Kind() == reflect.Interface && expectedType != nil && !argument.Type().AssignableTo(expectedType) {
+		return coerceInterfaceHeldArgument(vm, argument, expectedType, typeCtx)
+	}
 	if _, isClosure := reflect.TypeAssert[*RuntimeClosure](argument); isClosure {
 		if typeCtx.keepClosures && expectedType.Kind() == reflect.Interface {
 			return argument
@@ -1170,6 +1265,25 @@ func coerceReflectArgument(vm *VM, argument reflect.Value, expectedType reflect.
 		return adapted
 	}
 	return coerceConcreteArgument(vm, argument, expectedType)
+}
+
+// coerceInterfaceHeldArgument coerces an interface operand's dynamic value, discarding
+// static type names that describe only the enclosing interface.
+//
+// Takes vm (*VM) which provides context for coercion.
+// Takes argument (reflect.Value) which is the interface-kind operand.
+// Takes expectedType (reflect.Type) which is the parameter type.
+// Takes typeCtx (argumentTypeContext) which carries the call-site flags.
+//
+// Returns reflect.Value which is the coerced dynamic value, or the parameter type's
+// zero value for a nil interface.
+func coerceInterfaceHeldArgument(vm *VM, argument reflect.Value, expectedType reflect.Type, typeCtx argumentTypeContext) reflect.Value {
+	if argument.IsNil() {
+		return reflect.Zero(expectedType)
+	}
+	typeCtx.staticTypeName = ""
+	typeCtx.staticTypeString = ""
+	return coerceReflectArgument(vm, argument.Elem(), expectedType, typeCtx)
 }
 
 // coerceForInterfaceSlot adapts a script value bound for an interface parameter: an

@@ -21,11 +21,11 @@
 package language_test
 
 import (
-	"context"
 	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -35,7 +35,7 @@ func TestEvalPanicRecover(t *testing.T) {
 	t.Run("panic with string returns error", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		_, err := service.Eval(context.Background(), `panic("test error")`)
+		_, err := service.Eval(t.Context(), `panic("test error")`)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "test error")
 	})
@@ -43,14 +43,14 @@ func TestEvalPanicRecover(t *testing.T) {
 	t.Run("panic with int returns error", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		_, err := service.Eval(context.Background(), `panic(42)`)
+		_, err := service.Eval(t.Context(), `panic(42)`)
 		require.Error(t, err)
 	})
 
 	t.Run("panic in nested call returns error", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		_, err := service.Eval(context.Background(), `
+		_, err := service.Eval(t.Context(), `
 func inner() { panic("deep") }
 func outer() string { inner(); return "" }
 outer()`)
@@ -65,7 +65,7 @@ func TestEvalRecover(t *testing.T) {
 	t.Run("recover in defer captures panic value", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `
+		result, err := service.Eval(t.Context(), `
 func run() string {
 	var message string
 	func() {
@@ -87,7 +87,7 @@ run()`)
 	t.Run("recover returns nil when no panic", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `
+		result, err := service.Eval(t.Context(), `
 func run() any {
 	defer func() { recover() }()
 	return recover()
@@ -100,7 +100,7 @@ run()`)
 	t.Run("defers run on panic in LIFO order", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `
+		result, err := service.Eval(t.Context(), `
 func run() string {
 	var s string
 	func() {
@@ -122,7 +122,7 @@ run()`)
 	t.Run("panic propagation through call stack", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `
+		result, err := service.Eval(t.Context(), `
 func deep() { panic("from deep") }
 func middle() { deep() }
 func top() string {
@@ -132,7 +132,8 @@ func top() string {
 }
 top()`)
 		require.NoError(t, err)
-		require.Equal(t, "", result)
+		require.IsType(t, "", result)
+		require.Empty(t, result)
 	})
 }
 
@@ -142,7 +143,7 @@ func TestEvalPanicNil(t *testing.T) {
 	t.Run("panic nil yields PanicNilError", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `
+		result, err := service.Eval(t.Context(), `
 func run() any {
 	defer func() {}()
 	var result any
@@ -161,14 +162,14 @@ run()`)
 	t.Run("unrecovered panic nil returns error", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		_, err := service.Eval(context.Background(), `panic(nil)`)
+		_, err := service.Eval(t.Context(), `panic(nil)`)
 		require.Error(t, err)
 	})
 
 	t.Run("panic with non-nil value is not PanicNilError", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `
+		result, err := service.Eval(t.Context(), `
 func run() any {
 	var result any
 	func() {

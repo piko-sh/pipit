@@ -19,9 +19,9 @@
 package cli
 
 import (
-	"context"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/cmd/pipit/internal/clitest"
 )
@@ -30,11 +30,7 @@ func TestRunFmtStdin(t *testing.T) {
 	t.Parallel()
 
 	const messy = "package main\nfunc main()  { x:= 1; _=x }\n"
-	result := clitest.Run(context.Background(), RunFmt, nil, messy)
-	if result.Code != 0 {
-		t.Fatalf("exit code = %d (stderr=%q)", result.Code, result.Stderr)
-	}
-	if !strings.Contains(result.Stdout, "x := 1") {
-		t.Fatalf("expected formatted body, got %q", result.Stdout)
-	}
+	result := clitest.Run(t.Context(), RunFmt, nil, messy)
+	require.Equal(t, 0, result.Code, "stderr: %q", result.Stderr)
+	require.Contains(t, result.Stdout, "x := 1")
 }

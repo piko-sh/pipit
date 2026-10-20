@@ -1635,8 +1635,8 @@
 1619 A 0:ADD_INT                  246   0 130
 1620 G 1:RELOAD                    85 247   0
 1621   0:EXT                       13   0   0
-1622 A 0:ADD_INT                  248 246 247
-1623 G 1:RELOAD                    85 249   0
+1622 A 0:ADD_INT                  246 246 247
+1623 G 1:RELOAD                    85 247   0
 1624   0:EXT                       14   0   0
-1625 A 0:ADD_INT                    0 248 249
+1625 A 0:ADD_INT                    0 246 247
 1626 A 2:TIER2_RETURN               0  10   1    ; 1 values

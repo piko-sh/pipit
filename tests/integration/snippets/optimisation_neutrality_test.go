@@ -21,7 +21,6 @@
 package snippets_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -37,19 +36,20 @@ import (
 )
 
 func TestOptimisationIsObservationallyNeutral(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("skipping optimisation-neutrality tests in short mode")
 	}
 
-	entries, err := os.ReadDir("testdata")
+	tests, err := os.ReadDir("testdata")
 	require.NoError(t, err, "reading testdata directory")
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
+	for _, tt := range tests {
+		if !tt.IsDir() {
 			continue
 		}
 
-		name := entry.Name()
+		name := tt.Name()
 		directory := filepath.Join("testdata", name)
 
 		t.Run(name, func(t *testing.T) {
@@ -74,7 +74,7 @@ func TestOptimisationIsObservationallyNeutral(t *testing.T) {
 
 			service := app.NewService(app.WithOptimisations(passes.Options{}))
 			service.UseSymbolProviders(stdlib.Providers()...)
-			result, evalErr := service.EvalFile(context.Background(), snippet, "run")
+			result, evalErr := service.EvalFile(t.Context(), snippet, "run")
 			require.NoError(t, evalErr, "EvalFile failed for %s with optimisations disabled", name)
 
 			require.Equal(t, expected, strings.TrimSpace(fmt.Sprint(result)),

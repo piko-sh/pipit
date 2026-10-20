@@ -1343,15 +1343,15 @@ func handleSubOpNeInterfaceStrict(vm *VM, frame *CallFrame, registers *Registers
 	return opContinue
 }
 
-// isNilableAndNil reports whether v is a nil-able kind (func, pointer, interface, slice,
-// map, channel) and currently holds a nil value.
+// isNilableAndNil reports whether v is a nil-able kind (func, pointer, unsafe pointer,
+// interface, slice, map, channel) and currently holds a nil value.
 //
 // Takes v (reflect.Value) which is the value to inspect for nil-ability and nil state.
 //
 // Returns true if v is a nil-able kind and currently nil, false otherwise.
 func isNilableAndNil(v reflect.Value) bool {
 	switch v.Kind() {
-	case reflect.Func, reflect.Pointer, reflect.Interface,
+	case reflect.Func, reflect.Pointer, reflect.UnsafePointer, reflect.Interface,
 		reflect.Slice, reflect.Map, reflect.Chan:
 		return v.IsNil()
 	default:

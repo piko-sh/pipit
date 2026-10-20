@@ -21,18 +21,21 @@
 package language_test
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/symtab"
 )
 
 func TestInterfaceMethodMultiReturn(t *testing.T) {
 	t.Parallel()
 	runEvalTable(t, nil, []evalTestCase{
-		{expect: 10, name: "interface_multi_return_first", code: `
+		{
+			want: 10,
+			name: "interface_multi_return_first",
+			code: `
 type Parser interface { Parse(s string) (int, bool) }
 type IntParser struct{}
 func (p IntParser) Parse(s string) (int, bool) {
@@ -41,8 +44,12 @@ func (p IntParser) Parse(s string) (int, bool) {
 }
 var p Parser = IntParser{}
 n, _ := p.Parse("ok")
-n`},
-		{expect: true, name: "interface_multi_return_second", code: `
+n`,
+		},
+		{
+			want: true,
+			name: "interface_multi_return_second",
+			code: `
 type Parser interface { Parse(s string) (int, bool) }
 type IntParser struct{}
 func (p IntParser) Parse(s string) (int, bool) {
@@ -51,8 +58,12 @@ func (p IntParser) Parse(s string) (int, bool) {
 }
 var p Parser = IntParser{}
 _, ok := p.Parse("ok")
-ok`},
-		{expect: false, name: "interface_multi_return_fail", code: `
+ok`,
+		},
+		{
+			want: false,
+			name: "interface_multi_return_fail",
+			code: `
 type Parser interface { Parse(s string) (int, bool) }
 type IntParser struct{}
 func (p IntParser) Parse(s string) (int, bool) {
@@ -61,8 +72,12 @@ func (p IntParser) Parse(s string) (int, bool) {
 }
 var p Parser = IntParser{}
 _, ok := p.Parse("nope")
-ok`},
-		{expect: "hello", name: "interface_multi_return_string", code: `
+ok`,
+		},
+		{
+			want: "hello",
+			name: "interface_multi_return_string",
+			code: `
 type Converter interface { Convert(n int) (string, bool) }
 type Mapper struct{ M map[int]string }
 func (m Mapper) Convert(n int) (string, bool) {
@@ -71,121 +86,185 @@ func (m Mapper) Convert(n int) (string, bool) {
 }
 var c Converter = Mapper{M: map[int]string{1: "hello"}}
 s, _ := c.Convert(1)
-s`},
+s`,
+		},
 	})
 }
 
 func TestTailCallCrossBankArgs(t *testing.T) {
 	t.Parallel()
 	runEvalTable(t, nil, []evalTestCase{
-		{expect: 42, name: "tail_call_int_to_any", code: `
+		{
+			want: 42,
+			name: "tail_call_int_to_any",
+			code: `
 func accept(v any) any { return v }
 func wrap(n int) any { return accept(n) }
-wrap(42)`},
-		{expect: "hello", name: "tail_call_string_to_any", code: `
+wrap(42)`,
+		},
+		{
+			want: "hello",
+			name: "tail_call_string_to_any",
+			code: `
 func accept(v any) any { return v }
 func wrap(s string) any { return accept(s) }
-wrap("hello")`},
-		{expect: true, name: "tail_call_bool_to_any", code: `
+wrap("hello")`,
+		},
+		{
+			want: true,
+			name: "tail_call_bool_to_any",
+			code: `
 func accept(v any) any { return v }
 func wrap(b bool) any { return accept(b) }
-wrap(true)`},
-		{expect: float64(3.14), name: "tail_call_float_to_any", code: `
+wrap(true)`,
+		},
+		{
+			want: float64(3.14),
+			name: "tail_call_float_to_any",
+			code: `
 func accept(v any) any { return v }
 func wrap(f float64) any { return accept(f) }
-wrap(3.14)`},
+wrap(3.14)`,
+		},
 	})
 }
 
 func TestCrossBankReturnTypedToGeneral(t *testing.T) {
 	t.Parallel()
 	runEvalTable(t, nil, []evalTestCase{
-		{expect: 42, name: "return_int_via_any", code: `
+		{
+			want: 42,
+			name: "return_int_via_any",
+			code: `
 func getInt() int { return 42 }
 func wrap() any { return getInt() }
 x := wrap()
 y := x.(int)
-y`},
-		{expect: "hi", name: "return_string_via_any", code: `
+y`,
+		},
+		{
+			want: "hi",
+			name: "return_string_via_any",
+			code: `
 func getString() string { return "hi" }
 func wrap() any { return getString() }
 x := wrap()
 y := x.(string)
-y`},
-		{expect: true, name: "return_bool_via_any", code: `
+y`,
+		},
+		{
+			want: true,
+			name: "return_bool_via_any",
+			code: `
 func getBool() bool { return true }
 func wrap() any { return getBool() }
 x := wrap()
 y := x.(bool)
-y`},
-		{expect: float64(2.5), name: "return_float_via_any", code: `
+y`,
+		},
+		{
+			want: float64(2.5),
+			name: "return_float_via_any",
+			code: `
 func getFloat() float64 { return 2.5 }
 func wrap() any { return getFloat() }
 x := wrap()
 y := x.(float64)
-y`},
+y`,
+		},
 	})
 }
 
 func TestPointerDereferenceAndAssignment(t *testing.T) {
 	t.Parallel()
 	runEvalTable(t, nil, []evalTestCase{
-		{expect: 42, name: "pointer_deref", code: `x := 42; p := &x; *p`},
-		{expect: 99, name: "pointer_set", code: `x := 42; p := &x; *p = 99; x`},
-		{expect: 10, name: "pointer_to_struct_field", code: `
+		{want: 42, name: "pointer_deref", code: `x := 42; p := &x; *p`},
+		{want: 99, name: "pointer_set", code: `x := 42; p := &x; *p = 99; x`},
+		{
+			want: 10,
+			name: "pointer_to_struct_field",
+			code: `
 type S struct { V int }
 s := S{V: 10}
 p := &s.V
-*p`},
-		{expect: 20, name: "pointer_modify_struct", code: `
+*p`,
+		},
+		{
+			want: 20,
+			name: "pointer_modify_struct",
+			code: `
 type S struct { V int }
 s := S{V: 10}
 p := &s
 p.V = 20
-s.V`},
+s.V`,
+		},
 	})
 }
 
 func TestDivByZero(t *testing.T) {
 	t.Parallel()
 	runEvalTable(t, nil, []evalTestCase{
-		{expect: 5, name: "safe_divide", code: `
+		{
+			want: 5,
+			name: "safe_divide",
+			code: `
 func safeDivide(a, b int) int {
 	if b == 0 { return -1 }
 	return a / b
 }
-safeDivide(10, 2)`},
-		{expect: -1, name: "safe_divide_zero", code: `
+safeDivide(10, 2)`,
+		},
+		{
+			want: -1,
+			name: "safe_divide_zero",
+			code: `
 func safeDivide(a, b int) int {
 	if b == 0 { return -1 }
 	return a / b
 }
-safeDivide(10, 0)`},
+safeDivide(10, 0)`,
+		},
 	})
 }
 
 func TestMultiReturnAssignment(t *testing.T) {
 	t.Parallel()
 	runEvalTable(t, nil, []evalTestCase{
-		{expect: 3, name: "multi_return_first", code: `
+		{
+			want: 3,
+			name: "multi_return_first",
+			code: `
 func divmod(a, b int) (int, int) { return a / b, a % b }
 q, _ := divmod(10, 3)
-q`},
-		{expect: 1, name: "multi_return_second", code: `
+q`,
+		},
+		{
+			want: 1,
+			name: "multi_return_second",
+			code: `
 func divmod(a, b int) (int, int) { return a / b, a % b }
 _, r := divmod(10, 3)
-r`},
-		{expect: 10, name: "multi_return_swap", code: `
+r`,
+		},
+		{
+			want: 10,
+			name: "multi_return_swap",
+			code: `
 func swap(a, b int) (int, int) { return b, a }
 x, _ := swap(5, 10)
-x`},
+x`,
+		},
 	})
 }
 
 func TestClosureUpvalues(t *testing.T) {
 	t.Parallel()
 	runEvalTable(t, nil, []evalTestCase{
-		{expect: 3, name: "closure_counter", code: `
+		{
+			want: 3,
+			name: "closure_counter",
+			code: `
 func makeCounter() func() int {
 	n := 0
 	return func() int { n++; return n }
@@ -193,68 +272,101 @@ func makeCounter() func() int {
 c := makeCounter()
 c()
 c()
-c()`},
-		{expect: 15, name: "closure_accumulator", code: `
+c()`,
+		},
+		{
+			want: 15,
+			name: "closure_accumulator",
+			code: `
 func makeAccum() func(int) int {
 	total := 0
 	return func(n int) int { total += n; return total }
 }
 add := makeAccum()
 add(5)
-add(10)`},
-		{expect: "hello world", name: "closure_capture_string", code: `
+add(10)`,
+		},
+		{
+			want: "hello world",
+			name: "closure_capture_string",
+			code: `
 prefix := "hello"
 f := func(s string) string { return prefix + " " + s }
-f("world")`},
+f("world")`,
+		},
 	})
 }
 
 func TestScopedBlocks(t *testing.T) {
 	t.Parallel()
 	runEvalTable(t, nil, []evalTestCase{
-		{expect: 10, name: "if_block_scope", code: `
+		{
+			want: 10,
+			name: "if_block_scope",
+			code: `
 x := 5
 if true {
 	x = 10
 }
-x`},
-		{expect: 5, name: "if_else_scope", code: `
+x`,
+		},
+		{
+			want: 5,
+			name: "if_else_scope",
+			code: `
 x := 0
 if false {
 	x = 10
 } else {
 	x = 5
 }
-x`},
-		{expect: 6, name: "for_accumulate", code: `
+x`,
+		},
+		{
+			want: 6,
+			name: "for_accumulate",
+			code: `
 sum := 0
 for i := 1; i <= 3; i++ {
 	sum += i
 }
-sum`},
+sum`,
+		},
 	})
 }
 
 func TestStructMethodDispatch(t *testing.T) {
 	t.Parallel()
 	runEvalTable(t, nil, []evalTestCase{
-		{expect: 25, name: "value_receiver_method", code: `
+		{
+			want: 25,
+			name: "value_receiver_method",
+			code: `
 type Rect struct { W, H int }
 func (r Rect) Area() int { return r.W * r.H }
 r := Rect{W: 5, H: 5}
-r.Area()`},
-		{expect: 6, name: "pointer_receiver_method", code: `
+r.Area()`,
+		},
+		{
+			want: 6,
+			name: "pointer_receiver_method",
+			code: `
 type Box struct { X int }
 func (b *Box) Double() { b.X *= 2 }
 b := &Box{X: 3}
 b.Double()
-b.X`},
-		{expect: 15, name: "chained_method_calls", code: `
+b.X`,
+		},
+		{
+			want: 15,
+			name: "chained_method_calls",
+			code: `
 type Calc struct { V int }
 func (c Calc) Add(n int) Calc { return Calc{V: c.V + n} }
 func (c Calc) Result() int { return c.V }
 c := Calc{V: 0}
-c.Add(5).Add(10).Result()`},
+c.Add(5).Add(10).Result()`,
+		},
 	})
 }
 
@@ -282,7 +394,7 @@ func TestNativeMethodValue(t *testing.T) {
 		},
 	})
 
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 import (
 	"tp"
 )
@@ -297,14 +409,14 @@ func TestNativeCallWithClosure(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "apply_double", code: "import \"cb\"\ncb.Apply(func(x int) int { return x * 2 }, 5)", expect: 10},
-		{name: "apply_add_one", code: "import \"cb\"\ncb.Apply(func(x int) int { return x + 1 }, 41)", expect: 42},
-		{name: "map_double", code: "import \"cb\"\ns := cb.Map([]int{1, 2, 3}, func(x int) int { return x * 2 })\ns[2]", expect: 6},
-		{name: "filter_even", code: "import \"cb\"\ns := cb.Filter([]int{1, 2, 3, 4}, func(x int) bool { return x % 2 == 0 })\nlen(s)", expect: 2},
+		{name: "apply_double", code: "import \"cb\"\ncb.Apply(func(x int) int { return x * 2 }, 5)", want: 10},
+		{name: "apply_add_one", code: "import \"cb\"\ncb.Apply(func(x int) int { return x + 1 }, 41)", want: 42},
+		{name: "map_double", code: "import \"cb\"\ns := cb.Map([]int{1, 2, 3}, func(x int) int { return x * 2 })\ns[2]", want: 6},
+		{name: "filter_even", code: "import \"cb\"\ns := cb.Filter([]int{1, 2, 3, 4}, func(x int) bool { return x % 2 == 0 })\nlen(s)", want: 2},
 	}
 
 	for _, tt := range tests {
@@ -333,9 +445,9 @@ func TestNativeCallWithClosure(t *testing.T) {
 					}),
 				},
 			})
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -352,7 +464,7 @@ func TestNativeMethodValuePointerReceiver(t *testing.T) {
 		},
 	})
 
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 import (
 	"tp"
 )

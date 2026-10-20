@@ -1,0 +1,4 @@
+import "strings"
+n := 0
+strings.Map(func(r rune) rune { n++; return r }, "abc")
+n

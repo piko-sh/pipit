@@ -21,12 +21,12 @@
 package language_test
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/fault"
@@ -51,7 +51,7 @@ func run() int {
 	return Wide[int8, int16, int32, int64, string]{}.n[bool, float32, float64, uint8]()
 }
 run()`
-		_, err := app.NewService().Eval(context.Background(), source)
+		_, err := app.NewService().Eval(t.Context(), source)
 		require.ErrorIs(t, err, fault.ErrCompileGenericMethodTypeArgLimit,
 			"nine type arguments exceed MaxSpecialisationTypeArgs of %d",
 			program.MaxSpecialisationTypeArgs)
@@ -69,7 +69,7 @@ run()`
 		}
 		builder.WriteString("\treturn total\n}\nrun()")
 
-		_, err := app.NewService().Eval(context.Background(), builder.String())
+		_, err := app.NewService().Eval(t.Context(), builder.String())
 		require.ErrorIs(t, err, fault.ErrCompileGenericMethodSpecialisationLimit,
 			"more than MaxSpecialisationsPerFunction (%d) instantiations must be refused, not erased",
 			program.MaxSpecialisationsPerFunction)
@@ -88,7 +88,7 @@ run()`
 		}
 		builder.WriteString("\treturn total\n}\nrun()")
 
-		_, err := app.NewService().Eval(context.Background(), builder.String())
+		_, err := app.NewService().Eval(t.Context(), builder.String())
 		require.ErrorIs(t, err, fault.ErrCompileGenericCallerRequiresSpecialisation,
 			"a generic caller whose erased body holds a generic-method call must not fall back")
 	})

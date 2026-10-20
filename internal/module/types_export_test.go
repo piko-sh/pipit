@@ -19,27 +19,23 @@
 package module
 
 import (
-	"bytes"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestEncodeTypesExport_EmptyReturnsNil(t *testing.T) {
 	t.Parallel()
 	out, err := EncodeTypesExport(nil)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	if out != nil {
-		t.Fatalf("want nil, got %v", out)
-	}
+	require.NoError(t, err)
+	require.Nil(t, out)
 }
 
 func TestDecodeTypesExport_EmptyReturnsNil(t *testing.T) {
 	t.Parallel()
 	entries, err := DecodeTypesExport(nil)
-	if err != nil || entries != nil {
-		t.Fatalf("err=%v entries=%v", err, entries)
-	}
+	require.NoError(t, err)
+	require.Nil(t, entries)
 }
 
 func TestTypesExport_RoundTrip(t *testing.T) {
@@ -49,23 +45,13 @@ func TestTypesExport_RoundTrip(t *testing.T) {
 		{ImportPath: "github.com/foo/bar/sub", Data: []byte("hello world")},
 	}
 	encoded, err := EncodeTypesExport(in)
-	if err != nil {
-		t.Fatalf("encode: %v", err)
-	}
+	require.NoError(t, err)
 	decoded, err := DecodeTypesExport(encoded)
-	if err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if len(decoded) != 2 {
-		t.Fatalf("want 2 entries, got %d", len(decoded))
-	}
+	require.NoError(t, err)
+	require.Len(t, decoded, len(in))
 	for i, entry := range decoded {
-		if entry.ImportPath != in[i].ImportPath {
-			t.Fatalf("entry[%d].ImportPath = %q, want %q", i, entry.ImportPath, in[i].ImportPath)
-		}
-		if !bytes.Equal(entry.Data, in[i].Data) {
-			t.Fatalf("entry[%d].Data mismatch", i)
-		}
+		require.Equal(t, in[i].ImportPath, entry.ImportPath, "entry %d import path", i)
+		require.Equal(t, in[i].Data, entry.Data, "entry %d data", i)
 	}
 }
 
@@ -81,22 +67,22 @@ func TestEncodeTypesExport_DeterministicOrder(t *testing.T) {
 		{ImportPath: "z/last", Data: []byte("a")},
 		{ImportPath: "a/first", Data: []byte("b")},
 	}
-	encA, _ := EncodeTypesExport(a)
-	encB, _ := EncodeTypesExport(b)
-	if !bytes.Equal(encA, encB) {
-		t.Fatalf("encoding not deterministic across input orderings")
-	}
+	encA, err := EncodeTypesExport(a)
+	require.NoError(t, err)
+	encB, err := EncodeTypesExport(b)
+	require.NoError(t, err)
+	require.Equal(t, encA, encB, "the encoding does not depend on the input order")
 }
 
 func TestDecodeTypesExport_TruncatedErrors(t *testing.T) {
 	t.Parallel()
 	in := []TypesExportEntry{{ImportPath: "p", Data: []byte{0x42}}}
-	encoded, _ := EncodeTypesExport(in)
+	encoded, err := EncodeTypesExport(in)
+	require.NoError(t, err)
 
 	for n := 1; n < len(encoded); n++ {
-		if _, err := DecodeTypesExport(encoded[:n]); err == nil {
-			t.Fatalf("decode of truncated %d-byte prefix should error", n)
-		}
+		_, err := DecodeTypesExport(encoded[:n])
+		require.Error(t, err, "a %d-byte prefix is rejected", n)
 	}
 }
 
@@ -109,14 +95,8 @@ func TestBundleFingerprint_IncludesTypesExport(t *testing.T) {
 	a := &Bundle{Descriptor: descriptor, Bytecode: []byte("bytecode"), TypesExport: []byte("export-A")}
 	b := &Bundle{Descriptor: descriptor, Bytecode: []byte("bytecode"), TypesExport: []byte("export-B")}
 	fa, err := a.Fingerprint()
-	if err != nil {
-		t.Fatalf("fingerprint A: %v", err)
-	}
+	require.NoError(t, err)
 	fb, err := b.Fingerprint()
-	if err != nil {
-		t.Fatalf("fingerprint B: %v", err)
-	}
-	if fa == fb {
-		t.Fatalf("fingerprints must differ when TypesExport differs: %s", fa)
-	}
+	require.NoError(t, err)
+	require.NotEqual(t, fb, fa, "a different types export changes the fingerprint")
 }

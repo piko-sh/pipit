@@ -180,6 +180,8 @@ TEXT ·handlerLoadFloatConst(SB), NOSPLIT|NOFRAME, $0
 
 // handlerLoadStringConst loads stringConstants[B|(C<<8)] into strings[A].
 TEXT ·handlerLoadStringConst(SB), NOSPLIT|NOFRAME, $0
+	CMPB    runtime·writeBarrier(SB), $0
+	JNE     wb_fallback
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -195,6 +197,8 @@ TEXT ·handlerLoadStringConst(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CX, (DI)(AX*1)
 	MOVQ    BX, 8(DI)(AX*1)
 	DISPATCH_NEXT()
+wb_fallback:
+	JMP     ·pathBFallback(SB)
 
 // handlerLoadBoolConst loads boolConstants[C] into bools[B].
 TEXT ·handlerLoadBoolConst(SB), NOSPLIT|NOFRAME, $0

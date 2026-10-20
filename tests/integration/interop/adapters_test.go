@@ -22,7 +22,6 @@ package interop_test
 
 import (
 	"container/heap"
-	"context"
 	"encoding"
 	"fmt"
 	"io"
@@ -32,10 +31,9 @@ import (
 	"strings"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
@@ -104,7 +102,7 @@ func TestNativeCallUnsupportedInterfaceSurfacesNamedError(t *testing.T) {
 	t.Parallel()
 	service := newInteropService(t)
 
-	_, err := service.Eval(context.Background(), `
+	_, err := service.Eval(t.Context(), `
 import "host"
 type Cursor struct{ pos int64 }
 func (c *Cursor) Seek(offset int64, whence int) (int64, error) { c.pos = offset; return offset, nil }
@@ -121,14 +119,26 @@ func TestNativeInterfaceAdapterRoundTrips(t *testing.T) {
 		name    string
 		imports string
 		code    string
-		expect  any
+		want    any
 	}{
-		{name: "io.Closer", imports: `"fmt"; "host"`, expect: "<nil>|true", code: `
+		{name: "io.Closer", imports: `"fmt"; "host"`, want: "<nil>|true", code: `
 type Res struct{ closed bool }
 func (r *Res) Close() error { r.closed = true; return nil }
 r := &Res{}
 host.CloseIt(r) + "|" + fmt.Sprint(r.closed)`},
-		{name: "io.ReadCloser", imports: `"fmt"; "host"; "io"`, expect: "hello|<nil>|<nil>|true", code: `
+		{name: "io.Closer error", imports: `"errors"; "fmt"; "host"`, want: "busy|true", code: `
+type Res struct{ closed bool }
+func (r *Res) Close() error { r.closed = true; return errors.New("busy") }
+r := &Res{}
+host.CloseIt(r) + "|" + fmt.Sprint(r.closed)`},
+		{name: "script error type from Read", imports: `"host"`, want: "|stream: jammed|<nil>", code: `
+type streamError struct{ reason string }
+func (e streamError) Error() string { return "stream: " + e.reason }
+type Stream struct{}
+func (Stream) Read(p []byte) (int, error) { return 0, streamError{reason: "jammed"} }
+func (Stream) Close() error { return nil }
+host.Drain(Stream{})`},
+		{name: "io.ReadCloser", imports: `"fmt"; "host"; "io"`, want: "hello|<nil>|<nil>|true", code: `
 type Stream struct{ data []byte; pos int; closed bool }
 func (s *Stream) Read(p []byte) (int, error) {
 	if s.pos >= len(s.data) { return 0, io.EOF }
@@ -137,13 +147,13 @@ func (s *Stream) Read(p []byte) (int, error) {
 func (s *Stream) Close() error { s.closed = true; return nil }
 s := &Stream{data: []byte("hello")}
 host.Drain(s) + "|" + fmt.Sprint(s.closed)`},
-		{name: "io.WriteCloser", imports: `"fmt"; "host"`, expect: "7|<nil>|<nil>|payload|true", code: `
+		{name: "io.WriteCloser", imports: `"fmt"; "host"`, want: "7|<nil>|<nil>|payload|true", code: `
 type Sink struct{ buffer []byte; closed bool }
 func (s *Sink) Write(p []byte) (int, error) { s.buffer = append(s.buffer, p...); return len(p), nil }
 func (s *Sink) Close() error { s.closed = true; return nil }
 s := &Sink{}
 host.WriteAndClose(s) + "|" + string(s.buffer) + "|" + fmt.Sprint(s.closed)`},
-		{name: "io.ReadWriter", imports: `"host"; "io"`, expect: "abc|<nil>", code: `
+		{name: "io.ReadWriter", imports: `"host"; "io"`, want: "abc|<nil>", code: `
 type Pipe struct{ buffer []byte }
 func (p *Pipe) Write(b []byte) (int, error) { p.buffer = append(p.buffer, b...); return len(b), nil }
 func (p *Pipe) Read(b []byte) (int, error) {
@@ -151,7 +161,7 @@ func (p *Pipe) Read(b []byte) (int, error) {
 	n := copy(b, p.buffer); p.buffer = p.buffer[n:]; return n, nil
 }
 host.Echo(&Pipe{})`},
-		{name: "io.ReaderFrom", imports: `"host"; "io"`, expect: "11|<nil>|from-native", code: `
+		{name: "io.ReaderFrom", imports: `"host"; "io"`, want: "11|<nil>|from-native", code: `
 type Collector struct{ data []byte }
 func (c *Collector) ReadFrom(r io.Reader) (int64, error) {
 	data, err := io.ReadAll(r)
@@ -160,23 +170,28 @@ func (c *Collector) ReadFrom(r io.Reader) (int64, error) {
 }
 c := &Collector{}
 host.FillFrom(c) + "|" + string(c.data)`},
-		{name: "io.WriterTo", imports: `"host"; "io"`, expect: "6|spill!|<nil>", code: `
+		{name: "io.WriterTo", imports: `"host"; "io"`, want: "6|spill!|<nil>", code: `
 type Source struct{ data string }
 func (s Source) WriteTo(w io.Writer) (int64, error) {
 	n, err := w.Write([]byte(s.data))
 	return int64(n), err
 }
 host.SpillTo(Source{data: "spill!"})`},
-		{name: "encoding.TextMarshaler", imports: `"host"`, expect: "colour:red|<nil>", code: `
+		{name: "encoding.TextMarshaler", imports: `"host"`, want: "colour:red|<nil>", code: `
 type Colour struct{ name string }
 func (c Colour) MarshalText() ([]byte, error) { return []byte("colour:" + c.name), nil }
 host.MarshalText(Colour{name: "red"})`},
-		{name: "encoding.TextUnmarshaler", imports: `"host"`, expect: "<nil>|blue", code: `
+		{name: "encoding.TextUnmarshaler", imports: `"host"`, want: "<nil>|blue", code: `
 type Colour struct{ name string }
 func (c *Colour) UnmarshalText(text []byte) error { c.name = string(text); return nil }
 c := &Colour{}
 host.UnmarshalText(c) + "|" + c.name`},
-		{name: "http.Handler", imports: `"fmt"; "host"; "net/http"`, expect: "202|pong:/ping|1", code: `
+		{name: "encoding.TextUnmarshaler error", imports: `"errors"; "host"`, want: "not a colour: blue|", code: `
+type Colour struct{ name string }
+func (c *Colour) UnmarshalText(text []byte) error { return errors.New("not a colour: " + string(text)) }
+c := &Colour{}
+host.UnmarshalText(c) + "|" + c.name`},
+		{name: "http.Handler", imports: `"fmt"; "host"; "net/http"`, want: "202|pong:/ping|1", code: `
 type Ping struct{ hits int }
 func (p *Ping) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.hits++
@@ -185,7 +200,7 @@ func (p *Ping) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 p := &Ping{}
 host.Serve(p) + "|" + fmt.Sprint(p.hits)`},
-		{name: "heap.Interface", imports: `"host"`, expect: "1,2,9", code: `
+		{name: "heap.Interface", imports: `"host"`, want: "1,2,9", code: `
 type IntHeap struct{ items []int }
 func (h *IntHeap) Len() int { return len(h.items) }
 func (h *IntHeap) Less(i, j int) bool { return h.items[i] < h.items[j] }
@@ -204,9 +219,9 @@ host.HeapDrain(&IntHeap{})`},
 			t.Parallel()
 			service := newInteropService(t)
 			source := "import (" + tt.imports + ")\n" + tt.code
-			result, err := service.Eval(context.Background(), source)
+			result, err := service.Eval(t.Context(), source)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

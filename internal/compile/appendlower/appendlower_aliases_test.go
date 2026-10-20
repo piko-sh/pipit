@@ -50,7 +50,7 @@ func checkedFunction(t *testing.T, source string) (*ast.FuncDecl, *types.Info) {
 			return function, info
 		}
 	}
-	t.Fatal("the fixture source must declare a function named f")
+	require.FailNow(t, "the fixture source must declare a function named f")
 	return nil, nil
 }
 
@@ -61,129 +61,257 @@ func firstAssignment(t *testing.T, function *ast.FuncDecl) *ast.AssignStmt {
 			return assignment
 		}
 	}
-	t.Fatal("the fixture function must contain an assignment")
+	require.FailNow(t, "the fixture function must contain an assignment")
 	return nil
 }
 
-func TestCollectAliasesRecordsEverySliceWhoseHeaderIsShared(t *testing.T) {
+func appendsIn(t *testing.T, info *types.Info, block *ast.BlockStmt) []*ast.AssignStmt {
+	t.Helper()
+	var appends []*ast.AssignStmt
+	ast.Inspect(block, func(node ast.Node) bool {
+		switch typed := node.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.AssignStmt:
+			if len(typed.Lhs) == 1 && len(typed.Rhs) == 1 {
+				if _, _, matched := MatchShape(info, typed.Lhs[0], typed.Rhs[0]); matched {
+					appends = append(appends, typed)
+				}
+			}
+		}
+		return true
+	})
+	return appends
+}
+
+func sharedAtEachAppend(t *testing.T, info *types.Info, aliases *Aliases, block *ast.BlockStmt) []bool {
+	t.Helper()
+	appends := appendsIn(t, info, block)
+	shared := make([]bool, 0, len(appends))
+	for _, assignment := range appends {
+		target, call, _ := MatchShape(info, assignment.Lhs[0], assignment.Rhs[0])
+		shared = append(shared, aliases.Shared(target, call.End()))
+	}
+	return shared
+}
+
+const aliasFixtureHeader = `package main
+
+type ints []int
+
+type list []int
+
+func (l list) size() int { return len(l) }
+
+func keep(xs []int) {}
+
+func keepInt(xs []int) int { return 0 }
+
+func produce() []int { return nil }
+
+`
+
+func TestCollectAliasesRefusesEveryAppendThroughASharedHeader(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name   string
 		source string
-		want   map[string]bool
+		want   []bool
 	}{
 		{
-			name:   "a slice parameter can always be shared with the caller",
-			source: "package main\nfunc f(xs []int) {}\n",
-			want:   map[string]bool{"xs": true},
+			name:   "a local that is only grown is never shared",
+			source: "func f() { var xs []int; xs = append(xs, 1); xs = append(xs, 2) }",
+			want:   []bool{false, false},
 		},
 		{
-			name:   "two slice parameters are both recorded",
-			source: "package main\nfunc f(xs, ys []int) {}\n",
-			want:   map[string]bool{"xs": true, "ys": true},
+			name:   "a copy shares both names from the copy on",
+			source: "func f() { var xs []int; xs = append(xs, 1); ys := xs; xs = append(xs, 2); ys = append(ys, 3) }",
+			want:   []bool{false, true, true},
 		},
 		{
-			name:   "a non-slice parameter shares nothing",
-			source: "package main\nfunc f(n int) {}\n",
-			want:   nil,
+			name:   "a parenthesised copy",
+			source: "func f() { var p []int; p = append(p, 1); q := (p); p = append(p, 2); q = append(q, 3) }",
+			want:   []bool{false, true, true},
 		},
 		{
-			name:   "an array parameter is copied, not shared",
-			source: "package main\nfunc f(a [4]int) {}\n",
-			want:   nil,
+			name:   "a conversion to a named slice type",
+			source: "func f() { var b []int; b = append(b, 1); a := ints(b); b = append(b, 2); a = append(a, 3) }",
+			want:   []bool{false, true, true},
 		},
 		{
-			name:   "a blank parameter name has nothing to record",
-			source: "package main\nfunc f(_ []int) {}\n",
-			want:   nil,
+			name:   "nested conversions and parentheses",
+			source: "func f() { var b []int; b = append(b, 1); a := ints(([]int)(ints(b))); b = append(b, 2); a = append(a, 3) }",
+			want:   []bool{false, true, true},
 		},
 		{
-			name:   "assigning a local to another name shares its header",
-			source: "package main\nfunc f() { xs := make([]int, 1); ys := xs; ys[0] = 1 }\n",
-			want:   map[string]bool{"xs": true},
+			name:   "a conversion to an interface",
+			source: "func f() { var d []int; d = append(d, 1); kept := any(d); d = append(d, 2); _ = kept }",
+			want:   []bool{false, true},
 		},
 		{
-			name:   "taking the address of a local shares it",
-			source: "package main\nfunc g(*[]int) {}\nfunc f() { xs := make([]int, 1); g(&xs) }\n",
-			want:   map[string]bool{"xs": true},
+			name:   "a conversion of a string copies, so the result is fresh",
+			source: "func f(s string) { bs := []byte(s); bs = append(bs, 'x'); rs := []rune(s); rs = append(rs, 'y') }",
+			want:   []bool{false, false},
 		},
 		{
-			name:   "a var declaration with a value shares it",
-			source: "package main\nfunc f() { xs := make([]int, 1); var ys = xs; ys[0] = 1 }\n",
-			want:   map[string]bool{"xs": true},
+			name:   "a fresh literal, make, nil, slice expression or append",
+			source: "func f() { a := []int{1}; b := make([]int, 1); var c []int = nil; d := a[:1]; e := append(b[:0], 1); a = append(a, 1); b = append(b, 1); c = append(c, 1); d = append(d, 1); e = append(e, 1) }",
+			want:   []bool{false, false, false, false, false, false},
 		},
 		{
-			name:   "a local that is only grown in place is not shared",
-			source: "package main\nfunc f() { xs := make([]int, 1); xs = append(xs, 1); xs[0] = 2 }\n",
-			want:   nil,
+			name:   "a method value shares its receiver",
+			source: "func f() { var m list; m = append(m, 1); size := m.size; m = append(m, 2); _ = size }",
+			want:   []bool{false, true},
 		},
 		{
-			name: "a name handed to the blank identifier is recorded all the same",
-
-			source: "package main\nfunc f() { xs := make([]int, 1); _ = xs }\n",
-			want:   map[string]bool{"xs": true},
+			name:   "a method call shares its receiver from the call on",
+			source: "func f() { var m list; m = append(m, 1); _ = m.size(); m = append(m, 2) }",
+			want:   []bool{false, true},
 		},
 		{
-			name:   "a chain of two assignments records both sources",
-			source: "package main\nfunc f() { xs := make([]int, 1); ys := xs; zs := ys; zs[0] = 1 }\n",
-			want:   map[string]bool{"xs": true, "ys": true},
+			name:   "a parameter is shared from entry",
+			source: "func f(xs []int) { xs = append(xs, 1) }",
+			want:   []bool{true},
+		},
+		{
+			name:   "a variadic parameter is shared from entry",
+			source: "func f(xs ...int) { xs = append(xs, 1) }",
+			want:   []bool{true},
+		},
+		{
+			name:   "a call result may have another handle",
+			source: "func f() { xs := produce(); xs = append(xs, 1) }",
+			want:   []bool{true},
+		},
+		{
+			name:   "a call argument after the loop leaves the loop's appends alone",
+			source: "func f() { var ps []int; for i := 0; i < 3; i++ { ps = append(ps, i) }; keep(ps); ps = append(ps, 9) }",
+			want:   []bool{false, true},
+		},
+		{
+			name:   "a call argument inside the loop shares from the loop's start",
+			source: "func f() { var ps []int; for i := 0; i < 3; i++ { ps = append(ps, i); keep(ps) } }",
+			want:   []bool{true},
+		},
+		{
+			name:   "a call argument before the loop",
+			source: "func f() { var ps []int; keep(ps); for i := 0; i < 3; i++ { ps = append(ps, i) } }",
+			want:   []bool{true},
+		},
+		{
+			name:   "a call argument in an inner loop shares from the outer loop's start",
+			source: "func f() { var ps []int; for j := 0; j < 2; j++ { ps = append(ps, j); for range 2 { keep(ps) } } }",
+			want:   []bool{true},
+		},
+		{
+			name:   "an element that passes the slice on runs before the append",
+			source: "func f() { var xs []int; xs = append(xs, keepInt(xs)) }",
+			want:   []bool{true},
+		},
+		{
+			name:   "goto makes every event count from entry",
+			source: "func f() { var ps []int; ps = append(ps, 1); goto done\ndone:\n\tkeep(ps) }",
+			want:   []bool{true},
+		},
+		{
+			name:   "an event inside a function literal counts from entry",
+			source: "func f() { var ps []int; ps = append(ps, 1); g := func() { keep(ps) }; _ = g }",
+			want:   []bool{true},
+		},
+		{
+			name:   "a shadowing variable is a different variable",
+			source: "func f() { xs := []int{}; { xs := []int{}; keep(xs) }; xs = append(xs, 1) }",
+			want:   []bool{false},
+		},
+		{
+			name:   "a type switch binding holds the switched value",
+			source: "func f(v any) { switch xs := v.(type) { case []int: xs = append(xs, 1); _ = xs } }",
+			want:   []bool{true},
+		},
+		{
+			name:   "taking the address shares from there on",
+			source: "func f() { var ps []int; ps = append(ps, 1); p := &ps; ps = append(ps, 2); _ = p }",
+			want:   []bool{false, true},
+		},
+		{
+			name:   "a sent value shares from the send on",
+			source: "func f(ch chan []int) { var ps []int; ps = append(ps, 1); ch <- ps; ps = append(ps, 2) }",
+			want:   []bool{false, true},
+		},
+		{
+			name:   "a range value shares the element it is copied from",
+			source: "func f(groups [][]int) { for _, group := range groups { group = append(group, 1) } }",
+			want:   []bool{true},
+		},
+		{
+			name:   "a builtin keeps nothing it is given",
+			source: "func f() { xs := make([]int, 1); ys := make([]int, 1); _ = len(xs) + cap(xs); copy(ys, xs); ys = append(ys, xs...); xs = append(xs, 1) }",
+			want:   []bool{false, false},
+		},
+		{
+			name:   "a var declaration with a shared value",
+			source: "func f() { var xs []int; xs = append(xs, 1); var ys = xs; xs = append(xs, 2); ys = append(ys, 3) }",
+			want:   []bool{false, true, true},
+		},
+		{
+			name:   "a tuple assignment shares every target",
+			source: "func pair() ([]int, int) { return nil, 0 }\nfunc f() { xs, n := pair(); xs = append(xs, n) }",
+			want:   []bool{true},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			function, info := checkedFunction(t, tt.source)
+			function, info := checkedFunction(t, aliasFixtureHeader+tt.source+"\n")
 
-			got := CollectAliases(info, function.Type.Params, function.Body)
+			aliases := CollectAliases(info, Body{Receiver: function.Recv, Parameters: function.Type.Params, Entry: nil, Block: function.Body, Repeats: false})
 
-			require.Equal(t, tt.want, got,
-				"an append through a shared header has to keep allocating, so every sharing form must be recorded")
+			require.Equal(t, tt.want, sharedAtEachAppend(t, info, aliases, function.Body),
+				"an append through a shared header has to keep allocating")
 		})
 	}
 }
 
-func TestCollectAliasesFallsBackToSyntaxWithoutTypeInformation(t *testing.T) {
+func TestCollectAliasesSharesAValueReceiverFromEntry(t *testing.T) {
 	t.Parallel()
+	function, info := checkedFunction(t, aliasFixtureHeader+"func (l list) f() int { l = append(l, 9); return len(l) }\n")
 
-	tests := []struct {
-		name   string
-		source string
-		want   map[string]bool
-	}{
-		{
-			name:   "a slice parameter is recognised from its syntax alone",
-			source: "package main\nfunc f(xs []int) {}\n",
-			want:   map[string]bool{"xs": true},
-		},
-		{
-			name:   "an array parameter is told apart by its length",
-			source: "package main\nfunc f(a [4]int) {}\n",
-			want:   nil,
-		},
-		{
-			name:   "a map parameter is not a slice",
-			source: "package main\nfunc f(m map[int]int) {}\n",
-			want:   nil,
-		},
-	}
+	aliases := CollectAliases(info, Body{Receiver: function.Recv, Parameters: function.Type.Params, Entry: nil, Block: function.Body, Repeats: false})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			function, _ := checkedFunction(t, tt.source)
-
-			require.Equal(t, tt.want, CollectAliases(nil, function.Type.Params, function.Body))
-		})
-	}
+	require.Equal(t, []bool{true}, sharedAtEachAppend(t, info, aliases, function.Body),
+		"a value receiver's header is the caller's until the method replaces it")
 }
 
-func TestCollectAliasesOfNothingIsNothing(t *testing.T) {
+func TestCollectAliasesOfARepeatingBodyCountsFromEntry(t *testing.T) {
 	t.Parallel()
+	function, info := checkedFunction(t, aliasFixtureHeader+
+		"func f(seq func(func(int, []int) bool)) { for k, v := range seq { var ys []int; ys = append(ys, k); v = append(v, 1); keep(ys) } }\n")
+	var loop *ast.RangeStmt
+	ast.Inspect(function.Body, func(node ast.Node) bool {
+		if statement, ok := node.(*ast.RangeStmt); ok {
+			loop = statement
+		}
+		return loop == nil
+	})
+	require.NotNil(t, loop)
 
-	require.Nil(t, CollectAliases(nil, nil, nil),
-		"a function with neither parameters nor a body shares no header at all")
+	aliases := CollectAliases(info, Body{Receiver: nil, Parameters: nil, Entry: []ast.Expr{loop.Key, loop.Value}, Block: loop.Body, Repeats: true})
+
+	require.Equal(t, []bool{true, true}, sharedAtEachAppend(t, info, aliases, loop.Body),
+		"a range-over-func body runs once per element, so a later event reaches an earlier append, and its value is the iterator's")
+}
+
+func TestAliasesWithoutAnAnalysisShareEverything(t *testing.T) {
+	t.Parallel()
+	function, info := checkedFunction(t, aliasFixtureHeader+"func f() { var xs []int; xs = append(xs, 1) }\n")
+
+	require.Nil(t, CollectAliases(nil, Body{Receiver: nil, Parameters: nil, Entry: nil, Block: function.Body, Repeats: false}),
+		"without type information there is no analysis")
+	var missing *Aliases
+	require.Equal(t, []bool{true}, sharedAtEachAppend(t, info, missing, function.Body),
+		"a body that was never analysed must keep allocating")
 }
 
 func TestSameSliceHoldsOnlyWhenBothSidesNameOneObject(t *testing.T) {
@@ -217,7 +345,7 @@ func TestSameSliceHoldsOnlyWhenBothSidesNameOneObject(t *testing.T) {
 			function, info := checkedFunction(t, tt.source)
 			assignment := firstAssignment(t, function)
 
-			lhsIdent, callRHS, matched := MatchShape(assignment.Lhs[0], assignment.Rhs[0])
+			lhsIdent, callRHS, matched := MatchShape(info, assignment.Lhs[0], assignment.Rhs[0])
 			require.True(t, matched, "the fixture is written in the shape under test")
 
 			require.Equal(t, tt.want, SameSlice(info, lhsIdent, callRHS),
@@ -282,7 +410,7 @@ func TestElementKindNamesTheUnderlyingElementAndSpread(t *testing.T) {
 			function, info := checkedFunction(t, tt.source)
 			assignment := firstAssignment(t, function)
 
-			_, callRHS, matched := MatchShape(assignment.Lhs[0], assignment.Rhs[0])
+			_, callRHS, matched := MatchShape(info, assignment.Lhs[0], assignment.Rhs[0])
 			require.True(t, matched, "the fixture is written in the shape under test")
 
 			kind, spread, ok := ElementKind(info, callRHS)
@@ -298,9 +426,9 @@ func TestElementKindNamesTheUnderlyingElementAndSpread(t *testing.T) {
 func TestElementKindRefusesWhatItCannotResolve(t *testing.T) {
 	t.Parallel()
 
-	function, _ := checkedFunction(t, "package main\nfunc f(xs []int) { xs = append(xs, 1) }\n")
+	function, info := checkedFunction(t, "package main\nfunc f(xs []int) { xs = append(xs, 1) }\n")
 	assignment := firstAssignment(t, function)
-	_, callRHS, matched := MatchShape(assignment.Lhs[0], assignment.Rhs[0])
+	_, callRHS, matched := MatchShape(info, assignment.Lhs[0], assignment.Rhs[0])
 	require.True(t, matched)
 
 	kind, spread, ok := ElementKind(&types.Info{Types: map[ast.Expr]types.TypeAndValue{}}, callRHS)

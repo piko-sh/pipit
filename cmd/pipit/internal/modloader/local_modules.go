@@ -22,13 +22,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go/build"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"pipit.sh/pipit"
 )
 
 // maxGoModAncestors bounds the upward search for a go.mod file so a script deep in an
@@ -131,7 +131,7 @@ func (livePackageReader) readPackage(dir string) (map[string]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		if compilableForHost(dir, name, string(data)) {
+		if compilableForHost(name, string(data)) {
 			sources[name] = string(data)
 		}
 	}
@@ -354,22 +354,19 @@ func classifyImports(imports []string, stdlibPackages map[string]struct{}, local
 	return slices.Compact(local), filterExternalImports(others, stdlibPackages)
 }
 
-// compilableForHost applies Go's build constraints (file name suffixes and //go:build
-// lines) for the host platform, so a package with platform-specific files compiles the
-// same set the go command would.
+// hostFileFilter decides which files the interpreter compiles on this host.
+var hostFileFilter = pipit.NewFileFilter()
+
+// compilableForHost applies pipit.NewFileFilter to a file. Files with malformed build
+// constraints are kept so compilation reports the error.
 //
-// Takes dir (string) which is the package directory, used only to form the path.
 // Takes name (string) which is the file name.
 // Takes content (string) which is the file's source.
 //
 // Returns bool which is true when the file takes part in the build.
-func compilableForHost(dir, name, content string) bool {
-	ctxt := build.Default
-	ctxt.OpenFile = func(string) (io.ReadCloser, error) {
-		return io.NopCloser(strings.NewReader(content)), nil
-	}
-	ok, err := ctxt.MatchFile(dir, name)
-	return err == nil && ok
+func compilableForHost(name, content string) bool {
+	matched, err := hostFileFilter(name, []byte(content))
+	return err != nil || matched
 }
 
 // resolveLocalModules reads every local package reachable from seeds and orders the local

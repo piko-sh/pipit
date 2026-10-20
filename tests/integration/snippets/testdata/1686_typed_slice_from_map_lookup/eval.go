@@ -15,7 +15,6 @@ func joinInts(xs []int) string {
 	return out
 }
 
-// lookups exercises every element bank the classifier admits, on hits and misses.
 func lookups() string {
 	strings := map[string][]string{"a": {"x", "y", "z"}, "b": {}}
 	ints := map[string][]int{"a": {1, 2, 3}}
@@ -76,8 +75,6 @@ func lookups() string {
 	return out
 }
 
-// markov mirrors the text generator: candidate lists looked up by key, indexed by a
-// pseudo-random position, the walk feeding the next key.
 func markov(steps int) string {
 	transitions := map[string][]string{
 		"the":   {"quick", "lazy", "old"},

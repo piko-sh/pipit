@@ -130,11 +130,12 @@ func RunTest(ctx context.Context, args []string, streams output.IO) int {
 		GoproxyURL:   *options.goproxyURL,
 		AllowNetwork: *options.allowNetwork,
 	}
-	interpreter := runner.New(limits, pipit.WithArgs([]string{target}), pipit.WithEnv(buildScriptEnv(target, nil)))
+	interpreter := runner.New(limits, pipit.WithArgs([]string{target}), pipit.WithEnv(runner.ScriptEnv(target, nil)))
 
 	suite, err := loadTestSuite(ctx, interpreter, target, modules)
 	if err != nil {
 		fmt.Fprintf(streams.Stderr, errorFormat, err)
+		printScriptDirHint(streams.Stderr, err)
 		return 1
 	}
 	if err := interpreter.ExecuteInits(ctx, suite.compiled); err != nil {
@@ -160,7 +161,7 @@ func RunTest(ctx context.Context, args []string, streams output.IO) int {
 // Returns error when the sources cannot be read, a test has the wrong signature, an
 // external test package is present, or compilation fails.
 func loadTestSuite(ctx context.Context, interpreter *pipit.Interpreter, target string, modules moduleRunOptions) (*testSuite, error) {
-	directory, sources, err := collectTestSources(target)
+	directory, sources, err := collectTestSources(interpreter, target)
 	if err != nil {
 		return nil, err
 	}
@@ -175,57 +176,55 @@ func loadTestSuite(ctx context.Context, interpreter *pipit.Interpreter, target s
 	return &testSuite{compiled: compiled, tests: tests}, nil
 }
 
-// collectTestSources reads the target package including its _test.go files. External test
-// packages (package x_test) are refused.
+// collectTestSources reads the target package including its _test.go files, keeping only
+// the files the interpreter compiles. External test packages (package x_test) are
+// refused.
 //
+// Takes interpreter (*pipit.Interpreter) which decides which files count.
 // Takes target (string) which is the file or directory path.
 //
 // Returns string which is the package directory.
 // Returns map[string]string which maps file name to source.
-// Returns error when the target cannot be read or holds an external test package.
-func collectTestSources(target string) (string, map[string]string, error) {
-	directory, names, err := listTestFiles(target)
-	if err != nil {
-		return "", nil, err
-	}
-	root, err := os.OpenRoot(directory)
-	if err != nil {
-		return "", nil, fmt.Errorf("cannot open %q: %w", directory, err)
-	}
-	defer root.Close()
-	sources := make(map[string]string, len(names))
-	for _, name := range names {
-		body, err := root.ReadFile(name)
-		if err != nil {
-			return "", nil, fmt.Errorf("cannot read %q: %w", name, err)
-		}
-		if err := rejectExternalTestPackage(name, body); err != nil {
-			return "", nil, err
-		}
-		sources[name] = string(body)
-	}
-	return directory, sources, nil
-}
-
-// listTestFiles names the Go files a target contributes: the file itself, or every .go
-// file directly inside the directory.
-//
-// Takes target (string) which is the file or directory path.
-//
-// Returns string which is the package directory.
-// Returns []string which lists the file names.
-// Returns error when the target cannot be read or holds no Go files.
-func listTestFiles(target string) (string, []string, error) {
+// Returns error when the target cannot be read, holds no Go files the interpreter
+// compiles, or holds an external test package.
+func collectTestSources(interpreter *pipit.Interpreter, target string) (string, map[string]string, error) {
 	info, err := os.Stat(target)
 	if err != nil {
 		return "", nil, fmt.Errorf("cannot stat %q: %w", target, err)
 	}
-	if !info.IsDir() {
-		return filepath.Dir(target), []string{filepath.Base(target)}, nil
+	directory, names := filepath.Dir(target), []string{filepath.Base(target)}
+	if info.IsDir() {
+		directory = target
+		if names, err = listGoFiles(target); err != nil {
+			return "", nil, err
+		}
 	}
-	entries, err := os.ReadDir(target)
+	sources, err := readTestSources(directory, names)
 	if err != nil {
-		return "", nil, fmt.Errorf("cannot read directory %q: %w", target, err)
+		return "", nil, err
+	}
+	sources = compiledSources(interpreter, sources)
+	if len(sources) == 0 {
+		return "", nil, fmt.Errorf("no .go files the interpreter compiles in %q", target)
+	}
+	for _, name := range sortedFileNames(sources) {
+		if err := rejectExternalTestPackage(name, []byte(sources[name])); err != nil {
+			return "", nil, err
+		}
+	}
+	return directory, sources, nil
+}
+
+// listGoFiles names every .go file directly inside a directory.
+//
+// Takes directory (string) which is the package directory.
+//
+// Returns []string which lists the file names.
+// Returns error when the directory cannot be read or holds no Go files.
+func listGoFiles(directory string) ([]string, error) {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read directory %q: %w", directory, err)
 	}
 	var names []string
 	for _, entry := range entries {
@@ -234,9 +233,37 @@ func listTestFiles(target string) (string, []string, error) {
 		}
 	}
 	if len(names) == 0 {
-		return "", nil, fmt.Errorf("no .go files in %q", target)
+		return nil, fmt.Errorf("no .go files in %q", directory)
 	}
-	return target, names, nil
+	return names, nil
+}
+
+// readTestSources reads the named files of a package directory.
+//
+// Takes directory (string) which is the package directory.
+// Takes names ([]string) which lists the file names.
+//
+// Returns map[string]string which maps file name to source.
+// Returns error when the directory cannot be opened or a file cannot be read.
+func readTestSources(directory string, names []string) (sources map[string]string, err error) {
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open %q: %w", directory, err)
+	}
+	defer func() {
+		if closeErr := root.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("closing %q: %w", directory, closeErr)
+		}
+	}()
+	sources = make(map[string]string, len(names))
+	for _, name := range names {
+		body, err := root.ReadFile(name)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read %q: %w", name, err)
+		}
+		sources[name] = string(body)
+	}
+	return sources, nil
 }
 
 // rejectExternalTestPackage parses a file's package clause and refuses the _test suffix.

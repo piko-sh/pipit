@@ -24,8 +24,6 @@ type square struct{ side int }
 
 func (s square) area() int { return s.side * s.side }
 
-// makeTree is the constructor recursion of the tree benchmark: every call returns a
-// pointer through the inline return.
 func makeTree(depth, seed int) *node {
 	if depth == 0 {
 		return nil
@@ -40,7 +38,6 @@ func count(n *node) int {
 	return 1 + count(n.left) + count(n.right)
 }
 
-// find returns nil on most paths and a pointer on one.
 func find(n *node, value int) *node {
 	if n == nil {
 		return nil
@@ -54,17 +51,14 @@ func find(n *node, value int) *node {
 	return find(n.right, value)
 }
 
-// makeBox returns a struct by value, held indirectly in the general bank.
 func makeBox(seed int) box {
 	return box{items: [4]int{seed, seed + 1, seed + 2, seed + 3}, tag: "b" + strconv.Itoa(seed)}
 }
 
-// pick returns an interface value holding a struct.
 func pick(side int) shape {
 	return square{side: side}
 }
 
-// choose returns one of two pointers so the returned value changes per call.
 func choose(flag bool, a, b *node) *node {
 	if flag {
 		return a

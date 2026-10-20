@@ -21,14 +21,14 @@
 package bytecode_test
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"sync"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
+	"github.com/stretchr/testify/assert"
 
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
@@ -88,21 +88,17 @@ func run() string {
 			for range iters {
 				service := app.NewService()
 				service.UseSymbolProviders(stdlib.Providers()...)
-				result, err := service.EvalFile(context.Background(), source, "run")
+				result, err := service.EvalFile(t.Context(), source, "run")
 				got := strings.TrimSpace(fmt.Sprint(result))
 				if err != nil || got != want {
 					mu.Lock()
 					mismatches++
-					if mismatches <= 3 {
-						t.Errorf("goexit defer ordering broke: got=%q err=%v (want %q)", got, err, want)
-					}
+					assert.Greater(t, mismatches, 3, "Goexit runs defers in order: got %q, error %v, want %q", got, err, want)
 					mu.Unlock()
 				}
 			}
 		})
 	}
 	wg.Wait()
-	if mismatches > 0 {
-		t.Errorf("total mismatches: %d/%d", mismatches, parallel*iters)
-	}
+	assert.Zero(t, mismatches, "mismatches out of %d runs", parallel*iters)
 }

@@ -21,16 +21,15 @@
 package bytecode_test
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/symtab"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestEvalImports(t *testing.T) {
@@ -48,30 +47,30 @@ func TestEvalImports(t *testing.T) {
 	})
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "import fmt Sprintf",
 			code: `import "fmt"
 result := fmt.Sprintf("hello %s", "world")
 result`,
-			expect: "hello world",
+			want: "hello world",
 		},
 		{
 			name: "import strings ToUpper",
 			code: `import "strings"
 result := strings.ToUpper("hello")
 result`,
-			expect: "HELLO",
+			want: "HELLO",
 		},
 		{
 			name: "import strings Contains",
 			code: `import "strings"
 result := strings.Contains("hello world", "world")
 result`,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "import multiple packages",
@@ -82,14 +81,14 @@ import (
 name := strings.ToUpper("world")
 result := fmt.Sprintf("hello %s", name)
 result`,
-			expect: "hello WORLD",
+			want: "hello WORLD",
 		},
 		{
 			name: "import variadic Sprintf with int",
 			code: `import "fmt"
 result := fmt.Sprintf("value: %d", 42)
 result`,
-			expect: "value: 42",
+			want: "value: 42",
 		},
 		{
 			name: "grouped import",
@@ -100,19 +99,19 @@ result`,
 name := strings.ToUpper("pipit")
 result := fmt.Sprintf("hello %s", name)
 result`,
-			expect: "hello PIPIT",
+			want: "hello PIPIT",
 		},
 		{
 			name: "Sprintf no varargs",
 			code: `import "fmt"
 fmt.Sprintf("hello")`,
-			expect: "hello",
+			want: "hello",
 		},
 		{
 			name: "Sprintf three varargs",
 			code: `import "fmt"
 fmt.Sprintf("%s=%d (%.1f)", "x", 10, 3.14)`,
-			expect: "x=10 (3.1)",
+			want: "x=10 (3.1)",
 		},
 	}
 
@@ -121,9 +120,9 @@ fmt.Sprintf("%s=%d (%.1f)", "x", 10, 3.14)`,
 			t.Parallel()
 			service := app.NewService()
 			service.UseSymbols(symbols)
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

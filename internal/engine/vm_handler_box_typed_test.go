@@ -43,53 +43,76 @@ func TestBoxTypedToGeneralProducesTheDeclaredType(t *testing.T) {
 	}{
 		{
 			name: "a plain int", targetType: reflect.TypeFor[int](), sourceKind: isa.RegisterInt,
-			seed:  func(r *Registers) { r.Ints[0] = 42 },
-			check: func(t *testing.T, b reflect.Value) { require.Equal(t, int64(42), b.Int()) },
+			seed: func(r *Registers) { r.Ints[0] = 42 },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.Equal(t, int64(42), b.Int())
+			},
 		},
 		{
 			name: "a narrow int", targetType: reflect.TypeFor[int8](), sourceKind: isa.RegisterInt,
-			seed:  func(r *Registers) { r.Ints[0] = -5 },
-			check: func(t *testing.T, b reflect.Value) { require.Equal(t, int64(-5), b.Int()) },
+			seed: func(r *Registers) { r.Ints[0] = -5 },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.Equal(t, int64(-5), b.Int())
+			},
 		},
 		{
 			name: "a named int keeps its own type", targetType: reflect.TypeFor[boxNamedInt](), sourceKind: isa.RegisterInt,
 			seed: func(r *Registers) { r.Ints[0] = 7 },
 			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
 				require.Equal(t, reflect.TypeFor[boxNamedInt](), b.Type())
 				require.Equal(t, int64(7), b.Int())
 			},
 		},
 		{
 			name: "an unsigned value", targetType: reflect.TypeFor[uint32](), sourceKind: isa.RegisterUint,
-			seed:  func(r *Registers) { r.Uints[0] = 42 },
-			check: func(t *testing.T, b reflect.Value) { require.Equal(t, uint64(42), b.Uint()) },
+			seed: func(r *Registers) { r.Uints[0] = 42 },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.Equal(t, uint64(42), b.Uint())
+			},
 		},
 		{
 			name: "a float", targetType: reflect.TypeFor[float32](), sourceKind: isa.RegisterFloat,
-			seed:  func(r *Registers) { r.Floats[0] = 1.5 },
-			check: func(t *testing.T, b reflect.Value) { require.InDelta(t, 1.5, b.Float(), 0.001) },
+			seed: func(r *Registers) { r.Floats[0] = 1.5 },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.InDelta(t, 1.5, b.Float(), 0.001)
+			},
 		},
 		{
 			name: "a string", targetType: reflect.TypeFor[string](), sourceKind: isa.RegisterString,
-			seed:  func(r *Registers) { r.Strings[0] = "pipit" },
-			check: func(t *testing.T, b reflect.Value) { require.Equal(t, "pipit", b.String()) },
+			seed: func(r *Registers) { r.Strings[0] = "pipit" },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.Equal(t, "pipit", b.String())
+			},
 		},
 		{
 			name: "a named string", targetType: reflect.TypeFor[boxNamedString](), sourceKind: isa.RegisterString,
 			seed: func(r *Registers) { r.Strings[0] = "pipit" },
 			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
 				require.Equal(t, reflect.TypeFor[boxNamedString](), b.Type())
 			},
 		},
 		{
 			name: "a boolean", targetType: reflect.TypeFor[bool](), sourceKind: isa.RegisterBool,
-			seed:  func(r *Registers) { r.Bools[0] = true },
-			check: func(t *testing.T, b reflect.Value) { require.True(t, b.Bool()) },
+			seed: func(r *Registers) { r.Bools[0] = true },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.True(t, b.Bool())
+			},
 		},
 		{
 			name: "a complex value", targetType: reflect.TypeFor[complex128](), sourceKind: isa.RegisterComplex,
-			seed:  func(r *Registers) { r.Complex[0] = 1 + 2i },
-			check: func(t *testing.T, b reflect.Value) { require.Equal(t, 1+2i, b.Complex()) },
+			seed: func(r *Registers) { r.Complex[0] = 1 + 2i },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.Equal(t, 1+2i, b.Complex())
+			},
 		},
 	}
 
@@ -130,33 +153,51 @@ func TestBoxTypedToGeneralFallsBackToTheSourceBank(t *testing.T) {
 	}{
 		{
 			name: "an integer source", sourceKind: isa.RegisterInt,
-			seed:  func(r *Registers) { r.Ints[0] = 42 },
-			check: func(t *testing.T, b reflect.Value) { require.Equal(t, int64(42), b.Int()) },
+			seed: func(r *Registers) { r.Ints[0] = 42 },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.Equal(t, int64(42), b.Int())
+			},
 		},
 		{
 			name: "a float source", sourceKind: isa.RegisterFloat,
-			seed:  func(r *Registers) { r.Floats[0] = 1.5 },
-			check: func(t *testing.T, b reflect.Value) { require.InDelta(t, 1.5, b.Float(), 0) },
+			seed: func(r *Registers) { r.Floats[0] = 1.5 },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.InDelta(t, 1.5, b.Float(), 0)
+			},
 		},
 		{
 			name: "a string source", sourceKind: isa.RegisterString,
-			seed:  func(r *Registers) { r.Strings[0] = "pipit" },
-			check: func(t *testing.T, b reflect.Value) { require.Equal(t, "pipit", b.String()) },
+			seed: func(r *Registers) { r.Strings[0] = "pipit" },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.Equal(t, "pipit", b.String())
+			},
 		},
 		{
 			name: "a boolean source", sourceKind: isa.RegisterBool,
-			seed:  func(r *Registers) { r.Bools[0] = true },
-			check: func(t *testing.T, b reflect.Value) { require.True(t, b.Bool()) },
+			seed: func(r *Registers) { r.Bools[0] = true },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.True(t, b.Bool())
+			},
 		},
 		{
 			name: "an unsigned source", sourceKind: isa.RegisterUint,
-			seed:  func(r *Registers) { r.Uints[0] = 42 },
-			check: func(t *testing.T, b reflect.Value) { require.Equal(t, uint64(42), b.Uint()) },
+			seed: func(r *Registers) { r.Uints[0] = 42 },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.Equal(t, uint64(42), b.Uint())
+			},
 		},
 		{
 			name: "a general source passes through", sourceKind: isa.RegisterGeneral,
-			seed:  func(r *Registers) { r.General[0] = reflect.ValueOf([]int{1}) },
-			check: func(t *testing.T, b reflect.Value) { require.Equal(t, 1, b.Len()) },
+			seed: func(r *Registers) { r.General[0] = reflect.ValueOf([]int{1}) },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.Equal(t, 1, b.Len())
+			},
 		},
 	}
 
@@ -238,28 +279,43 @@ func TestBoxScalarToArenaBoxHandlesEachWidth(t *testing.T) {
 	}{
 		{
 			name: "a signed byte", targetType: reflect.TypeFor[int8](),
-			seed:  func(r *Registers) { r.Ints[0] = -5 },
-			check: func(t *testing.T, b reflect.Value) { require.Equal(t, int64(-5), b.Int()) },
+			seed: func(r *Registers) { r.Ints[0] = -5 },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.Equal(t, int64(-5), b.Int())
+			},
 		},
 		{
 			name: "a signed double word", targetType: reflect.TypeFor[int64](),
-			seed:  func(r *Registers) { r.Ints[0] = 42 },
-			check: func(t *testing.T, b reflect.Value) { require.Equal(t, int64(42), b.Int()) },
+			seed: func(r *Registers) { r.Ints[0] = 42 },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.Equal(t, int64(42), b.Int())
+			},
 		},
 		{
 			name: "an unsigned byte", targetType: reflect.TypeFor[uint8](),
-			seed:  func(r *Registers) { r.Uints[0] = 200 },
-			check: func(t *testing.T, b reflect.Value) { require.Equal(t, uint64(200), b.Uint()) },
+			seed: func(r *Registers) { r.Uints[0] = 200 },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.Equal(t, uint64(200), b.Uint())
+			},
 		},
 		{
 			name: "a float", targetType: reflect.TypeFor[float64](),
-			seed:  func(r *Registers) { r.Floats[0] = 1.5 },
-			check: func(t *testing.T, b reflect.Value) { require.InDelta(t, 1.5, b.Float(), 0) },
+			seed: func(r *Registers) { r.Floats[0] = 1.5 },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.InDelta(t, 1.5, b.Float(), 0)
+			},
 		},
 		{
 			name: "a string", targetType: reflect.TypeFor[string](),
-			seed:  func(r *Registers) { r.Strings[0] = "pipit" },
-			check: func(t *testing.T, b reflect.Value) { require.Equal(t, "pipit", b.String()) },
+			seed: func(r *Registers) { r.Strings[0] = "pipit" },
+			check: func(t *testing.T, b reflect.Value) {
+				t.Helper()
+				require.Equal(t, "pipit", b.String())
+			},
 		},
 	}
 

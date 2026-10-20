@@ -21,13 +21,12 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	"pipit.sh/pipit/internal/compile/passes"
 	"pipit.sh/pipit/internal/engine/program"
-
-	"github.com/stretchr/testify/assert"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -49,7 +48,7 @@ func TestPeepholeOptimise(t *testing.T) {
 		consts   []int64
 		strConst []string
 		body     []isa.Instruction
-		expect   []isa.Opcode
+		want     []isa.Opcode
 
 		expectSubOp map[int]isa.SubOpcode
 	}{
@@ -60,7 +59,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpLoadIntConst, 3, 0, 0),
 				mk(isa.OpSubInt, 1, 2, 3),
 			},
-			expect: []isa.Opcode{isa.OpSubIntConst, isa.OpNop},
+			want: []isa.Opcode{isa.OpSubIntConst, isa.OpNop},
 		},
 		{
 			name:   "LoadIntConst + AddInt -> AddIntConst",
@@ -69,7 +68,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpLoadIntConst, 3, 0, 0),
 				mk(isa.OpAddInt, 1, 2, 3),
 			},
-			expect: []isa.Opcode{isa.OpAddIntConst, isa.OpNop},
+			want: []isa.Opcode{isa.OpAddIntConst, isa.OpNop},
 		},
 		{
 			name:   "LoadIntConst + MulInt -> MulIntConst",
@@ -78,7 +77,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpLoadIntConst, 3, 0, 0),
 				mk(isa.OpMulInt, 1, 2, 3),
 			},
-			expect: []isa.Opcode{isa.OpMulIntConst, isa.OpNop},
+			want: []isa.Opcode{isa.OpMulIntConst, isa.OpNop},
 		},
 		{
 			name:   "LoadIntConst + LeInt + JumpIfFalse -> LeIntConstJumpFalse",
@@ -88,7 +87,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpLeInt, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			expect:      []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
+			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
 			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpLeIntConstJumpFalse},
 		},
 		{
@@ -99,7 +98,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpLtInt, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			expect:      []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
+			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
 			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpLtIntConstJumpFalse},
 		},
 		{
@@ -110,7 +109,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpEqInt, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			expect:      []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
+			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
 			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpEqIntConstJumpFalse},
 		},
 		{
@@ -121,7 +120,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpEqInt, 4, 1, 3),
 				mk(isa.OpJumpIfTrue, 4, lo, hi),
 			},
-			expect:      []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
+			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
 			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpEqIntConstJumpTrue},
 		},
 		{
@@ -132,7 +131,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpGeInt, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			expect:      []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
+			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
 			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpGeIntConstJumpFalse},
 		},
 		{
@@ -143,7 +142,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpGtInt, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			expect:      []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
+			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
 			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpGtIntConstJumpFalse},
 		},
 		{
@@ -153,7 +152,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpAddIntConst, 0, 0, 0),
 				mk(isa.OpDrillTier1, uint8(isa.SubOpJump), lo, hi),
 			},
-			expect: []isa.Opcode{isa.OpAddIntJump, isa.OpExt},
+			want: []isa.Opcode{isa.OpAddIntJump, isa.OpExt},
 		},
 		{
 			name: "IncInt + LtInt + JumpIfTrue -> IncIntJumpLt",
@@ -162,7 +161,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpLtInt, 2, 0, 1),
 				mk(isa.OpJumpIfTrue, 2, lo, hi),
 			},
-			expect: []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
+			want: []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
 		},
 		{
 			name: "RuneToString + ConcatString -> ConcatRuneString",
@@ -170,7 +169,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpDrillTier1, uint8(isa.SubOpRuneToString), 3, 1),
 				mk(isa.OpConcatString, 2, 0, 3),
 			},
-			expect: []isa.Opcode{isa.OpConcatRuneString, isa.OpNop},
+			want: []isa.Opcode{isa.OpConcatRuneString, isa.OpNop},
 		},
 		{
 			name:   "LoadIntConst small value -> LoadIntConstSmall",
@@ -178,7 +177,7 @@ func TestPeepholeOptimise(t *testing.T) {
 			body: []isa.Instruction{
 				mk(isa.OpLoadIntConst, 0, 0, 0),
 			},
-			expect: []isa.Opcode{isa.OpDrillTier1},
+			want: []isa.Opcode{isa.OpDrillTier1},
 		},
 		{
 			name:   "LoadIntConst large value stays unchanged",
@@ -186,7 +185,7 @@ func TestPeepholeOptimise(t *testing.T) {
 			body: []isa.Instruction{
 				mk(isa.OpLoadIntConst, 0, 0, 0),
 			},
-			expect: []isa.Opcode{isa.OpLoadIntConst},
+			want: []isa.Opcode{isa.OpLoadIntConst},
 		},
 		{
 			name:   "LoadIntConst negative value stays unchanged",
@@ -194,7 +193,7 @@ func TestPeepholeOptimise(t *testing.T) {
 			body: []isa.Instruction{
 				mk(isa.OpLoadIntConst, 0, 0, 0),
 			},
-			expect: []isa.Opcode{isa.OpLoadIntConst},
+			want: []isa.Opcode{isa.OpLoadIntConst},
 		},
 		{
 			name:     "LoadStringConst + EqString + JumpIfFalse -> EqStringConstJumpFalse",
@@ -204,7 +203,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpEqString, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			expect:      []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
+			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
 			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpEqStringConstJumpFalse},
 		},
 		{
@@ -214,7 +213,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpEqGeneral, 4, 1, 3),
 				mk(isa.OpJumpIfTrue, 4, lo, hi),
 			},
-			expect: []isa.Opcode{isa.OpTestNilJumpTrue, isa.OpNop, isa.OpNop},
+			want: []isa.Opcode{isa.OpTestNilJumpTrue, isa.OpNop, isa.OpNop},
 		},
 		{
 			name: "LoadNil + EqGeneral + JumpIfFalse -> TestNilJumpFalse",
@@ -223,7 +222,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpEqGeneral, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			expect: []isa.Opcode{isa.OpTestNilJumpFalse, isa.OpNop, isa.OpNop},
+			want: []isa.Opcode{isa.OpTestNilJumpFalse, isa.OpNop, isa.OpNop},
 		},
 		{
 			name: "LoadNil + NeGeneral + JumpIfTrue -> TestNilJumpFalse",
@@ -232,7 +231,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpNeGeneral, 4, 1, 3),
 				mk(isa.OpJumpIfTrue, 4, lo, hi),
 			},
-			expect: []isa.Opcode{isa.OpTestNilJumpFalse, isa.OpNop, isa.OpNop},
+			want: []isa.Opcode{isa.OpTestNilJumpFalse, isa.OpNop, isa.OpNop},
 		},
 		{
 			name: "LoadNil + NeGeneral + JumpIfFalse -> TestNilJumpTrue",
@@ -241,7 +240,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpNeGeneral, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			expect: []isa.Opcode{isa.OpTestNilJumpTrue, isa.OpNop, isa.OpNop},
+			want: []isa.Opcode{isa.OpTestNilJumpTrue, isa.OpNop, isa.OpNop},
 		},
 		{
 			name: "LoadNil in B position + EqGeneral + JumpIfTrue -> TestNilJumpTrue",
@@ -250,7 +249,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpEqGeneral, 4, 3, 1),
 				mk(isa.OpJumpIfTrue, 4, lo, hi),
 			},
-			expect: []isa.Opcode{isa.OpTestNilJumpTrue, isa.OpNop, isa.OpNop},
+			want: []isa.Opcode{isa.OpTestNilJumpTrue, isa.OpNop, isa.OpNop},
 		},
 		{
 			name: "fusion still fires when jump targets first of pair",
@@ -259,7 +258,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpDrillTier1, uint8(isa.SubOpRuneToString), 3, 1),
 				mk(isa.OpConcatString, 2, 0, 3),
 			},
-			expect: []isa.Opcode{isa.OpDrillTier1, isa.OpConcatRuneString, isa.OpNop},
+			want: []isa.Opcode{isa.OpDrillTier1, isa.OpConcatRuneString, isa.OpNop},
 		},
 		{
 			name: "no fusion when jump targets second of pair",
@@ -268,7 +267,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpDrillTier1, uint8(isa.SubOpRuneToString), 3, 1),
 				mk(isa.OpConcatString, 2, 0, 3),
 			},
-			expect: []isa.Opcode{isa.OpDrillTier1, isa.OpDrillTier1, isa.OpConcatString},
+			want: []isa.Opcode{isa.OpDrillTier1, isa.OpDrillTier1, isa.OpConcatString},
 		},
 		{
 			name:   "no fusion when registers don't match",
@@ -277,7 +276,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpLoadIntConst, 3, 0, 0),
 				mk(isa.OpAddInt, 1, 2, 5),
 			},
-			expect: []isa.Opcode{isa.OpDrillTier1, isa.OpAddInt},
+			want: []isa.Opcode{isa.OpDrillTier1, isa.OpAddInt},
 		},
 		{
 			name: "StringIndex + UintToInt -> StringIndexToInt",
@@ -285,7 +284,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpStringIndex, 3, 0, 1),
 				mk(isa.OpDrillTier1, uint8(isa.SubOpUintToInt), 2, 3),
 			},
-			expect: []isa.Opcode{isa.OpStringIndexToInt, isa.OpNop},
+			want: []isa.Opcode{isa.OpStringIndexToInt, isa.OpNop},
 		},
 		{
 			name: "no StringIndexToInt when registers don't match",
@@ -293,7 +292,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpStringIndex, 3, 0, 1),
 				mk(isa.OpDrillTier1, uint8(isa.SubOpUintToInt), 2, 5),
 			},
-			expect: []isa.Opcode{isa.OpStringIndex, isa.OpDrillTier1},
+			want: []isa.Opcode{isa.OpStringIndex, isa.OpDrillTier1},
 		},
 		{
 			name: "LenString + LtInt + JumpIfFalse -> LenStringLtJumpFalse",
@@ -302,7 +301,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpLtInt, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			expect: []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
+			want: []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
 		},
 		{
 			name: "no LenStringLtJumpFalse when len reg doesn't match",
@@ -312,7 +311,7 @@ func TestPeepholeOptimise(t *testing.T) {
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
 
-			expect:      []isa.Opcode{isa.OpDrillTier1, isa.OpDrillTier1, isa.OpExt},
+			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpDrillTier1, isa.OpExt},
 			expectSubOp: map[int]isa.SubOpcode{1: isa.SubOpLtIntJumpFalse},
 		},
 	}
@@ -326,13 +325,13 @@ func TestPeepholeOptimise(t *testing.T) {
 				StringConstants: tt.strConst,
 			}
 			copy(compiledFunction.Body, tt.body)
-			_ = passes.Optimise(context.Background(), passes.DefaultOptions(), compiledFunction)
+			_ = passes.Optimise(t.Context(), passes.DefaultOptions(), compiledFunction)
 
 			got := make([]isa.Opcode, len(compiledFunction.Body))
 			for i, instr := range compiledFunction.Body {
 				got[i] = instr.Op
 			}
-			assert.Equal(t, tt.expect, got, "opcode sequence mismatch")
+			assert.Equal(t, tt.want, got, "opcode sequence mismatch")
 			for index, subOp := range tt.expectSubOp {
 				assert.Truef(t, isa.InstrIsTier1SubOp(compiledFunction.Body[index], subOp),
 					"instruction %d should be tier-1 %v, got %v",
@@ -404,7 +403,7 @@ func TestPeepholePreservesSemantics(t *testing.T) {
 				IntConstants: tt.consts,
 			}
 			copy(compiledFunction.Body, tt.body)
-			_ = passes.Optimise(context.Background(), passes.DefaultOptions(), compiledFunction)
+			_ = passes.Optimise(t.Context(), passes.DefaultOptions(), compiledFunction)
 
 			fused := compiledFunction.Body[0]
 			assert.Equal(t, tt.checkA, fused.A, "A register")
@@ -464,7 +463,7 @@ func TestPeepholeJumpOffsetAdjustment(t *testing.T) {
 				IntConstants: tt.consts,
 			}
 			copy(compiledFunction.Body, tt.body)
-			_ = passes.Optimise(context.Background(), passes.DefaultOptions(), compiledFunction)
+			_ = passes.Optimise(t.Context(), passes.DefaultOptions(), compiledFunction)
 
 			assert.Equal(t, tt.fusedOp, compiledFunction.Body[0].Op)
 
@@ -485,7 +484,7 @@ func TestPeepholeNilJumpOffset(t *testing.T) {
 			mk(isa.OpJumpIfTrue, 4, 5, 0),
 		},
 	}
-	_ = passes.Optimise(context.Background(), passes.DefaultOptions(), compiledFunction)
+	_ = passes.Optimise(t.Context(), passes.DefaultOptions(), compiledFunction)
 
 	assert.Equal(t, isa.OpTestNilJumpTrue, compiledFunction.Body[0].Op)
 	gotOffset := int16(uint16(compiledFunction.Body[0].B) | uint16(compiledFunction.Body[0].C)<<8)
@@ -505,7 +504,7 @@ func TestPeepholeRecursive(t *testing.T) {
 		Functions: []*program.CompiledFunction{child},
 		Body:      []isa.Instruction{mk(isa.OpNop, 0, 0, 0)},
 	}
-	_ = passes.Optimise(context.Background(), passes.DefaultOptions(), parent)
+	_ = passes.Optimise(t.Context(), passes.DefaultOptions(), parent)
 
 	assert.Equal(t, isa.OpAddIntConst, child.Body[0].Op)
 	assert.Equal(t, isa.OpNop, child.Body[1].Op)

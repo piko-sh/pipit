@@ -45,7 +45,7 @@ func TestDisableMinorGCSkipsCollection(t *testing.T) {
 
 			require.Equal(t, tc.wantShouldRun, arena.gcShouldRun())
 			vm.runPendingCheckpoints()
-			require.EqualValues(t, tc.wantCollections, uint64(arena.gcCount-before))
+			require.Equal(t, tc.wantCollections, uint64(arena.gcCount-before))
 			require.Equal(t, tc.disable, vm.checkpointFlags&checkpointFlagGCPending != 0, "the pending flag is consumed only by a collection")
 		})
 	}

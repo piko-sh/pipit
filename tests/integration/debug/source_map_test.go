@@ -21,8 +21,10 @@
 package debug_test
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 )
@@ -30,19 +32,13 @@ import (
 func TestSourceMapLocatesAssignment(t *testing.T) {
 	t.Parallel()
 	svc := app.NewService(app.WithDebugInfo(), app.WithForceGoDispatch())
-	fn, err := svc.Compile(context.Background(), "x := 42; _ = x")
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	fn, err := svc.Compile(t.Context(), "x := 42; _ = x")
+	require.NoError(t, err)
 
-	if !fn.HasDebugSourceMap() {
-		t.Fatal("expected source map, got nil")
-	}
+	require.True(t, fn.HasDebugSourceMap(), "a source map is recorded")
 
 	bodyLen := fn.BodyLen()
-	if bodyLen == 0 {
-		t.Fatal("expected non-empty body")
-	}
+	require.NotEqual(t, 0, bodyLen, "the body has instructions")
 
 	foundLine := false
 	for pc := range bodyLen {
@@ -51,9 +47,7 @@ func TestSourceMapLocatesAssignment(t *testing.T) {
 			foundLine = true
 		}
 	}
-	if !foundLine {
-		t.Error("expected at least one instruction with a valid source line")
-	}
+	assert.True(t, foundLine, "at least one instruction has a source line")
 }
 
 func TestSourceMapMultiLineCode(t *testing.T) {
@@ -68,19 +62,13 @@ func compute() int {
 	return x + y
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	fn, findErr := cfs.FindFunction("compute")
-	if findErr != nil {
-		t.Fatalf("find function: %v", findErr)
-	}
+	require.NoError(t, findErr)
 
-	if !fn.HasDebugSourceMap() {
-		t.Fatal("expected source map, got nil")
-	}
+	require.True(t, fn.HasDebugSourceMap(), "a source map is recorded")
 
 	lines := make(map[int]bool)
 	for pc := range fn.BodyLen() {
@@ -89,25 +77,17 @@ func compute() int {
 			lines[line] = true
 		}
 	}
-	if len(lines) < 2 {
-		t.Errorf("expected at least 2 distinct source lines, got %d", len(lines))
-	}
+	assert.GreaterOrEqual(t, len(lines), 2, "the code spans at least 2 source lines")
 }
 
 func TestSourceMapPresentWithoutDebugInfo(t *testing.T) {
 	t.Parallel()
 	svc := app.NewService(app.WithForceGoDispatch())
-	fn, err := svc.Compile(context.Background(), "42")
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	fn, err := svc.Compile(t.Context(), "42")
+	require.NoError(t, err)
 
-	if !fn.HasDebugSourceMap() {
-		t.Error("expected a source map without debug info")
-	}
-	if fn.DebugVarTable != nil {
-		t.Error("expected no variable table when debug info is disabled")
-	}
+	assert.True(t, fn.HasDebugSourceMap(), "a source map is recorded even without debug info")
+	assert.Nil(t, fn.DebugVarTable, "without debug info there is no variable table")
 }
 
 func TestSourceMapIfElse(t *testing.T) {
@@ -124,19 +104,13 @@ func choose(x int) int {
 	}
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	fn, findErr := cfs.FindFunction("choose")
-	if findErr != nil {
-		t.Fatalf("find function: %v", findErr)
-	}
+	require.NoError(t, findErr)
 
-	if !fn.HasDebugSourceMap() {
-		t.Fatal("expected source map, got nil")
-	}
+	require.True(t, fn.HasDebugSourceMap(), "a source map is recorded")
 
 	lines := make(map[int]bool)
 	for pc := range fn.BodyLen() {
@@ -145,9 +119,7 @@ func choose(x int) int {
 			lines[line] = true
 		}
 	}
-	if len(lines) < 2 {
-		t.Errorf("expected at least 2 distinct source lines in if/else, got %d", len(lines))
-	}
+	assert.GreaterOrEqual(t, len(lines), 2, "an if/else spans at least 2 source lines")
 }
 
 func TestSourceMapForLoop(t *testing.T) {
@@ -164,19 +136,13 @@ func sum() int {
 	return total
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	fn, findErr := cfs.FindFunction("sum")
-	if findErr != nil {
-		t.Fatalf("find function: %v", findErr)
-	}
+	require.NoError(t, findErr)
 
-	if !fn.HasDebugSourceMap() {
-		t.Fatal("expected source map, got nil")
-	}
+	require.True(t, fn.HasDebugSourceMap(), "a source map is recorded")
 
 	lines := make(map[int]bool)
 	for pc := range fn.BodyLen() {
@@ -185,9 +151,7 @@ func sum() int {
 			lines[line] = true
 		}
 	}
-	if len(lines) < 3 {
-		t.Errorf("expected at least 3 distinct source lines in for loop, got %d", len(lines))
-	}
+	assert.GreaterOrEqual(t, len(lines), 3, "a for loop spans at least 3 source lines")
 }
 
 func TestSourceMapClosures(t *testing.T) {
@@ -204,19 +168,13 @@ func outer() int {
 	return add(5)
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	fn, findErr := cfs.FindFunction("outer")
-	if findErr != nil {
-		t.Fatalf("find function: %v", findErr)
-	}
+	require.NoError(t, findErr)
 
-	if !fn.HasDebugSourceMap() {
-		t.Fatal("expected source map on outer function")
-	}
+	require.True(t, fn.HasDebugSourceMap(), "the outer function has a source map")
 
 	subFuncs := fn.SubFunctions()
 	if len(subFuncs) == 0 {
@@ -224,9 +182,7 @@ func outer() int {
 		t.Log("no sub-functions found on 'outer'; closure may reside on root function - skipping sub-function source map check")
 	} else {
 		for i, sub := range subFuncs {
-			if !sub.HasDebugSourceMap() {
-				t.Errorf("expected source map on sub-function %d, got nil", i)
-			}
+			assert.True(t, sub.HasDebugSourceMap(), "sub-function %d has a source map", i)
 		}
 	}
 }
@@ -241,19 +197,13 @@ func check(x int) bool {
 	return x > 5
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	fn, findErr := cfs.FindFunction("check")
-	if findErr != nil {
-		t.Fatalf("find function: %v", findErr)
-	}
+	require.NoError(t, findErr)
 
-	if !fn.HasDebugSourceMap() {
-		t.Fatal("expected source map, got nil")
-	}
+	require.True(t, fn.HasDebugSourceMap(), "a source map is recorded")
 
 	bodyLen := fn.BodyLen()
 	for pc := range bodyLen {
@@ -261,9 +211,9 @@ func check(x int) bool {
 	}
 
 	file, line, col := fn.DebugSourcePosition(bodyLen + 100)
-	if file != "" || line != 0 || col != 0 {
-		t.Error("expected zero values for out-of-range PC")
-	}
+	assert.Empty(t, file, "an out-of-range PC has no position")
+	assert.Zero(t, line)
+	assert.Zero(t, col)
 }
 
 func TestSourceMapMultipleFiles(t *testing.T) {
@@ -281,20 +231,16 @@ func b() int { return 2 }
 `,
 	}
 
-	cfs, err := svc.CompileFileSet(context.Background(), files)
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), files)
+	require.NoError(t, err)
 
 	fnA, errA := cfs.FindFunction("a")
 	fnB, errB := cfs.FindFunction("b")
-	if errA != nil || errB != nil {
-		t.Fatalf("find functions: a=%v, b=%v", errA, errB)
-	}
+	require.NoError(t, errA)
+	require.NoError(t, errB)
 
-	if !fnA.HasDebugSourceMap() || !fnB.HasDebugSourceMap() {
-		t.Fatal("expected source maps on both functions")
-	}
+	require.True(t, fnA.HasDebugSourceMap(), "both functions have source maps")
+	require.True(t, fnB.HasDebugSourceMap())
 
 	var fileA, fileB string
 	for pc := range fnA.BodyLen() {
@@ -311,7 +257,7 @@ func b() int { return 2 }
 	}
 	if fileA == "" || fileB == "" {
 		t.Logf("could not resolve file for one or both functions (a=%q, b=%q)", fileA, fileB)
-	} else if fileA == fileB {
-		t.Errorf("expected different file paths, got both %q", fileA)
+	} else {
+		assert.NotEqual(t, fileA, fileB, "the two functions come from different files")
 	}
 }

@@ -220,8 +220,36 @@ func TestNativeFastPath_Variadic_Sprintf(t *testing.T) {
 		ok, _, _ = tryNativeFastPath(nil, site, reflectedFunction.Interface(), &regs)
 		require.True(t, ok)
 		require.Equal(t, "v=2", regs.Strings[1])
-		require.NotNil(t, site.VariadicArgumentsBuffer)
 	})
+}
+
+func TestNativeFastPath_VariadicArgumentsAreFreshPerCall(t *testing.T) {
+	t.Parallel()
+
+	regs := makeRegisters()
+	site := &program.CallSite{
+		Arguments: []program.VarLocation{
+			{Register: 0, Kind: isa.RegisterString},
+			{Register: 0, Kind: isa.RegisterInt},
+		},
+		Returns: []program.VarLocation{{Register: 1, Kind: isa.RegisterString}},
+	}
+	var kept [][]any
+	keep := func(format string, arguments ...any) string {
+		kept = append(kept, arguments)
+		return format
+	}
+
+	for _, value := range []int64{1, 2} {
+		regs.Strings[0] = "v=%d"
+		regs.Ints[0] = value
+		ok, _, _ := tryNativeFastPath(nil, site, keep, &regs)
+		require.True(t, ok)
+	}
+
+	require.Len(t, kept, 2)
+	require.Equal(t, "1", fmt.Sprint(kept[0]...), "a callee that keeps its variadic slice must not see a later call's arguments")
+	require.Equal(t, "2", fmt.Sprint(kept[1]...))
 }
 
 func TestNativeFastPath_Variadic_Errorf(t *testing.T) {
@@ -478,7 +506,7 @@ func TestNativeFastPath_AnyToFloat64(t *testing.T) {
 
 	ok, _, _ := tryNativeFastPath(nil, site, reflectedFunction.Interface(), &regs)
 	require.True(t, ok)
-	require.Equal(t, 2.5, regs.Floats[0])
+	require.InDelta(t, 2.5, regs.Floats[0], 0)
 }
 
 func TestNativeFastPath_AnyAnyToAny(t *testing.T) {

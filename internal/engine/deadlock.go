@@ -98,7 +98,7 @@ func (vm *VM) interruptibleSleep(duration time.Duration) OpResult {
 	if duration <= 0 {
 		return opContinue
 	}
-	done := vm.ctx.Done()
+	done := vm.blockingDone()
 	if done == nil {
 		time.Sleep(duration)
 		return opContinue

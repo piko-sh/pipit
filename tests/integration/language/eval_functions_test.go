@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalFunctionDeclaration(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "simple function call",
@@ -42,7 +42,7 @@ func TestEvalFunctionDeclaration(t *testing.T) {
 	return a + b
 }
 add(3, 4)`,
-			expect: 7,
+			want: 7,
 		},
 		{
 			name: "recursive function",
@@ -53,7 +53,7 @@ add(3, 4)`,
 	return fib(n-1) + fib(n-2)
 }
 fib(10)`,
-			expect: 55,
+			want: 55,
 		},
 		{
 			name: "function as expression",
@@ -61,7 +61,7 @@ fib(10)`,
 	return x * x
 }
 square(5) + square(3)`,
-			expect: 34,
+			want: 34,
 		},
 		{
 			name: "nested function calls",
@@ -72,7 +72,7 @@ func triple(x int) int {
 	return x * 3
 }
 double(triple(5))`,
-			expect: 30,
+			want: 30,
 		},
 		{
 			name: "function with string parameter",
@@ -80,7 +80,7 @@ double(triple(5))`,
 	return "hello " + name
 }
 greet("world")`,
-			expect: "hello world",
+			want: "hello world",
 		},
 		{
 			name: "function returning bool-like",
@@ -91,7 +91,7 @@ greet("world")`,
 	return 0
 }
 isPositive(5) + isPositive(-3)`,
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "function with multiple params same type",
@@ -102,7 +102,7 @@ isPositive(5) + isPositive(-3)`,
 	return b
 }
 max(10, 20)`,
-			expect: 20,
+			want: 20,
 		},
 		{
 			name: "void function and side effect via pointer-like",
@@ -111,7 +111,7 @@ max(10, 20)`,
 	return result
 }
 compute(3, 7)`,
-			expect: 31,
+			want: 31,
 		},
 		{
 			name: "multiple return values",
@@ -120,7 +120,7 @@ compute(3, 7)`,
 }
 q, r := divmod(17, 5)
 q*10 + r`,
-			expect: 32,
+			want: 32,
 		},
 		{
 			name: "multiple return values mixed use",
@@ -132,7 +132,7 @@ q*10 + r`,
 }
 lo, hi := minmax(42, 7)
 hi - lo`,
-			expect: 35,
+			want: 35,
 		},
 	}
 
@@ -140,9 +140,9 @@ hi - lo`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

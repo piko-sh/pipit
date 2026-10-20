@@ -109,6 +109,12 @@ func (c *pipitAdapterCore) invoke(label string, arguments []reflect.Value) (resu
 	return bound.invoke(receiver, arguments, identityArg), nil
 }
 
+// adapterUnderlying returns the script value the adapter wraps; the adapters that embed
+// the core inherit it.
+//
+// Returns reflect.Value which is the wrapped value.
+func (c *pipitAdapterCore) adapterUnderlying() reflect.Value { return c.underlying }
+
 // pipitCloserAdapter wraps a pipit value to satisfy io.Closer for a source-level `Close()
 // error` method.
 type pipitCloserAdapter struct {
@@ -123,7 +129,7 @@ func (a *pipitCloserAdapter) Close() error {
 	if err != nil {
 		return err
 	}
-	return extractErrorResult(results)
+	return resultError(a.vm, results, 0)
 }
 
 // pipitReadCloserAdapter combines the reader and closer adapters to satisfy
@@ -134,6 +140,12 @@ type pipitReadCloserAdapter struct {
 	*pipitCloserAdapter
 }
 
+// adapterUnderlying returns the script value the adapter wraps; both halves wrap the same
+// value.
+//
+// Returns reflect.Value which is the wrapped value.
+func (a *pipitReadCloserAdapter) adapterUnderlying() reflect.Value { return a.underlying }
+
 // pipitWriteCloserAdapter combines the writer and closer adapters to satisfy
 // io.WriteCloser.
 type pipitWriteCloserAdapter struct {
@@ -142,12 +154,26 @@ type pipitWriteCloserAdapter struct {
 	*pipitCloserAdapter
 }
 
+// adapterUnderlying returns the script value the adapter wraps; both halves wrap the same
+// value.
+//
+// Returns reflect.Value which is the wrapped value.
+func (a *pipitWriteCloserAdapter) adapterUnderlying() reflect.Value { return a.underlying }
+
 // pipitReadWriterAdapter combines the reader and writer adapters to satisfy
 // io.ReadWriter.
 type pipitReadWriterAdapter struct {
 	*pipitReaderAdapter
 
 	*pipitWriterAdapter
+}
+
+// adapterUnderlying returns the script value the adapter wraps; both halves wrap the same
+// value.
+//
+// Returns reflect.Value which is the wrapped value.
+func (a *pipitReadWriterAdapter) adapterUnderlying() reflect.Value {
+	return a.pipitReaderAdapter.underlying
 }
 
 // pipitReaderFromAdapter wraps a pipit value to satisfy io.ReaderFrom for a source-level
@@ -166,7 +192,7 @@ func (a *pipitReaderFromAdapter) ReadFrom(r io.Reader) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return max(int64Result(results), 0), extractErrorResult(results)
+	return max(int64Result(results), 0), resultError(a.vm, results, 1)
 }
 
 // pipitWriterToAdapter wraps a pipit value to satisfy io.WriterTo for a source-level
@@ -185,7 +211,7 @@ func (a *pipitWriterToAdapter) WriteTo(w io.Writer) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return max(int64Result(results), 0), extractErrorResult(results)
+	return max(int64Result(results), 0), resultError(a.vm, results, 1)
 }
 
 // lookupAdapterCore resolves the named method for typeName and builds the dispatch core
@@ -349,36 +375,4 @@ func buildWriterToAdapterIfRegistered(vm *VM, argument reflect.Value, typeName s
 		return reflect.Value{}
 	}
 	return reflect.ValueOf(&pipitWriterToAdapter{pipitAdapterCore: core})
-}
-
-// unwrapExtendedAdapterUnderlying returns the reflect.Value boxed inside one of the io,
-// encoding, net/http or container/heap adapters, or v unchanged.
-//
-// Takes v (reflect.Value) which is a non-nil pointer value.
-//
-// Returns the unwrapped reflect.Value.
-func unwrapExtendedAdapterUnderlying(v reflect.Value) reflect.Value {
-	switch a := v.Interface().(type) {
-	case *pipitCloserAdapter:
-		return a.underlying
-	case *pipitReadCloserAdapter:
-		return a.underlying
-	case *pipitWriteCloserAdapter:
-		return a.underlying
-	case *pipitReadWriterAdapter:
-		return a.pipitReaderAdapter.underlying
-	case *pipitReaderFromAdapter:
-		return a.underlying
-	case *pipitWriterToAdapter:
-		return a.underlying
-	case *pipitTextMarshalerAdapter:
-		return a.underlying
-	case *pipitTextUnmarshalerAdapter:
-		return a.underlying
-	case *pipitHTTPHandlerAdapter:
-		return a.underlying
-	case *pipitHeapInterfaceAdapter:
-		return a.underlying
-	}
-	return v
 }

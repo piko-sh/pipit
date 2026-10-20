@@ -21,11 +21,11 @@
 package bytecode_test
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/symtab"
 )
@@ -60,7 +60,7 @@ func TestRecursiveNativeMethodDispatch(t *testing.T) {
 		},
 	})
 
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 import (
 	"ll"
 )
@@ -76,9 +76,9 @@ func TestEvalDefinedRecursiveStructs(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "linked list via pointer",
@@ -89,7 +89,7 @@ for n := head; n != nil; n = n.Next {
 	total += n.V
 }
 total`,
-			expect: 6,
+			want: 6,
 		},
 		{
 			name: "tree via slice",
@@ -105,7 +105,7 @@ sum = func(t *Tree) int {
 	return total
 }
 sum(root)`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "map-valued tree",
@@ -115,7 +115,7 @@ root := &Tree{N: "root", Kids: map[string]*Tree{
 	"b": {N: "b", Kids: map[string]*Tree{"b1": {N: "b1"}}},
 }}
 root.Kids["b"].Kids["b1"].N`,
-			expect: "b1",
+			want: "b1",
 		},
 	}
 
@@ -123,9 +123,9 @@ root.Kids["b"].Kids["b1"].N`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -134,30 +134,30 @@ func TestByteAndRuneArithmetic(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "byte addition",
 			code: `var a byte = 10
 var b byte = 32
 int(a + b)`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "byte subtraction with underflow domain",
 			code: `var a byte = 100
 var b byte = 58
 int(a - b)`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "rune addition",
 			code: `var a rune = 'A'
 var b rune = 1
 int(a + b)`,
-			expect: 66,
+			want: 66,
 		},
 		{
 			name: "rune compare in loop",
@@ -167,7 +167,7 @@ for _, r := range s {
 	if r >= 'a' && r <= 'z' { count++ }
 }
 count`,
-			expect: 3,
+			want: 3,
 		},
 	}
 
@@ -175,9 +175,9 @@ count`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -186,9 +186,9 @@ func TestPointerChainSelectors(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "double pointer field read",
@@ -197,7 +197,7 @@ s := S{V: 42}
 p := &s
 pp := &p
 (*pp).V`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "double pointer through method",
@@ -207,7 +207,7 @@ s := S{V: 99}
 p := &s
 pp := &p
 (*pp).Get()`,
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "field assignment through double pointer",
@@ -217,7 +217,7 @@ p := &s
 pp := &p
 (*pp).V = 77
 s.V`,
-			expect: 77,
+			want: 77,
 		},
 	}
 
@@ -225,9 +225,9 @@ s.V`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -236,16 +236,16 @@ func TestCompositeLitPointerElementForms(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "pointer-to-array explicit deref index",
 			code: `m := map[string]*[3]int{"row": {10, 20, 30}}
 a := *m["row"]
 a[0] + a[1] + a[2]`,
-			expect: 60,
+			want: 60,
 		},
 		{
 			name: "struct literal with pointer element field",
@@ -257,7 +257,7 @@ for _, k := range o.Kids {
 	total += k.V
 }
 total`,
-			expect: 30,
+			want: 30,
 		},
 		{
 			name: "map of pointer passed to closure",
@@ -270,7 +270,7 @@ sum := func(m map[string]*P) int {
 	return t
 }
 sum(map[string]*P{"a": {V: 3}, "b": {V: 4}, "c": {V: 5}})`,
-			expect: 12,
+			want: 12,
 		},
 	}
 
@@ -278,9 +278,9 @@ sum(map[string]*P{"a": {V: 3}, "b": {V: 4}, "c": {V: 5}})`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -289,22 +289,22 @@ func TestPointerToArrayAutoDerefIndex(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "read through map of pointer to array",
 			code: `m := map[string]*[3]int{"row": {10, 20, 30}}
 m["row"][0] + m["row"][1] + m["row"][2]`,
-			expect: 60,
+			want: 60,
 		},
 		{
 			name: "read through direct pointer",
 			code: `a := [4]int{7, 11, 13, 17}
 p := &a
 p[0] + p[1] + p[2] + p[3]`,
-			expect: 48,
+			want: 48,
 		},
 		{
 			name: "write through direct pointer",
@@ -314,14 +314,14 @@ p[0] = 40
 p[1] = 50
 p[2] = 60
 a[0] + a[1] + a[2]`,
-			expect: 150,
+			want: 150,
 		},
 		{
 			name: "string elements via pointer",
 			code: `a := [2]string{"hello", "world"}
 p := &a
 p[0] + "-" + p[1]`,
-			expect: "hello-world",
+			want: "hello-world",
 		},
 	}
 
@@ -329,9 +329,9 @@ p[0] + "-" + p[1]`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -343,7 +343,7 @@ func TestPointerToArrayNilPanic(t *testing.T) {
 _ = p[0]`
 
 	service := app.NewService()
-	_, err := service.Eval(context.Background(), code)
+	_, err := service.Eval(t.Context(), code)
 	require.Error(t, err, "indexing nil *[N]T must surface an error")
 }
 
@@ -351,9 +351,9 @@ func TestPointerToArrayRangeLenSlice(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "range with index and value",
@@ -364,7 +364,7 @@ for i, v := range p {
 	total += v * (i + 1)
 }
 total`,
-			expect: 300,
+			want: 300,
 		},
 		{
 			name: "range with value only",
@@ -375,27 +375,27 @@ for _, v := range p {
 	joined += v
 }
 joined`,
-			expect: "abc",
+			want: "abc",
 		},
 		{
 			name: "len on non-nil pointer",
 			code: `a := [5]int{1, 2, 3, 4, 5}
 p := &a
 len(p)`,
-			expect: 5,
+			want: 5,
 		},
 		{
 			name: "cap on non-nil pointer",
 			code: `a := [7]int{}
 p := &a
 cap(p)`,
-			expect: 7,
+			want: 7,
 		},
 		{
 			name: "len on nil pointer returns array length",
 			code: `var p *[4]int
 len(p)`,
-			expect: 4,
+			want: 4,
 		},
 		{
 			name: "slice expression on pointer to array",
@@ -403,7 +403,7 @@ len(p)`,
 p := &a
 s := p[1:4]
 s[0] + s[1] + s[2]`,
-			expect: 90,
+			want: 90,
 		},
 		{
 			name: "full slice expression on pointer to array",
@@ -411,7 +411,7 @@ s[0] + s[1] + s[2]`,
 p := &a
 s := p[1:4:5]
 len(s) + cap(s)`,
-			expect: 7,
+			want: 7,
 		},
 	}
 
@@ -419,9 +419,9 @@ len(s) + cap(s)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -430,9 +430,9 @@ func TestMutuallyRecursiveEvalTypes(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "simple mutual recursion via pointers",
@@ -442,7 +442,7 @@ a := &A{Tag: "root"}
 b := &B{Mark: 7, A: a}
 a.B = b
 a.B.A.Tag`,
-			expect: "root",
+			want: "root",
 		},
 		{
 			name: "mutual types with a walking function",
@@ -457,7 +457,7 @@ l := &Left{Name: "a"}
 r := &Right{Value: 42, Left: l}
 l.Right = r
 label(l)`,
-			expect: "a/a",
+			want: "a/a",
 		},
 	}
 
@@ -465,9 +465,9 @@ label(l)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -484,7 +484,7 @@ func TestRecursiveFunctionType(t *testing.T) {
 		},
 	})
 
-	_, err := service.Eval(context.Background(), `
+	_, err := service.Eval(t.Context(), `
 import (
 	"ff"
 )

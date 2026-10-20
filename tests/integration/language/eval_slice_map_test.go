@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,22 +32,22 @@ func TestEvalSliceAppendCopyAndReslice(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "slice of floats index",
 			code: `s := []float64{1.1, 2.2, 3.3}
 s[1]`,
-			expect: 2.2,
+			want: 2.2,
 		},
 		{
 			name: "slice append single then len",
 			code: `s := []int{1, 2}
 s = append(s, 3)
 len(s)`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "slice copy then index",
@@ -55,40 +55,40 @@ len(s)`,
 d := make([]int, 3)
 copy(d, s)
 d[2]`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "slice of strings index",
 			code: `s := []string{"a", "b"}
 s[0]`,
-			expect: "a",
+			want: "a",
 		},
 		{
 			name: "slice capacity via make",
 			code: `s := make([]int, 2, 10)
 cap(s)`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "three-index slice cap",
 			code: `s := []int{1, 2, 3, 4, 5}
 t := s[1:3:4]
 cap(t)`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "slice set float",
 			code: `s := []float64{0.0, 0.0}
 s[0] = 1.5
 s[0]`,
-			expect: 1.5,
+			want: 1.5,
 		},
 		{
 			name: "slice length via variable",
 			code: `s := []int{1, 2, 3}
 n := len(s)
 n`,
-			expect: 3,
+			want: 3,
 		},
 	}
 
@@ -96,9 +96,9 @@ n`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -107,17 +107,17 @@ func TestEvalMapInsertLookupAndDelete(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		code   string
-		expect any
-		skip   string
+		name string
+		code string
+		want any
+		skip string
 	}{
 		{
 			name: "map delete then len",
 			code: `m := map[string]int{"a": 1, "b": 2}
 delete(m, "a")
 len(m)`,
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "map iteration count",
@@ -125,7 +125,7 @@ len(m)`,
 count := 0
 for range m { count++ }
 count`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "map comma-ok true returns value",
@@ -133,26 +133,26 @@ count`,
 v, ok := m["x"]
 _ = ok
 v`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "map comma-ok false returns ok",
 			code: `m := map[string]int{}
 _, ok := m["x"]
 ok`,
-			expect: false,
+			want: false,
 		},
 		{
-			name:   "map with string values",
-			code:   "m := map[int]string{1: \"one\"}\nm[1]",
-			expect: "one",
+			name: "map with string values",
+			code: "m := map[int]string{1: \"one\"}\nm[1]",
+			want: "one",
 		},
 		{
 			name: "map clear then len",
 			code: `m := map[string]int{"a": 1}
 clear(m)
 len(m)`,
-			expect: 0,
+			want: 0,
 		},
 	}
 
@@ -163,9 +163,9 @@ len(m)`,
 				t.Skip(tt.skip)
 			}
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -174,16 +174,16 @@ func TestEvalStructFieldReadAndWrite(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "struct field sum",
 			code: `type Point struct{ X, Y int }
 p := Point{X: 3, Y: 4}
 p.X + p.Y`,
-			expect: 7,
+			want: 7,
 		},
 		{
 			name: "struct field set then read",
@@ -191,7 +191,7 @@ p.X + p.Y`,
 p := Point{X: 1, Y: 2}
 p.X = 10
 p.X`,
-			expect: 10,
+			want: 10,
 		},
 	}
 
@@ -199,9 +199,9 @@ p.X`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

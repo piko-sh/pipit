@@ -158,3 +158,43 @@ func dispatchGroup(baseName string, handlers []asmgen.HandlerDefinition[Bytecode
 		Handlers:        handlers,
 	}
 }
+
+// RegisterBankBases identifies register banks that hold pointers, for validating
+// assembly write-barrier guards.
+var RegisterBankBases = map[string]bool{
+	"CTX_INTS_BASE":          false,
+	"CTX_FLOATS_BASE":        false,
+	"CTX_STRINGS_BASE":       true,
+	"CTX_GENERALS_BASE":      true,
+	"CTX_BOOLS_BASE":         false,
+	"CTX_UINTS_BASE":         false,
+	"CTX_COMPLEX_BASE":       false,
+	"CTX_SLICES_INT_BASE":    true,
+	"CTX_SLICES_FLOAT_BASE":  true,
+	"CTX_SLICES_STRING_BASE": true,
+	"CTX_SLICES_BOOL_BASE":   true,
+	"CTX_SLICES_UINT_BASE":   true,
+	"CTX_SLICES_BYTE_BASE":   true,
+}
+
+// guardPointerBankWriter makes pointer-writing assembly handlers fall back to Go while
+// the garbage collector's write barrier is active.
+//
+// Takes definition (asmgen.HandlerDefinition[BytecodeArchitecturePort]) which is the
+// handler to guard.
+//
+// Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] which is the guarded
+// handler.
+//
+// Panics when the handler has a frame because pathBFallback expects the dispatch loop's
+// stack.
+func guardPointerBankWriter(definition asmgen.HandlerDefinition[BytecodeArchitecturePort]) asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	if definition.FrameSize != frameSizeZero || definition.Flags != flagsNoSplitNoFrame || len(definition.ArchFrameSize) > 0 || len(definition.ArchFlags) > 0 {
+		panic("guardPointerBankWriter: " + definition.Name + " has a frame, so it cannot tail-jump to pathBFallback")
+	}
+	body := definition.Emit
+	definition.Emit = func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+		architecture.EmitWriteBarrierGuard(emitter, func() { body(emitter, architecture) })
+	}
+	return definition
+}

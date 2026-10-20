@@ -303,9 +303,6 @@ func (c *Compiler) promoteToIndirect(ctx context.Context, name string, reflectTy
 	}
 	c.escapeAllocSitePCs[name] = allocSitePC
 
-	if location.IsSpilled {
-		c.Scopes.Alloc.FreeTemp(sourceLocation.Kind, sourceLocation.Register)
-	}
 	promoted := program.VarLocation{
 		Register:     pointerRegister,
 		Kind:         isa.RegisterGeneral,
@@ -388,13 +385,9 @@ func (c *Compiler) tryAddressOfKnownSelector(ctx context.Context, selectorExpres
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, true
 }
 
-// promoteReceiverToIndirect upgrades a non-indirect general-register variable (typically
-// the receiver of a selector expression) to indirect storage in place: the same register
-// now holds the *T pointer rather than the struct value, and isa.OpAllocIndirect copies
-// the value to a fresh heap cell.
-//
-// Used by tryAddressOfKnownSelector for &recv.Field where recv lives in a general
-// register.
+// promoteReceiverToIndirect moves a general-register receiver into a heap cell and
+// keeps its pointer in the same register. Spilled receivers are reloaded first and
+// remain in that register.
 //
 // Takes xExpr (ast.Expr) which is the expression used to resolve the type.
 // Takes name (string) which is the variable name in scope.
@@ -402,6 +395,7 @@ func (c *Compiler) tryAddressOfKnownSelector(ctx context.Context, selectorExpres
 //
 // Returns the promoted variable location with indirect storage.
 func (c *Compiler) promoteReceiverToIndirect(ctx context.Context, xExpr ast.Expr, name string, receiverLocation program.VarLocation) program.VarLocation {
+	receiverLocation = c.emitReloadIfSpilled(ctx, receiverLocation)
 	tv := c.Info.Types[xExpr]
 	reflectType := c.TypeToReflect(ctx, tv.Type)
 	typeIndex, err := program.AddTypeRef(c.Function, reflectType)

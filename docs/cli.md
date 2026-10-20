@@ -40,8 +40,11 @@ pipit --log-level debug run script.go
 ## `pipit run <file|directory>`
 
 Compile and execute Go source. With a single `.go` file it invokes the
-named entrypoint (default `main`); with a directory it compiles every
-`.go` file in that directory as one package and runs the entrypoint.
+named entrypoint (default `main`); with a directory it compiles the
+`.go` files in that directory as one package and runs the entrypoint.
+A directory's files are chosen by [build constraints](compatibility.md#build-constraints),
+so a file guarded by `//go:build !interp` is skipped and its imports are
+never resolved.
 
 Arguments after `--` reach the script through `os.Args`, with the script target
 as the first element. `flag.Parse()` reads those arguments as it does in Go.
@@ -49,7 +52,9 @@ Pipit also exposes them as `PIPIT_ARGC` and `PIPIT_ARG_<n>` environment variable
 
 `PIPIT_SCRIPT_DIR` holds the absolute script or package directory, so scripts can
 find nearby files. The script inherits the host environment with these variables
-added or replaced. `os.Setenv` and `os.Unsetenv` change only the script's view.
+added or replaced. `os.Setenv` and `os.Unsetenv` change only the script's view. When
+a compile fails because of a `//go:embed` directive, `pipit run` adds a hint that uses
+`PIPIT_SCRIPT_DIR` to read the files at run time.
 
 ### Resource limits
 
@@ -107,8 +112,10 @@ A script beside a `go.mod` (or below one, as `go run` would find it) may
 import packages of its own module: the `module` path the file declares
 and any module a `replace` directive points at a directory (`replace
 example.com/lib => ../lib`). Those packages are compiled from their
-directories, honouring build constraints, and only the packages the
-program reaches are loaded. `pipit run` accepts the script file or its
+directories, with files chosen as the interpreter chooses them (the
+`interp` tag set and cgo off), and only the packages the program reaches
+are loaded. A file with a malformed `//go:build` line is kept, so the
+compiler reports it. `pipit run` accepts the script file or its
 directory. A gated run (`--gate`) reads local packages from the approved
 source snapshot, so a `replace` outside the script's directory is refused
 there.
@@ -169,7 +176,9 @@ functions and returned native objects can bypass this model. See
 
 Run a package's tests the way `go test` does. The directory's `.go`
 files, `_test.go` files included, compile as one package (`package main`
-or any other name); every top-level `func TestXxx(t *testing.T)` in a
+or any other name). Files are chosen by [build constraints](compatibility.md#build-constraints)
+as for `pipit run`, so a test file guarded by `//go:build !interp` is
+skipped. Every top-level `func TestXxx(t *testing.T)` in a
 `_test.go` file is a test. The tests run through the host's `testing`
 package, so `t.Run`, `t.Parallel`, `t.Log`, `t.Skip`, `t.Cleanup` and
 `testing.Short()` behave as in Go, and the process exits with the
@@ -267,11 +276,34 @@ shows the whole flow.
   `--list`, `--dry-run`.
 - `discover` - print the packages the project's Go files import that are not
   yet provided. The standard library and the project's own module are left out.
-  Flags: `--root`, `--output list|yaml|json`, `--ignore`.
+  Only the files the interpreter compiles count, so the imports of a file guarded
+  by `//go:build !interp` are not reported.
+  Imports that cannot be loaded are reported as warnings on stderr.
+  Flags: `--root`, `--output list|yaml|json`, `--ignore`, `--include-project`.
 - `init` - write a new manifest from `discover`. Flags: `--root`, `--output`,
-  `--package`, `--dir`, `--force`.
+  `--package`, `--dir`, `--force`, `--include-project`.
 - `check` - exit with status 1 when the manifest is missing a package the
-  project imports; use it in CI. Flags: `--manifest`, `--root`.
+  project imports; use it in CI. Flags: `--manifest`, `--root`, `--include-project`.
+
+`--include-project` reports the project's own packages as packages to register,
+instead of leaving them out because the interpreter compiles them from source.
+A host whose scanned sources are not Go files, such as templates, can set
+`Config.FollowProjectImports` so that discovery also reads the project packages
+those sources import and reports the packages they need in turn. With that set,
+`--include-project` also turns the following off for the run.
+
+The scan and the following read different files. The scan reads every Go file
+under the source directories that the interpreter would compile, test files
+included, and skips generated files such as existing symbol tables. Following
+reads only the non-test files of each project package reached, which are what the
+interpreter compiles when the package is imported. Project packages the host
+already provides, or that `--ignore` names, are not followed. A file that cannot be
+read is reported as a warning, and the rest of its package still counts. cgo's
+`"C"` is never reported, since it is not a package.
+
+`--output json` prints the result as one object with the fields `RequiredImports`,
+`SkippedCgo`, `GenericCandidates`, `Unresolved` (a list of objects with `ImportPath`
+and `Reason`) and `Warnings`. An empty list may be printed as `null`.
 
 The same command is available to other tools through the `pipit.sh/pipit/sdk/extract`
 module.
@@ -309,7 +341,8 @@ The status line shows the execution state and any pause reason.
 
 Start a Debug Adapter Protocol (DAP) server over stdin/stdout. Editors with a
 configured DAP client can set breakpoints, step through scripts, and inspect
-variables. The client's `launch` request supplies the script and its options.
+variables. The client's `launch` request supplies the script and its options. The
+script sees `PIPIT_SCRIPT_DIR` set to its directory, as under `pipit run`.
 
 Flag:
 
@@ -352,7 +385,7 @@ result.
 
 | Variable | Purpose |
 |---|---|
-| `PIPIT_SCRIPT_DIR` | Script/package directory supplied by `run` and `test` |
+| `PIPIT_SCRIPT_DIR` | Script or package directory, set by `run`, `test` and the debug adapter (`dap`) |
 | `PIPIT_ARGC`, `PIPIT_ARG_<n>` | Script arguments mirrored by `run`; scripts can also use `os.Args` |
 | `PIPIT_GO_DISPATCH` | Any non-empty value uses Go dispatch for `run`, `eval`, `test`, `compile`, and `bytecode run` when diagnosing runtime differences |
 | `PIPIT_UNSAFE_ALLOW_UNTESTED_GO=1` | Skip the Go minor-version check; the runtime layout probe still runs, and execution may be incorrect |

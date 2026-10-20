@@ -112,15 +112,9 @@ func (bytecodeStore *bytecodeStore) SaveCompiledFileSet(ctx context.Context, key
 		return errors.New("bytecode store requires a compiled file set")
 	}
 
-	builder := flatbuffers.NewBuilder(bytecodeInitialBuilder)
-	endSharing := beginDescriptorSharing(builder)
-	rootOffset := packCompiledFileSet(builder, compiledFileSet)
-	endSharing()
-	builder.Finish(rootOffset)
-
-	payload := builder.FinishedBytes()
-	if len(payload) > schema.MaximumBytecodePayloadBytes {
-		return schema.ErrBytecodeTooLarge
+	payload, packErr := packCompiledFileSetPayload(compiledFileSet)
+	if packErr != nil {
+		return fmt.Errorf("bytecode save: %w", packErr)
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("bytecode save cancelled after serialisation: %w", err)
@@ -172,18 +166,47 @@ func (bytecodeStore *bytecodeStore) invalidateCache(ctx context.Context, key str
 // serialise.
 //
 // Returns []byte which is the versioned FlatBuffer payload.
-func PackCompiledFileSetToBytes(compiledFileSet *program.CompiledFileSet) []byte {
-	builder := flatbuffers.NewBuilder(bytecodeInitialBuilder)
-	endSharing := beginDescriptorSharing(builder)
-	rootOffset := packCompiledFileSet(builder, compiledFileSet)
-	endSharing()
-	builder.Finish(rootOffset)
-
-	payload := builder.FinishedBytes()
+// Returns error when compiledFileSet is nil, when a function's general constants disagree
+// with their descriptors, or when the payload is larger than a loader accepts.
+func PackCompiledFileSetToBytes(compiledFileSet *program.CompiledFileSet) ([]byte, error) {
+	if compiledFileSet == nil {
+		return nil, errors.New("bytecode pack requires a compiled file set")
+	}
+	payload, err := packCompiledFileSetPayload(compiledFileSet)
+	if err != nil {
+		return nil, fmt.Errorf("bytecode pack: %w", err)
+	}
 	versionedData := make([]byte, fbs.PackedSize(len(payload)))
 	schema.PackInto(versionedData, payload)
 
-	return versionedData
+	return versionedData, nil
+}
+
+// packCompiledFileSetPayload serialises a CompiledFileSet into a FlatBuffer payload
+// without the version header, refusing what a loader would refuse.
+//
+// Takes compiledFileSet (*program.CompiledFileSet) which is the compiled file set to
+// serialise; it must not be nil.
+//
+// Returns []byte which is the FlatBuffer payload.
+// Returns error when a function cannot be serialised faithfully, or
+// schema.ErrBytecodeTooLarge when the payload exceeds schema.MaximumBytecodePayloadBytes.
+func packCompiledFileSetPayload(compiledFileSet *program.CompiledFileSet) ([]byte, error) {
+	builder := flatbuffers.NewBuilder(bytecodeInitialBuilder)
+	endSharing := beginDescriptorSharing(builder)
+	var packFailure error
+	rootOffset := packCompiledFileSet(builder, compiledFileSet, &packFailure)
+	endSharing()
+	if packFailure != nil {
+		return nil, packFailure
+	}
+	builder.Finish(rootOffset)
+
+	payload := builder.FinishedBytes()
+	if len(payload) > schema.MaximumBytecodePayloadBytes {
+		return nil, schema.ErrBytecodeTooLarge
+	}
+	return payload, nil
 }
 
 // packCompiledFileSet serialises a CompiledFileSet into a FlatBuffer. The root and
@@ -192,17 +215,19 @@ func PackCompiledFileSetToBytes(compiledFileSet *program.CompiledFileSet) []byte
 // Takes builder (*flatbuffers.Builder) which is the FlatBuffer builder to write into.
 // Takes compiledFileSet (*program.CompiledFileSet) which is the compiled file set to
 // serialise.
+// Takes failure (*error) which receives the first function that cannot be serialised
+// faithfully; packing carries on so the builder stays consistent.
 //
 // Returns flatbuffers.UOffsetT which is the offset of the packed CompiledFileSet table.
-func packCompiledFileSet(builder *flatbuffers.Builder, compiledFileSet *program.CompiledFileSet) flatbuffers.UOffsetT {
+func packCompiledFileSet(builder *flatbuffers.Builder, compiledFileSet *program.CompiledFileSet, failure *error) flatbuffers.UOffsetT {
 	var rootOffset flatbuffers.UOffsetT
 	if compiledFileSet.Root() != nil {
-		rootOffset = packCompiledFunction(builder, compiledFileSet.Root())
+		rootOffset = packCompiledFunction(builder, compiledFileSet.Root(), failure)
 	}
 
 	var varInitOffset flatbuffers.UOffsetT
 	if compiledFileSet.VariableInitFunction() != nil {
-		varInitOffset = packCompiledFunction(builder, compiledFileSet.VariableInitFunction())
+		varInitOffset = packCompiledFunction(builder, compiledFileSet.VariableInitFunction(), failure)
 	}
 
 	entrypointsOffset := packEntrypoints(builder, compiledFileSet.Entrypoints())
@@ -376,10 +401,11 @@ type compiledFunctionOffsets struct {
 //
 // Takes builder (*flatbuffers.Builder) which is the FlatBuffer builder to write into.
 // Takes compiledFunction (*program.CompiledFunction) which is the function to serialise.
+// Takes failure (*error) which receives the first serialisation failure.
 //
 // Returns flatbuffers.UOffsetT which is the offset of the packed CompiledFunction table.
-func packCompiledFunction(builder *flatbuffers.Builder, compiledFunction *program.CompiledFunction) flatbuffers.UOffsetT {
-	offsets := packCompiledFunctionChildren(builder, compiledFunction)
+func packCompiledFunction(builder *flatbuffers.Builder, compiledFunction *program.CompiledFunction, failure *error) flatbuffers.UOffsetT {
+	offsets := packCompiledFunctionChildren(builder, compiledFunction, failure)
 	return writeCompiledFunctionTable(builder, compiledFunction, &offsets)
 }
 
@@ -387,10 +413,15 @@ func packCompiledFunction(builder *flatbuffers.Builder, compiledFunction *progra
 //
 // Takes builder (*flatbuffers.Builder) which is the FlatBuffer builder to write into.
 // Takes compiledFunction (*program.CompiledFunction) which is the function to serialise.
+// Takes failure (*error) which receives the first serialisation failure.
 //
 // Returns compiledFunctionOffsets which holds the offset of each packed child object, or
 // 0 for an absent one.
-func packCompiledFunctionChildren(builder *flatbuffers.Builder, compiledFunction *program.CompiledFunction) compiledFunctionOffsets {
+func packCompiledFunctionChildren(builder *flatbuffers.Builder, compiledFunction *program.CompiledFunction, failure *error) compiledFunctionOffsets {
+	generalDescriptors, err := codec.GeneralConstantDescriptors(compiledFunction)
+	if err != nil && *failure == nil {
+		*failure = fmt.Errorf("function %s: %w", codec.ExportName(compiledFunction), err)
+	}
 	return compiledFunctionOffsets{
 		name:                      builder.CreateString(codec.ExportName(compiledFunction)),
 		sourceFile:                builder.CreateString(codec.ExportSourceFile(compiledFunction)),
@@ -405,17 +436,17 @@ func packCompiledFunctionChildren(builder *flatbuffers.Builder, compiledFunction
 		uintConstants:             packUint64Slice(builder, codec.UintConstants(compiledFunction)),
 		complexConstants:          packComplexSlice(builder, codec.ComplexConstants(compiledFunction)),
 		stringConstants:           packStringSlice(builder, codec.StringConstants(compiledFunction)),
-		generalDescriptors:        packGeneralConstantDescriptors(builder, codec.GeneralConstantDescriptors(compiledFunction)),
+		generalDescriptors:        packGeneralConstantDescriptors(builder, generalDescriptors),
 		typeTableDescriptors:      packTypeDescriptors(builder, codec.TypeTableDescriptors(compiledFunction)),
 		typeTableInterfaceMethods: packInterfaceMethodSets(builder, codec.TypeTableInterfaceMethods(compiledFunction)),
 		typeNames:                 packTypeNames(builder, codec.TypeNames(compiledFunction)),
 		callSites:                 packCallSites(builder, codec.CallSites(compiledFunction)),
 		upvalueDescriptors:        packUpvalueDescriptors(builder, codec.UpvalueDescriptors(compiledFunction)),
-		functions:                 packChildFunctions(builder, program.ExportFunctions(compiledFunction)),
+		functions:                 packChildFunctions(builder, program.ExportFunctions(compiledFunction), failure),
 		namedResultLocations:      packVarLocations(builder, codec.NamedResultLocations(compiledFunction)),
 		methodTable:               packMethodTable(builder, codec.MethodTable(compiledFunction)),
 		structLayoutTable:         packStructLayoutTable(builder, codec.StructLayoutTable(compiledFunction)),
-		variableInitFunction:      packVariableInitFunction(builder, compiledFunction),
+		variableInitFunction:      packVariableInitFunction(builder, compiledFunction, failure),
 		signatureDescriptor:       packSignatureDescriptor(builder, compiledFunction),
 	}
 }
@@ -425,12 +456,13 @@ func packCompiledFunctionChildren(builder *flatbuffers.Builder, compiledFunction
 //
 // Takes builder (*flatbuffers.Builder) which is the FlatBuffer builder to write into.
 // Takes childFunctions ([]*program.CompiledFunction) which holds the children to pack.
+// Takes failure (*error) which receives the first serialisation failure.
 //
 // Returns flatbuffers.UOffsetT which is the offset of the packed vector.
-func packChildFunctions(builder *flatbuffers.Builder, childFunctions []*program.CompiledFunction) flatbuffers.UOffsetT {
+func packChildFunctions(builder *flatbuffers.Builder, childFunctions []*program.CompiledFunction, failure *error) flatbuffers.UOffsetT {
 	childOffsets := make([]flatbuffers.UOffsetT, len(childFunctions))
 	for i, child := range childFunctions {
-		childOffsets[i] = packCompiledFunction(builder, child)
+		childOffsets[i] = packCompiledFunction(builder, child, failure)
 	}
 	return createVector(builder, childOffsets)
 }
@@ -442,13 +474,15 @@ func packChildFunctions(builder *flatbuffers.Builder, childFunctions []*program.
 // Takes compiledFunction (*program.CompiledFunction) which is the function that may own
 // the init function.
 //
+// Takes failure (*error) which receives the first serialisation failure.
+//
 // Returns flatbuffers.UOffsetT which is the offset of the packed init function, or 0 when
 // there is none.
-func packVariableInitFunction(builder *flatbuffers.Builder, compiledFunction *program.CompiledFunction) flatbuffers.UOffsetT {
+func packVariableInitFunction(builder *flatbuffers.Builder, compiledFunction *program.CompiledFunction, failure *error) flatbuffers.UOffsetT {
 	if program.VariableInitFunction(compiledFunction) == nil {
 		return 0
 	}
-	return packCompiledFunction(builder, program.VariableInitFunction(compiledFunction))
+	return packCompiledFunction(builder, program.VariableInitFunction(compiledFunction), failure)
 }
 
 // packSignatureDescriptor packs the type descriptor of the function's own static Go

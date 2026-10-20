@@ -58,7 +58,6 @@ func TestInstructionParityWithOriginals(t *testing.T) {
 		filename := filepath.Base(generatedPath)
 
 		if strings.Contains(filename, "asm_vm_dispatch_init_") {
-
 			continue
 		}
 		skipFile := false
@@ -72,37 +71,36 @@ func TestInstructionParityWithOriginals(t *testing.T) {
 			continue
 		}
 
-		originalPath := filepath.Join(originalDir, filename)
-		originalData, err := os.ReadFile(originalPath)
-		if !assert.NoError(t, err, "original file not found for generated file %s", filename) {
-			continue
-		}
+		t.Run(filename, func(t *testing.T) {
+			originalData, err := os.ReadFile(filepath.Join(originalDir, filename))
+			require.NoError(t, err, "the generated file has an original")
 
-		generatedInstructions := extractInstructions(string(generatedData))
-		originalInstructions := extractInstructions(string(originalData))
+			generatedInstructions := extractInstructions(string(generatedData))
+			originalInstructions := extractInstructions(string(originalData))
 
-		generatedTexts := extractTextNames(generatedInstructions)
-		originalTexts := extractTextNames(originalInstructions)
+			generatedTexts := extractTextNames(generatedInstructions)
+			originalTexts := extractTextNames(originalInstructions)
 
-		for _, name := range originalTexts {
-			assert.True(t, slices.Contains(generatedTexts, name),
-				"%s: original TEXT block %q missing from generated output", filename, name)
-		}
+			for _, name := range originalTexts {
+				assert.True(t, slices.Contains(generatedTexts, name),
+					"%s: original TEXT block %q missing from generated output", filename, name)
+			}
 
-		for _, name := range generatedTexts {
-			assert.True(t, slices.Contains(originalTexts, name),
-				"%s: generated output has extra TEXT block %q not present in original", filename, name)
-		}
+			for _, name := range generatedTexts {
+				assert.True(t, slices.Contains(originalTexts, name),
+					"%s: generated output has extra TEXT block %q not present in original", filename, name)
+			}
 
-		t.Logf("%s: original=%d instructions, generated=%d instructions, original TEXT blocks=%d, generated TEXT blocks=%d",
-			filename, len(originalInstructions), len(generatedInstructions), len(originalTexts), len(generatedTexts))
+			t.Logf("%s: original=%d instructions, generated=%d instructions, original TEXT blocks=%d, generated TEXT blocks=%d",
+				filename, len(originalInstructions), len(generatedInstructions), len(originalTexts), len(generatedTexts))
 
-		if len(originalInstructions) > 0 {
-			difference := math.Abs(float64(len(generatedInstructions)-len(originalInstructions))) / float64(len(originalInstructions))
-			assert.LessOrEqual(t, difference, 0.20,
-				"%s: instruction count differs by %.0f%% (original=%d, generated=%d), exceeds 20%% tolerance",
-				filename, difference*100, len(originalInstructions), len(generatedInstructions))
-		}
+			if len(originalInstructions) > 0 {
+				difference := math.Abs(float64(len(generatedInstructions)-len(originalInstructions))) / float64(len(originalInstructions))
+				assert.LessOrEqual(t, difference, 0.20,
+					"%s: instruction count differs by %.0f%% (original=%d, generated=%d), exceeds 20%% tolerance",
+					filename, difference*100, len(originalInstructions), len(generatedInstructions))
+			}
+		})
 	}
 }
 

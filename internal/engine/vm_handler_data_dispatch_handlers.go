@@ -41,7 +41,7 @@ func (vm *VM) appendSelectWakeArms(numCases int, hasDefault bool) (cases []refle
 	if hasDefault {
 		return vm.selectCasesBuffer[:numCases], -1, -1
 	}
-	count, cancelIndex, panicIndex := appendWakeCases(vm.selectCasesBuffer, numCases, vm.ctx.Done(), vm.Globals.goroutinePanicWakeChan())
+	count, cancelIndex, panicIndex := appendWakeCases(vm.selectCasesBuffer, numCases, vm.blockingDone(), vm.Globals.goroutinePanicWakeChan())
 	return vm.selectCasesBuffer[:count], cancelIndex, panicIndex
 }
 
@@ -261,7 +261,7 @@ func assignRangeSliceFastPath(iterator *rangeIterator, collection reflect.Value)
 //
 // Returns OpResult which reports whether the range loop should continue or exit.
 func rangeNextChannel(vm *VM, registers *Registers, iterator *rangeIterator, context rangeNextContext) OpResult {
-	done := vm.ctx.Done()
+	done := vm.blockingDone()
 	panicWake := vm.Globals.goroutinePanicWakeChan()
 
 	var value reflect.Value
@@ -432,12 +432,8 @@ func handleRangeNext(vm *VM, frame *CallFrame, registers *Registers, instruction
 	return opContinue
 }
 
-// handleTypeAssert performs a type assertion on a general register value, storing the
-// asserted value and a boolean success flag.
-//
-// Interface values are unwrapped before comparison to match Go's runtime behaviour. This
-// is needed because operations like MapIndex on map[string]any return reflect.Values with
-// Kind==Interface, but Go type assertions inspect the underlying concrete type.
+// handleTypeAssert unwraps interface values and adapters before testing the dynamic
+// type, then stores the result and success flag.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes frame (*CallFrame) which provides the type table index extension.
@@ -454,10 +450,7 @@ func handleTypeAssert(vm *VM, frame *CallFrame, registers *Registers, instructio
 		return opPanicError
 	}
 	reflectType := frame.Function.TypeTable[typeIndex]
-	source := registers.General[instruction.B]
-	if source.IsValid() && source.Kind() == reflect.Interface && !source.IsNil() {
-		source = source.Elem()
-	}
+	source := typeAssertOperand(vm, registers.General[instruction.B])
 	original := source
 	source, matched := matchTypeAssertion(source, reflectType)
 	if matched {
@@ -471,6 +464,47 @@ func handleTypeAssert(vm *VM, frame *CallFrame, registers *Registers, instructio
 		return opContinue
 	}
 	return handleTypeAssertMissingMatch(vm, registers, instruction, extensionWord, source, reflectType)
+}
+
+// typeAssertOperand unwraps interfaces and adapters to expose the script value for type
+// assertions. Adapters without a runtime script type name remain wrapped and are
+// checked by their resolved methods.
+//
+// Takes vm (*VM) which resolves script type names.
+// Takes value (reflect.Value) which is the asserted register value.
+//
+// Returns reflect.Value which is the value to match.
+func typeAssertOperand(vm *VM, value reflect.Value) reflect.Value {
+	if value.IsValid() && value.Kind() == reflect.Interface && !value.IsNil() {
+		value = value.Elem()
+	}
+	if !isInterfaceablePointer(value) {
+		return value
+	}
+	adapter, ok := reflect.TypeAssert[adapterUnwrapper](value)
+	if !ok {
+		return value
+	}
+	underlying := adapter.adapterUnderlying()
+	if !underlying.IsValid() || !hasScriptTypeName(vm, underlying) {
+		return value
+	}
+	return underlying
+}
+
+// hasScriptTypeName reports whether the source-level type of value can be found at run
+// time, through its synthesised type or the named-scalar pool.
+//
+// Takes vm (*VM) which provides the type-name registry.
+// Takes value (reflect.Value) which must be valid.
+//
+// Returns bool which is true when the type is named.
+func hasScriptTypeName(vm *VM, value reflect.Value) bool {
+	if _, ok := pipitTypeName(vm, value); ok {
+		return true
+	}
+	_, ok := typemodel.LookupNamedScalarPoolInfo(value.Type())
+	return ok
 }
 
 // scriptTypeSatisfiesInterface reports whether source, a value reflect cannot match to
@@ -662,35 +696,28 @@ func compiledMethodArityMatches(vm *VM, index uint16, params, results int) bool 
 	if params < 0 || results < 0 || int(index) >= len(vm.functions) {
 		return true
 	}
-	callee := vm.functions[index]
-	parameterCount := len(callee.ParameterKinds)
-	if callee.HasReceiver {
-		parameterCount--
-	}
-	return parameterCount == params && len(callee.ResultKinds) == results
+	return calleeArityMatches(vm.functions[index], params, results)
 }
 
-// sourceImplementsAllMethods reports whether source's reflect.Type exposes every method
-// named in required. Used by handleTypeAssert to enforce a non-empty interface's method
-// set when the typeTable entry has been collapsed to reflect.TypeFor[any]() - see the
-// typeTableInterfaceMethods sidecar on CompiledFunction.
-//
-// Pointer-receiver methods on `*T` count for an addressable T, so the check first widens
-// to `*T` when the source is a non-pointer value before walking the method names. Method
-// names registered in pipit's externalMethods registry (cross-package methods on synth
-// structs) are also consulted because reflect.MethodByName on the synth type itself
-// returns invalid for those.
+// sourceImplementsAllMethods checks native and registered methods against the required
+// interface, including pointer-receiver methods on addressable values.
 //
 // Takes vm (*VM) which provides the cross-package method registry.
 // Takes source (reflect.Value) which is the value under test.
 // Takes required ([]string) which is the method-name set the original *types.Interface
 // declared (sorted, deduplicated).
 //
+// A registered adapter is judged by the methods it resolved, since its Go type also has
+// the optional methods its value may lack.
+//
 // Returns true when every required method is observable on source via
 // reflect.Type.MethodByName or pipit's external-method registry.
 func sourceImplementsAllMethods(vm *VM, source reflect.Value, required []string) bool {
 	if !source.IsValid() {
 		return false
+	}
+	if core, ok := registeredAdapterCore(source); ok {
+		return adapterResolvedAll(core, required)
 	}
 	srcType := source.Type()
 	pointerType := srcType
@@ -710,6 +737,23 @@ func sourceImplementsAllMethods(vm *VM, source reflect.Value, required []string)
 		}
 
 		if _, _, promoted := resolvePromotedMethod(vm, source, requirement.Name); !promoted {
+			return false
+		}
+	}
+	return true
+}
+
+// adapterResolvedAll reports whether a registered adapter resolved every required method
+// with the required signature, which is what its value declares, whatever methods the
+// adapter's Go type has.
+//
+// Takes core (*AdapterCore) which holds the resolved methods.
+// Takes required ([]string) which are the encoded method requirements.
+//
+// Returns bool which is true when every required method was resolved.
+func adapterResolvedAll(core *AdapterCore, required []string) bool {
+	for _, encoded := range required {
+		if !core.satisfies(program.DecodeInterfaceMethodRequirement(encoded)) {
 			return false
 		}
 	}
@@ -1041,9 +1085,15 @@ func handleSelect(vm *VM, frame *CallFrame, registers *Registers, instruction is
 	}
 	selectCases, cancelIndex, panicIndex := vm.appendSelectWakeArms(numCases, hasDefault)
 	token := vm.enterBlocking(!hasDefault && vm.Globals.selectIsCountable(cases))
-	released := vm.releaseAroundBlock()
+
+	released := false
+	if !hasDefault {
+		released = vm.releaseAroundBlock()
+	}
 	chosen, receiver, receiveOK := reflect.Select(selectCases)
-	vm.reacquireAfterBlock(released)
+	if !hasDefault {
+		vm.reacquireAfterBlock(released)
+	}
 	vm.leaveBlocking(token)
 	if chosen == cancelIndex {
 		clear(selectCases)
@@ -1071,7 +1121,7 @@ func handleSelect(vm *VM, frame *CallFrame, registers *Registers, instruction is
 //
 // Returns opPanicError so the dispatcher unwinds to the host.
 func handleSelectNoCases(vm *VM) OpResult {
-	done := vm.ctx.Done()
+	done := vm.blockingDone()
 	panicWake := vm.Globals.goroutinePanicWakeChan()
 	if done == nil && panicWake == nil {
 		select {}

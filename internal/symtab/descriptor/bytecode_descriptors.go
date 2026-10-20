@@ -46,8 +46,8 @@ const (
 	// package, resolved via SymbolRegistry.ZeroValueForType.
 	GeneralConstantNamedTypeZero
 
-	// GeneralConstantCompositeZero is a zero value for a composite type (array or struct),
-	// reconstructed via reflect.New(reconstructedType).Elem().
+	// GeneralConstantCompositeZero describes a non-interface zero value reconstructed
+	// by symtab.ZeroConstant.
 	GeneralConstantCompositeZero
 
 	// GeneralConstantPackageSymbolAddress is the address of a settable package variable of a
@@ -65,7 +65,8 @@ type GeneralConstantDescriptor struct {
 	// SymbolName is the name of the symbol within its package.
 	SymbolName string
 
-	// TypeDescriptor is the type descriptor used for composite zero value reconstruction.
+	// TypeDescriptor records the type for zero-value reconstruction and is populated
+	// during export or decoding.
 	TypeDescriptor TypeDescriptor
 
 	// Kind identifies which reconstruction strategy to use.

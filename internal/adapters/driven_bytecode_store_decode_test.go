@@ -21,24 +21,25 @@
 package adapters
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/symtab"
 	"pipit.sh/pipit/internal/verify"
-
-	"github.com/stretchr/testify/require"
 )
 
 func packTrivialProgram(t *testing.T) []byte {
 	t.Helper()
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": "package main\n\nfunc helper(n int) int {\n\treturn n + 1\n}\n\nfunc main() {\n\tx := helper(1)\n\t_ = x\n}\n"})
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": "package main\n\nfunc helper(n int) int {\n\treturn n + 1\n}\n\nfunc main() {\n\tx := helper(1)\n\t_ = x\n}\n"})
 	require.NoError(t, err)
-	return PackCompiledFileSetToBytes(compiled)
+	data, err := PackCompiledFileSetToBytes(compiled)
+	require.NoError(t, err)
+	return data
 }
 
 func TestLoadCompiledFromBytesRoundTripsTrivialProgram(t *testing.T) {
@@ -75,7 +76,8 @@ func TestLoadCompiledFromBytesVerifiesTheBytecode(t *testing.T) {
 
 			root := &program.CompiledFunction{Name: "tampered", Body: tt.body}
 			root.NumRegisters[isa.RegisterInt] = 2
-			data := PackCompiledFileSetToBytes(program.NewCompiledFileSet(root, nil, nil, nil))
+			data, err := PackCompiledFileSetToBytes(program.NewCompiledFileSet(root, nil, nil, nil))
+			require.NoError(t, err)
 
 			loaded, err := LoadCompiledFromBytes(data, symtab.NewSymbolRegistry(nil))
 
@@ -111,18 +113,23 @@ func TestLoadCompiledFromBytesRejectsTruncatedPayloads(t *testing.T) {
 
 func TestDecodeCompiledFileSetRecoversFromAccessorPanic(t *testing.T) {
 	t.Parallel()
-	registry := symtab.NewSymbolRegistry(nil)
-	malformed := [][]byte{
-		{0xff, 0xff, 0xff, 0xff},
-		{0x08, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04},
-		{0x04, 0x00, 0x00, 0x00, 0xff, 0xff},
+	tests := []struct {
+		name    string
+		payload []byte
+	}{
+		{name: "root offset past the end", payload: []byte{0xff, 0xff, 0xff, 0xff}},
+		{name: "root table at the end of the buffer", payload: []byte{0x08, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04}},
+		{name: "truncated root table", payload: []byte{0x04, 0x00, 0x00, 0x00, 0xff, 0xff}},
 	}
-	for index, payload := range malformed {
-		require.NotPanics(t, func() {
-			loaded, err := decodeCompiledFileSet(context.Background(), payload, registry)
-			require.ErrorIs(t, err, errCorruptBytecodePayload, "payload %d", index)
-			require.Nil(t, loaded, "payload %d", index)
-		}, "payload %d must not unwind into the caller", index)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.NotPanics(t, func() {
+				loaded, err := decodeCompiledFileSet(t.Context(), tt.payload, symtab.NewSymbolRegistry(nil))
+				require.ErrorIs(t, err, errCorruptBytecodePayload)
+				require.Nil(t, loaded)
+			}, "a malformed payload does not unwind into the caller")
+		})
 	}
 }
 
@@ -150,13 +157,15 @@ func run() string {
 func TestLoadCompiledFromBytesKeepsNilTypeSwitchClause(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": nilClauseProgram})
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": nilClauseProgram})
 	require.NoError(t, err)
 	original, err := compiled.FindFunction("classify")
 	require.NoError(t, err)
 	require.Contains(t, original.TypeTable, nil, "the compiler records the nil clause as a nil type")
 
-	loaded, err := LoadCompiledFromBytes(PackCompiledFileSetToBytes(compiled), symtab.NewSymbolRegistry(nil))
+	data, err := PackCompiledFileSetToBytes(compiled)
+	require.NoError(t, err)
+	loaded, err := LoadCompiledFromBytes(data, symtab.NewSymbolRegistry(nil))
 	require.NoError(t, err)
 	reloaded, err := loaded.FindFunction("classify")
 	require.NoError(t, err)
@@ -164,7 +173,7 @@ func TestLoadCompiledFromBytesKeepsNilTypeSwitchClause(t *testing.T) {
 
 	run, err := loaded.FindFunction("run")
 	require.NoError(t, err)
-	result, err := service.Execute(context.Background(), run)
+	result, err := service.Execute(t.Context(), run)
 	require.NoError(t, err)
 	require.Equal(t, "bool nil int string other", result)
 }

@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,19 +32,19 @@ func TestEvalMapCommaOk(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "present_key_value",
-			code:   "m := map[string]int{\"a\": 42}\nv, _ := m[\"a\"]\nv",
-			expect: 42,
+			name: "present_key_value",
+			code: "m := map[string]int{\"a\": 42}\nv, _ := m[\"a\"]\nv",
+			want: 42,
 		},
 		{
-			name:   "absent_key_value",
-			code:   "m := map[string]int{\"a\": 42}\nv, _ := m[\"b\"]\nv",
-			expect: 0,
+			name: "absent_key_value",
+			code: "m := map[string]int{\"a\": 42}\nv, _ := m[\"b\"]\nv",
+			want: 0,
 		},
 		{
 			name: "present_key_with_ok",
@@ -57,7 +57,7 @@ func TestEvalMapCommaOk(t *testing.T) {
 	return -1
 }
 check()`,
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "absent_key_with_ok",
@@ -70,7 +70,7 @@ check()`,
 	return 0
 }
 check()`,
-			expect: 0,
+			want: 0,
 		},
 	}
 
@@ -78,9 +78,9 @@ check()`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

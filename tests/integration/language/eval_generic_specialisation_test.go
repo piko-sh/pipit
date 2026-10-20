@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,40 +32,40 @@ func TestEvalGenericBodySpecialisation(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "identity int returns typed",
 			code: `func id[T any](x T) T { return x }
 id(42)`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "identity bool returns typed",
 			code: `func id[T any](x T) T { return x }
 id(true)`,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "identity float returns typed",
 			code: `func id[T any](x T) T { return x }
 id(3.14)`,
-			expect: 3.14,
+			want: 3.14,
 		},
 		{
 			name: "identity string returns typed",
 			code: `func id[T any](x T) T { return x }
 id("hello")`,
-			expect: "hello",
+			want: "hello",
 		},
 		{
 			name: "identity uint returns typed",
 			code: `func id[T any](x T) T { return x }
 var u uint = 42
 id(u)`,
-			expect: uint(42),
+			want: uint(42),
 		},
 		{
 			name: "polymorphic three specialisations",
@@ -77,7 +77,7 @@ _ = a
 _ = b
 _ = c
 a + 1`,
-			expect: 43,
+			want: 43,
 		},
 		{
 			name: "constraint Ordered max int",
@@ -91,7 +91,7 @@ func max[T Ordered](a, b T) T {
 	return b
 }
 max(7, 3)`,
-			expect: 7,
+			want: 7,
 		},
 		{
 			name: "constraint Ordered max float",
@@ -105,7 +105,7 @@ func max[T Ordered](a, b T) T {
 	return b
 }
 max(2.5, 9.5)`,
-			expect: 9.5,
+			want: 9.5,
 		},
 		{
 			name: "constraint Ordered max string",
@@ -119,26 +119,26 @@ func max[T Ordered](a, b T) T {
 	return b
 }
 max("apple", "zebra")`,
-			expect: "zebra",
+			want: "zebra",
 		},
 		{
 			name: "explicit type argument",
 			code: `func id[T any](x T) T { return x }
 id[int](100)`,
-			expect: 100,
+			want: 100,
 		},
 		{
 			name: "type inference from argument",
 			code: `func id[T any](x T) T { return x }
 id(7) + id(8)`,
-			expect: 15,
+			want: 15,
 		},
 		{
 			name: "generic calling generic",
 			code: `func id[T any](x T) T { return x }
 func twice[T any](x T) T { return id(id(x)) }
 twice(11)`,
-			expect: 11,
+			want: 11,
 		},
 		{
 			name: "recursive generic factorial",
@@ -149,7 +149,7 @@ twice(11)`,
 	return n * fact(n-1)
 }
 fact(5)`,
-			expect: 120,
+			want: 120,
 		},
 		{
 			name: "generic with named return",
@@ -157,7 +157,7 @@ fact(5)`,
 	return
 }
 zero[int]()`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "generic slice access",
@@ -165,7 +165,7 @@ zero[int]()`,
 	return xs[0]
 }
 first([]int{1, 2, 3})`,
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "generic closure captures typed",
@@ -176,7 +176,7 @@ first([]int{1, 2, 3})`,
 }
 add3 := makeAdder(3)
 add3(10)`,
-			expect: 13,
+			want: 13,
 		},
 		{
 			name: "specialisation cap fallback",
@@ -194,7 +194,7 @@ j := id(float64(10.0))
 _ = a; _ = b; _ = c; _ = d; _ = e
 _ = f; _ = g; _ = h; _ = i; _ = j
 "ok"`,
-			expect: "ok",
+			want: "ok",
 		},
 	}
 
@@ -202,9 +202,9 @@ _ = f; _ = g; _ = h; _ = i; _ = j
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

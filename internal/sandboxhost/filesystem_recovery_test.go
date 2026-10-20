@@ -25,6 +25,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type filesystemRecoveryFixture struct {
@@ -55,48 +58,33 @@ func (fixture *filesystemRecoveryFixture) Close() error {
 }
 
 func TestIsolatedFilesystemRecoveryAPI(t *testing.T) {
+	t.Parallel()
 	var absent *IsolatedFilesystemRecovery
-	if err := absent.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := absent.Recover(context.Background()); !errors.Is(err, ErrIsolatedUsed) {
-		t.Fatal("missing owner accepted:", err)
-	}
+	require.NoError(t, absent.Close())
+	require.ErrorIs(t, absent.Recover(t.Context()), ErrIsolatedUsed, "missing owner accepted")
 	fixture := &filesystemRecoveryFixture{failure: errors.New("retryable cleanup")}
 	owner := &IsolatedFilesystemRecovery{recovery: fixture}
-	if err := owner.Recover(nil); !errors.Is(err, ErrInvalidIsolatedConfig) {
-		t.Fatal("nil context accepted:", err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
+	require.ErrorIs(t, owner.Recover(nil), ErrInvalidIsolatedConfig, "nil context accepted")
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err := owner.Recover(ctx); !errors.Is(err, context.Canceled) || fixture.calls.Load() != 0 {
-		t.Fatal("cancelled attempt reached native recovery:", err)
-	}
-	if err := owner.Recover(context.Background()); !errors.Is(err, fixture.failure) {
-		t.Fatal("cleanup failure lost:", err)
-	}
-	if err := owner.Close(); !errors.Is(err, fixture.failure) {
-		t.Fatal("failed close lost ownership error:", err)
-	}
+	require.ErrorIs(t, owner.Recover(ctx), context.Canceled, "cancelled attempt reached native recovery")
+	require.Equal(t, int32(0), fixture.calls.Load())
+	require.ErrorIs(t, owner.Recover(t.Context()), fixture.failure, "the cleanup failure is kept")
+	require.ErrorIs(t, owner.Close(), fixture.failure, "a failed close reports the ownership error")
 	fixture.failure = nil
 	var callers sync.WaitGroup
 	for range 16 {
 		callers.Go(func() {
-			if err := owner.Recover(context.Background()); err != nil {
-				t.Error(err)
-			}
+			assert.NoError(t, owner.Recover(t.Context()))
 		})
 		callers.Go(func() {
-			if err := owner.Close(); err != nil {
-				t.Error(err)
-			}
+			assert.NoError(t, owner.Close())
 		})
 	}
 	callers.Wait()
-	if fixture.calls.Load() != 17 || fixture.closes.Load() != 17 {
-		t.Fatal("retry or serialisation dropped lifecycle calls")
-	}
-	if recovery, err := NewIsolatedFilesystemRecovery(context.Background(), IsolatedFilesystemConfig{}); recovery != nil || !errors.Is(err, ErrInvalidIsolatedConfig) {
-		t.Fatal("invalid recovery configuration accepted:", err)
-	}
+	require.Equal(t, int32(17), fixture.calls.Load(), "retry or serialisation dropped lifecycle calls")
+	require.Equal(t, int32(17), fixture.closes.Load())
+	recovery, err := NewIsolatedFilesystemRecovery(t.Context(), IsolatedFilesystemConfig{})
+	require.Nil(t, recovery, "invalid recovery configuration accepted")
+	require.ErrorIs(t, err, ErrInvalidIsolatedConfig)
 }

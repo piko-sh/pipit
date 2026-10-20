@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -34,7 +34,7 @@ func TestEvalNilSliceAppendAndLen(t *testing.T) {
 	t.Run("nil slice len", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `var s []int; len(s)`)
+		result, err := service.Eval(t.Context(), `var s []int; len(s)`)
 		require.NoError(t, err)
 		require.Equal(t, 0, result)
 	})
@@ -42,7 +42,7 @@ func TestEvalNilSliceAppendAndLen(t *testing.T) {
 	t.Run("nil slice cap", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `var s []int; cap(s)`)
+		result, err := service.Eval(t.Context(), `var s []int; cap(s)`)
 		require.NoError(t, err)
 		require.Equal(t, 0, result)
 	})
@@ -54,7 +54,7 @@ func TestEvalNilComparisons(t *testing.T) {
 	t.Run("nil slice comparison", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `var s []int; s == nil`)
+		result, err := service.Eval(t.Context(), `var s []int; s == nil`)
 		require.NoError(t, err)
 		require.Equal(t, true, result)
 	})
@@ -62,7 +62,7 @@ func TestEvalNilComparisons(t *testing.T) {
 	t.Run("nil map comparison", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `var m map[string]int; m == nil`)
+		result, err := service.Eval(t.Context(), `var m map[string]int; m == nil`)
 		require.NoError(t, err)
 		require.Equal(t, true, result)
 	})
@@ -70,7 +70,7 @@ func TestEvalNilComparisons(t *testing.T) {
 	t.Run("nil pointer comparison", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `var p *int; p == nil`)
+		result, err := service.Eval(t.Context(), `var p *int; p == nil`)
 		require.NoError(t, err)
 		require.Equal(t, true, result)
 	})
@@ -78,7 +78,7 @@ func TestEvalNilComparisons(t *testing.T) {
 	t.Run("nil map len", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `var m map[string]int; len(m)`)
+		result, err := service.Eval(t.Context(), `var m map[string]int; len(m)`)
 		require.NoError(t, err)
 		require.Equal(t, 0, result)
 	})

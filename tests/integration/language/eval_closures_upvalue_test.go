@@ -21,81 +21,63 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
-func TestEvalClosureUpvalueInt(t *testing.T) {
+func TestEvalClosureUpvalues(t *testing.T) {
 	t.Parallel()
-
-	service := app.NewService()
-	result, err := service.Eval(context.Background(), `x := 0; inc := func() { x++ }; inc(); inc(); inc(); x`)
-	require.NoError(t, err)
-	require.Equal(t, 3, result)
-}
-
-func TestEvalClosureUpvalueFloat(t *testing.T) {
-	t.Parallel()
-
-	service := app.NewService()
-	result, err := service.Eval(context.Background(), `x := 0.0; add := func() { x += 1.5 }; add(); add(); x`)
-	require.NoError(t, err)
-	require.Equal(t, 3.0, result)
-}
-
-func TestEvalClosureUpvalueString(t *testing.T) {
-	t.Parallel()
-
-	service := app.NewService()
-	result, err := service.Eval(context.Background(), `s := ""; app := func(w string) { s += w }; app("hello"); app(" world"); s`)
-	require.NoError(t, err)
-	require.Equal(t, "hello world", result)
-}
-
-func TestEvalClosureSharedUpvalue(t *testing.T) {
-	t.Parallel()
-
-	service := app.NewService()
-	result, err := service.Eval(context.Background(), `x := 0
+	tests := []struct {
+		name string
+		code string
+		want any
+	}{
+		{name: "upvalue int", code: `x := 0; inc := func() { x++ }; inc(); inc(); inc(); x`, want: 3},
+		{name: "upvalue float", code: `x := 0.0; add := func() { x += 1.5 }; add(); add(); x`, want: 3.0},
+		{name: "upvalue string", code: `s := ""; app := func(w string) { s += w }; app("hello"); app(" world"); s`, want: "hello world"},
+		{
+			name: "shared upvalue",
+			code: `x := 0
 inc := func() { x++ }
 get := func() int { return x }
 inc()
 inc()
-get()`)
-	require.NoError(t, err)
-	require.Equal(t, 2, result)
-}
-
-func TestEvalClosureCounter(t *testing.T) {
-	t.Parallel()
-
-	service := app.NewService()
-	result, err := service.Eval(context.Background(), `func makeCounter() func() int {
+get()`,
+			want: 2,
+		},
+		{
+			name: "counter",
+			code: `func makeCounter() func() int {
     n := 0
     return func() int { n++; return n }
 }
 c := makeCounter()
 c()
 c()
-c()`)
-	require.NoError(t, err)
-	require.Equal(t, 3, result)
-}
-
-func TestEvalClosureNested(t *testing.T) {
-	t.Parallel()
-
-	service := app.NewService()
-	result, err := service.Eval(context.Background(), `func outer() func() func() int {
+c()`,
+			want: 3,
+		},
+		{
+			name: "nested",
+			code: `func outer() func() func() int {
     x := 10
     return func() func() int {
         return func() int { return x }
     }
 }
-outer()()()`)
-	require.NoError(t, err)
-	require.Equal(t, 10, result)
+outer()()()`,
+			want: 10,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := app.NewService().Eval(t.Context(), tt.code)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, result)
+		})
+	}
 }

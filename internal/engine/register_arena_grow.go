@@ -96,9 +96,12 @@ func (a *RegisterArena) GrowByteSlab(minExtra int) {
 	oldCap := uint64(cap(a.byteSlab))
 	a.slabRetiredSinceReset.bytes += len(a.byteSlab)
 	a.oldByteSlabs = append(a.oldByteSlabs, a.byteSlab)
+	if len(a.oldByteSlabs) > maxRetainedOldSlabsPerType {
+		forgetArenaSlab(a.oldByteSlabs[0])
+	}
 	trimRetainedSlabs(&a.oldByteSlabs)
 	newSize := max(len(a.byteSlab)*2, minExtra)
-	a.byteSlab = make([]byte, newSize)
+	a.replaceByteSlab(make([]byte, newSize), true)
 	a.byteIndex = 0
 	a.ChargeArenaAllocation(uint64(cap(a.byteSlab)), oldCap)
 }

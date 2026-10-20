@@ -493,7 +493,7 @@ func TestReconstructGeneralConstant(t *testing.T) {
 
 		got, err := symtab.ReconstructConstant(constDescriptor, registry)
 		require.NoError(t, err)
-		require.Equal(t, math.Pi, got.Float())
+		require.InDelta(t, math.Pi, got.Float(), 0)
 	})
 
 	t.Run("PackageSymbolNotFound", func(t *testing.T) {
@@ -629,7 +629,7 @@ func TestReconstructGeneralConstantExportedAPI(t *testing.T) {
 
 	got, err := ReconstructGeneralConstant(data, registry)
 	require.NoError(t, err)
-	require.Equal(t, math.Pi, got.Float())
+	require.InDelta(t, math.Pi, got.Float(), 0)
 }
 
 func TestDescriptorToReflectTypeExportedAPI(t *testing.T) {

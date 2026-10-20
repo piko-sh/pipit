@@ -21,17 +21,14 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-
-	"pipit.sh/pipit/internal/compile/escape"
-	"pipit.sh/pipit/internal/engine/program"
-
-	"pipit.sh/pipit/internal/debug"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/app"
+	"pipit.sh/pipit/internal/compile/escape"
+	"pipit.sh/pipit/internal/debug"
+	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -63,6 +60,15 @@ func leak(n int) int {
 	return len(ps)
 }
 
+func passEach(n int) int {
+	ps := []point{}
+	for i := 0; i < n; i++ {
+		ps = append(ps, point{x: i, y: i})
+		keep(ps)
+	}
+	return len(ps)
+}
+
 func ret(n int) []point {
 	ps := []point{}
 	for i := 0; i < n; i++ {
@@ -71,7 +77,7 @@ func ret(n int) []point {
 	return ps
 }
 
-func EntrypointRun() int { return build(3) + leak(3) + len(ret(3)) }
+func EntrypointRun() int { return build(3) + leak(3) + passEach(3) + len(ret(3)) }
 `
 
 func sameSlotAppendPCs(compiledFunction *program.CompiledFunction) []int {
@@ -87,7 +93,7 @@ func sameSlotAppendPCs(compiledFunction *program.CompiledFunction) []int {
 func TestEscapePassInPlaceHeaderReuseAnnotation(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": inPlaceHeaderReuseSource})
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": inPlaceHeaderReuseSource})
 	require.NoError(t, err)
 
 	build := findCompiledFunctionByName(t, compiled, "build")
@@ -97,12 +103,19 @@ func TestEscapePassInPlaceHeaderReuseAnnotation(t *testing.T) {
 		require.True(t, build.InPlaceHeaderReusePCs[pc], "an unaliased local slice must be annotated at pc %d", pc)
 	}
 
+	leak := findCompiledFunctionByName(t, compiled, "leak")
+	require.NotEmpty(t, sameSlotAppendPCs(leak),
+		"passing the slice on only after the loop must leave the loop's append in place; disasm:\n%s", debug.DisassembleAssembly(compiled))
 	for _, name := range []string{"leak", "ret"} {
 		compiledFunction := findCompiledFunctionByName(t, compiled, name)
 		for _, pc := range sameSlotAppendPCs(compiledFunction) {
 			require.False(t, compiledFunction.InPlaceHeaderReusePCs[pc], "%s shares its header beyond the frame and must not be annotated at pc %d", name, pc)
 		}
 	}
+
+	passEach := findCompiledFunctionByName(t, compiled, "passEach")
+	require.Empty(t, sameSlotAppendPCs(passEach),
+		"a slice passed on in every iteration must not be grown in place; disasm:\n%s", debug.DisassembleAssembly(compiled))
 }
 
 func TestAnalyseGeneralRegisterAliasFreeRejectsCopies(t *testing.T) {
@@ -131,7 +144,7 @@ func TestAnalyseGeneralRegisterAliasFreeRejectsCopies(t *testing.T) {
 func TestAppendInPlaceAliasingPreservesLen(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 type point struct{ x int }
 func run() int {
 	ps := make([]point, 0, 8)
@@ -150,7 +163,7 @@ run()`)
 func TestAppendInPlaceReuseKeepsValues(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
-	result, err := service.Eval(context.Background(), `
+	result, err := service.Eval(t.Context(), `
 type point struct{ x, y int }
 func run() int {
 	ps := make([]point, 0, 16)

@@ -4,7 +4,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function collectViaClosure
-;   registers: int=11 general=3 sliceInt=2
+;   registers: int=10 general=3 sliceInt=2
 ;   dispatch:  asm=24 shim=11 exit=1 go=8
 ;   params:    (none)
 ;   returns:   (sliceInt)
@@ -48,24 +48,24 @@
 0032 G 1:LEN                       70   4   0
 0033 G 1:MAKE_SLICE_HEAP          208   0   4
 0034   0:EXT                        4   7   0
-0035 G 1:LEN                       70   5   0
-0036 A 1:LOAD_INT_CONST_SMALL      75   6   0    ; ints[6] = 0
-0037 A 1:LT_INT_JUMP_FALSE        116   6   5
+0035 G 1:LEN                       70   4   0
+0036 A 1:LOAD_INT_CONST_SMALL      75   5   0    ; ints[5] = 0
+0037 A 1:LT_INT_JUMP_FALSE        116   5   4
 0038   0:EXT                        9   0   0
-0039 A 1:MOVE_INT                  35   8   6
-0040 S 0:INDEX                      1   0   6
+0039 A 1:MOVE_INT                  35   7   5
+0040 S 0:INDEX                      1   0   5
 0041 A 1:MOVE_SLICE_INT           165   1   0
-0042 A 1:MOVE_INT                  35   9   8
+0042 A 1:MOVE_INT                  35   8   7
 0043 A 1:CALL                     128   0   0    ; call closure general[1] (site 0)
 0044 S 2:SYNC_CLOSURE_UPVALUES      0  15   1
-0045 A 0:SLICE_SET_INT_DIRECT       1   9  10
-0046 A 0:ADD_INT_CONST              6   6   4    ; const = 1
+0045 A 0:SLICE_SET_INT_DIRECT       1   8   9
+0046 A 0:ADD_INT_CONST              5   5   4    ; const = 1
 0047 A 1:JUMP                      74 245 255    ; goto -11
 0048 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function collectViaPointer
-;   registers: int=6 general=3 sliceInt=1
+;   registers: int=5 general=3 sliceInt=1
 ;   dispatch:  asm=19 shim=9 exit=1 go=8
 ;   params:    (none)
 ;   returns:   (sliceInt)
@@ -105,16 +105,16 @@
 0028 G 1:LEN                       70   0   0
 0029 G 1:MAKE_SLICE_HEAP          208   0   0
 0030   0:EXT                        0   7   0
-0031 G 1:LEN                       70   1   0
-0032 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
-0033 A 1:LT_INT_JUMP_FALSE        116   2   1
+0031 G 1:LEN                       70   0   0
+0032 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
+0033 A 1:LT_INT_JUMP_FALSE        116   1   0
 0034   0:EXT                        7   0   0
-0035 A 1:MOVE_INT                  35   4   2
-0036 S 0:INDEX                      1   0   2
+0035 A 1:MOVE_INT                  35   3   1
+0036 S 0:INDEX                      1   0   1
 0037 S 0:DEREF                      2   1   0
-0038 G 1:MOVE_GENERAL_TO_INT       41   5   2
-0039 A 0:SLICE_SET_INT_DIRECT       0   4   5
-0040 A 0:ADD_INT_CONST              2   2   2    ; const = 1
+0038 G 1:MOVE_GENERAL_TO_INT       41   4   2
+0039 A 0:SLICE_SET_INT_DIRECT       0   3   4
+0040 A 0:ADD_INT_CONST              1   1   2    ; const = 1
 0041 A 1:JUMP                      74 247 255    ; goto -9
 0042 A 2:TIER2_RETURN               0  10   1    ; 1 values
 

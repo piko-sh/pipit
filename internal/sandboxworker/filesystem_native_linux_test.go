@@ -23,11 +23,13 @@ package sandboxworker
 import (
 	"context"
 	"crypto/sha256"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/sandboxbroker"
 	"pipit.sh/pipit/internal/sandboxlinux"
@@ -49,14 +51,10 @@ func TestNativeFilesystemRelay(t *testing.T) {
 func filesystemRelayConfig(t *testing.T, executable, parent string) sandboxlinux.WorkerConfig {
 	t.Helper()
 	image, err := os.ReadFile(executable)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	watchdogPath := os.Getenv("PIPIT_TEST_HOST_WATCHDOG_BINARY")
 	watchdogImage, err := os.ReadFile(watchdogPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return sandboxlinux.WorkerConfig{Tenant: "test-tenant", ImageStore: nil,
 		WatchdogExecutable: watchdogPath, WatchdogDigest: sha256.Sum256(watchdogImage),
 		Executable: executable, CgroupParent: parent, Digest: sha256.Sum256(image),
@@ -67,9 +65,7 @@ func filesystemRelayConfig(t *testing.T, executable, parent string) sandboxlinux
 func exerciseFilesystemRelay(t *testing.T, workerConfig, brokerConfig sandboxlinux.WorkerConfig, mode string) {
 	t.Helper()
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0600))
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	aggregate, err := sandboxlinux.NewFilesystemAggregate(ctx, workerConfig.CgroupParent, workerConfig.Limits, workerConfig.Tenant)
@@ -77,14 +73,10 @@ func exerciseFilesystemRelay(t *testing.T, workerConfig, brokerConfig sandboxlin
 		defer func() {
 			cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
 			defer stop()
-			if err := aggregate.Close(cleanup); err != nil {
-				t.Error(err)
-			}
+			assert.NoError(t, aggregate.Close(cleanup))
 		}()
 	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	rights := sandboxbroker.Read | sandboxbroker.Write | sandboxbroker.List
 	if mode == "host-denied" {
 		rights = sandboxbroker.Read
@@ -96,9 +88,7 @@ func exerciseFilesystemRelay(t *testing.T, workerConfig, brokerConfig sandboxlin
 
 	storageBase := t.TempDir()
 	for _, name := range []string{"journal", "checkpoint", "approval"} {
-		if err := os.Mkdir(filepath.Join(storageBase, name), 0700); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.Mkdir(filepath.Join(storageBase, name), 0700))
 	}
 	storage := sandboxlinux.FilesystemRecoveryStorage{
 		JournalDirectory:    filepath.Join(storageBase, "journal"),
@@ -106,40 +96,28 @@ func exerciseFilesystemRelay(t *testing.T, workerConfig, brokerConfig sandboxlin
 		ApprovalDirectory:   filepath.Join(storageBase, "approval"),
 	}
 	binding, err := sandboxlinux.RecoveryHostBinding(ctx, brokerConfig.Digest)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	storage.Binding = binding
 	brokerStoreDir := t.TempDir()
-	if err := os.Chmod(brokerStoreDir, 0700); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Chmod(brokerStoreDir, 0700))
 	brokerStore, err := sandboxbroker.OpenLinuxImageStore(brokerStoreDir, grants,
 		[]string{storage.JournalDirectory, storage.CheckpointDirectory, storage.ApprovalDirectory})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer brokerStore.Close()
 	storage.ServiceContext, err = aggregate.Group.RecoveryIdentityWithImages(brokerStore)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	brokerConfig.ImageStore = brokerStore
 	workerConfig.ImageStore = nativeImageStoreWithGrants(t, grants)
 	broker, err := sandboxlinux.OpenCheckpointedFilesystemBrokerInGroup(ctx, brokerConfig, grants, sandboxbroker.FilesystemLimits{}, storage, aggregate.Group)
 	if broker != nil {
 		defer broker.Close()
 	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	worker, err := sandboxlinux.LaunchWorkerInGroup(ctx, workerConfig, aggregate.Group)
 	if worker != nil {
 		defer worker.Close()
 	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	config := FilesystemConfiguration{
 		Profile: FilesystemProfile, Imports: []string{"pipit/fs"},
 		Roots:  []sandboxbroker.RootGrant{{Name: "data", Rights: sandboxbroker.Read | sandboxbroker.Write | sandboxbroker.List}},
@@ -150,42 +128,37 @@ func exerciseFilesystemRelay(t *testing.T, workerConfig, brokerConfig sandboxlin
 		cancel()
 	}
 	response, err := ExchangeFilesystem(ctx, worker, config, Request{Kind: "file", Source: source, Entrypoint: "run"}, broker)
-	if mode == "cancelled" {
-		if !errors.Is(err, context.Canceled) {
-			t.Fatal("cancellation not propagated:", err)
-		}
-	} else if mode == "host-denied" {
+	switch mode {
+	case "cancelled":
+		require.ErrorIs(t, err, context.Canceled, "cancellation propagates")
+	case "host-denied":
+		require.Error(t, err, "the host policy is enforced")
+	case "write-only-list-denied":
+		require.Error(t, err, "a write-only grant refuses a directory listing")
+	case "ignored-io":
 		if err == nil {
-			t.Fatal("host policy bypassed")
+			require.NotEqual(t, "ok", response.Code, "ignored failed I/O does not return success")
 		}
-	} else if mode == "write-only-list-denied" {
-		if err == nil {
-			t.Fatal("write-only grant allowed a directory listing")
-		}
-	} else if mode == "ignored-io" {
-		if err == nil && response.Code == "ok" {
-			t.Fatal("ignored failed I/O returned success")
-		}
-	} else if mode == "denied-root" || mode == "compile-error" {
-		if err != nil || response.Code != "evaluation_failed" {
-			t.Fatalf("expected evaluation failure: %+v: %v", response, err)
-		}
-	} else if err != nil || response.Code != "ok" || string(response.Value) != want {
-		t.Fatalf("relay: %+v: %v\nworker diagnostics: %s", response, err, worker.Output())
+	case "denied-root", "compile-error":
+		require.NoError(t, err, "the evaluation fails inside the worker: %+v", response)
+		require.Equal(t, "evaluation_failed", response.Code)
+	default:
+		requireWorkerOK(t, err, worker, "relay")
+		require.Equal(t, "ok", response.Code, "relay: %+v", response)
+		require.Equal(t, want, string(response.Value))
 	}
 	select {
 	case <-worker.Done():
 	default:
-		t.Fatal("source process not reaped")
+		require.FailNow(t, "the source process is reaped")
 	}
 	data, err := os.ReadFile(filepath.Join(root, "file"))
 	expected := "original"
 	if mode == "read-write-list" {
 		expected = "changed"
 	}
-	if err != nil || string(data) != expected {
-		t.Fatalf("unexpected publication: %q: %v", data, err)
-	}
+	require.NoError(t, err, "unexpected publication: %q", data)
+	require.Equal(t, expected, string(data))
 }
 
 func filesystemRelaySource(mode string) (string, string) {

@@ -4,7 +4,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=2 string=1 general=3 sliceByte=2
+;   registers: int=2 string=1 general=3 sliceByte=1
 ;   dispatch:  asm=4 shim=5 exit=0 go=2
 ;   params:    (none)
 ;   returns:   (string)
@@ -23,8 +23,8 @@
 0007 A 1:CALL                     128   0   0    ; call closure general[1] (site 0)
 0008 S 2:SYNC_CLOSURE_UPVALUES      0  15   1
 0009 S 0:DEREF                      2   0   0
-0010 S 0:UNPACK_INTERFACE           1   2  12
-0011 G 1:SLICE_BYTE_TO_STRING     149   0   1
+0010 S 0:UNPACK_INTERFACE           0   2  12
+0011 G 1:SLICE_BYTE_TO_STRING     149   0   0
 0012 A 2:TIER2_RETURN               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════

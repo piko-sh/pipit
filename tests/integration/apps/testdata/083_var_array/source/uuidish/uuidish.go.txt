@@ -13,7 +13,6 @@ func Must(u UUID, err error) UUID {
 
 func Parse(s string) (UUID, error) {
 	var u UUID
-	// Strip the dashes at positions 8, 13, 18, 23 and decode the 32 hex digits.
 	if len(s) != 36 {
 		return u, errBadLen
 	}

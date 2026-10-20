@@ -20,10 +20,11 @@ package facade_test
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit"
 	"pipit.sh/pipit/sdk/stdlib"
@@ -33,25 +34,19 @@ func TestDeadlockOnProgramChannel(t *testing.T) {
 	t.Parallel()
 	interpreter := pipit.NewInterpreter(stdlib.WithStandardLibrary(), pipit.WithDeadlockGrace(50*time.Millisecond), pipit.WithMaxExecutionTime(10*time.Second))
 	start := time.Now()
-	_, err := interpreter.Eval(context.Background(), `
+	_, err := interpreter.Eval(t.Context(), `
 ch := make(chan int)
 <-ch
 `)
-	if !errors.Is(err, pipit.ErrDeadlock) {
-		t.Fatalf("expected ErrDeadlock, got %v", err)
-	}
-	if errors.Is(err, pipit.ErrExecutionCancelled) {
-		t.Fatalf("a deadlock must not read as a timeout: %v", err)
-	}
-	if elapsed := time.Since(start); elapsed > 5*time.Second {
-		t.Fatalf("deadlock took %s to report", elapsed)
-	}
+	require.ErrorIs(t, err, pipit.ErrDeadlock)
+	require.NotErrorIs(t, err, pipit.ErrExecutionCancelled, "a deadlock must not read as a timeout")
+	require.LessOrEqual(t, time.Since(start), 5*time.Second, "the deadlock is reported within 5 seconds")
 }
 
 func TestDeadlockAcrossGoroutines(t *testing.T) {
 	t.Parallel()
 	interpreter := pipit.NewInterpreter(stdlib.WithStandardLibrary(), pipit.WithDeadlockGrace(50*time.Millisecond), pipit.WithMaxExecutionTime(10*time.Second))
-	_, err := interpreter.Eval(context.Background(), `
+	_, err := interpreter.Eval(t.Context(), `
 a := make(chan int)
 b := make(chan int)
 done := make(chan bool)
@@ -60,15 +55,13 @@ go func() { <-b; a <- 1; done <- true }()
 <-done
 <-done
 `)
-	if !errors.Is(err, pipit.ErrDeadlock) {
-		t.Fatalf("expected ErrDeadlock, got %v", err)
-	}
+	require.ErrorIs(t, err, pipit.ErrDeadlock)
 }
 
 func TestNoDeadlockWhenAGoroutineCanWake(t *testing.T) {
 	t.Parallel()
 	interpreter := pipit.NewInterpreter(stdlib.WithStandardLibrary(), pipit.WithDeadlockGrace(20*time.Millisecond), pipit.WithMaxExecutionTime(10*time.Second))
-	result, err := interpreter.Eval(context.Background(), `
+	result, err := interpreter.Eval(t.Context(), `
 import "time"
 ch := make(chan int)
 go func() {
@@ -79,45 +72,30 @@ first := <-ch
 <-time.After(120 * time.Millisecond)
 first
 `)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got, ok := result.(int); !ok || got != 42 {
-		t.Fatalf("expected 42, got %v (%T)", result, result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 42, result)
 }
 
 func TestSleepIsInterruptedByDeadline(t *testing.T) {
 	t.Parallel()
 	interpreter := pipit.NewInterpreter(stdlib.WithStandardLibrary(), pipit.WithMaxExecutionTime(100*time.Millisecond))
 	start := time.Now()
-	_, err := interpreter.Eval(context.Background(), `
+	_, err := interpreter.Eval(t.Context(), `
 import "time"
 time.Sleep(30 * time.Second)
 `)
-	if !errors.Is(err, pipit.ErrExecutionCancelled) {
-		t.Fatalf("expected ErrExecutionCancelled, got %v", err)
-	}
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("the context's own error must stay reachable: %v", err)
-	}
-	if elapsed := time.Since(start); elapsed > 5*time.Second {
-		t.Fatalf("sleep ran %s past a 100ms deadline", elapsed)
-	}
+	require.ErrorIs(t, err, pipit.ErrExecutionCancelled)
+	require.ErrorIs(t, err, context.DeadlineExceeded, "the context's own error must stay reachable")
+	require.LessOrEqual(t, time.Since(start), 5*time.Second, "the 100ms deadline stops the sleep")
 }
 
 func TestUncaughtPanicIsClassified(t *testing.T) {
 	t.Parallel()
 	interpreter := pipit.NewInterpreter(stdlib.WithStandardLibrary(), pipit.WithMaxExecutionTime(5*time.Second))
-	_, err := interpreter.Eval(context.Background(), "panic(\"boom\")\n1")
-	if !errors.Is(err, pipit.ErrUncaughtPanic) {
-		t.Fatalf("expected ErrUncaughtPanic, got %v", err)
-	}
+	_, err := interpreter.Eval(t.Context(), "panic(\"boom\")\n1")
+	require.ErrorIs(t, err, pipit.ErrUncaughtPanic)
 	value, ok := pipit.UncaughtPanicValue(err)
-	if !ok || value != "boom" {
-		t.Fatalf("expected panic value boom, got %v (%v)", value, ok)
-	}
-	if !strings.HasSuffix(err.Error(), "panic: boom") {
-		t.Fatalf("panic text changed: %q", err.Error())
-	}
+	require.True(t, ok, "the error carries the panic value")
+	require.Equal(t, "boom", value)
+	require.True(t, strings.HasSuffix(err.Error(), "panic: boom"), "the error text ends with the panic message")
 }

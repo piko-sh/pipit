@@ -32,54 +32,55 @@ func TestFilesystemBrokerFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, test := range []struct {
+	tests := []struct {
 		name      string
 		number    uint32
 		arguments [6]uint64
 		allow     bool
 		verdict   uint32
 	}{
-		{"file read", unix.SYS_READ, [6]uint64{9}, true, 0},
-		{"file write", unix.SYS_WRITE, [6]uint64{9}, true, 0},
-		{"negative descriptor", unix.SYS_READ, [6]uint64{1 << 31}, false, 0},
-		{"high descriptor bits", unix.SYS_WRITE, [6]uint64{1<<32 | 9}, false, 0},
-		{"proc reopen", unix.SYS_OPENAT, [6]uint64{9, 0, unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NONBLOCK | unix.O_NOCTTY, 0}, true, 0},
-		{"open create", unix.SYS_OPENAT, [6]uint64{9, 0, unix.O_CREAT | unix.O_WRONLY, 0600}, false, 0},
-		{"cwd open", unix.SYS_OPENAT, [6]uint64{^uint64(99), 0, unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NONBLOCK | unix.O_NOCTTY}, false, 0},
-		{"beneath open", unix.SYS_OPENAT2, [6]uint64{9, 0, 0, uint64(unsafe.Sizeof(unix.OpenHow{}))}, true, 0},
-		{"unknown open ABI", unix.SYS_OPENAT2, [6]uint64{9, 0, 0, 128}, false, 0},
-		{"get flags", unix.SYS_FCNTL, [6]uint64{9, unix.F_GETFL}, true, 0},
-		{"duplicate handle", unix.SYS_FCNTL, [6]uint64{9, unix.F_DUPFD_CLOEXEC}, false, 0},
-		{"descriptor overwrite", unix.SYS_DUP3, [6]uint64{}, false, 0},
-		{"link staging", unix.SYS_LINKAT, [6]uint64{9, 0, 10, 0, unix.AT_SYMLINK_FOLLOW}, true, 0},
-		{"link arbitrary inode", unix.SYS_LINKAT, [6]uint64{9, 0, 10, 0, unix.AT_EMPTY_PATH}, false, 0},
-		{"rename staging", unix.SYS_RENAMEAT2, [6]uint64{9, 0, 10, 0, 0}, true, 0},
-		{"exchange entries", unix.SYS_RENAMEAT2, [6]uint64{9, 0, 10, 0, unix.RENAME_EXCHANGE}, false, 0},
-		{"unlink staging", unix.SYS_UNLINKAT, [6]uint64{9, 0, 0}, true, 0},
-		{"remove directory", unix.SYS_UNLINKAT, [6]uint64{9, 0, unix.AT_REMOVEDIR}, false, 0},
-		{"list", unix.SYS_GETDENTS64, [6]uint64{9}, true, 0},
-		{"sync", unix.SYS_FSYNC, [6]uint64{9}, true, 0},
-		{"new socket", unix.SYS_SOCKET, [6]uint64{}, false, 0},
-		{"receive handles", unix.SYS_RECVMSG, [6]uint64{}, false, 0},
-		{"send handles", unix.SYS_SENDMSG, [6]uint64{}, false, 0},
-		{"execute", unix.SYS_EXECVE, [6]uint64{}, false, unix.SECCOMP_RET_KILL_PROCESS},
-		{"mount", unix.SYS_MOUNT, [6]uint64{}, false, unix.SECCOMP_RET_KILL_PROCESS},
-		{"new namespace", unix.SYS_UNSHARE, [6]uint64{}, false, unix.SECCOMP_RET_KILL_PROCESS},
-		{"new process", unix.SYS_CLONE3, [6]uint64{}, false, 0},
-		{"ptrace", unix.SYS_PTRACE, [6]uint64{}, false, unix.SECCOMP_RET_KILL_PROCESS},
-		{"io uring", unix.SYS_IO_URING_SETUP, [6]uint64{}, false, 0},
-		{"chmod", unix.SYS_FCHMOD, [6]uint64{}, false, 0},
-		{"executable memory", unix.SYS_MPROTECT, [6]uint64{0, 0, unix.PROT_READ | unix.PROT_EXEC}, false, 0},
-	} {
-		t.Run(test.name, func(t *testing.T) {
+		{name: "file read", number: unix.SYS_READ, arguments: [6]uint64{9}, allow: true, verdict: 0},
+		{name: "file write", number: unix.SYS_WRITE, arguments: [6]uint64{9}, allow: true, verdict: 0},
+		{name: "negative descriptor", number: unix.SYS_READ, arguments: [6]uint64{1 << 31}, allow: false, verdict: 0},
+		{name: "high descriptor bits", number: unix.SYS_WRITE, arguments: [6]uint64{1<<32 | 9}, allow: false, verdict: 0},
+		{name: "proc reopen", number: unix.SYS_OPENAT, arguments: [6]uint64{9, 0, unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NONBLOCK | unix.O_NOCTTY, 0}, allow: true, verdict: 0},
+		{name: "open create", number: unix.SYS_OPENAT, arguments: [6]uint64{9, 0, unix.O_CREAT | unix.O_WRONLY, 0600}, allow: false, verdict: 0},
+		{name: "cwd open", number: unix.SYS_OPENAT, arguments: [6]uint64{^uint64(99), 0, unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NONBLOCK | unix.O_NOCTTY}, allow: false, verdict: 0},
+		{name: "beneath open", number: unix.SYS_OPENAT2, arguments: [6]uint64{9, 0, 0, uint64(unsafe.Sizeof(unix.OpenHow{}))}, allow: true, verdict: 0},
+		{name: "unknown open ABI", number: unix.SYS_OPENAT2, arguments: [6]uint64{9, 0, 0, 128}, allow: false, verdict: 0},
+		{name: "get flags", number: unix.SYS_FCNTL, arguments: [6]uint64{9, unix.F_GETFL}, allow: true, verdict: 0},
+		{name: "duplicate handle", number: unix.SYS_FCNTL, arguments: [6]uint64{9, unix.F_DUPFD_CLOEXEC}, allow: false, verdict: 0},
+		{name: "descriptor overwrite", number: unix.SYS_DUP3, arguments: [6]uint64{}, allow: false, verdict: 0},
+		{name: "link staging", number: unix.SYS_LINKAT, arguments: [6]uint64{9, 0, 10, 0, unix.AT_SYMLINK_FOLLOW}, allow: true, verdict: 0},
+		{name: "link arbitrary inode", number: unix.SYS_LINKAT, arguments: [6]uint64{9, 0, 10, 0, unix.AT_EMPTY_PATH}, allow: false, verdict: 0},
+		{name: "rename staging", number: unix.SYS_RENAMEAT2, arguments: [6]uint64{9, 0, 10, 0, 0}, allow: true, verdict: 0},
+		{name: "exchange entries", number: unix.SYS_RENAMEAT2, arguments: [6]uint64{9, 0, 10, 0, unix.RENAME_EXCHANGE}, allow: false, verdict: 0},
+		{name: "unlink staging", number: unix.SYS_UNLINKAT, arguments: [6]uint64{9, 0, 0}, allow: true, verdict: 0},
+		{name: "remove directory", number: unix.SYS_UNLINKAT, arguments: [6]uint64{9, 0, unix.AT_REMOVEDIR}, allow: false, verdict: 0},
+		{name: "list", number: unix.SYS_GETDENTS64, arguments: [6]uint64{9}, allow: true, verdict: 0},
+		{name: "sync", number: unix.SYS_FSYNC, arguments: [6]uint64{9}, allow: true, verdict: 0},
+		{name: "new socket", number: unix.SYS_SOCKET, arguments: [6]uint64{}, allow: false, verdict: 0},
+		{name: "receive handles", number: unix.SYS_RECVMSG, arguments: [6]uint64{}, allow: false, verdict: 0},
+		{name: "send handles", number: unix.SYS_SENDMSG, arguments: [6]uint64{}, allow: false, verdict: 0},
+		{name: "execute", number: unix.SYS_EXECVE, arguments: [6]uint64{}, allow: false, verdict: unix.SECCOMP_RET_KILL_PROCESS},
+		{name: "mount", number: unix.SYS_MOUNT, arguments: [6]uint64{}, allow: false, verdict: unix.SECCOMP_RET_KILL_PROCESS},
+		{name: "new namespace", number: unix.SYS_UNSHARE, arguments: [6]uint64{}, allow: false, verdict: unix.SECCOMP_RET_KILL_PROCESS},
+		{name: "new process", number: unix.SYS_CLONE3, arguments: [6]uint64{}, allow: false, verdict: 0},
+		{name: "ptrace", number: unix.SYS_PTRACE, arguments: [6]uint64{}, allow: false, verdict: unix.SECCOMP_RET_KILL_PROCESS},
+		{name: "io uring", number: unix.SYS_IO_URING_SETUP, arguments: [6]uint64{}, allow: false, verdict: 0},
+		{name: "chmod", number: unix.SYS_FCHMOD, arguments: [6]uint64{}, allow: false, verdict: 0},
+		{name: "executable memory", number: unix.SYS_MPROTECT, arguments: [6]uint64{0, 0, unix.PROT_READ | unix.PROT_EXEC}, allow: false, verdict: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			expected := uint32(denySyscall)
-			if test.allow {
+			if tt.allow {
 				expected = unix.SECCOMP_RET_ALLOW
 			}
-			if test.verdict != 0 {
-				expected = test.verdict
+			if tt.verdict != 0 {
+				expected = tt.verdict
 			}
-			if actual := evaluateFilter(t, filter, workerAuditArchitecture, test.number, test.arguments); actual != expected {
+			if actual := evaluateFilter(t, filter, workerAuditArchitecture, tt.number, tt.arguments); actual != expected {
 				t.Fatalf("verdict %#x, want %#x", actual, expected)
 			}
 		})

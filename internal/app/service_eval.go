@@ -20,22 +20,21 @@ package app
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
-	"go/build"
-	"go/build/constraint"
 	"go/parser"
 	"go/token"
 	"go/types"
 	"maps"
 	"os"
 	"reflect"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
 
+	"pipit.sh/pipit/internal/buildfilter"
 	"pipit.sh/pipit/internal/compile"
 	"pipit.sh/pipit/internal/compile/passes"
 	"pipit.sh/pipit/internal/engine/program"
@@ -53,10 +52,6 @@ const (
 
 	// errFmtCompilingFile is the format string for wrapping errors during file compilation.
 	errFmtCompilingFile = "compiling file: %w"
-
-	// minBuildSuffixParts is the threshold for considering a filename to have both GOOS and
-	// GOARCH suffix components (e.g. "foo_linux_amd64").
-	minBuildSuffixParts = 3
 )
 
 var (
@@ -96,67 +91,22 @@ var (
 		"any":        {},
 		"comparable": {},
 	}
-
-	// knownGOOSTags enumerates the GOOS values Go recognises as filename-suffix build
-	// constraints. Keep in sync with go/build/syslist.go; this list rarely changes between
-	// Go releases.
-	knownGOOSTags = map[string]bool{
-		"aix":       true,
-		"android":   true,
-		"darwin":    true,
-		"dragonfly": true,
-		"freebsd":   true,
-		"hurd":      true,
-		"illumos":   true,
-		"ios":       true,
-		"js":        true,
-		"linux":     true,
-		"nacl":      true,
-		"netbsd":    true,
-		"openbsd":   true,
-		"plan9":     true,
-		"solaris":   true,
-		"wasip1":    true,
-		"windows":   true,
-		"zos":       true,
-	}
-
-	// knownGOARCHTags enumerates the GOARCH values Go recognises as filename-suffix build
-	// constraints. Keep in sync with go/build/syslist.go.
-	knownGOARCHTags = map[string]bool{
-		"386":         true,
-		"amd64":       true,
-		"amd64p32":    true,
-		"arm":         true,
-		"arm64":       true,
-		"arm64be":     true,
-		"armbe":       true,
-		"loong64":     true,
-		"mips":        true,
-		"mips64":      true,
-		"mips64le":    true,
-		"mips64p32":   true,
-		"mips64p32le": true,
-		"mipsle":      true,
-		"ppc":         true,
-		"ppc64":       true,
-		"ppc64le":     true,
-		"riscv":       true,
-		"riscv64":     true,
-		"s390":        true,
-		"s390x":       true,
-		"sparc":       true,
-		"sparc64":     true,
-		"wasm":        true,
-	}
-
-	// unixGOOS is the set of GOOS values for which Go implies the "unix" build tag.
-	unixGOOS = map[string]bool{
-		"aix": true, "android": true, "darwin": true, "dragonfly": true,
-		"freebsd": true, "hurd": true, "illumos": true, "ios": true,
-		"linux": true, "netbsd": true, "openbsd": true, "solaris": true,
-	}
 )
+
+// orderedPackages is what compiling a program's packages in dependency order produced.
+type orderedPackages struct {
+	// mainFunctionTable is the main package's function table, nil without a main package.
+	mainFunctionTable map[string]uint16
+
+	// lastFunctionTable is the function table of the last package compiled.
+	lastFunctionTable map[string]uint16
+
+	// initFunctions lists every package's init functions in dependency order.
+	initFunctions []uint16
+
+	// bindings describe each package for the debugger.
+	bindings []debug.PackageBinding
+}
 
 // processEnvironment is the environment interpreted code sees: an overlay on the host
 // process environment, or a sealed environment of its own.
@@ -295,112 +245,175 @@ func (e *processEnvironment) clearenv() {
 // and collecting init functions and func tables.
 //
 // Takes order ([]string) which is the topologically sorted list of package import paths.
-// Takes parsed (map[string]*parsedPackage) which maps import paths to their parsed
-// package data.
+// Takes set (packageSet) which holds the parsed packages and the import paths of the
+// packages that already failed to parse.
 // Takes rootFunction (*CompiledFunction) which is the root compiled function for the
 // program.
 // Takes crossPackageMethods (map[string]uint16) which tracks method indices shared across
 // packages.
 //
 // Returns orderedPackages which is what the packages produced.
-// Returns error when any package fails to compile.
+// Returns error which joins the problems of every package that failed.
 func (s *Service) compileOrderedPackages(
 	ctx context.Context,
 	order []string,
-	parsed map[string]*parsedPackage,
+	set packageSet,
 	rootFunction *program.CompiledFunction,
 	crossPackageMethods map[string]uint16,
 ) (orderedPackages, error) {
-	interpretedPaths := make(map[string]bool, len(parsed))
-	for importPath := range parsed {
+	interpretedPaths := make(map[string]bool, len(set.parsed)+len(set.failed))
+	for importPath := range set.parsed {
+		interpretedPaths[importPath] = true
+	}
+	failed := maps.Clone(set.failed)
+	if failed == nil {
+		failed = make(map[string]struct{})
+	}
+	for importPath := range failed {
 		interpretedPaths[importPath] = true
 	}
 
 	var compiled orderedPackages
+	var problems []error
 	for _, importPath := range order {
-		pkg := parsed[importPath]
+		if err := cancellationError(ctx); err != nil {
+			problems = append(problems, err)
+			break
+		}
+		pkg := set.parsed[importPath]
+		if importsAnyOf(pkg, failed) {
+			failed[importPath] = struct{}{}
+			continue
+		}
 		result, compileErr := s.compileSinglePackage(ctx, pkg, rootFunction, crossPackageMethods, interpretedPaths)
 		if compileErr != nil {
-			return compiled, compileErr
+			problems = append(problems, compileErr)
+			failed[importPath] = struct{}{}
+			if stopsCompilation(ctx, compileErr) {
+				break
+			}
+			continue
 		}
-		compiled.bindings = append(compiled.bindings, debug.PackageBinding{
-			Package:         result.typesPackage,
-			FunctionTable:   result.functionTable,
-			GlobalVariables: result.globalVariables,
-			Path:            importPath,
-		})
-
-		compiled.initFunctions = append(compiled.initFunctions, result.initFunctionIndices...)
-		collectCrossPackageMethods(result.functionTable, crossPackageMethods)
-		compiled.lastFunctionTable = result.functionTable
-
-		if pkg.packageName != "main" {
-			s.bridgePackageExports(importPath, result)
-		} else {
-			publishExternalMethods(s.globals, result.rootFunction)
-		}
-
-		if pkg.packageName == "main" {
-			compiled.mainFunctionTable = make(map[string]uint16, len(result.functionTable))
-			maps.Copy(compiled.mainFunctionTable, result.functionTable)
-		}
+		s.recordCompiledPackage(pkg, result, &compiled, crossPackageMethods)
 	}
 
-	return compiled, nil
+	return compiled, fault.JoinProblems(problems)
 }
 
-// orderedPackages is what compiling a program's packages in dependency order produced.
-type orderedPackages struct {
-	// mainFunctionTable is the main package's function table, nil without a main package.
-	mainFunctionTable map[string]uint16
+// recordCompiledPackage adds what a package compiled to the program: its debugger
+// binding, init functions and methods, and its exports for the packages that import it,
+// or, for package main, its function table and external methods.
+//
+// Takes pkg (*parsedPackage) which is the package.
+// Takes result (*packageCompileResult) which is what it compiled to.
+// Takes compiled (*orderedPackages) which collects the program.
+// Takes crossPackageMethods (map[string]uint16) which collects the methods.
+func (s *Service) recordCompiledPackage(pkg *parsedPackage, result *packageCompileResult, compiled *orderedPackages, crossPackageMethods map[string]uint16) {
+	compiled.bindings = append(compiled.bindings, debug.PackageBinding{
+		Package:         result.typesPackage,
+		FunctionTable:   result.functionTable,
+		GlobalVariables: result.globalVariables,
+		Path:            pkg.importPath,
+	})
+	compiled.initFunctions = append(compiled.initFunctions, result.initFunctionIndices...)
+	collectCrossPackageMethods(result.functionTable, crossPackageMethods)
+	compiled.lastFunctionTable = result.functionTable
 
-	// lastFunctionTable is the function table of the last package compiled.
-	lastFunctionTable map[string]uint16
-
-	// initFunctions lists every package's init functions in dependency order.
-	initFunctions []uint16
-
-	// bindings describe each package for the debugger.
-	bindings []debug.PackageBinding
+	if pkg.packageName != mainPackageName {
+		s.bridgePackageExports(pkg.importPath, result)
+		return
+	}
+	publishExternalMethods(s.globals, result.rootFunction)
+	compiled.mainFunctionTable = make(map[string]uint16, len(result.functionTable))
+	maps.Copy(compiled.mainFunctionTable, result.functionTable)
 }
 
-// parseAndFilterFiles parses source files in deterministic order and filters them by
-// //go:build constraints.
+// parseAndFilterFiles parses the source files the interpreter compiles, in name order. A
+// //go:embed directive is rejected only in a file that survives the build filter, so a
+// file guarded by //go:build !interp may embed.
 //
 // Takes sources (map[string]string) which maps filenames to source code strings.
 //
 // Returns []*ast.File which are the parsed and filtered AST files.
-// Returns error when parsing fails or no files pass the filter.
-func (s *Service) parseAndFilterFiles(sources map[string]string) ([]*ast.File, error) {
-	names := make([]string, 0, len(sources))
-	for name := range sources {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-
-	allFiles := make([]*ast.File, 0, len(sources))
-	for _, name := range names {
-		file, err := parser.ParseFile(s.fileSet, name, sources[name], parser.ParseComments)
-		if err != nil {
-			return nil, fmt.Errorf(fault.ErrChainMessageFmt, fault.ErrParse, name, err)
-		}
-		allFiles = append(allFiles, file)
-	}
-	if err := rejectGoEmbed(s.fileSet, allFiles); err != nil {
+// Returns error when parsing fails, no files pass the filter, or ctx ends.
+func (s *Service) parseAndFilterFiles(ctx context.Context, sources map[string]string) ([]*ast.File, error) {
+	files, err := s.parseSelectedFiles(ctx, sources)
+	if errors.Is(err, fault.ErrExecutionCancelled) {
 		return nil, err
 	}
-
-	files := make([]*ast.File, 0, len(allFiles))
-	for _, file := range allFiles {
-		if s.shouldIncludeFile(file) {
-			files = append(files, file)
-		}
+	if err != nil {
+		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrParse, err)
 	}
-
 	if len(files) == 0 {
 		return nil, fmt.Errorf("%w: all files excluded by build constraints", fault.ErrParse)
 	}
+	if err := rejectGoEmbed(s.fileSet, "", files); err != nil {
+		return nil, err
+	}
 	return files, nil
+}
+
+// parseSelectedFiles parses matching files in name order, collecting failures up to
+// maxTypeErrorsPerPackage.
+//
+// Takes sources (map[string]string) which maps filenames to source code strings.
+//
+// Returns []*ast.File which are the included files that parsed.
+// Returns error which joins one error per file whose build constraints are malformed or
+// which does not parse, each naming its file, for the caller to wrap with
+// fault.ErrParse; or which wraps fault.ErrExecutionCancelled when ctx ends.
+func (s *Service) parseSelectedFiles(ctx context.Context, sources map[string]string) ([]*ast.File, error) {
+	matcher := s.fileMatcher()
+	files := make([]*ast.File, 0, len(sources))
+	problems := newCappedErrors(maxTypeErrorsPerPackage)
+	for _, name := range slices.Sorted(maps.Keys(sources)) {
+		if err := cancellationError(ctx); err != nil {
+			return nil, err
+		}
+		included, err := matcher.MatchString(name, sources[name])
+		if err != nil {
+			problems.add(err)
+			continue
+		}
+		if !included {
+			continue
+		}
+		file, err := parser.ParseFile(s.fileSet, name, sources[name], parser.ParseComments)
+		if err != nil {
+			problems.add(err)
+			continue
+		}
+		files = append(files, file)
+	}
+	return files, problems.join(errTooManyFileErrors)
+}
+
+// fileMatcher returns a matcher for the host platform with the interp tag and
+// configured build tags.
+//
+// Returns *buildfilter.Matcher which decides each file.
+func (s *Service) fileMatcher() *buildfilter.Matcher {
+	if s.config == nil || s.config.fileMatcher == nil {
+		return buildfilter.New(nil)
+	}
+	return s.config.fileMatcher
+}
+
+// MatchFile reports whether a file matches the host platform and configured build tags,
+// excluding package documentation and cgo files.
+//
+// Takes name (string) which is the file's name; only the base name counts.
+// Takes src ([]byte) which is the file's content.
+//
+// Returns bool which is true when the file is compiled.
+// Returns error which wraps fault.ErrParse when the build constraints are malformed,
+// the file's header cannot be read, or a test file uses cgo.
+func (s *Service) MatchFile(name string, src []byte) (bool, error) {
+	matched, err := s.fileMatcher().Match(name, src)
+	if err != nil {
+		return false, fmt.Errorf(fault.ErrChainFmt, fault.ErrParse, err)
+	}
+	return matched, nil
 }
 
 // newFileSetCompiler creates a Compiler for a file-set or eval compilation that needs
@@ -550,11 +563,8 @@ func (s *Service) evalExpr(ctx context.Context, code string) (any, error) {
 	}
 
 	info := frontend.NewTypesInfo()
-	conf := s.newTypesConfig()
-
-	_, err = conf.Check(mainPackageName, s.fileSet, []*ast.File{file}, info)
-	if err != nil {
-		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, s.enrichTypeCheckError(err, []*ast.File{file}, nil))
+	if _, err := s.checkPackageTypes(mainPackageName, []*ast.File{file}, info, typeCheckOptions{interpretedPaths: nil, allowUnusedImports: false}); err != nil {
+		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, err)
 	}
 
 	declaration, ok := file.Decls[0].(*ast.GenDecl)
@@ -589,10 +599,8 @@ func (s *Service) doEvalFile(ctx context.Context, file *ast.File) (any, error) {
 	lastExpr, hasResult := s.rewriteLastExprStmt(file)
 
 	info := frontend.NewTypesInfo()
-	conf := s.newTypesConfig()
-
-	if _, err := conf.Check(mainPackageName, s.fileSet, []*ast.File{file}, info); err != nil {
-		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, s.enrichTypeCheckError(err, []*ast.File{file}, nil))
+	if _, err := s.checkPackageTypes(mainPackageName, []*ast.File{file}, info, typeCheckOptions{interpretedPaths: nil, allowUnusedImports: false}); err != nil {
+		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, err)
 	}
 
 	if hasResult && !expressionYieldsValue(info, lastExpr) {
@@ -710,6 +718,9 @@ func (s *Service) parseMixedSource(code string) (*ast.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrParse, err)
 	}
+	if err := rejectGoEmbedSource(evalFileName, source); err != nil {
+		return nil, err
+	}
 	return file, nil
 }
 
@@ -759,11 +770,8 @@ func (s *Service) compileExpression(ctx context.Context, code string) (*program.
 	}
 
 	info := frontend.NewTypesInfo()
-	conf := s.newTypesConfig()
-
-	_, err = conf.Check(mainPackageName, s.fileSet, []*ast.File{file}, info)
-	if err != nil {
-		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, s.enrichTypeCheckError(err, []*ast.File{file}, nil))
+	if _, err := s.checkPackageTypes(mainPackageName, []*ast.File{file}, info, typeCheckOptions{interpretedPaths: nil, allowUnusedImports: false}); err != nil {
+		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, err)
 	}
 
 	declaration, ok := file.Decls[0].(*ast.GenDecl)
@@ -793,10 +801,8 @@ func (s *Service) compileFile(ctx context.Context, file *ast.File) (*program.Com
 	lastExpr, hasResult := s.rewriteLastExprStmt(file)
 
 	info := frontend.NewTypesInfo()
-	conf := s.newTypesConfig()
-
-	if _, err := conf.Check(mainPackageName, s.fileSet, []*ast.File{file}, info); err != nil {
-		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, s.enrichTypeCheckError(err, []*ast.File{file}, nil))
+	if _, err := s.checkPackageTypes(mainPackageName, []*ast.File{file}, info, typeCheckOptions{interpretedPaths: nil, allowUnusedImports: false}); err != nil {
+		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, err)
 	}
 
 	if hasResult && !expressionYieldsValue(info, lastExpr) {
@@ -846,61 +852,6 @@ func (s *Service) compileMixed(ctx context.Context, code string) (*program.Compi
 		return nil, fmt.Errorf("compiling mixed source: %w", compileErr)
 	}
 	return compiled, nil
-}
-
-// shouldIncludeFile reports whether a file participates in the current compilation by
-// evaluating //go:build directives, legacy +build comments, and the filename's
-// GOOS/GOARCH suffix convention.
-//
-// Takes file (*ast.File) which is the parsed Go source file.
-//
-// Returns bool which is true when every constraint matches the active tag set.
-func (s *Service) shouldIncludeFile(file *ast.File) bool {
-	matcher := s.buildTagMatcher()
-	if !buildConstraintCommentsAccept(file, matcher) {
-		return false
-	}
-	filename := s.fileSet.Position(file.Package).Filename
-	if filename == "" {
-		filename = file.Name.Name
-	}
-	return filenameMatchesBuildSuffix(filename, matcher)
-}
-
-// buildTagMatcher returns a predicate that reports whether a build tag is active. The
-// default set includes the current GOOS, GOARCH, the Go version, the synthetic `interp`
-// tag, and any user-provided tags from WithBuildTags.
-//
-// The `interp` tag lets module authors gate files that require features pipit does not
-// implement (unsafe.Pointer, cgo, inline assembly). A `!interp` constraint excludes the
-// file; the author can pair it with an `interp`-only pure-Go alternative.
-//
-// Returns func(string) bool which reports whether a given tag is active.
-func (s *Service) buildTagMatcher() func(string) bool {
-	tags := make(map[string]bool)
-	tags[runtime.GOOS] = true
-	tags[runtime.GOARCH] = true
-	tags["interp"] = true
-
-	tags["gc"] = true
-
-	for _, tag := range build.Default.ReleaseTags {
-		tags[tag] = true
-	}
-
-	if unixGOOS[runtime.GOOS] {
-		tags["unix"] = true
-	}
-
-	if s.config != nil {
-		for _, t := range s.config.buildTags {
-			tags[t] = true
-		}
-	}
-
-	return func(tag string) bool {
-		return tags[tag]
-	}
 }
 
 // applyEnvOverrides patches the symbol registry's "os" package (and "flag" when an
@@ -1080,70 +1031,36 @@ func expressionYieldsValue(info *types.Info, expression ast.Expr) bool {
 	return true
 }
 
-// buildConstraintCommentsAccept evaluates every //go:build (or +build) comment appearing
-// before the package clause against matcher. Returns false as soon as any constraint
-// rejects the configured build tag set.
+// stopsCompilation reports whether cancellation or a compiler panic prevents further
+// compilation.
 //
-// Takes file (*ast.File) which provides the comment groups to inspect.
-// Takes matcher (func(string) bool) which reports whether a tag is active.
+// Takes err (error) which is the package's failure.
 //
-// Returns bool which is true when every constraint accepts the tag set.
-func buildConstraintCommentsAccept(file *ast.File, matcher func(string) bool) bool {
-	for _, cg := range file.Comments {
-		if cg.Pos() >= file.Package {
-			break
-		}
-		for _, c := range cg.List {
-			if !constraint.IsGoBuild(c.Text) && !constraint.IsPlusBuild(c.Text) {
-				continue
-			}
-			expression, err := constraint.Parse(c.Text)
+// Returns bool which is true when no further package is compiled.
+func stopsCompilation(ctx context.Context, err error) bool {
+	return ctx.Err() != nil || errors.Is(err, fault.ErrCompilePanic)
+}
+
+// importsAnyOf reports whether any file of pkg imports one of the given paths.
+//
+// Takes pkg (*parsedPackage) which is the package to inspect.
+// Takes paths (map[string]struct{}) which are the import paths to look for.
+//
+// Returns bool which is true when the package imports at least one of them.
+func importsAnyOf(pkg *parsedPackage, paths map[string]struct{}) bool {
+	if len(paths) == 0 {
+		return false
+	}
+	for _, file := range pkg.files {
+		for _, spec := range file.Imports {
+			importPath, err := importPathOf(spec)
 			if err != nil {
 				continue
 			}
-			if !expression.Eval(matcher) {
-				return false
+			if _, found := paths[importPath]; found {
+				return true
 			}
 		}
 	}
-	return true
-}
-
-// filenameMatchesBuildSuffix evaluates the GOOS/GOARCH suffix on a filename.
-//
-// The function decodes the implicit build constraint encoded in a Go file's basename.
-// Names like foo.go always match; foo_linux.go matches linux only; foo_amd64.go matches
-// amd64 only; foo_linux_amd64.go requires both linux and amd64. The `_test` suffix is
-// stripped before constraint matching. A filename whose final underscore-separated token
-// is not a known GOOS or GOARCH name is treated as unconstrained.
-//
-// Takes filename (string) which is the file's basename or full path.
-// Takes matcher (func(string) bool) which reports whether a tag is active.
-//
-// Returns bool which is true when the encoded constraint accepts the active tag set.
-func filenameMatchesBuildSuffix(filename string, matcher func(string) bool) bool {
-	base := filename
-	if index := strings.LastIndexAny(base, "/\\"); index >= 0 {
-		base = base[index+1:]
-	}
-	base = strings.TrimSuffix(base, ".go")
-	base = strings.TrimSuffix(base, "_test")
-
-	parts := strings.Split(base, "_")
-	if len(parts) < 2 {
-		return true
-	}
-	last := parts[len(parts)-1]
-	var prev string
-	if len(parts) >= minBuildSuffixParts {
-		prev = parts[len(parts)-2]
-	}
-
-	if prev != "" && knownGOOSTags[prev] && knownGOARCHTags[last] {
-		return matcher(prev) && matcher(last)
-	}
-	if knownGOOSTags[last] || knownGOARCHTags[last] {
-		return matcher(last)
-	}
-	return true
+	return false
 }

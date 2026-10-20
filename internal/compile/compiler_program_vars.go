@@ -31,6 +31,9 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
+// maxReportedOverflows limits the register-overflow diagnostics per package.
+const maxReportedOverflows = 10
+
 // errInitOrderSpecMissing reports an initialiser in types.Info.InitOrder whose value spec
 // is not among the files being compiled, which happens in session mode when the type
 // checker carries entries from earlier submissions.
@@ -58,9 +61,9 @@ func (c *Compiler) RegisterPackageLevelVarsFromDecls(ctx context.Context, decls 
 	c.registerPackageLevelVarsFromDecls(ctx, decls)
 }
 
-// TwoPassCompileFuncs performs a two-pass compilation: first register all function
-// declarations across files so cross-file references resolve, then compile all function
-// bodies.
+// TwoPassCompileFuncs registers function declarations across files, then compiles their
+// bodies. Register overflows are collected so one function's overflow does not hide
+// others.
 //
 // Takes files ([]*ast.File) which are the parsed AST files to compile.
 // Takes packageLabel (string) which is included in error messages for multi-package
@@ -69,6 +72,24 @@ func (c *Compiler) RegisterPackageLevelVarsFromDecls(ctx context.Context, decls 
 // Returns error when registration or body compilation fails.
 func (c *Compiler) TwoPassCompileFuncs(ctx context.Context, files []*ast.File, packageLabel string) error {
 	c.runtimePackageName = runtimePackageName(files, packageLabel)
+	entries, err := c.registerFunctionDecls(ctx, files)
+	if err != nil {
+		return c.wrapCompileError(ctx, err, packageLabel)
+	}
+	if err := c.compileFunctionBodies(ctx, entries); err != nil {
+		return c.wrapCompileError(ctx, err, packageLabel)
+	}
+	return nil
+}
+
+// registerFunctionDecls registers every function declaration of files, so bodies can
+// refer to functions declared later or in another file.
+//
+// Takes files ([]*ast.File) which are the parsed AST files.
+//
+// Returns []functionDeclEntry which pairs each declaration with its compiled function.
+// Returns error when a declaration cannot be registered.
+func (c *Compiler) registerFunctionDecls(ctx context.Context, files []*ast.File) ([]functionDeclEntry, error) {
 	var entries []functionDeclEntry
 	for _, file := range files {
 		for _, declaration := range file.Decls {
@@ -78,22 +99,53 @@ func (c *Compiler) TwoPassCompileFuncs(ctx context.Context, files []*ast.File, p
 			}
 			compiledFunction, err := c.registerFunctionDecl(ctx, functionDeclaration)
 			if err != nil {
-				return c.wrapCompileError(ctx, err, packageLabel)
+				return nil, err
 			}
 			entries = append(entries, functionDeclEntry{declaration: functionDeclaration, compiledFunction: compiledFunction})
 		}
 	}
+	return entries, nil
+}
 
+// compileFunctionBodies compiles registered function bodies, reporting up to
+// maxReportedOverflows register failures by name and counting the rest.
+//
+// Takes entries ([]functionDeclEntry) which are the registered functions.
+//
+// Returns error which joins the overflows, preceded by any other failure that stopped
+// the compile.
+func (c *Compiler) compileFunctionBodies(ctx context.Context, entries []functionDeclEntry) error {
+	var overflows []error
+	omitted := 0
 	for _, entry := range entries {
-		if err := c.compileFunctionBody(ctx, entry.declaration, entry.compiledFunction); err != nil {
-			if isGenericTemplate(entry.declaration, entry.compiledFunction) {
-				stubUnspecialisedGeneric(entry.compiledFunction, err)
-				continue
-			}
-			return c.wrapCompileError(ctx, err, packageLabel)
+		err := c.compileFunctionBody(ctx, entry.declaration, entry.compiledFunction)
+		switch {
+		case err == nil:
+		case isGenericTemplate(entry.declaration, entry.compiledFunction):
+			stubUnspecialisedGeneric(entry.compiledFunction, err)
+		case !isRegisterPressureError(err):
+			return errors.Join(append(overflows, err)...)
+		case len(overflows) < maxReportedOverflows:
+			overflows = append(overflows, err)
+		default:
+			omitted++
 		}
 	}
-	return nil
+	if omitted > 0 {
+		overflows = append(overflows, fmt.Errorf("%w in %d more functions (not listed)", fault.ErrRegisterOverflow, omitted))
+	}
+	return errors.Join(overflows...)
+}
+
+// isRegisterPressureError reports whether err is a function running out of registers.
+// Such a function compiled to the end, so the others can still be compiled and every
+// overflowing function reported at once.
+//
+// Takes err (error) which is a function body's compile error.
+//
+// Returns bool which is true for a register overflow, an unspillable bank included.
+func isRegisterPressureError(err error) bool {
+	return errors.Is(err, fault.ErrRegisterOverflow)
 }
 
 // CompileVariableInitFunction compiles package-level variable initialisers from all files
@@ -103,8 +155,25 @@ func (c *Compiler) TwoPassCompileFuncs(ctx context.Context, files []*ast.File, p
 //
 // Returns *CompiledFunction which is the initialiser function, or nil when no global
 // variables exist.
-// Returns error when compilation of any initialiser fails.
+// Returns error which wraps fault.ErrCompilation when compilation of any initialiser
+// fails.
 func (c *Compiler) CompileVariableInitFunction(ctx context.Context, files []*ast.File) (*program.CompiledFunction, error) {
+	initFunction, err := c.compileVariableInit(ctx, files)
+	if err != nil {
+		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrCompilation, err)
+	}
+	return initFunction, nil
+}
+
+// compileVariableInit is CompileVariableInitFunction without the fault.ErrCompilation
+// wrapping, for a caller that labels the error itself.
+//
+// Takes files ([]*ast.File) which are the parsed AST files with variable declarations.
+//
+// Returns *CompiledFunction which is the initialiser function, or nil when no global
+// variables exist.
+// Returns error when compilation of any initialiser fails.
+func (c *Compiler) compileVariableInit(ctx context.Context, files []*ast.File) (*program.CompiledFunction, error) {
 	if len(c.globalVariables) == 0 {
 		return nil, nil
 	}
@@ -125,7 +194,7 @@ func (c *Compiler) CompileVariableInitFunction(ctx context.Context, files []*ast
 	c.Function = savedFunction
 
 	if err != nil {
-		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrCompilation, err)
+		return nil, err
 	}
 	return initFunction, nil
 }

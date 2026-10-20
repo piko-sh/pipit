@@ -114,37 +114,61 @@ func TestSnapshotRegisterToCellCopiesTheNamedBank(t *testing.T) {
 	}{
 		{
 			name: "the int bank", kind: isa.RegisterInt, load: func(r *Registers) { r.Ints[1] = 5 },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, int64(5), c.IntValue) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, int64(5), c.IntValue)
+			},
 		},
 		{
 			name: "the float bank", kind: isa.RegisterFloat, load: func(r *Registers) { r.Floats[1] = 1.5 },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.InDelta(t, 1.5, c.FloatValue, 0) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.InDelta(t, 1.5, c.FloatValue, 0)
+			},
 		},
 		{
 			name: "the string bank", kind: isa.RegisterString, load: func(r *Registers) { r.Strings[1] = "s" },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, "s", c.StringValue) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, "s", c.StringValue)
+			},
 		},
 		{
 			name: "the bool bank", kind: isa.RegisterBool, load: func(r *Registers) { r.Bools[1] = true },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.True(t, c.BoolValue) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.True(t, c.BoolValue)
+			},
 		},
 		{
 			name: "the uint bank", kind: isa.RegisterUint, load: func(r *Registers) { r.Uints[1] = 6 },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, uint64(6), c.UintValue) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, uint64(6), c.UintValue)
+			},
 		},
 		{
 			name: "the complex bank", kind: isa.RegisterComplex, load: func(r *Registers) { r.Complex[1] = 2i },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, 2i, c.ComplexValue) },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, 2i, c.ComplexValue)
+			},
 		},
 		{
 			name: "the general bank", kind: isa.RegisterGeneral,
-			load:    func(r *Registers) { r.General[1] = reflect.ValueOf("boxed") },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Equal(t, "boxed", c.GeneralValue.Interface()) },
+			load: func(r *Registers) { r.General[1] = reflect.ValueOf("boxed") },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Equal(t, "boxed", c.GeneralValue.Interface())
+			},
 		},
 		{
 			name: "a typed-slice bank is captured elsewhere", kind: isa.RegisterSliceInt,
-			load:    func(r *Registers) { r.SlicesInt[1] = []int64{1} },
-			inspect: func(t *testing.T, c *program.UpvalueCell) { require.Nil(t, c.SliceIntValue) },
+			load: func(r *Registers) { r.SlicesInt[1] = []int64{1} },
+			inspect: func(t *testing.T, c *program.UpvalueCell) {
+				t.Helper()
+				require.Nil(t, c.SliceIntValue)
+			},
 		},
 	}
 
@@ -467,80 +491,123 @@ func TestRunArgCopyProgramMovesEachBank(t *testing.T) {
 	}{
 		{
 			name: "the int bank", entry: program.CallArgCopy{Op: program.CopyIntToInt, SourceRegister: 1, DestinationRegister: 0},
-			load:    func(r *Registers) { r.Ints[1] = 4 },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(4), r.Ints[0]) },
+			load: func(r *Registers) { r.Ints[1] = 4 },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(4), r.Ints[0])
+			},
 		},
 		{
 			name: "the float bank", entry: program.CallArgCopy{Op: program.CopyFloatToFloat, SourceRegister: 1, DestinationRegister: 0},
-			load:    func(r *Registers) { r.Floats[1] = 1.5 },
-			inspect: func(t *testing.T, r *Registers) { require.InDelta(t, 1.5, r.Floats[0], 0) },
+			load: func(r *Registers) { r.Floats[1] = 1.5 },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.InDelta(t, 1.5, r.Floats[0], 0)
+			},
 		},
 		{
 			name: "the string bank", entry: program.CallArgCopy{Op: program.CopyStringToString, SourceRegister: 1, DestinationRegister: 0},
-			load:    func(r *Registers) { r.Strings[1] = "s" },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "s", r.Strings[0]) },
+			load: func(r *Registers) { r.Strings[1] = "s" },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "s", r.Strings[0])
+			},
 		},
 		{
 			name: "the general bank", entry: program.CallArgCopy{Op: program.CopyGeneralToGeneral, SourceRegister: 1, DestinationRegister: 0},
-			load:    func(r *Registers) { r.General[1] = reflect.ValueOf("boxed") },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "boxed", r.General[0].Interface()) },
+			load: func(r *Registers) { r.General[1] = reflect.ValueOf("boxed") },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "boxed", r.General[0].Interface())
+			},
 		},
 		{
 			name: "a struct in the general bank is copied at the boundary", entry: program.CallArgCopy{Op: program.CopyGeneralToGeneral, SourceRegister: 1, DestinationRegister: 0},
 			load: func(r *Registers) { r.General[1] = reflect.ValueOf(recordHolder{Count: 3}) },
 			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
 				require.Equal(t, int64(3), r.General[0].Interface().(recordHolder).Count)
 			},
 		},
 		{
 			name: "an array in the general bank is copied at the boundary", entry: program.CallArgCopy{Op: program.CopyGeneralToGeneral, SourceRegister: 1, DestinationRegister: 0},
-			load:    func(r *Registers) { r.General[1] = reflect.ValueOf([2]int{1, 2}) },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, [2]int{1, 2}, r.General[0].Interface()) },
+			load: func(r *Registers) { r.General[1] = reflect.ValueOf([2]int{1, 2}) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, [2]int{1, 2}, r.General[0].Interface())
+			},
 		},
 		{
 			name: "the bool bank", entry: program.CallArgCopy{Op: program.CopyBoolToBool, SourceRegister: 1, DestinationRegister: 0},
-			load:    func(r *Registers) { r.Bools[1] = true },
-			inspect: func(t *testing.T, r *Registers) { require.True(t, r.Bools[0]) },
+			load: func(r *Registers) { r.Bools[1] = true },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.True(t, r.Bools[0])
+			},
 		},
 		{
 			name: "the uint bank", entry: program.CallArgCopy{Op: program.CopyUintToUint, SourceRegister: 1, DestinationRegister: 0},
-			load:    func(r *Registers) { r.Uints[1] = 6 },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, uint64(6), r.Uints[0]) },
+			load: func(r *Registers) { r.Uints[1] = 6 },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(6), r.Uints[0])
+			},
 		},
 		{
 			name: "the complex bank", entry: program.CallArgCopy{Op: program.CopyComplexToComplex, SourceRegister: 1, DestinationRegister: 0},
-			load:    func(r *Registers) { r.Complex[1] = 2i },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, 2i, r.Complex[0]) },
+			load: func(r *Registers) { r.Complex[1] = 2i },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, 2i, r.Complex[0])
+			},
 		},
 		{
 			name: "the int-slice bank", entry: program.CallArgCopy{Op: program.CopySliceIntToSliceInt, SourceRegister: 1, DestinationRegister: 0},
-			load:    func(r *Registers) { r.SlicesInt[1] = []int64{1} },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []int64{1}, r.SlicesInt[0]) },
+			load: func(r *Registers) { r.SlicesInt[1] = []int64{1} },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []int64{1}, r.SlicesInt[0])
+			},
 		},
 		{
 			name: "the float-slice bank", entry: program.CallArgCopy{Op: program.CopySliceFloatToSliceFloat, SourceRegister: 1, DestinationRegister: 0},
-			load:    func(r *Registers) { r.slicesFloat[1] = []float64{1.5} },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []float64{1.5}, r.slicesFloat[0]) },
+			load: func(r *Registers) { r.slicesFloat[1] = []float64{1.5} },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []float64{1.5}, r.slicesFloat[0])
+			},
 		},
 		{
 			name: "the string-slice bank", entry: program.CallArgCopy{Op: program.CopySliceStringToSliceString, SourceRegister: 1, DestinationRegister: 0},
-			load:    func(r *Registers) { r.slicesString[1] = []string{"s"} },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []string{"s"}, r.slicesString[0]) },
+			load: func(r *Registers) { r.slicesString[1] = []string{"s"} },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []string{"s"}, r.slicesString[0])
+			},
 		},
 		{
 			name: "the bool-slice bank", entry: program.CallArgCopy{Op: program.CopySliceBoolToSliceBool, SourceRegister: 1, DestinationRegister: 0},
-			load:    func(r *Registers) { r.slicesBool[1] = []bool{true} },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []bool{true}, r.slicesBool[0]) },
+			load: func(r *Registers) { r.slicesBool[1] = []bool{true} },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []bool{true}, r.slicesBool[0])
+			},
 		},
 		{
 			name: "the uint-slice bank", entry: program.CallArgCopy{Op: program.CopySliceUintToSliceUint, SourceRegister: 1, DestinationRegister: 0},
-			load:    func(r *Registers) { r.slicesUint[1] = []uint64{2} },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []uint64{2}, r.slicesUint[0]) },
+			load: func(r *Registers) { r.slicesUint[1] = []uint64{2} },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []uint64{2}, r.slicesUint[0])
+			},
 		},
 		{
 			name: "the byte-slice bank", entry: program.CallArgCopy{Op: program.CopySliceByteToSliceByte, SourceRegister: 1, DestinationRegister: 0},
-			load:    func(r *Registers) { r.slicesByte[1] = []byte{3} },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []byte{3}, r.slicesByte[0]) },
+			load: func(r *Registers) { r.slicesByte[1] = []byte{3} },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []byte{3}, r.slicesByte[0])
+			},
 		},
 	}
 
@@ -587,33 +654,51 @@ func TestCopyOneCallArgumentBridgesTheRepresentations(t *testing.T) {
 	}{
 		{
 			name: "a matching bank is copied directly", sourceKind: isa.RegisterInt, destinationKind: isa.RegisterInt,
-			load:    func(r *Registers) { r.Ints[1] = 4 },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(4), r.Ints[0]) },
+			load: func(r *Registers) { r.Ints[1] = 4 },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(4), r.Ints[0])
+			},
 		},
 		{
 			name: "a scalar is boxed into the general bank", sourceKind: isa.RegisterString, destinationKind: isa.RegisterGeneral,
-			load:    func(r *Registers) { r.Strings[1] = "s" },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "s", r.General[0].Interface()) },
+			load: func(r *Registers) { r.Strings[1] = "s" },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "s", r.General[0].Interface())
+			},
 		},
 		{
 			name: "a general value is unboxed into its bank", sourceKind: isa.RegisterGeneral, destinationKind: isa.RegisterInt,
-			load:    func(r *Registers) { r.General[1] = reflect.ValueOf(int64(7)) },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(7), r.Ints[0]) },
+			load: func(r *Registers) { r.General[1] = reflect.ValueOf(int64(7)) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(7), r.Ints[0])
+			},
 		},
 		{
 			name: "a non-zero comparison result becomes true", sourceKind: isa.RegisterInt, destinationKind: isa.RegisterBool,
-			load:    func(r *Registers) { r.Ints[1] = 1 },
-			inspect: func(t *testing.T, r *Registers) { require.True(t, r.Bools[0]) },
+			load: func(r *Registers) { r.Ints[1] = 1 },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.True(t, r.Bools[0])
+			},
 		},
 		{
 			name: "a zero comparison result becomes false", sourceKind: isa.RegisterInt, destinationKind: isa.RegisterBool,
-			load:    func(r *Registers) { r.Ints[1] = 0 },
-			inspect: func(t *testing.T, r *Registers) { require.False(t, r.Bools[0]) },
+			load: func(r *Registers) { r.Ints[1] = 0 },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.False(t, r.Bools[0])
+			},
 		},
 		{
 			name: "a bool becomes the int bank's encoding", sourceKind: isa.RegisterBool, destinationKind: isa.RegisterInt,
-			load:    func(r *Registers) { r.Bools[1] = true },
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(1), r.Ints[0]) },
+			load: func(r *Registers) { r.Bools[1] = true },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(1), r.Ints[0])
+			},
 		},
 	}
 

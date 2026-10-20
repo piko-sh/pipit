@@ -5,16 +5,12 @@ import (
 	"strconv"
 )
 
-// node is a doubly linked list node: next and previous close a type cycle, so the
-// compiler stores them as any-typed leaves that always hold a *node.
 type node struct {
 	key      int
 	next     *node
 	previous *node
 }
 
-// list holds true pointer-typed fields: the layout rows for head and tail are plain
-// pointer fields, not cycle-broken ones.
 type list struct {
 	head *list2
 	tail *list2
@@ -26,8 +22,6 @@ type list2 struct {
 	link  *list2
 }
 
-// cache mirrors the LRU shape: the pointer-typed head and tail fields point at nodes
-// whose own links are cycle-broken.
 type cache struct {
 	head *node
 	tail *node
@@ -110,16 +104,12 @@ func sumList(l *list) int {
 	return total
 }
 
-// storeThroughInterface stores into a pointer field through an interface-typed receiver,
-// a shape the assembly declines and hands to the Go handler.
 func storeThroughInterface(target any, n *node) {
 	if c, ok := target.(*cache); ok {
 		c.head = n
 	}
 }
 
-// storeIntoEmbedded writes a pointer field of a struct held by value inside another
-// struct, exercising the addressable-struct receiver form.
 func storeIntoEmbedded(w *wrapper, n *node) {
 	w.inner.head = n
 	w.inner.tail = n
@@ -174,7 +164,6 @@ func run() string {
 	runtime.GC()
 	out += "|" + strconv.Itoa(h.fn()) + strconv.Itoa(<-h.ch) + strconv.Itoa(h.m["k"]) + strconv.FormatBool(h.any == any(h))
 
-	// A node's cycle-broken link set to a node that then dies must keep the pointee alive.
 	keeper := &node{key: 100}
 	{
 		temp := &node{key: 200}

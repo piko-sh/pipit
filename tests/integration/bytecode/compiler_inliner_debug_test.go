@@ -21,15 +21,14 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/compile/inline"
 	"pipit.sh/pipit/internal/compile/passes"
 	"pipit.sh/pipit/internal/engine/program"
-
-	"github.com/stretchr/testify/require"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -59,7 +58,7 @@ func run() int {
 func compileInlinerDebugFileSet(t *testing.T) *program.CompiledFileSet {
 	t.Helper()
 	service := app.NewService(app.WithDebugInfo())
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": inlinerDebugSource})
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": inlinerDebugSource})
 	require.NoError(t, err)
 	return cfs
 }
@@ -72,7 +71,7 @@ func findInlineAnnotation(t *testing.T, compiledFunction *program.CompiledFuncti
 			return pc, annotation
 		}
 	}
-	t.Fatalf("function %q was not inlined into under debug info", compiledFunction.Name)
+	require.Failf(t, "nothing inlined", "nothing was inlined into %q under debug info", compiledFunction.Name)
 	return 0, program.PeepholeAnnotation{}
 }
 

@@ -1,12 +1,5 @@
 package lib
 
-// Filters is a named slice type - the cross-package GET_METHOD
-// receiver case the compile-time getMethodReceiverTypeNames table
-// exists to support. The runtime reflect.Type for a slice has no
-// fields, so the `_pikoID_<Name>` sentinel can't carry the name;
-// the compiler-recorded "Filters" entry on the GET_METHOD's PC is
-// what handleGetMethod consults to look up "Filters.Match" in
-// globalStore.externalMethods.
 type Filters []func(int) bool
 
 func NewFilters() Filters {

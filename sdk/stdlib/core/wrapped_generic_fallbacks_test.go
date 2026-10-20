@@ -229,7 +229,7 @@ func TestReflectMapsClone(t *testing.T) {
 	cloned := requireType[map[customString]int32](t, reflectMapsClone(original))
 	require.Equal(t, original, cloned)
 	cloned["c"] = 3
-	require.Equal(t, 2, len(original))
+	require.Len(t, original, 2)
 }
 
 func TestReflectMapsCopy(t *testing.T) {
@@ -494,7 +494,7 @@ func TestReflectMapsInsert(t *testing.T) {
 		entries := []struct {
 			k customString
 			v int32
-		}{{"b", 2}, {"c", 3}}
+		}{{k: "b", v: 2}, {k: "c", v: 3}}
 		for _, e := range entries {
 			if !yield(e.k, e.v) {
 				return
@@ -528,7 +528,7 @@ func TestWrappedIterPull2(t *testing.T) {
 		entries := []struct {
 			k string
 			v int
-		}{{"a", 1}, {"b", 2}, {"c", 3}}
+		}{{k: "a", v: 1}, {k: "b", v: 2}, {k: "c", v: 3}}
 		for _, e := range entries {
 			if !yield(e.k, e.v) {
 				return

@@ -27,12 +27,14 @@ import (
 )
 
 func TestSummariseHandlesEmptyInput(t *testing.T) {
+	t.Parallel()
 	aggregate := Summarise("bench", RunnerPipit, ModeEndToEnd, nil, nil, nil, 0)
 	assert.Equal(t, 0, aggregate.Runs)
 	assert.Equal(t, int64(0), aggregate.MedianNanos)
 }
 
 func TestSummariseOddCountTakesMiddle(t *testing.T) {
+	t.Parallel()
 	aggregate := Summarise("bench", RunnerPipit, ModeEndToEnd, []int64{10, 20, 30}, nil, nil, 0)
 	assert.Equal(t, 3, aggregate.Runs)
 	assert.Equal(t, int64(20), aggregate.MedianNanos)
@@ -41,30 +43,47 @@ func TestSummariseOddCountTakesMiddle(t *testing.T) {
 }
 
 func TestSummariseEvenCountAveragesMiddleTwo(t *testing.T) {
+	t.Parallel()
 	aggregate := Summarise("bench", RunnerPipit, ModeEndToEnd, []int64{10, 20, 30, 40}, nil, nil, 0)
 	assert.Equal(t, int64(25), aggregate.MedianNanos)
 }
 
 func TestSummariseSinglePointStddevIsZero(t *testing.T) {
+	t.Parallel()
 	aggregate := Summarise("bench", RunnerPipit, ModeEndToEnd, []int64{42}, nil, nil, 0)
 	assert.Equal(t, int64(0), aggregate.StddevNanos)
 }
 
-func TestPercentileP95MatchesNearestRank(t *testing.T) {
+func TestPercentileMatchesNearestRank(t *testing.T) {
+	t.Parallel()
 	sorted := []int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-	assert.Equal(t, int64(10), percentileInt64(sorted, 0.95))
-	assert.Equal(t, int64(5), percentileInt64(sorted, 0.5))
-	assert.Equal(t, int64(1), percentileInt64(sorted, 0.0))
-	assert.Equal(t, int64(10), percentileInt64(sorted, 1.0))
+	tests := []struct {
+		name       string
+		percentile float64
+		want       int64
+	}{
+		{name: "p95", percentile: 0.95, want: 10},
+		{name: "median", percentile: 0.5, want: 5},
+		{name: "minimum", percentile: 0.0, want: 1},
+		{name: "maximum", percentile: 1.0, want: 10},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, percentileInt64(sorted, tt.percentile))
+		})
+	}
 }
 
 func TestSummariseSortsCopyDoesNotMutateInput(t *testing.T) {
+	t.Parallel()
 	samples := []int64{40, 10, 30, 20}
 	_ = Summarise("bench", RunnerPipit, ModeEndToEnd, samples, nil, nil, 0)
 	assert.Equal(t, []int64{40, 10, 30, 20}, samples)
 }
 
 func TestSummariseRSSUsesMedianAcrossSamples(t *testing.T) {
+	t.Parallel()
 	aggregate := Summarise("bench", RunnerPipit, ModeEndToEnd,
 		[]int64{100, 200, 300},
 		[]int64{1024, 2048, 4096},

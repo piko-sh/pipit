@@ -24,15 +24,16 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/sandboxhost"
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func testIsolatedRecoveryNative(t *testing.T, config sandboxhost.IsolatedConfig) {
@@ -44,57 +45,41 @@ func testIsolatedRecoveryNative(t *testing.T, config sandboxhost.IsolatedConfig)
 	defer cancel()
 	crashPublicWorkerHost(t, ctx, config)
 	records := launchRecords(t, config.StateDirectory)
-	if len(records) != 1 {
-		t.Fatal("dead host did not leave exactly one launch record:", records)
-	}
-	if entries, err := os.ReadDir(filepath.Join(records[0], "images")); err != nil || len(entries) == 0 {
-		t.Fatal("original host left no images to recover:", err)
-	}
-	if entries, err := os.ReadDir(filepath.Join(records[0], "checkpoint")); err != nil || len(entries) != 1 {
-		t.Fatal("original host left no checkpoint:", err)
-	}
-	if _, err := os.Stat(filepath.Join(records[0], "journal")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("worker record carries a journal:", err)
-	}
+	require.Len(t, records, 1, "a dead host leaves exactly one launch record")
+	entries, err := os.ReadDir(filepath.Join(records[0], "images"))
+	require.NoError(t, err, "original host left no images to recover")
+	require.NotEmpty(t, entries)
+	entries, err = os.ReadDir(filepath.Join(records[0], "checkpoint"))
+	require.NoError(t, err, "original host left no checkpoint")
+	require.Len(t, entries, 1)
+	_, err = os.Stat(filepath.Join(records[0], "journal"))
+	require.ErrorIs(t, err, os.ErrNotExist, "worker record carries a journal")
 	changed := config
 	changed.MemoryBytes = 256 << 20
 	rejected, err := sandboxhost.NewIsolatedRecovery(ctx, changed)
 	if rejected != nil {
 		_ = rejected.Close()
 	}
-	if err == nil || rejected != nil {
-		t.Fatal("changed worker policy accepted:", err)
-	}
+	require.Error(t, err, "changed worker policy accepted")
+	require.Nil(t, rejected)
 	recovery, err := sandboxhost.NewIsolatedRecovery(ctx, config)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer recovery.Close()
 	assertLeasedWorkerRecordUntouched(t, ctx, config, records[0])
-	if err := recovery.Recover(ctx); err != nil {
-		t.Fatal("public worker recovery failed:", err)
-	}
-	if err := recovery.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := recovery.Recover(ctx); err != nil {
-		t.Fatal("completed recovery was not idempotent:", err)
-	}
+	require.NoError(t, recovery.Recover(ctx), "public worker recovery succeeds")
+	require.NoError(t, recovery.Close())
+	require.NoError(t, recovery.Recover(ctx), "a completed recovery is idempotent")
 	assertFilesystemGroupsClean(t, config.LinuxCgroupParent, before)
 	assertLaunchRecordsClean(t, config.StateDirectory)
 	worker, err := sandboxhost.NewIsolatedWorker(ctx, config)
 	if worker != nil {
 		defer worker.Close()
 	}
-	if err != nil {
-		t.Fatal("relaunch after recovery failed:", err)
-	}
-	if result, err := worker.Eval("import \"math\"\nmath.Sqrt(49)"); err != nil || string(result.Value) != "7" {
-		t.Fatalf("relaunched worker: %+v: %v", result, err)
-	}
-	if err := worker.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "a relaunch after recovery succeeds")
+	result, err := worker.Eval("import \"math\"\nmath.Sqrt(49)")
+	require.NoError(t, err, "relaunched worker: %+v", result)
+	require.Equal(t, "7", string(result.Value))
+	require.NoError(t, worker.Close())
 	assertLaunchRecordsClean(t, config.StateDirectory)
 	assertFilesystemGroupsClean(t, config.LinuxCgroupParent, before)
 }
@@ -102,53 +87,30 @@ func testIsolatedRecoveryNative(t *testing.T, config sandboxhost.IsolatedConfig)
 func assertLeasedWorkerRecordUntouched(t *testing.T, ctx context.Context, config sandboxhost.IsolatedConfig, record string) {
 	t.Helper()
 	competing, err := sandboxhost.NewIsolatedRecovery(ctx, config)
-	if err != nil {
-		t.Fatal("recovery over a leased record failed instead of skipping it:", err)
-	}
-	if err := competing.Recover(ctx); err != nil {
-		t.Fatal("recovery over a leased record reported work:", err)
-	}
-	if err := competing.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(record, "images")); err != nil {
-		t.Fatal("recovery over a leased record removed it:", err)
-	}
+	require.NoError(t, err, "recovery skips a leased record")
+	require.NoError(t, competing.Recover(ctx), "recovery over a leased record reported work")
+	require.NoError(t, competing.Close())
+	_, err = os.Stat(filepath.Join(record, "images"))
+	require.NoError(t, err, "recovery over a leased record removed it")
 }
 
 func crashPublicWorkerHost(t *testing.T, ctx context.Context, config sandboxhost.IsolatedConfig) {
 	t.Helper()
 	encoded, err := json.Marshal(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestPublicWorkerRecoveryHostChild$")
-	command.Env = append(os.Environ(), "PIPIT_TEST_PUBLIC_WORKER_RECOVERY="+string(encoded))
+	require.NoError(t, err)
+	command := sandboxtest.Command(ctx, "TestPublicWorkerRecoveryHostChild", "PIPIT_TEST_PUBLIC_WORKER_RECOVERY="+string(encoded))
 	command.Stderr = os.Stderr
 	output, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer output.Close()
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, command.Start())
 	defer func() { _ = command.Process.Kill(); _ = command.Wait() }()
-	ready, err := bufio.NewReader(output).ReadString('\n')
-	if err != nil || ready != "ready\n" {
-		t.Fatal("original session host did not start:", ready, err)
-	}
+	sandboxtest.WaitForLine(t, bufio.NewReader(output), "ready", "the original session host starts")
 	live := launchRecords(t, config.StateDirectory)
-	if len(live) != 1 {
-		t.Fatal("live host has no launch record:", live)
-	}
+	require.Len(t, live, 1, "live host has no launch record")
 	assertLeasedWorkerRecordUntouched(t, ctx, config, live[0])
-	if err := command.Process.Kill(); err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Wait(); err == nil {
-		t.Fatal("original session host survived SIGKILL")
-	}
+	require.NoError(t, command.Process.Kill())
+	require.Error(t, command.Wait(), "original session host survived SIGKILL")
 }
 
 func TestPublicWorkerRecoveryHostChild(t *testing.T) {
@@ -157,21 +119,16 @@ func TestPublicWorkerRecoveryHostChild(t *testing.T) {
 		return
 	}
 	var config sandboxhost.IsolatedConfig
-	if err := json.Unmarshal([]byte(encoded), &config); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(encoded), &config))
 	session, err := sandboxhost.NewIsolatedSession(context.Background(), config)
-	if err != nil {
-		if session != nil {
-			_ = session.Close()
-		}
-		t.Fatal(err)
+	if err != nil && session != nil {
+		_ = session.Close()
 	}
+	require.NoError(t, err)
 	defer session.Close()
-	if _, err := session.Submit(context.Background(), "40 + 2"); err != nil {
-		t.Fatal(err)
-	}
+	_, err = session.Submit(context.Background(), "40 + 2")
+	require.NoError(t, err)
 	fmt.Println("ready")
 	_, err = session.Submit(context.Background(), "for {}")
-	t.Fatal("original session host returned before SIGKILL:", err)
+	require.FailNow(t, "the original session host is killed before it returns", "%v", err)
 }

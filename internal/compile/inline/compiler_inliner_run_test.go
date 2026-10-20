@@ -152,7 +152,7 @@ func TestInliningRefusesACalleeItCannotSpliceSafely(t *testing.T) {
 
 			require.Equal(t, 1, callsRemaining(caller),
 				"a callee the splice cannot reproduce keeps its real call")
-			require.Equal(t, before, len(caller.Body),
+			require.Len(t, caller.Body, before,
 				"a refused site must leave the caller's body exactly as it was")
 		})
 	}

@@ -21,7 +21,6 @@
 package sandboxbroker
 
 import (
-	"context"
 	"encoding/json"
 	"net"
 	"os"
@@ -30,57 +29,44 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 func TestJournalledBrokerWaitsForAcknowledgement(t *testing.T) {
+	t.Parallel()
 	for _, acknowledgement := range []string{"valid", "wrong-id", "wrong-kind", "extra-field", "null", "close", "disconnect"} {
 		t.Run(acknowledgement, func(t *testing.T) {
+			t.Parallel()
 			stream, authority, journal, root, result := journalledBrokerFixture(t)
 			codec, err := sandboxwire.New(stream, stream, sandboxwire.Limits{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := codec.Read(); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+			_, err = codec.Read()
+			require.NoError(t, err)
 			configuration, err := json.Marshal(FilesystemConfiguration{Profile: JournalledFilesystemProfile})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := codec.Write(sandboxwire.Message{Kind: sandboxwire.Configure, ID: 0, Payload: configuration}); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := codec.Read(); err != nil {
-				t.Fatal(err)
-			}
-			if err := codec.Write(sandboxwire.Message{Kind: sandboxwire.Run, ID: 1, Payload: []byte(recoveryWritePayload)}); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+			require.NoError(t, codec.Write(sandboxwire.Message{Kind: sandboxwire.Configure, ID: 0, Payload: configuration}))
+			_, err = codec.Read()
+			require.NoError(t, err)
+			require.NoError(t, codec.Write(sandboxwire.Message{Kind: sandboxwire.Run, ID: 1, Payload: []byte(recoveryWritePayload)}))
 			prepared, err := codec.Read()
-			if err != nil || prepared.Kind != sandboxwire.Call || prepared.ID != 1 {
-				t.Fatal("missing preparation:", prepared, err)
-			}
+			require.NoError(t, err, "missing preparation: %v", prepared)
+			require.Equal(t, sandboxwire.Call, prepared.Kind)
+			require.Equal(t, uint64(1), prepared.ID)
 			assertJournalledTarget(t, root, "original")
 			entries, err := os.ReadDir(root)
-			if err != nil || len(entries) != 1 {
-				t.Fatal("preparation published a staging name:", entries, err)
-			}
+			require.NoError(t, err, "preparation published a staging name")
+			require.Len(t, entries, 1)
 			ack := sandboxwire.Message{Kind: sandboxwire.Reply, ID: 1, Payload: []byte("{}")}
 			switch acknowledgement {
 			case "valid":
 				record, err := decodeRecoveryRecord(prepared.Payload)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				call, err := authority.admit(brokerMessage(1, recoveryWritePayload))
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				defer call.Finish(0)
-				if err := authority.record(journal, call, record); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, authority.record(journal, call, record))
 			case "wrong-id":
 				ack.ID = 2
 			case "wrong-kind":
@@ -95,112 +81,83 @@ func TestJournalledBrokerWaitsForAcknowledgement(t *testing.T) {
 				_ = stream.Conn.Close()
 			}
 			if acknowledgement != "disconnect" {
-				if err := codec.Write(ack); err != nil && acknowledgement == "valid" {
-					t.Fatal(err)
+				writeErr := codec.Write(ack)
+				if acknowledgement == "valid" {
+					require.NoError(t, writeErr)
 				}
 			}
 			if acknowledgement == "valid" {
 				reply, err := codec.Read()
-				if err != nil || reply.Kind != sandboxwire.Result {
-					t.Fatal("publication failed:", reply, err)
-				}
+				require.NoError(t, err, "publication failed: %v", reply)
+				require.Equal(t, sandboxwire.Result, reply.Kind)
 				assertJournalledTarget(t, root, "new")
-				if err := codec.Write(sandboxwire.Message{Kind: sandboxwire.Close, ID: 0, Payload: []byte("{}")}); err != nil {
-					t.Fatal(err)
-				}
-				if err := <-result; err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, codec.Write(sandboxwire.Message{Kind: sandboxwire.Close, ID: 0, Payload: []byte("{}")}))
+				require.NoError(t, <-result)
 			} else {
 				_, _ = codec.Read()
-				if err := <-result; err == nil {
-					t.Fatal("invalid acknowledgement accepted")
-				}
+				require.Error(t, <-result, "invalid acknowledgement accepted")
 				assertJournalledTarget(t, root, "original")
 			}
 			entries, err = os.ReadDir(root)
-			if err != nil || len(entries) != 1 || entries[0].Name() != "file" {
-				t.Fatal("protocol failure leaked a staging name:", entries, err)
-			}
+			require.NoError(t, err, "protocol failure leaked a staging name")
+			require.Len(t, entries, 1)
+			require.Equal(t, "file", entries[0].Name())
 		})
 	}
 }
 
 func TestJournalledClientPublishesOnlyAfterRecording(t *testing.T) {
+	t.Parallel()
 	for _, failure := range []bool{false, true} {
 		stream, authority, journal, root, result := journalledBrokerFixture(t)
-		client, err := OpenJournalledFilesystemClient(context.Background(), stream, authority, journal)
-		if err != nil {
-			t.Fatal(err)
-		}
+		client, err := OpenJournalledFilesystemClient(t.Context(), stream, authority, journal)
+		require.NoError(t, err)
 		t.Cleanup(func() { _ = client.Close() })
 		if failure {
-			if err := journal.Close(); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, journal.Close())
 		}
-		response, err := client.Execute(context.Background(), []byte(recoveryWritePayload))
+		response, err := client.Execute(t.Context(), []byte(recoveryWritePayload))
 		if failure {
-			if err == nil || response.Written != 0 {
-				t.Fatal("failed journal authorised publication:", response, err)
-			}
+			require.Error(t, err, "failed journal authorised publication: %v", response)
+			require.Equal(t, 0, response.Written)
 			assertJournalledTarget(t, root, "original")
-			if err := <-result; err == nil {
-				t.Fatal("broker ignored acknowledgement failure")
-			}
+			require.Error(t, <-result, "broker ignored acknowledgement failure")
 			continue
 		}
-		if err != nil || response.Written != 3 {
-			t.Fatal("journalled write failed:", response, err)
-		}
+		require.NoError(t, err, "journalled write failed: %v", response)
+		require.Equal(t, 3, response.Written)
 		records, err := journal.Records()
-		if err != nil || len(records) != 1 || records[0].Path != "file" || records[0].Size != 3 {
-			t.Fatal("successful write has no matching intent:", records, err)
-		}
+		require.NoError(t, err, "successful write has no matching intent")
+		require.Len(t, records, 1)
+		require.Equal(t, "file", records[0].Path)
+		require.Equal(t, int64(3), records[0].Size)
 		assertJournalledTarget(t, root, "new")
-		response, err = client.Execute(context.Background(), []byte(readPayload))
-		if err != nil || string(response.Data) != "new" {
-			t.Fatal("read after journalled write failed:", response, err)
-		}
-		if err := client.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if err := <-result; err != nil {
-			t.Fatal(err)
-		}
+		response, err = client.Execute(t.Context(), []byte(readPayload))
+		require.NoError(t, err, "read after journalled write failed: %v", response)
+		require.Equal(t, "new", string(response.Data))
+		require.NoError(t, client.Close())
+		require.NoError(t, <-result)
 	}
 }
 
 func journalledBrokerFixture(t *testing.T) (*clientTestTransport, *LinuxRecoveryAuthority, *LinuxRecoveryJournal, string, <-chan error) {
 	t.Helper()
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0600))
 	bootstrap, err := PrepareLinuxBootstrap([]LinuxRootGrant{{Name: "data", Path: root, Rights: Read | Write | List}}, FilesystemLimits{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer bootstrap.Close()
 	authority, err := bootstrap.RecoveryAuthority()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = authority.Close() })
 	journal := testRecoveryAuthorityJournal(t, authority)
 	files, err := bootstrap.Files()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	backend, err := adoptLinuxFilesystem(files, testBrokerProc(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	backend.sealed = true
 	host, peer := net.Pipe()
-	if err := host.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, host.SetDeadline(time.Now().Add(5*time.Second)))
 	done, result := make(chan struct{}), make(chan error, 1)
 	go func() {
 		defer close(done)
@@ -216,7 +173,6 @@ func journalledBrokerFixture(t *testing.T) (*clientTestTransport, *LinuxRecovery
 func assertJournalledTarget(t *testing.T, root, expected string) {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(root, "file"))
-	if err != nil || string(data) != expected {
-		t.Fatal("unexpected publication state:", string(data), err)
-	}
+	require.NoError(t, err, "unexpected publication state")
+	require.Equal(t, expected, string(data))
 }

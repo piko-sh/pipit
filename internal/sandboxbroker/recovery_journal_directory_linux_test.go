@@ -21,18 +21,18 @@
 package sandboxbroker
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 )
 
 func TestRecoveryJournalAncestorPolicy(t *testing.T) {
 	t.Parallel()
-	for _, test := range []struct {
+	tests := []struct {
 		name    string
 		uid     uint32
 		mode    uint32
@@ -52,39 +52,37 @@ func TestRecoveryJournalAncestorPolicy(t *testing.T) {
 		{name: "sticky-final", uid: 0, mode: unix.S_IFDIR | unix.S_ISVTX | 0777, final: true},
 		{name: "foreign-final", uid: 0, mode: unix.S_IFDIR | 0700, final: true},
 		{name: "regular-file", uid: 1000, mode: unix.S_IFREG | 0700},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			err := validateRecoveryJournalAncestor(unix.Stat_t{Uid: test.uid, Mode: test.mode}, test.final, 1000)
-			if test.allowed && err != nil || !test.allowed && !errors.Is(err, ErrDenied) {
-				t.Fatalf("ancestor policy: allowed=%v error=%v", test.allowed, err)
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateRecoveryJournalAncestor(unix.Stat_t{Uid: tt.uid, Mode: tt.mode}, tt.final, 1000)
+			if tt.allowed {
+				require.NoError(t, err, "the ancestor policy allows the directory")
+			} else {
+				require.ErrorIs(t, err, ErrDenied, "the ancestor policy denies the directory")
 			}
 		})
 	}
 }
 
 func TestRecoveryJournalRejectsUnsafeAncestors(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"group-writable", "world-writable", "symlink", "dotdot", "excessive-depth", "relative"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			parent := t.TempDir()
 			directory := filepath.Join(parent, "journal")
-			if err := os.Mkdir(directory, 0700); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.Mkdir(directory, 0700))
 			path := directory
 			switch mode {
 			case "group-writable":
-				if err := os.Chmod(parent, 0770); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Chmod(parent, 0770))
 			case "world-writable":
-				if err := os.Chmod(parent, 0777); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Chmod(parent, 0777))
 			case "symlink":
 				alias := filepath.Join(t.TempDir(), "alias")
-				if err := os.Symlink(parent, alias); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, os.Symlink(parent, alias))
 				path = filepath.Join(alias, "journal")
 			case "dotdot":
 				path = parent + "/journal/../journal"
@@ -97,13 +95,11 @@ func TestRecoveryJournalRejectsUnsafeAncestors(t *testing.T) {
 			if owner != nil {
 				_ = owner.Close()
 			}
-			if err == nil || owner != nil {
-				t.Fatal("unsafe recovery path accepted")
-			}
+			require.Error(t, err, "unsafe recovery path accepted")
+			require.Nil(t, owner)
 			entries, err := os.ReadDir(directory)
-			if err != nil || len(entries) != 0 {
-				t.Fatal("rejected path modified journal:", entries, err)
-			}
+			require.NoError(t, err, "rejected path modified journal")
+			require.Empty(t, entries)
 		})
 	}
 }

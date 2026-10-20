@@ -21,12 +21,12 @@
 package bytecode_test
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
@@ -66,9 +66,9 @@ func run() int {
 	})
 }
 `
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
-	result, err := service.ExecuteEntrypoint(context.Background(), compiled, "run")
+	result, err := service.ExecuteEntrypoint(t.Context(), compiled, "run")
 	require.NoError(t, err)
 	require.EqualValues(t, walkLength, result)
 
@@ -105,9 +105,9 @@ func init() {
 
 func run() int { return 1 }
 `
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
-	_, err = service.ExecuteEntrypoint(context.Background(), compiled, "run")
+	_, err = service.ExecuteEntrypoint(t.Context(), compiled, "run")
 	require.NoError(t, err)
 	require.NotNil(t, stored)
 
@@ -127,6 +127,6 @@ func run() int { return 1 }
 	waitGroup.Wait()
 	close(failures)
 	for failure := range failures {
-		t.Error(failure)
+		assert.Fail(t, failure)
 	}
 }

@@ -21,18 +21,16 @@
 package bytecode_test
 
 import (
-	"context"
 	"strings"
 	"testing"
 
-	"pipit.sh/pipit/internal/compile/escape"
-	"pipit.sh/pipit/internal/engine/program"
+	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/compile/escape"
 	"pipit.sh/pipit/internal/compile/inline"
 	"pipit.sh/pipit/internal/compile/passes"
-
 	"pipit.sh/pipit/internal/engine"
-
+	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -50,15 +48,13 @@ func buildOptimiseBenchFunction() *program.CompiledFunction {
 }
 
 func BenchmarkOptimisePipeline(b *testing.B) {
-	ctx := context.Background()
+	ctx := b.Context()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		b.StopTimer()
 		function := buildOptimiseBenchFunction()
 		b.StartTimer()
-		if err := passes.Optimise(ctx, passes.DefaultOptions(), function); err != nil {
-			b.Fatalf("optimise: %v", err)
-		}
+		require.NoError(b, passes.Optimise(ctx, passes.DefaultOptions(), function))
 	}
 }
 
@@ -90,28 +86,24 @@ func buildInlinerBenchFunction() *program.CompiledFunction {
 }
 
 func BenchmarkInliner(b *testing.B) {
-	ctx := context.Background()
+	ctx := b.Context()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		b.StopTimer()
 		function := buildInlinerBenchFunction()
 		b.StartTimer()
-		if err := inline.RunBytecodeInliner(ctx, function, passes.DefaultOptions()); err != nil {
-			b.Fatalf("inliner: %v", err)
-		}
+		require.NoError(b, inline.RunBytecodeInliner(ctx, function, passes.DefaultOptions()))
 	}
 }
 
 func BenchmarkEscapeAnalysis(b *testing.B) {
-	ctx := context.Background()
+	ctx := b.Context()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		b.StopTimer()
 		function := buildOptimiseBenchFunction()
 		b.StartTimer()
-		if err := escape.RunEscapeAnalysisPass(ctx, function); err != nil {
-			b.Fatalf("escape analysis: %v", err)
-		}
+		require.NoError(b, escape.RunEscapeAnalysisPass(ctx, function))
 	}
 }
 

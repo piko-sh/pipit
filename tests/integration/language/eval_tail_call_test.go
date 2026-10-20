@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,10 +32,10 @@ func TestEvalTailCall(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		code   string
-		expect any
-		skip   string
+		name string
+		code string
+		want any
+		skip string
 	}{
 		{
 			name: "self-recursive accumulator",
@@ -44,7 +44,7 @@ func TestEvalTailCall(t *testing.T) {
 	return sum(n-1, acc+n)
 }
 sum(100, 0)`,
-			expect: 5050,
+			want: 5050,
 		},
 		{
 			name: "countdown to zero",
@@ -53,7 +53,7 @@ sum(100, 0)`,
 	return countdown(n-1)
 }
 countdown(50)`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "factorial with accumulator",
@@ -62,7 +62,7 @@ countdown(50)`,
 	return fact(n-1, n*acc)
 }
 fact(10, 1)`,
-			expect: 3628800,
+			want: 3628800,
 		},
 		{
 			name: "deep recursion requiring tail call optimisation",
@@ -71,7 +71,7 @@ fact(10, 1)`,
 	return deep(n-1)
 }
 deep(10000)`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "tail call with string param",
@@ -80,7 +80,7 @@ deep(10000)`,
 	return repeat(s + "x", n-1)
 }
 repeat("", 5)`,
-			expect: "xxxxx",
+			want: "xxxxx",
 		},
 		{
 			name: "tail call with float accumulator",
@@ -89,7 +89,7 @@ repeat("", 5)`,
 	return addUp(n-1, acc + 1.5)
 }
 addUp(4, 0.0)`,
-			expect: 6.0,
+			want: 6.0,
 		},
 		{
 			name: "tail call with bool param",
@@ -98,7 +98,7 @@ addUp(4, 0.0)`,
 	return toggle(n-1, !b)
 }
 toggle(5, false)`,
-			expect: true,
+			want: true,
 		},
 	}
 
@@ -111,9 +111,9 @@ toggle(5, false)`,
 			}
 
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

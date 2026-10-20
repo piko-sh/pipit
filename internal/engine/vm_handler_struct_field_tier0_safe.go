@@ -153,7 +153,6 @@ func snapshotPointerLeaf(field reflect.Value) reflect.Value {
 		return field
 	}
 	if !field.CanAddr() {
-
 		pointer := field.UnsafePointer()
 		if pointer == nil {
 			return field

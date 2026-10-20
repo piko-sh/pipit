@@ -24,9 +24,12 @@ import (
 	"context"
 	"testing"
 
-	"pipit.sh/pipit/internal/debug"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
+	"pipit.sh/pipit/internal/debug"
+	"pipit.sh/pipit/internal/debug/debugtest"
 )
 
 func TestStepInThroughFunctionCall(t *testing.T) {
@@ -46,34 +49,25 @@ func run() int {
 	return x
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	dbg.SetBreakpoint("main.go", 8)
 
-	done := make(chan error, 1)
-	go func() {
-		_, execErr := svc.ExecuteEntrypoint(context.Background(), cfs, "run")
-		done <- execErr
-	}()
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+	})
 
-	snap := waitPause(t, dbg)
-	if snap.Location.Line != 8 {
-		t.Fatalf("expected breakpoint at line 8, got %d", snap.Location.Line)
-	}
+	snap := debugtest.WaitPause(t, dbg)
+	require.Equal(t, 8, snap.Location.Line, "the breakpoint stops at line 8")
 
 	dbg.StepIn(snap.ThreadID)
-	snap = waitPause(t, dbg)
-	if snap.Reason != debug.StopReasonStep {
-		t.Errorf("expected step event, got %d", snap.Reason)
-	}
+	snap = debugtest.WaitPause(t, dbg)
+	assert.Equal(t, debug.StopReasonStep, snap.Reason, "the step stops")
 
 	dbg.Continue()
-	if execErr := <-done; execErr != nil {
-		t.Fatalf("execute: %v", execErr)
-	}
+	_, execErr := execution.Wait(t)
+	require.NoError(t, execErr)
 }
 
 func TestStepOverFunctionCall(t *testing.T) {
@@ -94,38 +88,29 @@ func run() int {
 	return y
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	dbg.SetBreakpoint("main.go", 8)
 
-	done := make(chan error, 1)
-	go func() {
-		_, execErr := svc.ExecuteEntrypoint(context.Background(), cfs, "run")
-		done <- execErr
-	}()
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+	})
 
-	snap := waitPause(t, dbg)
-	if snap.Location.Line != 8 {
-		t.Fatalf("expected breakpoint at line 8, got %d", snap.Location.Line)
-	}
+	snap := debugtest.WaitPause(t, dbg)
+	require.Equal(t, 8, snap.Location.Line, "the breakpoint stops at line 8")
 
 	dbg.StepOver(snap.ThreadID)
-	snap = waitPause(t, dbg)
-	if snap.Reason != debug.StopReasonStep {
-		t.Errorf("expected step event, got %d", snap.Reason)
-	}
+	snap = debugtest.WaitPause(t, dbg)
+	assert.Equal(t, debug.StopReasonStep, snap.Reason, "the step stops")
 
 	if snap.Location.Function != "" && snap.Location.Function != "run" && snap.Location.Function != "main.run" {
 		t.Logf("step-over landed in function %q at line %d", snap.Location.Function, snap.Location.Line)
 	}
 
 	dbg.Continue()
-	if execErr := <-done; execErr != nil {
-		t.Fatalf("execute: %v", execErr)
-	}
+	_, execErr := execution.Wait(t)
+	require.NoError(t, execErr)
 }
 
 func TestStepInThenContinue(t *testing.T) {
@@ -142,32 +127,23 @@ func run() int {
 	return x + y
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	dbg.SetBreakpoint("main.go", 4)
 
-	done := make(chan error, 1)
-	go func() {
-		_, execErr := svc.ExecuteEntrypoint(context.Background(), cfs, "run")
-		done <- execErr
-	}()
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+	})
 
-	snap := waitPause(t, dbg)
-	if snap.Location.Line != 4 {
-		t.Fatalf("expected breakpoint at line 4, got %d", snap.Location.Line)
-	}
+	snap := debugtest.WaitPause(t, dbg)
+	require.Equal(t, 4, snap.Location.Line, "the breakpoint stops at line 4")
 
 	dbg.StepIn(snap.ThreadID)
-	snap = waitPause(t, dbg)
-	if snap.Location.Line != 5 {
-		t.Fatalf("expected StepIn to land on line 5, got %d", snap.Location.Line)
-	}
+	snap = debugtest.WaitPause(t, dbg)
+	require.Equal(t, 5, snap.Location.Line, "StepIn lands on line 5")
 
 	dbg.Continue()
-	if execErr := <-done; execErr != nil {
-		t.Fatalf("execute: %v", execErr)
-	}
+	_, execErr := execution.Wait(t)
+	require.NoError(t, execErr)
 }

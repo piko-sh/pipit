@@ -24,9 +24,12 @@ import (
 	"context"
 	"testing"
 
-	"pipit.sh/pipit/internal/debug"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
+	"pipit.sh/pipit/internal/debug"
+	"pipit.sh/pipit/internal/debug/debugtest"
 )
 
 func TestBreakpointHitsCorrectLine(t *testing.T) {
@@ -43,31 +46,22 @@ func run() int {
 	return x + y
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	dbg.SetBreakpoint("main.go", 5)
 
-	done := make(chan error, 1)
-	go func() {
-		_, execErr := svc.ExecuteEntrypoint(context.Background(), cfs, "run")
-		done <- execErr
-	}()
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+	})
 
-	snap := waitPause(t, dbg)
-	if snap.Location.Line != 5 {
-		t.Errorf("expected breakpoint at line 5, got line %d", snap.Location.Line)
-	}
-	if snap.Reason != debug.StopReasonBreakpoint {
-		t.Errorf("expected DebugEventBreakpoint, got %d", snap.Reason)
-	}
+	snap := debugtest.WaitPause(t, dbg)
+	assert.Equal(t, 5, snap.Location.Line, "the breakpoint stops at line 5")
+	assert.Equal(t, debug.StopReasonBreakpoint, snap.Reason)
 
 	dbg.Continue()
-	if execErr := <-done; execErr != nil {
-		t.Fatalf("execute: %v", execErr)
-	}
+	_, execErr := execution.Wait(t)
+	require.NoError(t, execErr)
 }
 
 func TestBreakpointInLoop(t *testing.T) {
@@ -86,36 +80,27 @@ func run() int {
 	return sum
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	dbg.SetBreakpoint("main.go", 6)
 
-	done := make(chan error, 1)
-	go func() {
-		_, execErr := svc.ExecuteEntrypoint(context.Background(), cfs, "run")
-		done <- execErr
-	}()
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+	})
 
 	hitCount := 0
 	for range 3 {
-		snap := waitPause(t, dbg)
-		if snap.Location.Line != 6 {
-			t.Errorf("iteration %d: expected line 6, got %d", hitCount, snap.Location.Line)
-		}
+		snap := debugtest.WaitPause(t, dbg)
+		assert.Equal(t, 6, snap.Location.Line, "iteration %d stops at line 6", hitCount)
 		hitCount++
 		dbg.Continue()
 	}
 
-	if hitCount != 3 {
-		t.Errorf("expected 3 breakpoint hits, got %d", hitCount)
-	}
+	assert.Equal(t, 3, hitCount)
 
-	if execErr := <-done; execErr != nil {
-		t.Fatalf("execute: %v", execErr)
-	}
+	_, execErr := execution.Wait(t)
+	require.NoError(t, execErr)
 }
 
 func TestMultipleBreakpoints(t *testing.T) {
@@ -133,35 +118,26 @@ func run() int {
 	return a + b + c
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	dbg.SetBreakpoint("main.go", 4)
 	dbg.SetBreakpoint("main.go", 6)
 
-	done := make(chan error, 1)
-	go func() {
-		_, execErr := svc.ExecuteEntrypoint(context.Background(), cfs, "run")
-		done <- execErr
-	}()
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+	})
 
-	snap1 := waitPause(t, dbg)
-	if snap1.Location.Line != 4 {
-		t.Errorf("first breakpoint: expected line 4, got %d", snap1.Location.Line)
-	}
+	snap1 := debugtest.WaitPause(t, dbg)
+	assert.Equal(t, 4, snap1.Location.Line, "the first breakpoint stops at line 4")
 	dbg.Continue()
 
-	snap2 := waitPause(t, dbg)
-	if snap2.Location.Line != 6 {
-		t.Errorf("second breakpoint: expected line 6, got %d", snap2.Location.Line)
-	}
+	snap2 := debugtest.WaitPause(t, dbg)
+	assert.Equal(t, 6, snap2.Location.Line, "the second breakpoint stops at line 6")
 	dbg.Continue()
 
-	if execErr := <-done; execErr != nil {
-		t.Fatalf("execute: %v", execErr)
-	}
+	_, execErr := execution.Wait(t)
+	require.NoError(t, execErr)
 }
 
 func TestClearAndResetBreakpoint(t *testing.T) {
@@ -178,28 +154,21 @@ func run() int {
 	return a + b
 }
 `
-	cfs, err := svc.CompileFileSet(context.Background(), map[string]string{"main.go": code})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	cfs, err := svc.CompileFileSet(t.Context(), map[string]string{"main.go": code})
+	require.NoError(t, err)
 
 	dbg.SetBreakpoint("main.go", 4)
 	dbg.ClearBreakpoint("main.go", 4)
 	dbg.SetBreakpoint("main.go", 5)
 
-	done := make(chan error, 1)
-	go func() {
-		_, execErr := svc.ExecuteEntrypoint(context.Background(), cfs, "run")
-		done <- execErr
-	}()
+	execution := debugtest.Run(t, dbg, func() (any, error) {
+		return svc.ExecuteEntrypoint(context.Background(), cfs, "run")
+	})
 
-	snap := waitPause(t, dbg)
-	if snap.Location.Line != 5 {
-		t.Errorf("expected breakpoint at line 5 (not 4), got line %d", snap.Location.Line)
-	}
+	snap := debugtest.WaitPause(t, dbg)
+	assert.Equal(t, 5, snap.Location.Line, "the breakpoint stops at line 5, not 4")
 	dbg.Continue()
 
-	if execErr := <-done; execErr != nil {
-		t.Fatalf("execute: %v", execErr)
-	}
+	_, execErr := execution.Wait(t)
+	require.NoError(t, execErr)
 }

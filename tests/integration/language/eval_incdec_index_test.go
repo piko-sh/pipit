@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,7 +32,7 @@ func TestIncDecOnIndexExpression(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -52,7 +52,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     3,
+			want:       3,
 		},
 		{
 			name: "map_value_dec",
@@ -68,7 +68,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     3,
+			want:       3,
 		},
 		{
 			name: "slice_element_inc",
@@ -85,7 +85,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     63,
+			want:       63,
 		},
 		{
 			name: "map_missing_key_inc_creates_entry",
@@ -102,7 +102,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     3,
+			want:       3,
 		},
 		{
 			name: "array_through_pointer_inc_and_dec",
@@ -119,7 +119,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     302,
+			want:       302,
 		},
 		{
 			name: "array_through_pointer_parameter_inc",
@@ -139,7 +139,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     1131,
+			want:       1131,
 		},
 	}
 
@@ -147,9 +147,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err, "source:\n%s", tt.source)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

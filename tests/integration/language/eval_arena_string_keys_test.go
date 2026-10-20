@@ -21,11 +21,11 @@
 package language_test
 
 import (
-	"context"
 	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -88,7 +88,7 @@ run()`
 
 	for iteration := range 8 {
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), code)
+		result, err := service.Eval(t.Context(), code)
 		require.NoErrorf(t, err, "iteration %d", iteration)
 		require.Equalf(t, expected, result, "iteration %d", iteration)
 	}

@@ -21,25 +21,23 @@
 package schema_test
 
 import (
-	"context"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/adapters"
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/schema"
 )
 
 func FuzzConvertBytecode(f *testing.F) {
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": "package main\n\nfunc helper(n int) int {\n\treturn n + 1\n}\n\nfunc main() {\n\tx := helper(1)\n\t_ = x\n}\n"})
-	if err != nil {
-		f.Fatalf("compiling seed program: %v", err)
-	}
-	seed, err := schema.Unpack(adapters.PackCompiledFileSetToBytes(compiled))
-	if err != nil {
-		f.Fatalf("unpacking seed payload: %v", err)
-	}
+	compiled, err := service.CompileFileSet(f.Context(), map[string]string{"main.go": "package main\n\nfunc helper(n int) int {\n\treturn n + 1\n}\n\nfunc main() {\n\tx := helper(1)\n\t_ = x\n}\n"})
+	require.NoError(f, err, "the seed program compiles")
+	packed, err := adapters.PackCompiledFileSetToBytes(compiled)
+	require.NoError(f, err, "the seed program packs")
+	seed, err := schema.Unpack(packed)
+	require.NoError(f, err, "the seed payload unpacks")
 	f.Add(seed)
 	f.Add([]byte{0xff, 0xff, 0xff, 0xff})
 	for cut := 1; cut < len(seed); cut += 64 {
@@ -52,11 +50,6 @@ func FuzzConvertBytecode(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, payload []byte) {
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				t.Fatalf("ConvertBytecode panicked: %v", recovered)
-			}
-		}()
-		_, _ = schema.ConvertBytecode(payload)
+		require.NotPanics(t, func() { _, _ = schema.ConvertBytecode(payload) })
 	})
 }

@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -43,10 +43,10 @@ func slotDispatchModes() []slotDispatchMode {
 func TestEvalDispatchSaveSlotForGoPushedFrames(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	tests := []struct {
 		name   string
 		source string
-		expect any
+		want   any
 	}{
 		{
 			name: "read-only int capture from a non-root frame",
@@ -56,7 +56,7 @@ func TestEvalDispatchSaveSlotForGoPushedFrames(t *testing.T) {
 	return y
 }
 f()`,
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "string capture takes the Go upvalue path",
@@ -66,7 +66,7 @@ f()`,
 	return y
 }
 f()`,
-			expect: "abc!",
+			want: "abc!",
 		},
 		{
 			name: "two-value IIFE result in a non-root frame",
@@ -76,7 +76,7 @@ f()`,
 	return a*10 + b
 }
 f()`,
-			expect: 23,
+			want: 23,
 		},
 		{
 			name: "continuation after the IIFE keeps running",
@@ -87,7 +87,7 @@ f()`,
 	return y*1000 + z
 }
 f()`,
-			expect: 2101,
+			want: 2101,
 		},
 		{
 			name: "IIFE two inline calls deep",
@@ -98,7 +98,7 @@ f()`,
 }
 func f() int { return g() + 100 }
 f()`,
-			expect: 111,
+			want: 111,
 		},
 		{
 			name: "frame that made an inline call before the IIFE",
@@ -109,7 +109,7 @@ func f() int {
 	return y
 }
 f()`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "frame holding a general register",
@@ -120,7 +120,7 @@ f()`,
 	return y + s[0]
 }
 f()`,
-			expect: 5,
+			want: 5,
 		},
 		{
 			name: "deferred named function in a typed-only frame",
@@ -133,7 +133,7 @@ func f() int {
 }
 r := f()
 r*100 + trace`,
-			expect: 207,
+			want: 207,
 		},
 		{
 			name: "method call on a named scalar from a typed-only frame",
@@ -144,7 +144,7 @@ func f() int {
 	return v.double() + 1
 }
 f()`,
-			expect: 43,
+			want: 43,
 		},
 		{
 			name: "IIFE inside a method body",
@@ -156,17 +156,17 @@ func (a acc) calc() int {
 }
 func f() int { return acc{base: 41}.calc() }
 f()`,
-			expect: 42,
+			want: 42,
 		},
 	}
 
 	for _, mode := range slotDispatchModes() {
-		for _, testCase := range cases {
-			t.Run(mode.name+"/"+testCase.name, func(t *testing.T) {
+		for _, tt := range tests {
+			t.Run(mode.name+"/"+tt.name, func(t *testing.T) {
 				t.Parallel()
-				result, err := app.NewService(mode.options...).Eval(context.Background(), testCase.source)
+				result, err := app.NewService(mode.options...).Eval(t.Context(), tt.source)
 				require.NoError(t, err)
-				require.Equal(t, testCase.expect, result)
+				require.Equal(t, tt.want, result)
 			})
 		}
 	}

@@ -25,26 +25,25 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func testBrokerProc(t *testing.T) *os.File {
 	t.Helper()
 	directory, err := openLinuxDirectory("/proc/" + strconv.Itoa(os.Getpid()) + "/fd")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		if err := directory.Close(); err != nil {
-			t.Error(err)
-		}
+		assert.NoError(t, directory.Close())
 	})
 	return directory
 }
@@ -52,13 +51,9 @@ func testBrokerProc(t *testing.T) *os.File {
 func testLinuxBootstrap(t *testing.T, root string) *LinuxBootstrap {
 	t.Helper()
 	bootstrap, err := PrepareLinuxBootstrap([]LinuxRootGrant{{Name: "data", Path: root, Rights: Read}}, FilesystemLimits{ReadBytes: 4})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		if err := bootstrap.Close(); err != nil {
-			t.Error(err)
-		}
+		assert.NoError(t, bootstrap.Close())
 	})
 	return bootstrap
 }
@@ -67,88 +62,58 @@ func TestLinuxBootstrapSeals(t *testing.T) {
 	root := t.TempDir()
 	bootstrap := testLinuxBootstrap(t, root)
 	files, err := bootstrap.Files()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	configuration := files[0]
 	encoded := make([]byte, maximumBootstrapBytes)
 	count, _ := configuration.ReadAt(encoded, 0)
-	if bytes.Contains(encoded[:count], []byte(root)) {
-		t.Fatal("host pathname leaked into policy")
-	}
-	if _, err := configuration.WriteAt([]byte("x"), 0); !errors.Is(err, unix.EPERM) {
-		t.Fatal("policy remained writable:", err)
-	}
+	require.False(t, bytes.Contains(encoded[:count], []byte(root)), "host pathname leaked into policy")
+	_, err = configuration.WriteAt([]byte("x"), 0)
+	require.ErrorIs(t, err, unix.EPERM, "policy remained writable")
 	for _, size := range []int64{0, maximumBootstrapBytes} {
-		if err := configuration.Truncate(size); !errors.Is(err, unix.EPERM) {
-			t.Fatal("policy remained resizable:", err)
-		}
+		require.ErrorIs(t, configuration.Truncate(size), unix.EPERM, "policy remained resizable")
 	}
-	if err := configuration.Chmod(0700); !errors.Is(err, unix.EPERM) {
-		t.Fatal("policy became executable:", err)
-	}
-	if _, err := unix.FcntlInt(configuration.Fd(), unix.F_ADD_SEALS, unix.F_SEAL_FUTURE_WRITE); !errors.Is(err, unix.EPERM) {
-		t.Fatal("seals remained mutable:", err)
-	}
+	require.ErrorIs(t, configuration.Chmod(0700), unix.EPERM, "policy became executable")
+	_, err = unix.FcntlInt(configuration.Fd(), unix.F_ADD_SEALS, unix.F_SEAL_FUTURE_WRITE)
+	require.ErrorIs(t, err, unix.EPERM, "seals remained mutable")
 	mapping, err := unix.Mmap(int(configuration.Fd()), 0, count, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
 	if err == nil {
 		_ = unix.Munmap(mapping)
-		t.Fatal("writable mapping permitted")
 	}
-	if !errors.Is(err, unix.EPERM) {
-		t.Fatal(err)
-	}
+	require.ErrorIs(t, err, unix.EPERM, "a writable mapping is refused")
 	files[0] = nil
 	independent, err := bootstrap.Files()
-	if err != nil || independent[0] != configuration {
-		t.Fatal("caller mutated descriptor order:", err)
-	}
+	require.NoError(t, err, "caller mutated descriptor order")
+	require.Same(t, configuration, independent[0])
 	for _, file := range independent {
 		flags, err := unix.FcntlInt(file.Fd(), unix.F_GETFD, 0)
-		if err != nil || flags&unix.FD_CLOEXEC == 0 {
-			t.Fatal("descriptor would leak across unintended exec:", err)
-		}
+		require.NoError(t, err, "descriptor would leak across unintended exec")
+		require.NotEqual(t, 0, flags&unix.FD_CLOEXEC)
 	}
 }
 
 func TestLinuxBootstrapAdoption(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "file"), []byte("data"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), []byte("data"), 0600))
 	bootstrap := testLinuxBootstrap(t, root)
 	files, err := bootstrap.Files()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	backend, err := adoptLinuxFilesystem(files, testBrokerProc(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer backend.Close()
-	if !validStagingNamespace(bootstrap.StagingNamespace()) || backend.namespace != bootstrap.StagingNamespace() {
-		t.Fatal("staging namespace changed during sealed adoption")
-	}
-	if err := bootstrap.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := bootstrap.Files(); !errors.Is(err, ErrClosed) {
-		t.Fatal(err)
-	}
+	require.True(t, validStagingNamespace(bootstrap.StagingNamespace()), "staging namespace changed during sealed adoption")
+	require.Equal(t, bootstrap.StagingNamespace(), backend.namespace)
+	require.NoError(t, bootstrap.Close())
+	_, err = bootstrap.Files()
+	require.ErrorIs(t, err, ErrClosed)
 	result, err := backend.Execute(brokerMessage(1, readPayload))
-	if err != nil || string(result.Data) != "data" {
-		t.Fatalf("independent handle ownership: %+v: %v", result, err)
-	}
-	if _, err := backend.Execute(brokerMessage(2, readPayload)); !errors.Is(err, errLimit) {
-		t.Fatal("quota changed during handoff:", err)
-	}
+	require.NoError(t, err, "independent handle ownership: %+v", result)
+	require.Equal(t, "data", string(result.Data))
+	_, err = backend.Execute(brokerMessage(2, readPayload))
+	require.ErrorIs(t, err, errLimit, "quota changed during handoff")
 	var absent *LinuxBootstrap
-	if err := absent.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := absent.Files(); !errors.Is(err, ErrClosed) {
-		t.Fatal(err)
-	}
+	require.NoError(t, absent.Close())
+	_, err = absent.Files()
+	require.ErrorIs(t, err, ErrClosed)
 }
 
 func TestLinuxBootstrapRejectsMalformedPolicy(t *testing.T) {
@@ -166,81 +131,57 @@ func TestLinuxBootstrapRejectsMalformedPolicy(t *testing.T) {
 		`{"namespace":"../file","profile":"filesystem-bootstrap-v2","roots":[],"limits":{}}`,
 	} {
 		configuration, err := sealLinuxBootstrap([]byte(body))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		_, err = readLinuxBootstrap(configuration)
 		closeErr := configuration.Close()
-		if err == nil {
-			t.Errorf("accepted malformed policy: %s", body)
-		}
-		if closeErr != nil {
-			t.Fatal(closeErr)
-		}
+		require.Error(t, err, "a malformed policy is refused: %s", body)
+		require.NoError(t, closeErr)
 	}
-	if _, err := readLinuxBootstrap(nil); !errors.Is(err, ErrInvalidPolicy) {
-		t.Fatal(err)
-	}
+	_, err := readLinuxBootstrap(nil)
+	require.ErrorIs(t, err, ErrInvalidPolicy)
 	descriptor, err := unix.MemfdCreate("unsealed-test", unix.MFD_CLOEXEC|unix.MFD_NOEXEC_SEAL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	configuration := os.NewFile(uintptr(descriptor), "unsealed")
 	defer configuration.Close()
-	if _, err := configuration.WriteString("{}"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := readLinuxBootstrap(configuration); !errors.Is(err, ErrInvalidPolicy) {
-		t.Fatal("unsealed policy accepted:", err)
-	}
-	if err := configuration.Truncate(maximumBootstrapBytes + 1); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := unix.FcntlInt(configuration.Fd(), unix.F_ADD_SEALS, requiredBootstrapSeals); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := readLinuxBootstrap(configuration); !errors.Is(err, ErrInvalidPolicy) {
-		t.Fatal("oversized policy accepted:", err)
-	}
+	_, err = configuration.WriteString("{}")
+	require.NoError(t, err)
+	_, err = readLinuxBootstrap(configuration)
+	require.ErrorIs(t, err, ErrInvalidPolicy, "unsealed policy accepted")
+	require.NoError(t, configuration.Truncate(maximumBootstrapBytes+1))
+	_, err = unix.FcntlInt(configuration.Fd(), unix.F_ADD_SEALS, requiredBootstrapSeals)
+	require.NoError(t, err)
+	_, err = readLinuxBootstrap(configuration)
+	require.ErrorIs(t, err, ErrInvalidPolicy, "oversized policy accepted")
 }
 
 func TestLinuxBootstrapRejectsDescriptorSubstitution(t *testing.T) {
 	root := t.TempDir()
 	bootstrap := testLinuxBootstrap(t, root)
 	files, err := bootstrap.Files()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	proc := testBrokerProc(t)
 	ordinary, err := os.Open(root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer ordinary.Close()
 	replacement, err := openLinuxDirectory(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer replacement.Close()
 	for _, offered := range [][]*os.File{nil, {files[0]}, {files[0], nil}, {files[0], ordinary}, {files[0], files[0]}, {files[0], replacement}} {
-		if backend, err := adoptLinuxFilesystem(offered, proc); err == nil || backend != nil {
-			t.Fatal("invalid roots adopted:", err)
-		}
+		backend, err := adoptLinuxFilesystem(offered, proc)
+		require.Error(t, err, "invalid roots adopted")
+		require.Nil(t, backend)
 	}
 	for _, offered := range []*os.File{nil, files[0], ordinary} {
-		if backend, err := adoptLinuxFilesystem(files, offered); err == nil || backend != nil {
-			t.Fatal("invalid proc adopted:", err)
-		}
+		backend, err := adoptLinuxFilesystem(files, offered)
+		require.Error(t, err, "invalid proc adopted")
+		require.Nil(t, backend)
 	}
-	if _, err := ordinary.Stat(); err != nil {
-		t.Fatal("borrowed directory closed:", err)
-	}
-	if _, err := files[1].Stat(); err != nil {
-		t.Fatal("borrowed root closed:", err)
-	}
-	if _, err := proc.Stat(); err != nil {
-		t.Fatal("borrowed proc closed:", err)
-	}
+	_, err = ordinary.Stat()
+	require.NoError(t, err, "borrowed directory closed")
+	_, err = files[1].Stat()
+	require.NoError(t, err, "borrowed root closed")
+	_, err = proc.Stat()
+	require.NoError(t, err, "borrowed proc closed")
 }
 
 func TestLinuxBootstrapExecHandoff(t *testing.T) {
@@ -248,20 +189,13 @@ func TestLinuxBootstrapExecHandoff(t *testing.T) {
 		configuration := os.NewFile(3, "policy")
 		root := os.NewFile(4, "root")
 		backend, err := adoptLinuxFilesystem([]*os.File{configuration, root}, testBrokerProc(t))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		defer backend.Close()
-		if err := configuration.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if err := root.Close(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, configuration.Close())
+		require.NoError(t, root.Close())
 		result, err := backend.Execute(brokerMessage(1, readPayload))
-		if err != nil || string(result.Data) != "data" {
-			t.Fatalf("exec handoff: %+v: %v", result, err)
-		}
+		require.NoError(t, err, "exec handoff: %+v", result)
+		require.Equal(t, "data", string(result.Data))
 		return
 	}
 	t.Run("ordinary", func(t *testing.T) { testLinuxBootstrapExec(t, false) })
@@ -271,18 +205,13 @@ func TestLinuxBootstrapExecHandoff(t *testing.T) {
 func testLinuxBootstrapExec(t *testing.T, namespaced bool) {
 	t.Helper()
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "file"), []byte("data"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), []byte("data"), 0600))
 	bootstrap := testLinuxBootstrap(t, root)
 	files, err := bootstrap.Files()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestLinuxBootstrapExecHandoff$")
-	command.Env = append(os.Environ(), "PIPIT_TEST_BOOTSTRAP=child")
+	command := sandboxtest.Command(ctx, "TestLinuxBootstrapExecHandoff", "PIPIT_TEST_BOOTSTRAP=child")
 	command.ExtraFiles = files
 	if namespaced {
 		command.SysProcAttr = &syscall.SysProcAttr{
@@ -298,9 +227,7 @@ func testLinuxBootstrapExec(t *testing.T, namespaced bool) {
 		(errors.Is(err, unix.EPERM) || errors.Is(err, unix.ENOSYS)) {
 		t.Skipf("native namespaces unavailable: %v", err)
 	}
-	if err != nil {
-		t.Fatalf("bootstrap subprocess: %v\n%s", err, output)
-	}
+	require.NoError(t, err, "the bootstrap subprocess succeeds\n%s", output)
 }
 
 func TestLinuxBootstrapRejectsInvalidGrants(t *testing.T) {
@@ -312,8 +239,7 @@ func TestLinuxBootstrapRejectsInvalidGrants(t *testing.T) {
 		{{Name: "data", Path: root, Rights: Read}, {Name: "missing", Path: filepath.Join(root, "missing"), Rights: Read}},
 	} {
 		bootstrap, err := PrepareLinuxBootstrap(grants, FilesystemLimits{})
-		if err == nil || bootstrap != nil {
-			t.Fatal("invalid bootstrap grants accepted:", err)
-		}
+		require.Error(t, err, "invalid bootstrap grants accepted")
+		require.Nil(t, bootstrap)
 	}
 }

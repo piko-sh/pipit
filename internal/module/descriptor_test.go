@@ -19,9 +19,11 @@
 package module
 
 import (
-	"errors"
 	"maps"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDescriptorValidate(t *testing.T) {
@@ -33,48 +35,38 @@ func TestDescriptorValidate(t *testing.T) {
 		Capabilities:  CapabilitySet{{Axis: "network"}},
 		Entrypoints:   map[string]string{"init": "PkgInit"},
 	}
-	if err := good.Validate(); err != nil {
-		t.Fatalf("well-formed descriptor failed validation: %v", err)
-	}
+	require.NoError(t, good.Validate(), "a well-formed descriptor validates")
+	var nilDescriptor *Descriptor
+	require.Error(t, nilDescriptor.Validate(), "a nil descriptor is invalid")
 
 	tests := []struct {
 		name    string
 		mutate  func(*Descriptor)
 		wantMsg string
 	}{
-		{"missing schema version", func(d *Descriptor) { d.SchemaVersion = 0 }, "schema_version"},
-		{"future schema version", func(d *Descriptor) { d.SchemaVersion = DescriptorVersion + 1 }, "newer than supported"},
-		{"missing path", func(d *Descriptor) { d.Ref.Path = "" }, "reference.path"},
-		{"empty capability axis", func(d *Descriptor) {
+		{name: "missing schema version", mutate: func(d *Descriptor) { d.SchemaVersion = 0 }, wantMsg: "schema_version"},
+		{name: "future schema version", mutate: func(d *Descriptor) { d.SchemaVersion = DescriptorVersion + 1 }, wantMsg: "newer than supported"},
+		{name: "missing path", mutate: func(d *Descriptor) { d.Ref.Path = "" }, wantMsg: "reference.path"},
+		{name: "empty capability axis", mutate: func(d *Descriptor) {
 			d.Capabilities = CapabilitySet{{Axis: ""}}
-		}, "empty axis"},
-		{"empty entrypoint key", func(d *Descriptor) {
+		}, wantMsg: "empty axis"},
+		{name: "empty entrypoint key", mutate: func(d *Descriptor) {
 			d.Entrypoints = map[string]string{"": "x"}
-		}, "empty key"},
-		{"empty entrypoint value", func(d *Descriptor) {
+		}, wantMsg: "empty key"},
+		{name: "empty entrypoint value", mutate: func(d *Descriptor) {
 			d.Entrypoints = map[string]string{"k": ""}
-		}, "empty function name"},
+		}, wantMsg: "empty function name"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			d := *good
 			d.Capabilities = append(CapabilitySet(nil), good.Capabilities...)
-			d.Entrypoints = mapCopy(good.Entrypoints)
+			d.Entrypoints = maps.Clone(good.Entrypoints)
 			tt.mutate(&d)
 			err := d.Validate()
-			if err == nil {
-				t.Fatalf("%s: Validate() returned nil, want error containing %q", tt.name, tt.wantMsg)
-			}
-			if !errorContains(err, tt.wantMsg) {
-				t.Fatalf("%s: error %q does not contain %q", tt.name, err.Error(), tt.wantMsg)
-			}
+			require.ErrorContains(t, err, tt.wantMsg)
 		})
-	}
-
-	var nilDescriptor *Descriptor
-	if err := nilDescriptor.Validate(); err == nil {
-		t.Fatalf("nil descriptor should fail Validate")
 	}
 }
 
@@ -99,16 +91,10 @@ func TestDescriptorContentDigestIsStable(t *testing.T) {
 		SymbolAllowlist: []string{"Alpha", "Zeta"},
 	}
 	hashA, err := a.ContentDigest()
-	if err != nil {
-		t.Fatalf("ContentDigest(a) error: %v", err)
-	}
+	require.NoError(t, err)
 	hashB, err := b.ContentDigest()
-	if err != nil {
-		t.Fatalf("ContentDigest(b) error: %v", err)
-	}
-	if hashA != hashB {
-		t.Fatalf("hashes differ for equivalent descriptors:\n a=%s\n b=%s", hashA, hashB)
-	}
+	require.NoError(t, err)
+	require.Equal(t, hashB, hashA, "equivalent descriptors share a digest")
 }
 
 func TestUnmarshalDescriptorRoundTrip(t *testing.T) {
@@ -121,54 +107,21 @@ func TestUnmarshalDescriptorRoundTrip(t *testing.T) {
 		Entrypoints:   map[string]string{"init": "PkgInit"},
 	}
 	data, err := original.MarshalCanonicalJSON()
-	if err != nil {
-		t.Fatalf("MarshalCanonicalJSON error: %v", err)
-	}
+	require.NoError(t, err)
 	decoded, err := UnmarshalDescriptor(data)
-	if err != nil {
-		t.Fatalf("UnmarshalDescriptor error: %v", err)
-	}
-	if decoded.Ref != original.Ref {
-		t.Errorf("Ref mismatch: got %+v, want %+v", decoded.Ref, original.Ref)
-	}
-	if decoded.StdlibVersion != original.StdlibVersion {
-		t.Errorf("StdlibVersion mismatch")
-	}
-	if len(decoded.Capabilities) != 1 || decoded.Capabilities[0].Axis != "network" {
-		t.Errorf("Capabilities mismatch: %+v", decoded.Capabilities)
+	require.NoError(t, err)
+	assert.Equal(t, original.Ref, decoded.Ref)
+	assert.Equal(t, original.StdlibVersion, decoded.StdlibVersion)
+	if assert.Len(t, decoded.Capabilities, 1) {
+		assert.Equal(t, "network", decoded.Capabilities[0].Axis)
 	}
 }
 
 func TestUnmarshalDescriptorRejectsBadSchema(t *testing.T) {
 	t.Parallel()
 	bad := `{"schema_version": 0, "reference": {"path": "x"}}`
-	if _, err := UnmarshalDescriptor([]byte(bad)); err == nil {
-		t.Fatalf("expected error for malformed descriptor")
-	}
-	if _, err := UnmarshalDescriptor([]byte("not json")); err == nil {
-		t.Fatalf("expected error for non-JSON input")
-	}
+	_, err := UnmarshalDescriptor([]byte(bad))
+	require.Error(t, err, "a malformed descriptor is rejected")
+	_, err = UnmarshalDescriptor([]byte("not json"))
+	require.Error(t, err, "input that is not JSON is rejected")
 }
-
-func errorContains(err error, substring string) bool {
-	if err == nil {
-		return false
-	}
-	message := err.Error()
-	for i := 0; i+len(substring) <= len(message); i++ {
-		if message[i:i+len(substring)] == substring {
-			return true
-		}
-	}
-	return false
-}
-
-func mapCopy(m map[string]string) map[string]string {
-	out := make(map[string]string, len(m))
-	maps.Copy(out, m)
-	return out
-}
-
-var (
-	_ = errors.Is
-)

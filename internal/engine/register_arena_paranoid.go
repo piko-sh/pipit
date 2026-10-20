@@ -51,6 +51,17 @@ func (a *RegisterArena) poisonReleasedGenericBytes() {
 	}
 }
 
+// poisonReleasedStringBytes fills current and retired string slabs with canary bytes to
+// expose escaped references. It must run before Reset zeroes byteIndex.
+func (a *RegisterArena) poisonReleasedStringBytes() {
+	if a.byteIndex > 0 {
+		poisonBytes(a.byteSlab[:a.byteIndex])
+	}
+	for _, old := range a.oldByteSlabs {
+		poisonBytes(old)
+	}
+}
+
 // poisonReleasedPrimitives overwrites released primitive-slab ranges with canary values.
 //
 // Must run before the allocation indices roll back, while both the save point and the

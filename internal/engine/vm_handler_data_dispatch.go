@@ -19,7 +19,6 @@
 package engine
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 	"sync"
@@ -116,11 +115,27 @@ type methodCacheKey struct {
 	Name string
 }
 
-// boundMethodVM holds the captured state for invoking a bound method or method expression
-// in a fresh child VM.
+// boundMethodVM captures state for running a bound method in a child VM. Capture
+// happens on the owning goroutine because native callers may invoke the method
+// concurrently.
 type boundMethodVM struct {
-	// vm is the parent VM providing shared context and function table.
+	// vm is the VM the method was bound on; a failed call records its error there.
 	vm *VM
+
+	// link is the execution the method was bound in.
+	link *executionLink
+
+	// globals is the bound VM's shared global store.
+	globals *GlobalStore
+
+	// symbols is the bound VM's symbol registry.
+	symbols *symtab.SymbolRegistry
+
+	// functions is the function table the child VM dispatches against.
+	functions []*program.CompiledFunction
+
+	// rootFunction is the root the child VM executes under.
+	rootFunction *program.CompiledFunction
 
 	// callee is the compiled function to invoke as the method body.
 	callee *program.CompiledFunction
@@ -131,11 +146,43 @@ type boundMethodVM struct {
 
 	// limits carries the resource limits inherited from the parent VM.
 	limits VMLimits
+
+	// goroutineID is the bound VM's goroutine identity, inherited by each child VM.
+	goroutineID uint64
 }
 
-// invoke sets up a child VM, copies the receiver and arguments into registers, runs the
-// callee, and returns the reflect results. The child runs under context.WithoutCancel
-// because a bound value can outlive the execution that created it.
+// newBoundMethodVM captures what invoking callee as a method of a value bound on vm
+// needs. It must run on the goroutine that owns vm.
+//
+// Takes vm (*VM) which is the VM the method is bound on.
+// Takes callee (*program.CompiledFunction) which is the method body.
+// Takes rootFunctionOverride (*program.CompiledFunction) which pins the child VM's root
+// for a method compiled in another package; nil for vm's own root.
+//
+// Returns the bound method.
+func newBoundMethodVM(vm *VM, callee *program.CompiledFunction, rootFunctionOverride *program.CompiledFunction) *boundMethodVM {
+	bound := &boundMethodVM{
+		vm:                   vm,
+		link:                 vm.currentLink(),
+		globals:              vm.Globals,
+		symbols:              vm.symbols,
+		functions:            vm.functions,
+		rootFunction:         vm.rootFunction,
+		callee:               callee,
+		rootFunctionOverride: rootFunctionOverride,
+		limits:               vm.Limits,
+		goroutineID:          vm.goroutineID,
+	}
+	if rootFunctionOverride != nil {
+		bound.functions = rootFunctionOverride.Functions
+		bound.rootFunction = rootFunctionOverride
+	}
+	return bound
+}
+
+// invoke runs a bound method in a child VM using bindCallbackRun's cancellation rules.
+// Cancellation or timeout fails the live execution, while other failures are recorded
+// on the bound VM.
 //
 // Takes receiver (reflect.Value) which is the method receiver value.
 // Takes arguments ([]reflect.Value) which holds the method arguments.
@@ -148,7 +195,7 @@ func (b *boundMethodVM) invoke(receiver reflect.Value, arguments []reflect.Value
 	if err == nil {
 		return results
 	}
-	if b.vm.evalError == nil {
+	if !failOnStop(b.link, err) && b.vm.evalError == nil {
 		b.vm.evalError = fmt.Errorf("bound method invocation failed: %w", err)
 	}
 	return reflectResults(nil, b.callee.ResultKinds)
@@ -167,31 +214,29 @@ func (b *boundMethodVM) invoke(receiver reflect.Value, arguments []reflect.Value
 // Panics when the child VM raises an interpreted panic and an upstream native dispatch
 // frame is still active, so the panic reaches an interpreted defer/recover.
 func (b *boundMethodVM) invokeResult(receiver reflect.Value, arguments []reflect.Value, extract func(reflect.Value) reflect.Value) ([]reflect.Value, error) {
-	childVM := NewVM(context.WithoutCancel(b.vm.ctx), b.vm.Globals, b.vm.symbols)
-	childVM.goroutineID = b.vm.goroutineID
+	childVM := NewVM(b.link.detached, b.globals, b.symbols)
+	childVM.bindCallbackRun(b.link, b.limits.CallbackTimeout)
+	childVM.goroutineID = b.goroutineID
 	childVM.reentrantInterpreterVM = true
 	childVM.debugKind = DebugThreadBoundMethod
-	childVM.debugParkDone = b.vm.ctx.Done()
+	childVM.debugParkDone = b.link.ctx.Done()
 
 	childVM.hasGoroutines = true
 	childVM.Limits = b.limits
-	if b.rootFunctionOverride != nil {
-		childVM.functions = b.rootFunctionOverride.Functions
-		childVM.rootFunction = b.rootFunctionOverride
-	} else {
-		childVM.functions = b.vm.functions
-		childVM.rootFunction = b.vm.rootFunction
-	}
+	childVM.functions = b.functions
+	childVM.rootFunction = b.rootFunction
 	arena := GetRegisterArena()
 
 	arena.MaxArenaBytes = b.limits.MaxArenaBytes
 	arena.MaxAllocSize = b.limits.MaxAllocSize
 	arena.disableMinorGC = b.limits.DisableMinorGC
+	arena.cloneUnownedStrings = true
 	arena.AttachBudgetTracker(b.limits.Tracker)
 	childVM.Arena = arena
 	childVM.CallStack = arena.frameStack()
 	defer childVM.FinishWatcher()
 	defer childVM.ReturnUnspentCostChunk()
+	defer childVM.finishRun()
 	defer func() {
 		childVM.CallStack = nil
 		putRegisterArenaAbandoningEscapes(arena)
@@ -204,7 +249,7 @@ func (b *boundMethodVM) invokeResult(receiver reflect.Value, arguments []reflect
 	allResults := childVM.EvalAllResults
 	childVM.EvalAllResults = nil
 	if err != nil {
-		if childVM.panicValue != nil && b.vm.Globals != nil && b.vm.Globals.dispatchDepth.Load() > 0 {
+		if childVM.panicValue != nil && b.globals != nil && b.globals.dispatchDepth.Load() > 0 {
 			panic(wrapCallbackPanic(childVM))
 		}
 		return nil, err

@@ -85,6 +85,25 @@ func ZeroValueForType(t reflect.Type) reflect.Value {
 	return zero
 }
 
+// ZeroConstant returns a zero constant with fresh addressable storage for structs and
+// arrays and a cached, non-addressable value for other types.
+//
+// Takes t (reflect.Type) which is the constant's type. May be nil; nil returns the
+// invalid reflect.Value, as ZeroValueForType does.
+//
+// Returns the zero constant for t.
+func ZeroConstant(t reflect.Type) reflect.Value {
+	if t == nil {
+		return reflect.Value{}
+	}
+	switch t.Kind() {
+	case reflect.Struct, reflect.Array:
+		return reflect.New(t).Elem()
+	default:
+		return ZeroValueForType(t)
+	}
+}
+
 func init() {
 	kindZeroValueCache[isa.RegisterInt] = reflect.Zero(reflect.TypeFor[int64]())
 	kindZeroValueCache[isa.RegisterFloat] = reflect.Zero(reflect.TypeFor[float64]())

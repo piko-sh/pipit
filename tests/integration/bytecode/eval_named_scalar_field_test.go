@@ -21,21 +21,20 @@
 package bytecode_test
 
 import (
-	"context"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/debug"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestF1NamedScalarStructFieldFastPath(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect           any
+		want             any
 		name             string
 		source           string
 		entrypoint       string
@@ -63,7 +62,7 @@ func run() int64 {
 func main() {}
 `,
 			entrypoint:       "run",
-			expect:           int64(42),
+			want:             int64(42),
 			fastPathOpName:   "GET_STRUCT_FIELD_INT_T0",
 			shouldHaveFastOp: true,
 		},
@@ -85,7 +84,7 @@ func run() bool {
 func main() {}
 `,
 			entrypoint:       "run",
-			expect:           true,
+			want:             true,
 			fastPathOpName:   "GET_STRUCT_FIELD_BOOL_T0",
 			shouldHaveFastOp: true,
 		},
@@ -107,7 +106,7 @@ func run() uint64 {
 func main() {}
 `,
 			entrypoint:       "run",
-			expect:           uint64(99),
+			want:             uint64(99),
 			fastPathOpName:   "GET_STRUCT_FIELD_UINT_T0",
 			shouldHaveFastOp: true,
 		},
@@ -131,7 +130,7 @@ func run() int64 {
 func main() {}
 `,
 			entrypoint:     "run",
-			expect:         int64(16),
+			want:           int64(16),
 			fastPathOpName: "GET_STRUCT_FIELD_INT_T0",
 		},
 		{
@@ -154,7 +153,7 @@ func run() int64 {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     int64(5),
+			want:       int64(5),
 
 			slowPathOpName: "PACK_TYPED",
 		},
@@ -164,27 +163,23 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			compiled, err := service.CompileFileSet(context.Background(), map[string]string{
+			compiled, err := service.CompileFileSet(t.Context(), map[string]string{
 				"main.go": tt.source,
 			})
 			require.NoError(t, err, "compile failure for %s", tt.name)
 
 			if tt.fastPathOpName != "" {
 				dump := debug.DisassembleAssembly(compiled)
-				if !strings.Contains(dump, tt.fastPathOpName) {
-					t.Errorf("expected %s in bytecode for %s\nbytecode:\n%s", tt.fastPathOpName, tt.name, dump)
-				}
+				assert.Contains(t, dump, tt.fastPathOpName, "%s", tt.name)
 			}
 			if tt.slowPathOpName != "" {
 				dump := debug.DisassembleAssembly(compiled)
-				if !strings.Contains(dump, tt.slowPathOpName) {
-					t.Errorf("expected %s in bytecode for %s\nbytecode:\n%s", tt.slowPathOpName, tt.name, dump)
-				}
+				assert.Contains(t, dump, tt.slowPathOpName, "%s", tt.name)
 			}
 
-			result, err := service.ExecuteEntrypoint(context.Background(), compiled, tt.entrypoint)
+			result, err := service.ExecuteEntrypoint(t.Context(), compiled, tt.entrypoint)
 			require.NoError(t, err, "execute failure for %s", tt.name)
-			require.Equal(t, tt.expect, result, "expected %v, got %v for %s", tt.expect, result, tt.name)
+			require.Equal(t, tt.want, result, "expected %v, got %v for %s", tt.want, result, tt.name)
 		})
 	}
 }

@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestUintConstPoolAcrossFrames(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		code   string
-		expect any
+		name string
+		code string
+		want any
 	}{
 		{
 			name: "single call",
@@ -43,7 +43,7 @@ func TestUintConstPoolAcrossFrames(t *testing.T) {
 	return v
 }
 bump(10)`,
-			expect: uint(15),
+			want: uint(15),
 		},
 		{
 			name: "nested calls",
@@ -52,7 +52,7 @@ bump(10)`,
 	return v
 }
 bump(bump(10))`,
-			expect: uint(20),
+			want: uint(20),
 		},
 		{
 			name: "uint div and rem across a call",
@@ -60,7 +60,7 @@ bump(bump(10))`,
 	return v/3 + v%3
 }
 mix(uint(20))`,
-			expect: uint(8),
+			want: uint(8),
 		},
 	}
 
@@ -68,9 +68,9 @@ mix(uint(20))`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

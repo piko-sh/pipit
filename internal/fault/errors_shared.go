@@ -37,6 +37,11 @@ var (
 	// deadline is exceeded during evaluation.
 	ErrExecutionCancelled = errors.New("execution cancelled")
 
+	// ErrCallbackTimeout is returned when an interpreted closure called from native code
+	// runs past the callback timeout set by WithCallbackTimeout. An error carrying it also
+	// matches ErrExecutionCancelled.
+	ErrCallbackTimeout = errors.New("callback timed out")
+
 	// ErrFeatureNotAllowed is returned when compiled code uses a language feature that has
 	// been disabled via WithFeatures.
 	ErrFeatureNotAllowed = errors.New("language feature not allowed")

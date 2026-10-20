@@ -20,6 +20,7 @@ package compile
 
 import (
 	"go/ast"
+	"go/token"
 
 	"pipit.sh/pipit/internal/compile/appendlower"
 	"pipit.sh/pipit/internal/engine/program"
@@ -49,18 +50,16 @@ type inPlaceAppendMatch struct {
 	ok bool
 }
 
-// lookupInPlaceAppendTarget resolves a safe in-place append target.
-//
-// Resolves an LHS identifier to its VarLocation and verifies the safety preconditions for
-// in-place arena-slot mutation: the location must sit in the general register bank
-// (typed-slice banks already mutate the header by value), must not be captured by a
-// closure, addressed via `&x`, stored as an upvalue, or spilled.
+// lookupInPlaceAppendTarget resolves a local that can safely receive an in-place
+// append, excluding captured, addressed, upvalue and spilled locations.
 //
 // Takes lhsIdent (*ast.Ident) which is the LHS identifier from the assignment.
+// Takes until (token.Pos) which is the end of the append call; the alias analysis
+// counts the events before it.
 //
 // Returns VarLocation which is the resolved location.
 // Returns bool which is true when all safety checks pass.
-func (c *Compiler) lookupInPlaceAppendTarget(lhsIdent *ast.Ident) (program.VarLocation, bool) {
+func (c *Compiler) lookupInPlaceAppendTarget(lhsIdent *ast.Ident, until token.Pos) (program.VarLocation, bool) {
 	location, found := c.Scopes.LookupVar(lhsIdent.Name)
 	if !found {
 		return program.VarLocation{}, false
@@ -71,7 +70,7 @@ func (c *Compiler) lookupInPlaceAppendTarget(lhsIdent *ast.Ident) (program.VarLo
 	if location.IsCaptured || location.IsIndirect || location.IsUpvalue || location.IsSpilled {
 		return program.VarLocation{}, false
 	}
-	if c.inPlaceAppendAliases != nil && c.inPlaceAppendAliases[lhsIdent.Name] {
+	if c.inPlaceAppendAliases.Shared(lhsIdent, until) {
 		return program.VarLocation{}, false
 	}
 	return location, true
@@ -99,14 +98,14 @@ func refusedInPlaceAppend(reason string) inPlaceAppendMatch {
 // destination location and element kind describe where and how to compile the in-place
 // form.
 func (c *Compiler) inPlaceAppendCandidate(leftHandSide, rightHandSide ast.Expr) inPlaceAppendMatch {
-	lhsIdent, callRHS, shapeOK := appendlower.MatchShape(leftHandSide, rightHandSide)
+	lhsIdent, callRHS, shapeOK := appendlower.MatchShape(c.Info, leftHandSide, rightHandSide)
 	if !shapeOK {
 		return refusedInPlaceAppend("shape")
 	}
 	if !appendlower.SameSlice(c.Info, lhsIdent, callRHS) {
 		return refusedInPlaceAppend("same-slice")
 	}
-	location, locationOK := c.lookupInPlaceAppendTarget(lhsIdent)
+	location, locationOK := c.lookupInPlaceAppendTarget(lhsIdent, callRHS.End())
 	if !locationOK {
 		return refusedInPlaceAppend("target")
 	}

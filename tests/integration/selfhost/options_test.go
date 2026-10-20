@@ -37,10 +37,10 @@ func TestSplitList(t *testing.T) {
 		{name: "one", raw: "0957", want: []string{"0957"}},
 		{name: "several with spaces", raw: "0957, 1634 ,,0958", want: []string{"0957", "1634", "0958"}},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, splitList(tc.raw))
+			require.Equal(t, tt.want, splitList(tt.raw))
 		})
 	}
 }
@@ -59,10 +59,10 @@ func TestMatchesFilter(t *testing.T) {
 		{name: "second fragment", program: "0958_destructured_elem_edges", fragments: []string{"0957", "0958"}, want: true},
 		{name: "no match", program: "0001_hello", fragments: []string{"0957"}, want: false},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, matchesFilter(tc.program, tc.fragments))
+			require.Equal(t, tt.want, matchesFilter(tt.program, tt.fragments))
 		})
 	}
 }
@@ -79,10 +79,10 @@ func TestReportFor(t *testing.T) {
 		{name: "joined value", args: []string{"-report=/tmp/r.md"}, want: "/tmp/r.md"},
 		{name: "dangling flag keeps the default", args: []string{"-report"}, want: reportPath},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, reportFor(tc.args))
+			require.Equal(t, tt.want, reportFor(tt.args))
 		})
 	}
 }
@@ -99,10 +99,10 @@ func TestInnermostCompilerFunction(t *testing.T) {
 		{name: "function frame after a driver frame", stack: "main.CompilePackage(...)\n\tdriver.go:12\npipit.sh/pipit/internal/compile.CompileParsedPackage(...)\n\tcompiler.go:1\n", want: "CompileParsedPackage"},
 		{name: "no compiler frame", stack: "main.CompilePackage(...)\n\tdriver.go:12\n", want: ""},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, innermostCompilerFunction(tc.stack))
+			require.Equal(t, tt.want, innermostCompilerFunction(tt.stack))
 		})
 	}
 }

@@ -30,10 +30,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/fault"
-
-	"github.com/stretchr/testify/require"
 	"pipit.sh/pipit/internal/symtab"
 )
 
@@ -108,7 +108,7 @@ func main() {}
 
 	service := app.NewService()
 	service.UseSymbols(newSyncSymbols())
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 499500, result)
 }
@@ -147,7 +147,7 @@ func main() {}
 `
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	if result != int64(1) {
 		t.Skipf("gap-new: interpreter's reflect.Select dispatch is not statistically fair across multiple ready cases (each branch should fire > 10 times in 5000 iterations; got imbalance - return code %d).", result)
@@ -179,7 +179,7 @@ func main() {}
 `
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 111, result)
 }
@@ -215,7 +215,7 @@ func main() {}
 
 	service := app.NewService()
 	service.UseSymbols(newAtomicSymbols())
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err, "sync/atomic exposed via gen_atomic.go (gap 8 closed)")
 	require.Equal(t, 3, result)
 }
@@ -241,7 +241,7 @@ func main() {}
 
 	service := app.NewService()
 	service.UseSymbols(newRuntimeSymbols())
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err, "runtime exposed via gen_runtime.go (gap 7 closed for NumGoroutine)")
 	require.Equal(t, 1, result)
 }
@@ -265,7 +265,7 @@ func main() {}
 
 	service := app.NewService()
 	ctx, cancel := context.WithTimeoutCause(
-		context.Background(),
+		t.Context(),
 		100*time.Millisecond,
 		errors.New("test: empty select timeout"),
 	)
@@ -299,9 +299,8 @@ func main() {}
 	service.UseSymbols(symtab.NewSymbolRegistry(symtab.SymbolExports{
 		"runtime": {"Goexit": reflect.ValueOf(runtime.Goexit)},
 	}))
-	_, err := service.EvalFile(context.Background(), source, "run")
-	require.Error(t, err)
-	require.True(t, errors.Is(err, fault.ErrGoexit), "expected fault.ErrGoexit, got: %v", err)
+	_, err := service.EvalFile(t.Context(), source, "run")
+	require.ErrorIs(t, err, fault.ErrGoexit)
 }
 
 func TestRuntimeGoexitFromGoroutineDoesNotPropagate(t *testing.T) {
@@ -335,7 +334,7 @@ func main() {}
 			"WaitGroup": reflect.ValueOf((*sync.WaitGroup)(nil)),
 		},
 	}))
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err, "goexit in goroutine should not propagate to ExecuteEntrypoint")
 	require.Equal(t, 7, result)
 }
@@ -375,7 +374,7 @@ func run() int {
 func main() {}
 `
 
-	_, err := service.EvalFile(context.Background(), source, "run")
+	_, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Len(t, reg.callbacks, 1)
 

@@ -164,26 +164,47 @@ func TestUnpackInterfaceWritesTheZeroOfTheTargetBank(t *testing.T) {
 		kind  isa.RegisterKind
 	}{
 		{name: "the integer bank", kind: isa.RegisterInt,
-			seed:  func(registers *Registers) { registers.Ints[0] = 42 },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(0), registers.Ints[0]) }},
+			seed: func(registers *Registers) { registers.Ints[0] = 42 },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(0), registers.Ints[0])
+			}},
 		{name: "the float bank", kind: isa.RegisterFloat,
-			seed:  func(registers *Registers) { registers.Floats[0] = 42 },
-			check: func(t *testing.T, registers *Registers) { require.InDelta(t, 0, registers.Floats[0], 0) }},
+			seed: func(registers *Registers) { registers.Floats[0] = 42 },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.InDelta(t, 0, registers.Floats[0], 0)
+			}},
 		{name: "the string bank", kind: isa.RegisterString,
-			seed:  func(registers *Registers) { registers.Strings[0] = "pipit" },
-			check: func(t *testing.T, registers *Registers) { require.Empty(t, registers.Strings[0]) }},
+			seed: func(registers *Registers) { registers.Strings[0] = "pipit" },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Empty(t, registers.Strings[0])
+			}},
 		{name: "the boolean bank", kind: isa.RegisterBool,
-			seed:  func(registers *Registers) { registers.Bools[0] = true },
-			check: func(t *testing.T, registers *Registers) { require.False(t, registers.Bools[0]) }},
+			seed: func(registers *Registers) { registers.Bools[0] = true },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.False(t, registers.Bools[0])
+			}},
 		{name: "the unsigned bank", kind: isa.RegisterUint,
-			seed:  func(registers *Registers) { registers.Uints[0] = 42 },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, uint64(0), registers.Uints[0]) }},
+			seed: func(registers *Registers) { registers.Uints[0] = 42 },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(0), registers.Uints[0])
+			}},
 		{name: "the complex bank", kind: isa.RegisterComplex,
-			seed:  func(registers *Registers) { registers.Complex[0] = 1 + 2i },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, complex128(0), registers.Complex[0]) }},
+			seed: func(registers *Registers) { registers.Complex[0] = 1 + 2i },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, complex128(0), registers.Complex[0])
+			}},
 		{name: "the general bank", kind: isa.RegisterGeneral,
-			seed:  func(registers *Registers) { registers.General[0] = reflect.ValueOf(1) },
-			check: func(t *testing.T, registers *Registers) { require.False(t, registers.General[0].IsValid()) }},
+			seed: func(registers *Registers) { registers.General[0] = reflect.ValueOf(1) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.False(t, registers.General[0].IsValid())
+			}},
 	}
 
 	for _, tt := range tests {
@@ -211,19 +232,40 @@ func TestUnpackInterfaceMovesTheDynamicValueIntoItsBank(t *testing.T) {
 		kind   isa.RegisterKind
 	}{
 		{name: "a boxed integer lands in the integer bank", kind: isa.RegisterInt, source: reflect.ValueOf(42),
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(42), registers.Ints[0]) }},
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), registers.Ints[0])
+			}},
 		{name: "a boxed unsigned value reinterprets into the integer bank", kind: isa.RegisterInt, source: reflect.ValueOf(uint8(200)),
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(200), registers.Ints[0]) }},
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(200), registers.Ints[0])
+			}},
 		{name: "a boxed boolean lands in the integer bank as one", kind: isa.RegisterInt, source: reflect.ValueOf(true),
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(1), registers.Ints[0]) }},
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(1), registers.Ints[0])
+			}},
 		{name: "a boxed string lands in the string bank", kind: isa.RegisterString, source: reflect.ValueOf("pipit"),
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, "pipit", registers.Strings[0]) }},
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, "pipit", registers.Strings[0])
+			}},
 		{name: "a boxed float lands in the float bank", kind: isa.RegisterFloat, source: reflect.ValueOf(1.5),
-			check: func(t *testing.T, registers *Registers) { require.InDelta(t, 1.5, registers.Floats[0], 0) }},
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.InDelta(t, 1.5, registers.Floats[0], 0)
+			}},
 		{name: "a boxed boolean lands in the boolean bank", kind: isa.RegisterBool, source: reflect.ValueOf(true),
-			check: func(t *testing.T, registers *Registers) { require.True(t, registers.Bools[0]) }},
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.True(t, registers.Bools[0])
+			}},
 		{name: "a boxed unsigned value lands in the unsigned bank", kind: isa.RegisterUint, source: reflect.ValueOf(uint64(42)),
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, uint64(42), registers.Uints[0]) }},
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(42), registers.Uints[0])
+			}},
 	}
 
 	for _, tt := range tests {

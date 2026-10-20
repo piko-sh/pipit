@@ -19,10 +19,11 @@
 package facade_test
 
 import (
-	"context"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit"
 	"pipit.sh/pipit/sdk/stdlib"
@@ -30,14 +31,10 @@ import (
 
 func evalString(t *testing.T, interpreter *pipit.Interpreter, source string) string {
 	t.Helper()
-	result, err := interpreter.Eval(context.Background(), source)
-	if err != nil {
-		t.Fatalf("eval: %v", err)
-	}
+	result, err := interpreter.Eval(t.Context(), source)
+	require.NoError(t, err, "eval")
 	text, ok := result.(string)
-	if !ok {
-		t.Fatalf("expected string result, got %v (%T)", result, result)
-	}
+	require.True(t, ok, "the result is a string")
 	return text
 }
 
@@ -57,15 +54,10 @@ _, stillPresent := os.LookupEnv("PIPIT_TEST_HOST_VAR")
 os.Getenv("PIPIT_TEST_SHADOWED") + "|" + os.Getenv("PIPIT_TEST_ONLY") + "|" + os.ExpandEnv("$PIPIT_TEST_WRITTEN") + "|" +
 	map[bool]string{true: "seen", false: "hidden"}[present] + "|" + map[bool]string{true: "seen", false: "hidden"}[stillPresent]
 `)
-	if got != "overlay-value|yes|script|seen|hidden" {
-		t.Fatalf("overlay semantics: %q", got)
-	}
-	if _, leaked := os.LookupEnv("PIPIT_TEST_WRITTEN"); leaked {
-		t.Fatal("a script Setenv reached the host process")
-	}
-	if os.Getenv("PIPIT_TEST_HOST_VAR") != "from-host" {
-		t.Fatal("a script Unsetenv reached the host process")
-	}
+	require.Equal(t, "overlay-value|yes|script|seen|hidden", got, "overlay semantics")
+	_, leaked := os.LookupEnv("PIPIT_TEST_WRITTEN")
+	require.False(t, leaked, "a script Setenv reached the host process")
+	require.Equal(t, "from-host", os.Getenv("PIPIT_TEST_HOST_VAR"), "a script Unsetenv does not reach the host process")
 }
 
 func TestWithSealedEnvHidesHostEnvironment(t *testing.T) {
@@ -78,9 +70,7 @@ import (
 )
 strings.Join(os.Environ(), ",") + "|" + os.Getenv("PIPIT_TEST_HOST_VAR") + "|" + os.Getenv("HOME")
 `)
-	if got != "ONLY=1||" {
-		t.Fatalf("sealed environment leaked: %q", got)
-	}
+	require.Equal(t, "ONLY=1||", got, "the sealed environment hides the host environment")
 }
 
 func TestWithArgsDrivesOsArgsAndFlag(t *testing.T) {
@@ -100,9 +90,7 @@ count := flag.Int("count", 0, "how many")
 flag.Parse()
 fmt.Sprintf("%s|%d|%s|%d|%s|%s", *name, *count, strings.Join(flag.Args(), " "), flag.NArg(), os.Args[0], strings.Join(os.Args[1:], " "))
 `)
-	if got != "pipit|3|rest of args|3|prog|-name=pipit -count 3 rest of args" {
-		t.Fatalf("argument vector: %q", got)
-	}
+	require.Equal(t, "pipit|3|rest of args|3|prog|-name=pipit -count 3 rest of args", got, "argument vector")
 }
 
 func TestWithoutArgsHostArgvIsUntouched(t *testing.T) {
@@ -112,7 +100,5 @@ func TestWithoutArgsHostArgvIsUntouched(t *testing.T) {
 import "os"
 os.Args[0]
 `)
-	if got != os.Args[0] {
-		t.Fatalf("expected the host argv without WithArgs, got %q", got)
-	}
+	require.Equal(t, os.Args[0], got, "without WithArgs the script sees the host argv")
 }

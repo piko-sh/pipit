@@ -83,13 +83,13 @@ func handlerNeString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
 func handlerSliceString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
+	return guardPointerBankWriter(asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 		Name: "handlerSliceString", Comment: "handlerSliceString sets strings[A] = strings[B][low:high].",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.StringOperations().EmitSliceString(emitter)
 		},
-	}
+	})
 }
 
 // handlerStringIndexToInt returns the STRING_INDEX_TO_INT handler, setting ints[A] =

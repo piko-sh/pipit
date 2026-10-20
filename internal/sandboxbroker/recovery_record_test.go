@@ -21,69 +21,59 @@ package sandboxbroker
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRecoveryRecordRoundTrip(t *testing.T) {
+	t.Parallel()
 	record := recoveryRecordFixture()
 	encoded, err := encodeRecoveryRecord(record)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	decoded, err := decodeRecoveryRecord(encoded)
-	if err != nil || decoded != record {
-		t.Fatal("record did not round trip:", decoded, err)
-	}
+	require.NoError(t, err, "record did not round trip")
+	require.Equal(t, record, decoded)
 	record.Path = strings.Repeat(strings.Repeat("&", 255)+"/", 15) + strings.Repeat("&", 255)
 	encoded, err = encodeRecoveryRecord(record)
-	if err != nil {
-		t.Fatal("maximum escaped path rejected:", err)
-	}
+	require.NoError(t, err, "the maximum escaped path is accepted")
 	decoded, err = decodeRecoveryRecord(encoded)
-	if err != nil || decoded != record {
-		t.Fatal("maximum escaped path did not round trip:", err)
-	}
+	require.NoError(t, err, "maximum escaped path did not round trip")
+	require.Equal(t, record, decoded)
 	record.Size = 0
 	record.RootDevice, record.ParentDevice, record.Device = 0, 0, 0
 	encoded, err = encodeRecoveryRecord(record)
-	if err != nil {
-		t.Fatal("zero device or empty file rejected:", err)
-	}
-	if _, err := decodeRecoveryRecord(encoded); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "zero device or empty file rejected")
+	_, err = decodeRecoveryRecord(encoded)
+	require.NoError(t, err)
 }
 
 func TestRecoveryRecordRejectsIncompleteFields(t *testing.T) {
+	t.Parallel()
 	encoded, err := encodeRecoveryRecord(recoveryRecordFixture())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(encoded, &fields); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(encoded, &fields))
 	for name, original := range fields {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			fields := maps.Clone(fields)
 			for _, replacement := range []json.RawMessage{nil, []byte("null"), []byte("[]"), []byte("{}"), []byte("true")} {
 				fields[name] = replacement
 				if replacement == nil {
 					delete(fields, name)
 				}
 				mutated, err := json.Marshal(fields)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				assertInvalidRecoveryRecord(t, mutated)
 			}
 			fields[name] = original
 			fields[strings.ToUpper(name)] = original
 			delete(fields, name)
 			mutated, err := json.Marshal(fields)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			assertInvalidRecoveryRecord(t, mutated)
 			delete(fields, strings.ToUpper(name))
 			fields[name] = original
@@ -106,6 +96,7 @@ func TestRecoveryRecordRejectsIncompleteFields(t *testing.T) {
 }
 
 func TestRecoveryRecordRejectsInvalidIdentity(t *testing.T) {
+	t.Parallel()
 	mutations := []func(*RecoveryRecord){
 		func(record *RecoveryRecord) { record.Profile = "filesystem-recovery-v0" },
 		func(record *RecoveryRecord) { record.Namespace = strings.Repeat("A", 32) },
@@ -126,40 +117,31 @@ func TestRecoveryRecordRejectsInvalidIdentity(t *testing.T) {
 	for _, mutate := range mutations {
 		record := recoveryRecordFixture()
 		mutate(&record)
-		if encoded, err := encodeRecoveryRecord(record); err == nil || encoded != nil {
-			t.Fatal("invalid record encoded:", record)
-		}
+		invalid, err := encodeRecoveryRecord(record)
+		require.Error(t, err, "an invalid record is not encoded: %+v", record)
+		require.Nil(t, invalid)
 		encoded, err := json.Marshal(record)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		assertInvalidRecoveryRecord(t, encoded)
 	}
 }
 
 func FuzzRecoveryRecord(fuzzer *testing.F) {
 	encoded, err := encodeRecoveryRecord(recoveryRecordFixture())
-	if err != nil {
-		fuzzer.Fatal(err)
-	}
+	require.NoError(fuzzer, err)
 	fuzzer.Add(encoded)
 	fuzzer.Add([]byte("{}"))
 	fuzzer.Fuzz(func(t *testing.T, data []byte) {
 		record, err := decodeRecoveryRecord(data)
 		if err != nil {
-			if record != (RecoveryRecord{}) {
-				t.Fatal("partial record returned")
-			}
+			require.Zero(t, record, "no partial record is returned")
 			return
 		}
 		encoded, err := encodeRecoveryRecord(record)
-		if err != nil {
-			t.Fatal("accepted record cannot be encoded:", err)
-		}
+		require.NoError(t, err, "accepted record cannot be encoded")
 		decoded, err := decodeRecoveryRecord(encoded)
-		if err != nil || decoded != record {
-			t.Fatal("accepted record changed on round trip:", err)
-		}
+		require.NoError(t, err, "accepted record changed on round trip")
+		require.Equal(t, record, decoded)
 	})
 }
 
@@ -174,7 +156,7 @@ func recoveryRecordFixture() RecoveryRecord {
 
 func assertInvalidRecoveryRecord(t *testing.T, encoded []byte) {
 	t.Helper()
-	if record, err := decodeRecoveryRecord(encoded); err == nil || record != (RecoveryRecord{}) {
-		t.Fatal("invalid record accepted or partially returned:", string(encoded), record, err)
-	}
+	record, err := decodeRecoveryRecord(encoded)
+	require.Error(t, err, "an invalid record is refused: %s", encoded)
+	require.Zero(t, record, "an invalid record returns no partial record: %s", encoded)
 }

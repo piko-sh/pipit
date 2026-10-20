@@ -124,11 +124,11 @@ func TestFormatConstantLiteral(t *testing.T) {
 		input  constant.Value
 		expect string
 	}{
-		{"Int", constant.MakeInt64(42), "42"},
-		{"String", constant.MakeString("hello"), `"hello"`},
-		{"Zero", constant.MakeInt64(0), "0"},
-		{"Bool", constant.MakeBool(true), "true"},
-		{"NegativeInt", constant.MakeInt64(-7), "-7"},
+		{name: "Int", input: constant.MakeInt64(42), expect: "42"},
+		{name: "String", input: constant.MakeString("hello"), expect: `"hello"`},
+		{name: "Zero", input: constant.MakeInt64(0), expect: "0"},
+		{name: "Bool", input: constant.MakeBool(true), expect: "true"},
+		{name: "NegativeInt", input: constant.MakeInt64(-7), expect: "-7"},
 	}
 
 	for _, tt := range tests {

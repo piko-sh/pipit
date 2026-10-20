@@ -20,65 +20,47 @@ package app
 
 import (
 	"go/ast"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestPreprocessShortVar_RewritesTopLevel(t *testing.T) {
+func TestPreprocessShortVar(t *testing.T) {
 	t.Parallel()
-	out, err := preprocessShortVar(`a := 1`)
-	require.NoError(t, err)
-	require.Equal(t, "var a = 1", out)
-}
-
-func TestPreprocessShortVar_IndentedLeftAlone(t *testing.T) {
-	t.Parallel()
-	out, err := preprocessShortVar(`  a := 1`)
-	require.NoError(t, err)
-	require.Equal(t, "  a := 1", out)
-}
-
-func TestPreprocessShortVar_ControlKeywordLeftAlone(t *testing.T) {
-	t.Parallel()
-	cases := []string{
-		`if x := 1; x > 0 { _ = x }`,
-		`for i := 0; i < 1; i++ { _ = i }`,
-		`switch x := 1; x { case 1: _ = x }`,
-		`go run()`,
-		`defer cleanup()`,
-		`return result`,
+	tests := []struct {
+		name    string
+		source  string
+		want    string
+		wantErr string
+	}{
+		{name: "rewrites a top-level definition", source: `a := 1`, want: "var a = 1"},
+		{name: "leaves an indented definition alone", source: `  a := 1`, want: "  a := 1"},
+		{name: "leaves an if statement alone", source: `if x := 1; x > 0 { _ = x }`, want: `if x := 1; x > 0 { _ = x }`},
+		{name: "leaves a for statement alone", source: `for i := 0; i < 1; i++ { _ = i }`, want: `for i := 0; i < 1; i++ { _ = i }`},
+		{name: "leaves a switch statement alone", source: `switch x := 1; x { case 1: _ = x }`, want: `switch x := 1; x { case 1: _ = x }`},
+		{name: "leaves a go statement alone", source: `go run()`, want: `go run()`},
+		{name: "leaves a defer statement alone", source: `defer cleanup()`, want: `defer cleanup()`},
+		{name: "leaves a return statement alone", source: `return result`, want: `return result`},
+		{name: "leaves a function body alone", source: "func main() {\na := 1\n}", want: "func main() {\na := 1\n}"},
+		{name: "empty input", source: "", want: ""},
+		{name: "a right-hand side with braces", source: `x := []int{1, 2, 3}`, want: "var x = []int{1, 2, 3}"},
+		{name: "several names", source: `a, b := f()`, wantErr: "multiple names"},
+		{name: "blank identifier", source: `_ := f()`, wantErr: "blank identifier"},
 	}
-	for _, code := range cases {
-		out, err := preprocessShortVar(code)
-		require.NoError(t, err)
-		require.Equal(t, code, out, "control-keyword line must pass through unchanged: %q", code)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			out, err := preprocessShortVar(tt.source)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, out)
+		})
 	}
-}
-
-func TestPreprocessShortVar_MultiValueErrors(t *testing.T) {
-	t.Parallel()
-	_, err := preprocessShortVar(`a, b := f()`)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "multiple names")
-}
-
-func TestPreprocessShortVar_BlankIdentErrors(t *testing.T) {
-	t.Parallel()
-	_, err := preprocessShortVar(`_ := f()`)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "blank identifier")
-}
-
-func TestPreprocessShortVar_InsideBracesLeftAlone(t *testing.T) {
-	t.Parallel()
-	source := `func main() {
-a := 1
-}`
-	out, err := preprocessShortVar(source)
-	require.NoError(t, err)
-	require.Equal(t, source, out, "lines inside a func body must stay untouched")
 }
 
 func TestPreprocessShortVar_PreservesMultiLineProgram(t *testing.T) {
@@ -93,57 +75,52 @@ func run() string { return fmt.Sprintf("%d", a) }`
 	require.Contains(t, out, `func run()`)
 }
 
-func TestPreprocessShortVar_EmptyInputReturnsEmpty(t *testing.T) {
-	t.Parallel()
-	out, err := preprocessShortVar("")
-	require.NoError(t, err)
-	require.Empty(t, out)
-}
-
-func TestPreprocessShortVar_RHSWithBraces(t *testing.T) {
-	t.Parallel()
-	out, err := preprocessShortVar(`x := []int{1, 2, 3}`)
-	require.NoError(t, err)
-	require.Equal(t, "var x = []int{1, 2, 3}", out)
-}
-
 func TestStartsWithControlKeyword_AllPrefixes(t *testing.T) {
 	t.Parallel()
-	positives := []string{
-		"if x := 1", "if\tx := 1",
-		"for i := 0", "for\ti := 0",
-		"switch x := 1", "switch\tx := 1",
-		"select ", "select\t",
-		"go run()", "go\trun()",
-		"defer cleanup()", "defer\tcleanup()",
-		"return result", "return\tresult",
+	tests := []struct {
+		code string
+		want bool
+	}{
+		{code: "if x := 1", want: true}, {code: "if\tx := 1", want: true},
+		{code: "for i := 0", want: true}, {code: "for\ti := 0", want: true},
+		{code: "switch x := 1", want: true}, {code: "switch\tx := 1", want: true},
+		{code: "select ", want: true}, {code: "select\t", want: true},
+		{code: "go run()", want: true}, {code: "go\trun()", want: true},
+		{code: "defer cleanup()", want: true}, {code: "defer\tcleanup()", want: true},
+		{code: "return result", want: true}, {code: "return\tresult", want: true},
+		{code: "a := 1", want: false},
+		{code: "if(x)", want: false},
+		{code: "ifx := 1", want: false},
+		{code: "goto label", want: false},
+		{code: "", want: false},
 	}
-	for _, code := range positives {
-		require.True(t, startsWithControlKeyword(code), "expected positive for %q", code)
-	}
-
-	negatives := []string{
-		"a := 1",
-		"if(x)",
-		"ifx := 1",
-		"goto label",
-		"",
-	}
-	for _, code := range negatives {
-		require.False(t, startsWithControlKeyword(code), "expected negative for %q", code)
+	for _, tt := range tests {
+		t.Run(strconv.Quote(tt.code), func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, startsWithControlKeyword(tt.code))
+		})
 	}
 }
 
 func TestContainsTopLevelDefine(t *testing.T) {
 	t.Parallel()
-	require.True(t, containsTopLevelDefine(`a := 1`))
-	require.True(t, containsTopLevelDefine(`x := struct{}{}`),
-		"top-level := before a brace block must be detected")
-	require.False(t, containsTopLevelDefine(`map[string]struct{}{a: {}}`),
-		"no := token at all")
-	require.False(t, containsTopLevelDefine(`func f() { a := 1 }`),
-		"detect should require depth zero")
-	require.False(t, containsTopLevelDefine(``), "empty input")
+	tests := []struct {
+		name   string
+		source string
+		want   bool
+	}{
+		{name: "a top-level definition", source: `a := 1`, want: true},
+		{name: "a definition before a brace block", source: `x := struct{}{}`, want: true},
+		{name: "no definition at all", source: `map[string]struct{}{a: {}}`, want: false},
+		{name: "a definition inside a function body", source: `func f() { a := 1 }`, want: false},
+		{name: "empty input", source: ``, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, containsTopLevelDefine(tt.source))
+		})
+	}
 }
 
 func TestParseSingleStatement_HappyPath(t *testing.T) {
@@ -156,16 +133,22 @@ func TestParseSingleStatement_HappyPath(t *testing.T) {
 	require.Len(t, assign.Rhs, 1)
 }
 
-func TestParseSingleStatement_ParseErrorReturnsFalse(t *testing.T) {
+func TestParseSingleStatement_Rejects(t *testing.T) {
 	t.Parallel()
-	_, ok := parseSingleStatement(`!!!`)
-	require.False(t, ok)
-}
-
-func TestParseSingleStatement_MultiStmtReturnsFalse(t *testing.T) {
-	t.Parallel()
-	_, ok := parseSingleStatement(`a := 1; b := 2`)
-	require.False(t, ok)
+	tests := []struct {
+		name   string
+		source string
+	}{
+		{name: "a parse error", source: `!!!`},
+		{name: "several statements", source: `a := 1; b := 2`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, ok := parseSingleStatement(tt.source)
+			require.False(t, ok)
+		})
+	}
 }
 
 func TestBraceTracker_NestingAndUnnesting(t *testing.T) {

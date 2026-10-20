@@ -228,15 +228,14 @@ func (c *Compiler) prepareTupleTargets(ctx context.Context, targets []ast.Expr) 
 func (c *Compiler) compileTupleValues(ctx context.Context, values []ast.Expr) ([]program.VarLocation, error) {
 	temps := make([]program.VarLocation, len(values))
 	for i, value := range values {
+		mark := c.Scopes.Alloc.Snapshot()
 		location, err := c.compileExpression(ctx, value)
 		if err != nil {
 			return nil, err
 		}
 		c.snapshotIndirectLocalRead(value, location)
-		tempRegister := c.Scopes.Alloc.AllocTemp(location.Kind)
-		tempLocation := program.VarLocation{Register: tempRegister, Kind: location.Kind}
-		c.emitMoveTyped(ctx, tempLocation, location, c.staticTypeOf(value))
-		temps[i] = tempLocation
+		c.detachIndexedRead(value, location)
+		temps[i] = c.holdValue(ctx, mark, location, c.staticTypeOf(value))
 	}
 	return temps, nil
 }
@@ -440,6 +439,7 @@ func (c *Compiler) compileSequentialShortVarTwoPhase(ctx context.Context, statem
 	temps := make([]program.VarLocation, len(statement.Lhs))
 	hasValue := make([]bool, len(statement.Lhs))
 	for i, rightHandSide := range statement.Rhs {
+		mark := c.Scopes.Alloc.Snapshot()
 		valueLocation, err := c.compileExpression(ctx, rightHandSide)
 		if err != nil {
 			return program.VarLocation{}, err
@@ -448,11 +448,10 @@ func (c *Compiler) compileSequentialShortVarTwoPhase(ctx context.Context, statem
 		c.snapshotIndirectLocalRead(rightHandSide, valueLocation)
 		identifier, ok := statement.Lhs[i].(*ast.Ident)
 		if !ok || identifier.Name == typemap.BlankIdentName {
+			c.Scopes.RestoreWatermark(mark)
 			continue
 		}
-		persistent := c.Scopes.Alloc.AllocTemp(valueLocation.Kind)
-		temps[i] = program.VarLocation{Register: persistent, Kind: valueLocation.Kind}
-		c.emitMoveTyped(ctx, temps[i], valueLocation, c.staticTypeOf(rightHandSide))
+		temps[i] = c.holdValue(ctx, mark, valueLocation, c.staticTypeOf(rightHandSide))
 		hasValue[i] = true
 	}
 
@@ -681,6 +680,7 @@ func (c *Compiler) emitTypedMakeSliceInto(ctx context.Context, expression *ast.C
 		if err != nil {
 			return err
 		}
+		c.ensureIntRegister(ctx, &lengthLocation)
 	}
 	capacityLocation := lengthLocation
 	if len(expression.Args) >= makeSliceMinCapArgs {
@@ -689,6 +689,7 @@ func (c *Compiler) emitTypedMakeSliceInto(ctx context.Context, expression *ast.C
 		if err != nil {
 			return err
 		}
+		c.ensureIntRegister(ctx, &capacityLocation)
 	}
 	if heapPlaced {
 		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMakeSliceHeap), destinationRegister, lengthLocation.Register)
@@ -764,6 +765,35 @@ func (c *Compiler) rhsAliasesIndexedBackingStore(rhsExpr ast.Expr) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// indexedReadNeedsDetach reports whether an indexed element read needs separate storage
+// to preserve its value across later writes to the element.
+//
+// Takes expression (ast.Expr) which is the expression value was compiled from.
+// Takes value (program.VarLocation) which holds the compiled value.
+//
+// Returns bool which is true when value must be detached before it is held.
+func (c *Compiler) indexedReadNeedsDetach(expression ast.Expr, value program.VarLocation) bool {
+	if value.Kind != isa.RegisterGeneral || value.IsSpilled || value.IsIndirect {
+		return false
+	}
+	if !c.rhsAliasesIndexedBackingStore(ast.Unparen(expression)) {
+		return false
+	}
+	staticType := c.staticTypeOf(expression)
+	return staticType != nil && !typeIsInterface(staticType) && !typeIsStructOrArray(staticType)
+}
+
+// detachIndexedRead gives value its own storage, in place, when indexedReadNeedsDetach
+// says it still refers to a slice or array element.
+//
+// Takes expression (ast.Expr) which is the expression value was compiled from.
+// Takes value (program.VarLocation) which holds the compiled value.
+func (c *Compiler) detachIndexedRead(expression ast.Expr, value program.VarLocation) {
+	if c.indexedReadNeedsDetach(expression, value) {
+		program.Emit(c.Function, isa.OpDeref, value.Register, value.Register, engine.DerefSnapshot)
 	}
 }
 

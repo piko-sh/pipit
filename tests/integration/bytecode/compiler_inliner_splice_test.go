@@ -23,9 +23,10 @@ package bytecode_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/compile/inline"
 	"pipit.sh/pipit/internal/engine/program"
-
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -82,33 +83,25 @@ func TestSplice_VoidNoop_ReplacesOpCallWithJump(t *testing.T) {
 		},
 	}
 	result := inline.TrySpliceCall(caller, siteIdx)
-	if !result.Spliced {
-		t.Fatalf("splice failed: %v", result.Reason)
-	}
+	require.True(t, result.Spliced, "the splice succeeds: %v", result.Reason)
 
-	if len(caller.Body) != 5 {
-		t.Fatalf("body length %d want 5", len(caller.Body))
-	}
+	require.Len(t, caller.Body, 5)
 	got := caller.Body[0]
-	if got.Op != isa.OpDrillTier1 || isa.SubOpcode(got.A) != isa.SubOpJump || program.DecodeJumpOffset(got) != 2 {
-		t.Fatalf("pc 0: want subOpJump offset=2, got op=%v a=%v offset=%d",
-			got.Op, got.A, program.DecodeJumpOffset(got))
-	}
+	require.Equal(t, isa.OpDrillTier1, got.Op, "pc 0 jumps by 2: %v", got.A)
+	require.Equal(t, isa.SubOpJump, isa.SubOpcode(got.A))
+	require.Equal(t, 2, program.DecodeJumpOffset(got))
 	got = caller.Body[2]
-	if got.Op != isa.OpDrillTier1 || isa.SubOpcode(got.A) != isa.SubOpJump || program.DecodeJumpOffset(got) != 2 {
-		t.Fatalf("pc 2 (skip-jump): want subOpJump offset=2, got op=%v a=%v offset=%d",
-			got.Op, got.A, program.DecodeJumpOffset(got))
-	}
+	require.Equal(t, isa.OpDrillTier1, got.Op, "pc 2, the skip jump, jumps by 2: %v", got.A)
+	require.Equal(t, isa.SubOpJump, isa.SubOpcode(got.A))
+	require.Equal(t, 2, program.DecodeJumpOffset(got))
 	got = caller.Body[3]
-	if got.Op != isa.OpDrillTier1 || isa.SubOpcode(got.A) != isa.SubOpJump || program.DecodeJumpOffset(got) != 0 {
-		t.Fatalf("pc 3 (return → retPrep): want subOpJump offset=0, got op=%v a=%v offset=%d",
-			got.Op, got.A, program.DecodeJumpOffset(got))
-	}
+	require.Equal(t, isa.OpDrillTier1, got.Op, "pc 3, the return to return-prep, jumps by 0: %v", got.A)
+	require.Equal(t, isa.SubOpJump, isa.SubOpcode(got.A))
+	require.Equal(t, 0, program.DecodeJumpOffset(got))
 	got = caller.Body[4]
-	if got.Op != isa.OpDrillTier1 || isa.SubOpcode(got.A) != isa.SubOpJump || program.DecodeJumpOffset(got) != -4 {
-		t.Fatalf("pc 4 (retPrep back-jump): want subOpJump offset=-4, got op=%v a=%v offset=%d",
-			got.Op, got.A, program.DecodeJumpOffset(got))
-	}
+	require.Equal(t, isa.OpDrillTier1, got.Op, "pc 4, the return-prep back jump, jumps by -4: %v", got.A)
+	require.Equal(t, isa.SubOpJump, isa.SubOpcode(got.A))
+	require.Equal(t, -4, program.DecodeJumpOffset(got))
 }
 
 func TestSplice_DoubleCallee_ValueReturn(t *testing.T) {
@@ -130,44 +123,32 @@ func TestSplice_DoubleCallee_ValueReturn(t *testing.T) {
 		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 7},
 	}
 	result := inline.TrySpliceCall(caller, siteIdx)
-	if !result.Spliced {
-		t.Fatalf("splice failed: %v", result.Reason)
-	}
+	require.True(t, result.Spliced, "the splice succeeds: %v", result.Reason)
 
-	if len(caller.Body) != 8 {
-		t.Fatalf("body length %d want 8; body=%+v", len(caller.Body), caller.Body)
-	}
-	if caller.NumRegisters[isa.RegisterInt] != 8 {
-		t.Fatalf("numRegisters[int] %d want 8 (caller's 7 + 1 fresh param slot)",
-			caller.NumRegisters[isa.RegisterInt])
-	}
+	require.Len(t, caller.Body, 8)
+	require.Equal(t, uint32(8), caller.NumRegisters[isa.RegisterInt])
 
 	got := caller.Body[3]
-	if got.Op != isa.OpDrillTier1 || isa.SubOpcode(got.A) != isa.SubOpMoveInt {
-		t.Fatalf("pc 3 want pre-copy subOpMoveInt, got op=%v a=%v", got.Op, got.A)
-	}
-	if got.B != 7 || got.C != 5 {
-		t.Fatalf("pc 3 (pre-copy) want destination=7 source=5, got b=%d c=%d", got.B, got.C)
-	}
+	require.Equal(t, isa.OpDrillTier1, got.Op, "pc 3 is the pre-copy MOVE_INT: %v", got.A)
+	require.Equal(t, isa.SubOpMoveInt, isa.SubOpcode(got.A))
+	require.Equal(t, uint8(7), got.B, "pc 3, the pre-copy, is 7 <- 5")
+	require.Equal(t, uint8(5), got.C)
 
 	got = caller.Body[4]
-	if got.Op != isa.OpAddInt || got.A != 7 || got.B != 7 || got.C != 7 {
-		t.Fatalf("pc 4 want opAddInt 7,7,7 (fresh slot), got op=%v a=%v b=%v c=%v",
-			got.Op, got.A, got.B, got.C)
-	}
+	require.Equal(t, isa.OpAddInt, got.Op, "pc 4 is ADD_INT 7,7,7 on a fresh slot")
+	require.Equal(t, uint8(7), got.A)
+	require.Equal(t, uint8(7), got.B)
+	require.Equal(t, uint8(7), got.C)
 
 	got = caller.Body[6]
-	if got.Op != isa.OpDrillTier1 || isa.SubOpcode(got.A) != isa.SubOpMoveInt {
-		t.Fatalf("pc 6 want subOpMoveInt, got op=%v a=%v", got.Op, got.A)
-	}
-	if got.B != 6 || got.C != 7 {
-		t.Fatalf("pc 6 (return move) want destination=6 source=7, got b=%d c=%d", got.B, got.C)
-	}
+	require.Equal(t, isa.OpDrillTier1, got.Op, "pc 6 is MOVE_INT: %v", got.A)
+	require.Equal(t, isa.SubOpMoveInt, isa.SubOpcode(got.A))
+	require.Equal(t, uint8(6), got.B, "pc 6, the return move, is 6 <- 7")
+	require.Equal(t, uint8(7), got.C)
 	got = caller.Body[7]
-	if got.Op != isa.OpDrillTier1 || isa.SubOpcode(got.A) != isa.SubOpJump || program.DecodeJumpOffset(got) != -7 {
-		t.Fatalf("pc 7 want subOpJump offset=-7, got op=%v a=%v offset=%d",
-			got.Op, got.A, program.DecodeJumpOffset(got))
-	}
+	require.Equal(t, isa.OpDrillTier1, got.Op, "pc 7 is a jump by -7: %v", got.A)
+	require.Equal(t, isa.SubOpJump, isa.SubOpcode(got.A))
+	require.Equal(t, -7, program.DecodeJumpOffset(got))
 }
 
 func TestSplice_RemapsLocalRegisters(t *testing.T) {
@@ -195,18 +176,15 @@ func TestSplice_RemapsLocalRegisters(t *testing.T) {
 		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 4},
 	}
 	result := inline.TrySpliceCall(caller, 0)
-	if !result.Spliced {
-		t.Fatalf("splice failed: %v", result.Reason)
-	}
+	require.True(t, result.Spliced, "the splice succeeds: %v", result.Reason)
 
-	if caller.NumRegisters[isa.RegisterInt] != 5 {
-		t.Fatalf("caller numRegisters[int] = %d want 5", caller.NumRegisters[isa.RegisterInt])
-	}
+	require.Equal(t, uint32(5), caller.NumRegisters[isa.RegisterInt])
 
 	got := caller.Body[3]
-	if got.Op != isa.OpAddInt || got.A != 4 || got.B != 4 || got.C != 4 {
-		t.Fatalf("appended opAddInt = {a:%d b:%d c:%d} want {4,4,4}", got.A, got.B, got.C)
-	}
+	require.Equal(t, isa.OpAddInt, got.Op, "the appended ADD_INT is 4,4,4")
+	require.Equal(t, uint8(4), got.A)
+	require.Equal(t, uint8(4), got.B)
+	require.Equal(t, uint8(4), got.C)
 }
 
 func TestSplice_LoadIntConst_MergesPool(t *testing.T) {
@@ -236,25 +214,16 @@ func TestSplice_LoadIntConst_MergesPool(t *testing.T) {
 		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 3},
 	}
 	result := inline.TrySpliceCall(caller, 0)
-	if !result.Spliced {
-		t.Fatalf("Phase 3 splice with constant pool failed: %v", result.Reason)
-	}
+	require.True(t, result.Spliced, "the phase 3 splice with a constant pool succeeds: %v", result.Reason)
 
-	if len(caller.IntConstants) != 2 || caller.IntConstants[1] != 7 {
-		t.Fatalf("intConstants %v want [99 7]", caller.IntConstants)
-	}
+	require.Len(t, caller.IntConstants, 2)
+	require.Equal(t, int64(7), caller.IntConstants[1])
 
 	got := caller.Body[3]
-	if got.Op != isa.OpLoadIntConst {
-		t.Fatalf("pc 3 op = %v want opLoadIntConst", got.Op)
-	}
-	if got.A != 3 {
-		t.Fatalf("pc 3 destination reg %d want 3 (remapped local)", got.A)
-	}
+	require.Equal(t, isa.OpLoadIntConst, got.Op)
+	require.Equal(t, uint8(3), got.A)
 	index := uint16(got.B) | uint16(got.C)<<8
-	if index != 1 {
-		t.Fatalf("pc 3 const index %d want 1 (after pool merge)", index)
-	}
+	require.Equal(t, uint16(1), index)
 }
 
 func TestSplice_InternalJumpPreserved(t *testing.T) {
@@ -288,28 +257,18 @@ func TestSplice_InternalJumpPreserved(t *testing.T) {
 		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 4},
 	}
 	result := inline.TrySpliceCall(caller, 0)
-	if !result.Spliced {
-		t.Fatalf("splice failed: %v", result.Reason)
-	}
+	require.True(t, result.Spliced, "the splice succeeds: %v", result.Reason)
 
 	got := caller.Body[4]
-	if got.Op != isa.OpJumpIfFalse {
-		t.Fatalf("pc 4 op = %v want opJumpIfFalse", got.Op)
-	}
-	if got.A != 4 {
-		t.Fatalf("pc 4 cond reg %d want 4 (remapped to fresh param slot)", got.A)
-	}
-	if decoded := program.DecodeJumpOffset(got); decoded != 1 {
-		t.Fatalf("pc 4 jump offset %d want 1 (preserved)", decoded)
-	}
+	require.Equal(t, isa.OpJumpIfFalse, got.Op)
+	require.Equal(t, uint8(4), got.A)
+	require.Equal(t, 1, program.DecodeJumpOffset(got))
 
 	pre := caller.Body[3]
-	if pre.Op != isa.OpDrillTier1 || isa.SubOpcode(pre.A) != isa.SubOpMoveInt {
-		t.Fatalf("pc 3 want pre-copy subOpMoveInt, got op=%v a=%v", pre.Op, pre.A)
-	}
-	if pre.B != 4 || pre.C != 3 {
-		t.Fatalf("pc 3 (pre-copy) want destination=4 source=3, got b=%d c=%d", pre.B, pre.C)
-	}
+	require.Equal(t, isa.OpDrillTier1, pre.Op, "pc 3 is the pre-copy MOVE_INT: %v", pre.A)
+	require.Equal(t, isa.SubOpMoveInt, isa.SubOpcode(pre.A))
+	require.Equal(t, uint8(4), pre.B, "pc 3, the pre-copy, is 4 <- 3")
+	require.Equal(t, uint8(3), pre.C)
 }
 
 func TestSplice_CalleeWithCallBoolConstAndFusedCompare(t *testing.T) {
@@ -351,9 +310,7 @@ func TestSplice_CalleeWithCallBoolConstAndFusedCompare(t *testing.T) {
 	}
 
 	result := inline.TrySpliceCall(caller, 0)
-	if !result.Spliced {
-		t.Fatalf("splice failed: %v", result.Reason)
-	}
+	require.True(t, result.Spliced, "the splice succeeds: %v", result.Reason)
 
 	var boolLoad, fused, ext, call isa.Instruction
 	var found int
@@ -371,30 +328,22 @@ func TestSplice_CalleeWithCallBoolConstAndFusedCompare(t *testing.T) {
 			found++
 		}
 	}
-	if found != 3 {
-		t.Fatalf("expected the bool load, the fused compare and the inner call in the spliced body, found %d", found)
-	}
-	if boolLoad.C != 1 || caller.BoolConstants[1] != true {
-		t.Fatalf("bool constant index: want 1 pointing at true, got C=%d pool=%v", boolLoad.C, caller.BoolConstants)
-	}
-	if boolLoad.B < 2 {
-		t.Fatalf("bool destination should be a fresh caller slot at or above 2, got %d", boolLoad.B)
-	}
+	require.Equal(t, 3, found, "the spliced body holds the bool load, the fused compare and the inner call")
+	require.Equal(t, uint8(1), boolLoad.C, "the bool load reads constant 1")
+	require.True(t, caller.BoolConstants[1], "constant 1 is true: %v", caller.BoolConstants)
+	require.GreaterOrEqual(t, boolLoad.B, uint8(2), "the bool destination is a fresh caller slot at or above 2")
 
-	if fused.B < 8 || fused.C != 6 {
-		t.Fatalf("fused compare should read a fresh copy of the first parameter and argument register 6, got B=%d C=%d", fused.B, fused.C)
-	}
-	if ext.Op != isa.OpExt || ext.A != lo || ext.B != hi {
-		t.Fatalf("offset word should be copied verbatim, got %v", ext)
-	}
-	if int(call.WideIndex()) != 1 || len(caller.CallSites) != 2 {
-		t.Fatalf("inner call should index the appended site 1, got %d with %d sites", call.WideIndex(), len(caller.CallSites))
-	}
+	require.GreaterOrEqual(t, fused.B, uint8(8), "the fused compare reads a fresh copy of the first parameter and argument register 6")
+	require.Equal(t, uint8(6), fused.C)
+	require.Equal(t, isa.OpExt, ext.Op, "the offset word is copied verbatim: %v", ext)
+	require.Equal(t, lo, ext.A)
+	require.Equal(t, hi, ext.B)
+	require.Equal(t, 1, int(call.WideIndex()), "the inner call indexes the appended site 1")
+	require.Len(t, caller.CallSites, 2)
 	site := caller.CallSites[1]
-	if site.CachedCallee != leaf || len(site.Arguments) != 1 || site.Arguments[0].Register != fused.B {
-		t.Fatalf("appended site should keep the leaf callee and read the remapped first parameter %d, got %+v", fused.B, site)
-	}
-	if len(site.Returns) != 1 || site.Returns[0].Register < 8 {
-		t.Fatalf("appended site should write a fresh caller slot at or above 8, got %+v", site.Returns)
-	}
+	require.Same(t, leaf, site.CachedCallee, "the appended site keeps the leaf callee and reads the remapped first parameter: %+v", site)
+	require.Len(t, site.Arguments, 1)
+	require.Equal(t, fused.B, site.Arguments[0].Register)
+	require.Len(t, site.Returns, 1, "the appended site writes a fresh caller slot at or above 8")
+	require.GreaterOrEqual(t, site.Returns[0].Register, uint8(8))
 }

@@ -21,15 +21,17 @@
 package bytecode_test
 
 import (
-	"context"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/debug"
 )
 
 func TestBench21DenseLayerHitsSimd(t *testing.T) {
+	t.Parallel()
 	source := `package main
 func dense_forward(weights [][]float64, input []float64, output []float64) {
 	for i := 0; i < len(output); i++ {
@@ -50,15 +52,8 @@ func EntrypointRun() {
 	dense_forward(weights, input, output)
 }`
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
+	require.NoError(t, err)
 	dis := debug.DisassembleAssembly(compiled)
-	if strings.Contains(dis, "SIMD_DOT_PRODUCT_FLOAT64") {
-		t.Logf("SIMD dot product fires on dense layer inner loop")
-	} else {
-		t.Logf("SIMD does NOT fire on dense layer inner loop; disasm follows:\n%s", dis)
-		t.Fail()
-	}
+	assert.Contains(t, dis, "SIMD_DOT_PRODUCT_FLOAT64", "the SIMD dot product fires on the dense layer's inner loop")
 }

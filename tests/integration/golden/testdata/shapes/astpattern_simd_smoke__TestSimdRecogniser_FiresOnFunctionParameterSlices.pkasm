@@ -21,7 +21,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun
-;   registers: int=2 sliceFloat=2
+;   registers: int=1 sliceFloat=2
 ;   dispatch:  asm=3 shim=2 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (float)
@@ -33,7 +33,7 @@
 0000 A 1:LOAD_INT_CONST_SMALL      75   0   8    ; ints[0] = 8
 0001 S 1:MAKE_SLICE_FLOAT          18   0   0
 0002   0:EXT                        0   0   0
-0003 A 1:LOAD_INT_CONST_SMALL      75   1   8    ; ints[1] = 8
-0004 S 1:MAKE_SLICE_FLOAT          18   1   1
-0005   0:EXT                        1   0   0
+0003 A 1:LOAD_INT_CONST_SMALL      75   0   8    ; ints[0] = 8
+0004 S 1:MAKE_SLICE_FLOAT          18   1   0
+0005   0:EXT                        0   0   0
 0006 A 1:TAIL_CALL                129   0   0    ; tail call (site 0)

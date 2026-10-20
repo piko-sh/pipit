@@ -38,7 +38,7 @@ func TestMoveGeneralDebugSnapshot(t *testing.T) {
 			source := struct {
 				Value int
 				Data  []byte
-			}{3, []byte{4}}
+			}{Value: 3, Data: []byte{4}}
 			registers := &Registers{}
 			registers.General = make([]reflect.Value, 2)
 			registers.General[0] = reflect.ValueOf(&source).Elem()

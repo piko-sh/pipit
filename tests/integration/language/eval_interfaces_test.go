@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,48 +32,48 @@ func TestEvalInterfaceBoxing(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "box and unbox int",
-			code:   "func wrap(x any) any { return x }\nwrap(42)",
-			expect: 42,
+			name: "box and unbox int",
+			code: "func wrap(x any) any { return x }\nwrap(42)",
+			want: 42,
 		},
 		{
-			name:   "box and unbox float",
-			code:   "func wrap(x any) any { return x }\ny := 3.14\nwrap(y)",
-			expect: 3.14,
+			name: "box and unbox float",
+			code: "func wrap(x any) any { return x }\ny := 3.14\nwrap(y)",
+			want: 3.14,
 		},
 		{
-			name:   "box and unbox bool",
-			code:   "func wrap(x any) any { return x }\nb := true\nwrap(b)",
-			expect: true,
+			name: "box and unbox bool",
+			code: "func wrap(x any) any { return x }\nb := true\nwrap(b)",
+			want: true,
 		},
 		{
-			name:   "box and unbox string",
-			code:   "func wrap(x any) any { return x }\ns := \"hello\"\nwrap(s)",
-			expect: "hello",
+			name: "box and unbox string",
+			code: "func wrap(x any) any { return x }\ns := \"hello\"\nwrap(s)",
+			want: "hello",
 		},
 		{
-			name:   "box and unbox uint",
-			code:   "func wrap(x any) any { return x }\nvar u uint = 42\nwrap(u)",
-			expect: uint(42),
+			name: "box and unbox uint",
+			code: "func wrap(x any) any { return x }\nvar u uint = 42\nwrap(u)",
+			want: uint(42),
 		},
 		{
 			name: "unbox to typed int",
 			code: `func box() any { return 42 }
 func use() int { v := box(); return v.(int) }
 use()`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "unbox to typed string",
 			code: `func box() any { return "hello" }
 func use() string { v := box(); return v.(string) }
 use()`,
-			expect: "hello",
+			want: "hello",
 		},
 		{
 			name: "interface function param float add",
@@ -83,7 +83,7 @@ use()`,
 x := 1.5
 y := 2.5
 add(x, y)`,
-			expect: 4.0,
+			want: 4.0,
 		},
 		{
 			name: "interface function param bool",
@@ -92,7 +92,7 @@ add(x, y)`,
 }
 b := true
 negate(b)`,
-			expect: false,
+			want: false,
 		},
 		{
 			name: "type assertion comma ok success",
@@ -101,7 +101,7 @@ negate(b)`,
 	return ok
 }
 check(42)`,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "type assertion comma ok fail",
@@ -110,7 +110,7 @@ check(42)`,
 	return ok
 }
 check(42)`,
-			expect: false,
+			want: false,
 		},
 	}
 
@@ -118,9 +118,9 @@ check(42)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

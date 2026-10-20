@@ -22,8 +22,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function cache.get
-;   registers: int=6 general=5 bool=2
-;   dispatch:  asm=23 shim=1 exit=0 go=1
+;   registers: int=4 general=5 bool=2
+;   dispatch:  asm=21 shim=1 exit=0 go=1
 ;   params:    (general, int)
 ;   returns:   (int, bool)
 ; ═════════════════════════════════════════════════════════════
@@ -37,27 +37,25 @@
 0002   0:EXT                        2   0   0
 0003 A 0:MOVE_GENERAL               2   3   0
 0004 A 1:MOVE_INT                  35   1   2
-0005 G 1:NOT                       52   3   1
-0006 A 0:JUMP_IF_FALSE              3   6   0    ; if ints[3] == 0 goto +6
-0007 A 1:LOAD_INT_CONST_SMALL      75   4   0    ; ints[4] = 0
-0008 A 1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = false
-0009 A 1:MOVE_BOOL                 38   1   0
-0010 A 1:MOVE_INT                  35   0   4
-0011 A 1:MOVE_BOOL                 38   0   1
-0012 A 2:TIER2_RETURN               0  10   2    ; 2 values
-0013 A 0:GET_STRUCT_FIELD_GENERAL_T0   4   0   2    ; inlined body of function 3 called at PC 13
-0014 A 0:EQ_GENERAL                 5   2   4
-0015 A 0:JUMP_IF_FALSE              5   1   0    ; if ints[5] == 0 goto +1
-0016 A 1:JUMP                      74   2   0    ; goto 2
-0017 A 1:CALL                     128   1   0    ; call (site 1)
-0018 A 1:CALL                     128   2   0    ; call (site 2)
-0019 A 0:GET_STRUCT_FIELD_INT_T0    4   2   1
-0020 A 1:LOAD_BOOL_CONST          138   0   1    ; bools[0] = true
-0021 A 1:MOVE_BOOL                 38   1   0
-0022 A 1:MOVE_INT                  35   0   4
-0023 A 1:MOVE_BOOL                 38   0   1
-0024 A 2:TIER2_RETURN               0  10   2    ; 2 values
-0025 A 1:JUMP                      74   0   0    ; goto 0
+0005 G 1:NOT                       52   2   1
+0006 A 0:JUMP_IF_FALSE              2   5   0    ; if ints[2] == 0 goto +5
+0007 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
+0008 A 1:LOAD_BOOL_CONST          138   1   0    ; bools[1] = false
+0009 A 1:MOVE_INT                  35   0   2
+0010 A 1:MOVE_BOOL                 38   0   1
+0011 A 2:TIER2_RETURN               0  10   2    ; 2 values
+0012 A 0:GET_STRUCT_FIELD_GENERAL_T0   4   0   2    ; inlined body of function 3 called at PC 12
+0013 A 0:EQ_GENERAL                 3   2   4
+0014 A 0:JUMP_IF_FALSE              3   1   0    ; if ints[3] == 0 goto +1
+0015 A 1:JUMP                      74   2   0    ; goto 2
+0016 A 1:CALL                     128   1   0    ; call (site 1)
+0017 A 1:CALL                     128   2   0    ; call (site 2)
+0018 A 0:GET_STRUCT_FIELD_INT_T0    2   2   1
+0019 A 1:LOAD_BOOL_CONST          138   1   1    ; bools[1] = true
+0020 A 1:MOVE_INT                  35   0   2
+0021 A 1:MOVE_BOOL                 38   0   1
+0022 A 2:TIER2_RETURN               0  10   2    ; 2 values
+0023 A 1:JUMP                      74   0   0    ; goto 0
 
 ; ═════════════════════════════════════════════════════════════
 ; function cache.put
@@ -180,7 +178,7 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=7 general=1 bool=2 uint=9
+;   registers: int=6 general=1 bool=2 uint=6
 ;   dispatch:  asm=30 shim=0 exit=0 go=5
 ;   params:    (none)
 ;   returns:   (int)
@@ -195,23 +193,23 @@
 0002 A 0:LOAD_UINT_CONST            0   0   0
 0003 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
 0004 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0005 A 0:LOAD_UINT_CONST            7   1   0    ; LICM hoist of PC 10
-0006 A 1:LOAD_UINT_CONST_SMALL     99   8   8    ; LICM hoist of PC 17
+0005 A 0:LOAD_UINT_CONST            4   1   0    ; LICM hoist of PC 10
+0006 A 1:LOAD_UINT_CONST_SMALL     99   5   8    ; LICM hoist of PC 17
 0007 A 1:LOAD_UINT_CONST_SMALL     99   1  31    ; LICM hoist of PC 21
 0008 A 1:LT_INT_CONST_JUMP_FALSE  123   1   2
 0009   0:EXT                       29   0   0
-0010 A 0:MUL_UINT                   2   0   7
+0010 A 0:MUL_UINT                   2   0   4
 0011 A 0:TRUNCATE_NARROW            2  32   5
-0012 A 1:ADD_UINT_CONST            96   4   2
+0012 A 1:ADD_UINT_CONST            96   2   2
 0013   0:EXT                        2   0   0
-0014 A 0:TRUNCATE_NARROW            4  32   5
-0015 A 1:BIT_AND_UINT_CONST        98   6   4
+0014 A 0:TRUNCATE_NARROW            2  32   5
+0015 A 1:BIT_AND_UINT_CONST        98   2   2
 0016   0:EXT                        3   0   0
-0017 A 1:MOVE_UINT                 39   0   6
-0018 A 0:SHIFT_RIGHT_UINT           2   0   8
-0019 A 1:BIT_AND_UINT_CONST        98   4   2
+0017 A 1:MOVE_UINT                 39   0   2
+0018 A 0:SHIFT_RIGHT_UINT           2   0   5
+0019 A 1:BIT_AND_UINT_CONST        98   2   2
 0020   0:EXT                        5   0   0
-0021 G 1:UINT_TO_INT               56   4   4
+0021 G 1:UINT_TO_INT               56   4   2
 0022 A 0:SHIFT_RIGHT_UINT           2   0   1
 0023 A 1:LOAD_UINT_CONST_SMALL     99   3   0    ; uints[3] = 0
 0024 A 0:EQ_UINT                    5   2   3
@@ -219,8 +217,8 @@
 0026 G 1:BOOL_TO_INT               53   5   0
 0027 A 0:JUMP_IF_FALSE              5   5   0    ; if ints[5] == 0 goto +5
 0028 A 1:CALL                     128   1   0    ; call (site 1)
-0029 G 1:BOOL_TO_INT               53   6   1
-0030 A 0:JUMP_IF_FALSE              6   6   0    ; if ints[6] == 0 goto +6
+0029 G 1:BOOL_TO_INT               53   5   1
+0030 A 0:JUMP_IF_FALSE              5   6   0    ; if ints[5] == 0 goto +6
 0031 A 2:TIER2_INC_INT              0   1   0
 0032 A 1:JUMP                      74   4   0    ; goto 4
 0033 A 1:BIT_AND_UINT_CONST        98   2   0

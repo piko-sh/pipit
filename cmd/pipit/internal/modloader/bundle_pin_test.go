@@ -19,8 +19,9 @@
 package modloader
 
 import (
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/sdk/module"
 )
@@ -38,17 +39,11 @@ func unpinnedTestBundle() *module.Bundle {
 func TestEnsureBundlePinFillsEmptyPin(t *testing.T) {
 	t.Parallel()
 	want, err := unpinnedTestBundle().Fingerprint()
-	if err != nil {
-		t.Fatalf("Fingerprint: %v", err)
-	}
+	require.NoError(t, err)
 
 	bundle := unpinnedTestBundle()
-	if err := EnsureBundlePin(bundle); err != nil {
-		t.Fatalf("EnsureBundlePin: %v", err)
-	}
-	if bundle.Descriptor.Ref.Pin != want {
-		t.Fatalf("pin = %q, want %q", bundle.Descriptor.Ref.Pin, want)
-	}
+	require.NoError(t, EnsureBundlePin(bundle))
+	require.Equal(t, want, bundle.Descriptor.Ref.Pin)
 }
 
 func TestEnsureBundlePinKeepsExistingPin(t *testing.T) {
@@ -56,12 +51,8 @@ func TestEnsureBundlePinKeepsExistingPin(t *testing.T) {
 	bundle := unpinnedTestBundle()
 	bundle.Descriptor.Ref.Pin = "sha256:already-pinned"
 
-	if err := EnsureBundlePin(bundle); err != nil {
-		t.Fatalf("EnsureBundlePin: %v", err)
-	}
-	if bundle.Descriptor.Ref.Pin != "sha256:already-pinned" {
-		t.Fatalf("pin = %q, want the existing pin kept", bundle.Descriptor.Ref.Pin)
-	}
+	require.NoError(t, EnsureBundlePin(bundle))
+	require.Equal(t, "sha256:already-pinned", bundle.Descriptor.Ref.Pin)
 }
 
 func TestEnsureBundlePinRejectsMissingDescriptor(t *testing.T) {
@@ -71,8 +62,6 @@ func TestEnsureBundlePinRejectsMissingDescriptor(t *testing.T) {
 		"nil descriptor": {Bytecode: []byte("bytecode")},
 	} {
 		err := EnsureBundlePin(bundle)
-		if !errors.Is(err, errBundleWithoutDescriptor) {
-			t.Fatalf("%s: err = %v, want errBundleWithoutDescriptor", name, err)
-		}
+		require.ErrorIs(t, err, errBundleWithoutDescriptor, "%s", name)
 	}
 }

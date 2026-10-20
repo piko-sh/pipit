@@ -71,6 +71,7 @@ func TestEveryGoOnlyOperationIsBatchable(t *testing.T) {
 			continue
 		}
 		t.Run(row.Name, func(t *testing.T) {
+			t.Parallel()
 			require.True(t, instructionWouldTrampoline(instruction), "Go-only operation must participate in Path B batching")
 		})
 	}
@@ -87,6 +88,7 @@ func TestEveryInLoopShimStaysInAssembly(t *testing.T) {
 			continue
 		}
 		t.Run(row.Name, func(t *testing.T) {
+			t.Parallel()
 			require.False(t, instructionWouldTrampoline(instruction), "in-loop shim must not be batched as an unconditional exit")
 		})
 	}

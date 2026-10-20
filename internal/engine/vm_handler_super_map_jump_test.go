@@ -70,49 +70,70 @@ func TestFusedMapLookupWritesTheValueAndTheOkBitOnAHit(t *testing.T) {
 			handler: handleMapIndexOkJumpIfFalseIntInt,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int]int{7: 42}) },
 			key:     int64(7),
-			check:   func(t *testing.T, registers *Registers) { require.Equal(t, int64(42), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), registers.Ints[0])
+			},
 		},
 		{
 			name:    "an int64-keyed int64 map on its fast path",
 			handler: handleMapIndexOkJumpIfFalseIntInt,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int64]int64{7: 42}) },
 			key:     int64(7),
-			check:   func(t *testing.T, registers *Registers) { require.Equal(t, int64(42), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), registers.Ints[0])
+			},
 		},
 		{
 			name:    "a named integer key falls back to reflect",
 			handler: handleMapIndexOkJumpIfFalseIntInt,
 			build:   func() reflect.Value { return reflect.ValueOf(map[namedMapKey]int64{7: 42}) },
 			key:     int64(7),
-			check:   func(t *testing.T, registers *Registers) { require.Equal(t, int64(42), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), registers.Ints[0])
+			},
 		},
 		{
 			name:    "a string-keyed integer map on its fast path",
 			handler: handleMapIndexOkJumpIfFalseStringInt,
 			build:   func() reflect.Value { return reflect.ValueOf(map[string]int{"k": 42}) },
 			key:     "k",
-			check:   func(t *testing.T, registers *Registers) { require.Equal(t, int64(42), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), registers.Ints[0])
+			},
 		},
 		{
 			name:    "a named string key falls back to reflect",
 			handler: handleMapIndexOkJumpIfFalseStringInt,
 			build:   func() reflect.Value { return reflect.ValueOf(map[namedStringKey]int64{"k": 42}) },
 			key:     "k",
-			check:   func(t *testing.T, registers *Registers) { require.Equal(t, int64(42), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), registers.Ints[0])
+			},
 		},
 		{
 			name:    "a string-keyed string map on its fast path",
 			handler: handleMapIndexOkJumpIfFalseStringString,
 			build:   func() reflect.Value { return reflect.ValueOf(map[string]string{"k": "v"}) },
 			key:     "k",
-			check:   func(t *testing.T, registers *Registers) { require.Equal(t, "v", registers.Strings[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, "v", registers.Strings[0])
+			},
 		},
 		{
 			name:    "an integer-keyed string map",
 			handler: handleMapIndexOkJumpIfFalseIntString,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int]string{7: "v"}) },
 			key:     int64(7),
-			check:   func(t *testing.T, registers *Registers) { require.Equal(t, "v", registers.Strings[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, "v", registers.Strings[0])
+			},
 		},
 		{
 			name:    "an integer-keyed general map",
@@ -120,6 +141,7 @@ func TestFusedMapLookupWritesTheValueAndTheOkBitOnAHit(t *testing.T) {
 			build:   func() reflect.Value { return reflect.ValueOf(map[int][]string{7: {"v"}}) },
 			key:     int64(7),
 			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
 				require.Equal(t, 1, registers.General[0].Len())
 				require.Equal(t, "v", registers.General[0].Index(0).String())
 			},
@@ -130,6 +152,7 @@ func TestFusedMapLookupWritesTheValueAndTheOkBitOnAHit(t *testing.T) {
 			build:   func() reflect.Value { return reflect.ValueOf(map[string][]string{"k": {"v"}}) },
 			key:     "k",
 			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
 				require.Equal(t, 1, registers.General[0].Len())
 			},
 		},
@@ -172,35 +195,50 @@ func TestFusedMapLookupTakesTheJumpAndZeroesTheValueOnAMiss(t *testing.T) {
 			handler: handleMapIndexOkJumpIfFalseIntInt,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int]int{7: 42}) },
 			key:     int64(99),
-			check:   func(t *testing.T, registers *Registers) { require.Equal(t, int64(0), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(0), registers.Ints[0])
+			},
 		},
 		{
 			name:    "a named integer key on the reflect path",
 			handler: handleMapIndexOkJumpIfFalseIntInt,
 			build:   func() reflect.Value { return reflect.ValueOf(map[namedMapKey]int64{7: 42}) },
 			key:     int64(99),
-			check:   func(t *testing.T, registers *Registers) { require.Equal(t, int64(0), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(0), registers.Ints[0])
+			},
 		},
 		{
 			name:    "a string-keyed integer map",
 			handler: handleMapIndexOkJumpIfFalseStringInt,
 			build:   func() reflect.Value { return reflect.ValueOf(map[string]int{"k": 42}) },
 			key:     "absent",
-			check:   func(t *testing.T, registers *Registers) { require.Equal(t, int64(0), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(0), registers.Ints[0])
+			},
 		},
 		{
 			name:    "a string-keyed string map",
 			handler: handleMapIndexOkJumpIfFalseStringString,
 			build:   func() reflect.Value { return reflect.ValueOf(map[string]string{"k": "v"}) },
 			key:     "absent",
-			check:   func(t *testing.T, registers *Registers) { require.Empty(t, registers.Strings[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Empty(t, registers.Strings[0])
+			},
 		},
 		{
 			name:    "an integer-keyed string map",
 			handler: handleMapIndexOkJumpIfFalseIntString,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int]string{7: "v"}) },
 			key:     int64(99),
-			check:   func(t *testing.T, registers *Registers) { require.Empty(t, registers.Strings[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Empty(t, registers.Strings[0])
+			},
 		},
 		{
 			name:    "an integer-keyed general map yields the element zero value",
@@ -208,6 +246,7 @@ func TestFusedMapLookupTakesTheJumpAndZeroesTheValueOnAMiss(t *testing.T) {
 			build:   func() reflect.Value { return reflect.ValueOf(map[int][]string{7: {"v"}}) },
 			key:     int64(99),
 			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
 				require.True(t, registers.General[0].IsValid(), "a miss still writes a typed zero")
 				require.Equal(t, reflect.Slice, registers.General[0].Kind())
 			},
@@ -218,6 +257,7 @@ func TestFusedMapLookupTakesTheJumpAndZeroesTheValueOnAMiss(t *testing.T) {
 			build:   func() reflect.Value { return reflect.ValueOf(map[string][]string{"k": {"v"}}) },
 			key:     "absent",
 			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
 				require.True(t, registers.General[0].IsValid())
 			},
 		},

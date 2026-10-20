@@ -33,6 +33,8 @@ import (
 	"github.com/mvm-sh/mvm/interp"
 	"github.com/mvm-sh/mvm/lang/golang"
 	"github.com/mvm-sh/mvm/stdlib"
+
+	// Registers every standard library package with mvm's stdlib.Values.
 	_ "github.com/mvm-sh/mvm/stdlib/all"
 )
 
@@ -44,58 +46,41 @@ type MvmRunner struct{}
 func NewMvmRunner() *MvmRunner { return &MvmRunner{} }
 
 // Kind reports the runner identity used in results.
-func (runner *MvmRunner) Kind() RunnerKind { return RunnerMvm }
+func (*MvmRunner) Kind() RunnerKind { return RunnerMvm }
 
 // Available is always true; mvm is statically linked.
-func (runner *MvmRunner) Available(ctx context.Context) (bool, string) {
-	_ = ctx
+func (*MvmRunner) Available(context.Context) (bool, string) {
 	return true, ""
 }
 
 // Close is a no-op; mvm holds no global resources.
-func (runner *MvmRunner) Close(ctx context.Context) error { _ = ctx; return nil }
+func (*MvmRunner) Close(context.Context) error { return nil }
 
 // Run compiles the benchmark's pipit_source.go together with a small generated main()
 // that calls Run() / RunInner(K) and writes the result to stdout and (for inner-loop
-// mode) the elapsed nanos to stderr.
-func (runner *MvmRunner) Run(parent context.Context, spec BenchSpec, mode RunMode, benchmarkDir string) (Result, error) {
-	sourcePath := filepath.Join(benchmarkDir, "go", "pipit_source.go")
-	sourceBytes, err := os.ReadFile(sourcePath)
+// mode) the elapsed nanos to stderr. Mvm's Eval takes no context, so a run is not bounded
+// by spec.TimeoutSeconds.
+func (*MvmRunner) Run(_ context.Context, spec BenchSpec, mode RunMode, benchmarkDir string) (Result, error) {
+	sourceBytes, err := readBenchmarkFile(benchmarkDir, "go", "pipit_source.go")
 	if err != nil {
 		return failedResult(spec.Name, RunnerMvm, mode, "read pipit_source.go: "+err.Error()), nil
 	}
-
-	ctx, cancel := context.WithTimeoutCause(
-		parent,
-		time.Duration(spec.TimeoutSeconds)*time.Second,
-		fmt.Errorf("mvm runner: %s timed out", spec.Name),
-	)
-	defer cancel()
-	_ = ctx
-
-	mergedSource := mergeMvmSource(string(sourceBytes), mvmWrapperBody(mode, spec.KInner))
+	imports := map[string]struct{}{`"fmt"`: {}, `"os"`: {}}
+	body := stripPackageAndImports(string(sourceBytes), imports)
+	mergedSource := singleFileSource(imports, body, mvmWrapperBody(mode, spec.KInner))
 
 	var stdoutBuffer bytes.Buffer
 	var stderrBuffer bytes.Buffer
-
 	interpreter := interp.NewInterpreter(golang.GoSpec)
 	interpreter.ImportPackageValues(stdlib.Values)
 	interpreter.SetIO(os.Stdin, &stdoutBuffer, &stderrBuffer)
 
 	wallStart := time.Now()
-	var runErr error
-	var runPanic any
-	func() {
-		defer func() { runPanic = recover() }()
-		_, runErr = interpreter.Eval(filepath.Join(benchmarkDir, "go", "merged.go"), mergedSource)
-	}()
+	runErr := runRecovering("mvm", func() error {
+		_, evalErr := interpreter.Eval(filepath.Join(benchmarkDir, "go", "merged.go"), mergedSource)
+		return evalErr
+	})
 	wallElapsed := time.Since(wallStart)
-
-	compileNanos := interpreter.Stats.CompileTime.Nanoseconds()
-
-	if runPanic != nil {
-		return failedResult(spec.Name, RunnerMvm, mode, fmt.Sprintf("mvm VM panic: %v", runPanic)), nil
-	}
 	if runErr != nil {
 		return failedResult(spec.Name, RunnerMvm, mode, "mvm eval: "+runErr.Error()), nil
 	}
@@ -104,29 +89,12 @@ func (runner *MvmRunner) Run(parent context.Context, spec BenchSpec, mode RunMod
 	if mode == ModeInnerLoop {
 		innerNanos = parseMvmInnerElapsedNanos(stderrBuffer.String())
 	}
-
-	normalised := NormaliseStdout(stdoutBuffer.Bytes())
-	stdoutSHA := SHA256Hex(normalised)
-
-	status := StatusOK
-	note := ""
-	if stdoutSHA != spec.ExpectedStdoutSHA {
-		status = StatusMismatch
-		note = fmt.Sprintf("stdout SHA %s does not match expected %s", stdoutSHA, spec.ExpectedStdoutSHA)
-	}
-
-	return Result{
-		Benchmark:    spec.Name,
-		Runner:       RunnerMvm,
-		Mode:         mode,
-		WallNanos:    wallElapsed.Nanoseconds(),
-		InnerNanos:   innerNanos,
-		CompileNanos: compileNanos,
-		PeakRSSKB:    pipitSelfPeakRSSKB(),
-		StdoutSHA:    stdoutSHA,
-		Status:       status,
-		Note:         note,
-	}, nil
+	return checkedResult(spec, RunnerMvm, mode, stdoutBuffer.Bytes(), "", runTimings{
+		wallNanos:    wallElapsed.Nanoseconds(),
+		innerNanos:   innerNanos,
+		compileNanos: interpreter.Stats.CompileTime.Nanoseconds(),
+		peakRSSKB:    pipitSelfPeakRSSKB(),
+	}), nil
 }
 
 // mvmWrapperBody returns the body (no package / import lines) of a `main()` that calls
@@ -150,37 +118,11 @@ func main() {
 `
 }
 
-// mergeMvmSource glues pipit_source.go and the wrapper main() into a single Go source
-// file. Mvm parses one `package main` source string at a time, so we strip the package +
-// imports from pipit_source.go, collect every import we need (the union of the original
-// imports plus fmt and os for the wrapper), and emit the combined file.
-func mergeMvmSource(pipitSource string, wrapperBody string) string {
-	imports := map[string]struct{}{}
-	imports[`"fmt"`] = struct{}{}
-	imports[`"os"`] = struct{}{}
-	body := stripPackageAndImports(pipitSource, imports)
-	importList := make([]string, 0, len(imports))
-	for imp := range imports {
-		importList = append(importList, imp)
-	}
-	for i := 1; i < len(importList); i++ {
-		for j := i; j > 0 && importList[j-1] > importList[j]; j-- {
-			importList[j-1], importList[j] = importList[j], importList[j-1]
-		}
-	}
-	merged := "package main\n\nimport (\n"
-	for _, imp := range importList {
-		merged += "\t" + imp + "\n"
-	}
-	merged += ")\n" + body + "\n" + wrapperBody
-	return merged
-}
-
 // parseMvmInnerElapsedNanos extracts the `INNER_ELAPSED_NS=<int>` value the wrapper
 // main() writes to stderr in inner-loop mode. Returns zero if the line is absent or
 // malformed, matching the subprocess runner behaviour.
 func parseMvmInnerElapsedNanos(stderrContent string) int64 {
-	for _, line := range strings.Split(stderrContent, "\n") {
+	for line := range strings.SplitSeq(stderrContent, "\n") {
 		trimmed := strings.TrimSpace(line)
 		const prefix = "INNER_ELAPSED_NS="
 		if !strings.HasPrefix(trimmed, prefix) {

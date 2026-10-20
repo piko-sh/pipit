@@ -79,6 +79,10 @@ test-torture-safe: ## GC-torture lane over the pure-Go build
 test-torture-paranoid: ## GC torture plus register-arena poisoning
 	@$(HACK_DIR)/test/test.sh torture-paranoid
 
+.PHONY: test-spill-torture
+test-spill-torture: ## Most locals spilled, every body compiled twice
+	@$(HACK_DIR)/test/test.sh spill-torture
+
 .PHONY: test-golden
 test-golden: ## Compare the golden disassembly snapshots
 	@$(HACK_DIR)/test/test.sh golden

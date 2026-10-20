@@ -86,6 +86,25 @@ const (
 	// labelBoundsFail names the shared bounds-check failure trampoline emitted at the foot
 	// of the dispatch file.
 	labelBoundsFail = "bounds_fail"
+
+	// labelWriteBarrierFallback is the out-of-line tail a write-barrier guard jumps to while
+	// the barrier is on.
+	labelWriteBarrierFallback = "wb_fallback"
+
+	// labelSubSliceLowDone follows a sub-slice's optional low-bound load.
+	labelSubSliceLowDone = "ss_low_done"
+
+	// labelSubSliceHighDone follows a sub-slice's optional high-bound load.
+	labelSubSliceHighDone = "ss_high_done"
+
+	// sliceLowFlagBit is the bit number of isa.SliceLowBoundFlag.
+	sliceLowFlagBit = "0"
+
+	// sliceHighFlagBit is the bit number of isa.SliceHighBoundFlag.
+	sliceHighFlagBit = "1"
+
+	// sliceMaxFlagBit is the bit number of isa.SliceMaxBitFlag.
+	sliceMaxFlagBit = "2"
 )
 
 // JumpTableEntry pairs a handler symbol name with its byte offset into the dispatch
@@ -675,6 +694,20 @@ func (*BytecodeARM64Arch) EmitEqGeneral(e *asmgen.Emitter) {
 	e.Instruction(macroDispatchNext)
 	e.Label("eqg_shim")
 	inst5(e, asmarm64.OperationBranch, "·handlerPathBShimEqGeneral(SB)")
+}
+
+// EmitWriteBarrierGuard runs body while the runtime write barrier is off and otherwise
+// branches to pathBFallback, using only scratch register R4.
+//
+// Takes e (*asmgen.Emitter) which receives the emitted instructions.
+// Takes body (func()) which emits the guarded handler body.
+func (*BytecodeARM64Arch) EmitWriteBarrierGuard(e *asmgen.Emitter, body func()) {
+	inst5(e, asmarm64.OperationMove64Bits, "$runtime·writeBarrier(SB), R4")
+	inst5(e, asmarm64.OperationMove8BitsUnsigned, "(R4), R4")
+	inst5(e, asmarm64.OperationCompareAndBranchIfNotZero, "R4, "+labelWriteBarrierFallback)
+	body()
+	e.Label(labelWriteBarrierFallback)
+	inst5(e, asmarm64.OperationBranch, "·pathBFallback(SB)")
 }
 
 // EmitMoveGeneralAlias implements BytecodeArchPort.

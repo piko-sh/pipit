@@ -21,14 +21,13 @@
 package bytecode_test
 
 import (
-	"context"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/debug"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestF3SliceIndexStructFieldFusion(t *testing.T) {
@@ -38,7 +37,7 @@ func TestF3SliceIndexStructFieldFusion(t *testing.T) {
 		name           string
 		source         string
 		entrypoint     string
-		expect         any
+		want           any
 		expectOp       string
 		expectFallback bool
 	}{
@@ -70,7 +69,7 @@ func run() int64 {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     int64(60),
+			want:       int64(60),
 			expectOp:   "SLICE_INDEX_STRUCT_FIELD_INT",
 		},
 		{
@@ -97,7 +96,7 @@ func run() float64 {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     float64(7.5),
+			want:       float64(7.5),
 			expectOp:   "SLICE_INDEX_STRUCT_FIELD_FLOAT",
 		},
 		{
@@ -130,7 +129,7 @@ func run() int64 {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     int64(2),
+			want:       int64(2),
 			expectOp:   "SLICE_INDEX_STRUCT_FIELD_BOOL",
 		},
 		{
@@ -153,7 +152,7 @@ func run() string {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "alpha",
+			want:       "alpha",
 			expectOp:   "SLICE_INDEX_STRUCT_FIELD_STRING",
 		},
 		{
@@ -179,7 +178,7 @@ func run() uint64 {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     uint64(7),
+			want:       uint64(7),
 			expectOp:   "SLICE_INDEX_STRUCT_FIELD_UINT",
 		},
 		{
@@ -205,7 +204,7 @@ func run() string {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "alpha",
+			want:       "alpha",
 
 			expectOp: "SLICE_INDEX_STRUCT_FIELD_STRING",
 		},
@@ -215,19 +214,17 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			compiled, err := service.CompileFileSet(context.Background(), map[string]string{
+			compiled, err := service.CompileFileSet(t.Context(), map[string]string{
 				"main.go": tt.source,
 			})
 			require.NoError(t, err, "compile: %s", tt.name)
 			if tt.expectOp != "" {
 				dump := debug.DisassembleAssembly(compiled)
-				if !strings.Contains(dump, tt.expectOp) {
-					t.Errorf("expected %s in bytecode for %s\n%s", tt.expectOp, tt.name, dump)
-				}
+				assert.Contains(t, dump, tt.expectOp, "%s", tt.name)
 			}
-			result, err := service.ExecuteEntrypoint(context.Background(), compiled, tt.entrypoint)
+			result, err := service.ExecuteEntrypoint(t.Context(), compiled, tt.entrypoint)
 			require.NoError(t, err, "execute: %s", tt.name)
-			require.Equal(t, tt.expect, result, "%s", tt.name)
+			require.Equal(t, tt.want, result, "%s", tt.name)
 		})
 	}
 }

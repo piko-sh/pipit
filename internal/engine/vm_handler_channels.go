@@ -19,8 +19,10 @@
 package engine
 
 import (
+	"context"
 	"reflect"
 
+	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -85,16 +87,33 @@ func (vm *VM) surfaceBlockingWake(wake blockWake) OpResult {
 	}
 }
 
-// surfaceContextCancellation aborts dispatch because the VM's context was cancelled while
-// a blocking channel or select operation was parked. It records the cancelled flag so
-// subsequent periodic checks agree and stores the context cause as the evaluation error.
+// blockingDone returns a channel that closes on context cancellation or the callback
+// deadline, so blocking operations observe both.
+//
+// Returns <-chan struct{} which closes when the wait must stop; nil when it never must.
+func (vm *VM) blockingDone() <-chan struct{} {
+	if vm.callbackDeadline.IsZero() {
+		return vm.ctx.Done()
+	}
+	if vm.blockCtx == nil {
+		vm.blockCtx, vm.blockCancel = context.WithDeadlineCause(vm.ctx, vm.callbackDeadline, fault.ErrCallbackTimeout)
+	}
+	return vm.blockCtx.Done()
+}
+
+// surfaceContextCancellation records cancellation or callback timeout during a blocking
+// operation and aborts dispatch.
 //
 // Returns opPanicError so the dispatch loop unwinds.
 func (vm *VM) surfaceContextCancellation() OpResult {
 	vm.Cancelled.Store(1)
-	if vm.ctx.Err() != nil {
+	switch {
+	case vm.ctx.Err() != nil:
 		vm.evalError = cancellationError(vm.ctx)
-	} else {
+	case vm.blockCtx != nil && vm.blockCtx.Err() != nil:
+		vm.pollCause = fault.ErrCallbackTimeout
+		vm.evalError = vm.stopError()
+	default:
 		vm.evalError = errBlockingOpUnblocked
 	}
 	return opPanicError
@@ -184,7 +203,7 @@ func handleChannelReceive(vm *VM, frame *CallFrame, registers *Registers, instru
 		return opContinue
 	}
 
-	done := vm.ctx.Done()
+	done := vm.blockingDone()
 	panicWake := vm.Globals.goroutinePanicWakeChan()
 	wake := blockWakeValue
 	var result reflect.Value
@@ -213,7 +232,7 @@ func handleChannelReceive(vm *VM, frame *CallFrame, registers *Registers, instru
 //
 // Returns OpResult indicating the next execution step.
 func blockingChannelSend(vm *VM, channel, value reflect.Value) OpResult {
-	done := vm.ctx.Done()
+	done := vm.blockingDone()
 	panicWake := vm.Globals.goroutinePanicWakeChan()
 	wake := blockWakeValue
 	token := vm.enterBlocking(vm.Globals.isInterpretedChannel(channel))

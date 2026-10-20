@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalGenericArithmetic(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "named integer type addition",
@@ -42,7 +42,7 @@ func TestEvalGenericArithmetic(t *testing.T) {
 var a MyInt = 5
 var b MyInt = 3
 int(a + b)`,
-			expect: 8,
+			want: 8,
 		},
 		{
 			name: "named integer type subtraction",
@@ -50,7 +50,7 @@ int(a + b)`,
 var a MyInt = 10
 var b MyInt = 4
 int(a - b)`,
-			expect: 6,
+			want: 6,
 		},
 		{
 			name: "named integer type multiplication",
@@ -58,7 +58,7 @@ int(a - b)`,
 var a MyInt = 3
 var b MyInt = 7
 int(a * b)`,
-			expect: 21,
+			want: 21,
 		},
 		{
 			name: "named integer type division",
@@ -66,7 +66,7 @@ int(a * b)`,
 var a MyInt = 20
 var b MyInt = 4
 int(a / b)`,
-			expect: 5,
+			want: 5,
 		},
 		{
 			name: "named integer type modulo",
@@ -74,7 +74,7 @@ int(a / b)`,
 var a MyInt = 17
 var b MyInt = 5
 int(a % b)`,
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "named float type addition",
@@ -82,7 +82,7 @@ int(a % b)`,
 var a MyFloat = 2.5
 var b MyFloat = 1.5
 float64(a + b)`,
-			expect: 4.0,
+			want: 4.0,
 		},
 		{
 			name: "named string type concatenation",
@@ -90,7 +90,7 @@ float64(a + b)`,
 var a MyString = "hello"
 var b MyString = " world"
 string(a + b)`,
-			expect: "hello world",
+			want: "hello world",
 		},
 	}
 
@@ -98,9 +98,9 @@ string(a + b)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

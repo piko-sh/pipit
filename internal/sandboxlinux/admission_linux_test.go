@@ -29,6 +29,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestAdmissionBoundsAndTransfer(t *testing.T) {
@@ -91,10 +93,7 @@ func TestServiceCleanupRetainsAdmissionOnFailure(t *testing.T) {
 }
 
 func TestNativeServiceAdmissionPrecedesImage(t *testing.T) {
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	group, err := newServiceGroup(parent, Limits{}, testTenant)
 	if err != nil {
 		t.Fatal(err)

@@ -24,80 +24,58 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRecoveryCheckpointApproval(t *testing.T) {
+	t.Parallel()
 	owner := testRecoveryAuthority(t, Read|Write)
 	journal := testRecoveryAuthorityJournal(t, owner)
 	binding := [sha256.Size]byte{1}
 	encoded, err := owner.checkpoint(journal, binding)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	approved := sha256.Sum256(encoded)
-	if err := ValidateRecoveryCheckpoint(encoded, approved, binding); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, ValidateRecoveryCheckpoint(encoded, approved, binding))
 	again, err := owner.checkpoint(journal, binding)
-	if err != nil || !bytes.Equal(encoded, again) {
-		t.Fatal("checkpoint was not deterministic:", err)
-	}
-	if err := ValidateRecoveryCheckpoint(encoded, [sha256.Size]byte{}, binding); err == nil {
-		t.Fatal("missing independent approval accepted")
-	}
-	if err := ValidateRecoveryCheckpoint(encoded, approved, [sha256.Size]byte{2}); err == nil {
-		t.Fatal("different host binding accepted")
-	}
+	require.NoError(t, err, "checkpoint was not deterministic")
+	require.True(t, bytes.Equal(encoded, again))
+	require.Error(t, ValidateRecoveryCheckpoint(encoded, [sha256.Size]byte{}, binding), "missing independent approval accepted")
+	require.Error(t, ValidateRecoveryCheckpoint(encoded, approved, [sha256.Size]byte{2}), "different host binding accepted")
 	changed := bytes.Clone(encoded)
 	changed[len(changed)-1] ^= 1
-	if err := ValidateRecoveryCheckpoint(changed, approved, binding); !errors.Is(err, ErrDenied) {
-		t.Fatal("altered checkpoint accepted:", err)
-	}
-	if _, err := owner.checkpoint(journal, [sha256.Size]byte{}); err == nil {
-		t.Fatal("empty host binding accepted")
-	}
+	require.ErrorIs(t, ValidateRecoveryCheckpoint(changed, approved, binding), ErrDenied, "altered checkpoint accepted")
+	_, err = owner.checkpoint(journal, [sha256.Size]byte{})
+	require.Error(t, err, "empty host binding accepted")
 	call, err := owner.admit(brokerMessage(1, recoveryWritePayload))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := owner.checkpoint(journal, binding); err == nil {
-		t.Fatal("checkpoint captured after admission")
-	}
-	if err := call.Finish(0); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := owner.checkpoint(journal, binding); err == nil {
-		t.Fatal("finished operation reset checkpoint eligibility")
-	}
-	if err := owner.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := owner.checkpoint(journal, binding); !errors.Is(err, ErrClosed) {
-		t.Fatal("closed authority checkpoint:", err)
-	}
+	require.NoError(t, err)
+	_, err = owner.checkpoint(journal, binding)
+	require.Error(t, err, "checkpoint captured after admission")
+	require.NoError(t, call.Finish(0))
+	_, err = owner.checkpoint(journal, binding)
+	require.Error(t, err, "finished operation reset checkpoint eligibility")
+	require.NoError(t, owner.Close())
+	_, err = owner.checkpoint(journal, binding)
+	require.ErrorIs(t, err, ErrClosed, "closed authority checkpoint")
 	var absent *LinuxRecoveryAuthority
-	if _, err := absent.checkpoint(journal, binding); !errors.Is(err, ErrClosed) {
-		t.Fatal("nil authority checkpoint:", err)
-	}
+	_, err = absent.checkpoint(journal, binding)
+	require.ErrorIs(t, err, ErrClosed, "nil authority checkpoint")
 }
 
 func TestRecoveryCheckpointRejectsMalformedApprovedPolicy(t *testing.T) {
+	t.Parallel()
 	owner := testRecoveryAuthority(t, Read|Write)
 	journal := testRecoveryAuthorityJournal(t, owner)
 	binding := [sha256.Size]byte{1}
 	encoded, err := owner.checkpoint(journal, binding)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, mode := range []string{"profile", "old-profile", "namespace", "missing-roots", "zero-inode", "zero-mount", "journal-inode", "journal-mount", "duplicate-roots", "invalid-rights", "default-limits", "excessive-limits", "zero-binding"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			var policy recoveryCheckpoint
-			if err := json.Unmarshal(encoded, &policy); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, json.Unmarshal(encoded, &policy))
 			switch mode {
 			case "profile":
 				policy.Profile = "other"
@@ -127,12 +105,8 @@ func TestRecoveryCheckpointRejectsMalformedApprovedPolicy(t *testing.T) {
 				policy.Binding = [sha256.Size]byte{}
 			}
 			malformed, err := json.Marshal(policy)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := ValidateRecoveryCheckpoint(malformed, sha256.Sum256(malformed), binding); err == nil {
-				t.Fatal("malformed checkpoint accepted")
-			}
+			require.NoError(t, err)
+			require.Error(t, ValidateRecoveryCheckpoint(malformed, sha256.Sum256(malformed), binding), "malformed checkpoint accepted")
 		})
 	}
 	for _, malformed := range [][]byte{
@@ -143,57 +117,42 @@ func TestRecoveryCheckpointRejectsMalformedApprovedPolicy(t *testing.T) {
 		[]byte(strings.Replace(string(encoded), `"profile":`, `"profile":"duplicate","profile":`, 1)),
 		[]byte(strings.Repeat("x", maximumBootstrapBytes+1)),
 	} {
-		if err := ValidateRecoveryCheckpoint(malformed, sha256.Sum256(malformed), binding); err == nil {
-			t.Fatal("ambiguous checkpoint accepted")
-		}
+		require.Error(t, ValidateRecoveryCheckpoint(malformed, sha256.Sum256(malformed), binding), "ambiguous checkpoint accepted")
 	}
 }
 
 func TestRecoveryCheckpointSortsRootIdentities(t *testing.T) {
+	t.Parallel()
 	bootstrap, err := PrepareLinuxBootstrap([]LinuxRootGrant{
 		{Name: "zebra", Path: t.TempDir(), Rights: Read},
 		{Name: "alpha", Path: t.TempDir(), Rights: Read | Write},
 	}, FilesystemLimits{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer bootstrap.Close()
 	owner, err := bootstrap.RecoveryAuthority()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer owner.Close()
 	journal := testRecoveryAuthorityJournal(t, owner)
 	binding := [sha256.Size]byte{1}
 	encoded, err := owner.checkpoint(journal, binding)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := ValidateRecoveryCheckpoint(encoded, sha256.Sum256(encoded), binding); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, ValidateRecoveryCheckpoint(encoded, sha256.Sum256(encoded), binding))
 	var policy recoveryCheckpoint
-	if err := json.Unmarshal(encoded, &policy); err != nil {
-		t.Fatal(err)
-	}
-	if len(policy.Roots) != 2 || policy.Roots[0].Name != "alpha" || policy.Roots[1].Name != "zebra" {
-		t.Fatal("roots not sorted")
-	}
+	require.NoError(t, json.Unmarshal(encoded, &policy))
+	require.Len(t, policy.Roots, 2, "roots not sorted")
+	require.Equal(t, "alpha", policy.Roots[0].Name)
+	require.Equal(t, "zebra", policy.Roots[1].Name)
 }
 
 func FuzzRecoveryCheckpointValidation(fuzzer *testing.F) {
 	budget, err := NewFilesystemBudget([]RootGrant{{Name: "data", Rights: Write}}, FilesystemLimits{})
-	if err != nil {
-		fuzzer.Fatal(err)
-	}
+	require.NoError(fuzzer, err)
 	seed, err := json.Marshal(recoveryCheckpoint{
 		Profile: recoveryCheckpointProfile, Namespace: strings.Repeat("a", 32), Binding: [sha256.Size]byte{1},
 		Roots: []filesystemBootstrapRoot{{Name: "data", Device: 1, Inode: 1, MountID: 1, Rights: Write}}, Limits: budget.limits,
 		Journal: recoveryCheckpointJournal{Device: 1, Inode: 1, MountID: 1},
 	})
-	if err != nil {
-		fuzzer.Fatal(err)
-	}
+	require.NoError(fuzzer, err)
 	fuzzer.Add(seed)
 	fuzzer.Add([]byte("{}"))
 	fuzzer.Add([]byte("null"))
@@ -201,9 +160,8 @@ func FuzzRecoveryCheckpointValidation(fuzzer *testing.F) {
 	fuzzer.Fuzz(func(t *testing.T, encoded []byte) {
 		binding := [sha256.Size]byte{1}
 		if err := ValidateRecoveryCheckpoint(encoded, sha256.Sum256(encoded), binding); err == nil {
-			if len(encoded) == 0 || len(encoded) > maximumBootstrapBytes {
-				t.Fatal("unbounded checkpoint accepted")
-			}
+			require.NotEmpty(t, encoded, "unbounded checkpoint accepted")
+			require.LessOrEqual(t, len(encoded), maximumBootstrapBytes)
 		}
 	})
 }

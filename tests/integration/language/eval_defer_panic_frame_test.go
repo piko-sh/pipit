@@ -21,23 +21,23 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
 func TestDeferredPanicOnNormalReturnSurfaces(t *testing.T) {
 	t.Parallel()
-	_, err := app.NewService().Eval(context.Background(), `func run() int { defer func() { panic("late boom") }(); return 7 }
+	_, err := app.NewService().Eval(t.Context(), `func run() int { defer func() { panic("late boom") }(); return 7 }
 run()`)
 	require.ErrorContains(t, err, "late boom")
 }
 
 func TestDeferredPanicCaughtByOuterFrame(t *testing.T) {
 	t.Parallel()
-	result, err := app.NewService().Eval(context.Background(), `func inner() int { defer func() { panic("boom") }(); return 7 }
+	result, err := app.NewService().Eval(t.Context(), `func inner() int { defer func() { panic("boom") }(); return 7 }
 func outer() (r string) { defer func() { if recover() != nil { r = "caught" } }(); inner(); return "no" }
 outer()`)
 	require.NoError(t, err)
@@ -46,7 +46,7 @@ outer()`)
 
 func TestRePanicRecoverDeliversCorrectReturn(t *testing.T) {
 	t.Parallel()
-	result, err := app.NewService().Eval(context.Background(), `func f() (r int) {
+	result, err := app.NewService().Eval(t.Context(), `func f() (r int) {
 	defer func() { recover(); r = 5 }()
 	defer func() { panic("second") }()
 	panic("first")
@@ -59,7 +59,7 @@ f()`)
 
 func TestRePanicDoesNotRunPostPanicStatements(t *testing.T) {
 	t.Parallel()
-	result, err := app.NewService().Eval(context.Background(), `func f(s []int) {
+	result, err := app.NewService().Eval(t.Context(), `func f(s []int) {
 	defer func() { recover() }()
 	defer func() { panic("second") }()
 	panic("first")
@@ -72,7 +72,7 @@ s := make([]int, 1); f(s); s[0]`)
 
 func TestRecoveredNativePanicResumesAncestor(t *testing.T) {
 	t.Parallel()
-	result, err := app.NewService().Eval(context.Background(), `func mid() (r string) { defer func() { if recover() != nil { r = "ok" } }(); s := []int{1}; _ = s[9]; return "no" }
+	result, err := app.NewService().Eval(t.Context(), `func mid() (r string) { defer func() { if recover() != nil { r = "ok" } }(); s := []int{1}; _ = s[9]; return "no" }
 func top() string { x := mid(); return x + "-done" }
 top()`)
 	require.NoError(t, err)

@@ -66,7 +66,7 @@ func (a *pipitTextMarshalerAdapter) MarshalText() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return extractBytesResult(results), extractErrorResult(results)
+	return extractBytesResult(results), resultError(a.vm, results, 1)
 }
 
 // pipitTextUnmarshalerAdapter wraps a pipit pointer value to satisfy
@@ -85,7 +85,7 @@ func (a *pipitTextUnmarshalerAdapter) UnmarshalText(text []byte) error {
 	if err != nil {
 		return err
 	}
-	return extractErrorResult(results)
+	return resultError(a.vm, results, 0)
 }
 
 // pipitHTTPHandlerAdapter wraps a pipit value to satisfy net/http.Handler for a
@@ -150,6 +150,13 @@ func (a *pipitHeapInterfaceAdapter) Pop() any {
 		return nil
 	}
 	return results[0].Interface()
+}
+
+// adapterUnderlying returns the script value the adapter wraps.
+//
+// Returns reflect.Value which is the wrapped value.
+func (a *pipitHeapInterfaceAdapter) adapterUnderlying() reflect.Value {
+	return a.underlying
 }
 
 // buildTextMarshalerAdapterIfRegistered returns a pipitTextMarshalerAdapter wrapping

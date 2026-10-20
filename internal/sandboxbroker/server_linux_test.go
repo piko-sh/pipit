@@ -26,6 +26,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/sandboxwire"
 )
 
@@ -34,28 +36,23 @@ func filesystemProtocolFixture(t *testing.T) (*sandboxwire.Codec, <-chan error) 
 	backend := openTestFilesystem(t, t.TempDir(), Read, FilesystemLimits{})
 	backend.sealed = true
 	host, child := net.Pipe()
-	if err := host.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, host.SetDeadline(time.Now().Add(3*time.Second)))
 	codec, err := sandboxwire.New(host, host, sandboxwire.Limits{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	done := make(chan error, 1)
 	go func() { done <- ServeFilesystemBroker(child, backend); _ = child.Close() }()
 	t.Cleanup(func() { _ = host.Close(); _ = child.Close() })
 	hello, err := codec.Read()
-	if err != nil || hello.Kind != sandboxwire.Hello {
-		t.Fatalf("hello: %+v: %v", hello, err)
-	}
+	require.NoError(t, err, "hello: %+v", hello)
+	require.Equal(t, sandboxwire.Hello, hello.Kind)
 	var profile FilesystemConfiguration
-	if err := hello.DecodePayload(&profile); err != nil || profile.Profile != filesystemProfile {
-		t.Fatal("incorrect profile:", err)
-	}
+	require.NoError(t, hello.DecodePayload(&profile), "incorrect profile")
+	require.Equal(t, filesystemProfile, profile.Profile)
 	return codec, done
 }
 
 func TestFilesystemProtocolRejectsAuthorityChanges(t *testing.T) {
+	t.Parallel()
 	for _, payload := range []string{
 		`{"profile":"wrong"}`,
 		`{"profile":"filesystem-broker-v1","roots":[]}`,
@@ -67,81 +64,64 @@ func TestFilesystemProtocolRejectsAuthorityChanges(t *testing.T) {
 		if err == nil {
 			_, err = codec.Read()
 		}
-		if err == nil {
-			t.Fatal("invalid configuration accepted:", payload)
-		}
-		if err := <-done; err == nil {
-			t.Fatal("server ignored configuration violation")
-		}
+		require.Error(t, err, "invalid configuration accepted: %v", payload)
+		require.Error(t, <-done, "server ignored configuration violation")
 	}
 }
 
 func TestFilesystemProtocolDeniedAndSanitised(t *testing.T) {
+	t.Parallel()
 	codec, done := filesystemProtocolFixture(t)
-	if err := codec.Write(sandboxwire.Message{Kind: sandboxwire.Configure, ID: 0, Payload: []byte(`{"profile":"filesystem-broker-v1"}`)}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, codec.Write(sandboxwire.Message{Kind: sandboxwire.Configure, ID: 0, Payload: []byte(`{"profile":"filesystem-broker-v1"}`)}))
 	ready, err := codec.Read()
-	if err != nil || ready.Kind != sandboxwire.Ready {
-		t.Fatal("ready:", err)
-	}
-	if err := codec.Write(sandboxwire.Message{Kind: sandboxwire.Run, ID: 1,
-		Payload: []byte(`{"operation":"fs.read","root":"missing","path":"secret","max_bytes":1}`)}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "ready")
+	require.Equal(t, sandboxwire.Ready, ready.Kind)
+	require.NoError(t, codec.Write(sandboxwire.Message{Kind: sandboxwire.Run, ID: 1,
+		Payload: []byte(`{"operation":"fs.read","root":"missing","path":"secret","max_bytes":1}`)}))
 	reply, err := codec.Read()
-	if err != nil || reply.Kind != sandboxwire.Result || reply.ID != 1 {
-		t.Fatal("result:", err)
-	}
+	require.NoError(t, err, "result")
+	require.Equal(t, sandboxwire.Result, reply.Kind)
+	require.Equal(t, uint64(1), reply.ID)
 	var response FilesystemResponse
-	if err := reply.DecodePayload(&response); err != nil {
-		t.Fatal(err)
-	}
-	if response.Code != "denied" || response.Data != nil || response.Entries != nil || response.Written != 0 {
-		t.Fatalf("unsanitised failure: %+v", response)
-	}
-	if err := <-done; !errors.Is(err, ErrDenied) {
-		t.Fatal(err)
-	}
+	require.NoError(t, reply.DecodePayload(&response))
+	require.Equal(t, "denied", response.Code, "unsanitised failure: %+v", response)
+	require.Nil(t, response.Data)
+	require.Nil(t, response.Entries)
+	require.Equal(t, 0, response.Written)
+	require.ErrorIs(t, <-done, ErrDenied)
 }
 
 func TestFilesystemProtocolClose(t *testing.T) {
+	t.Parallel()
 	codec, done := filesystemProtocolFixture(t)
-	if err := codec.Write(sandboxwire.Message{Kind: sandboxwire.Close, ID: 0, Payload: []byte("{}")}); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, codec.Write(sandboxwire.Message{Kind: sandboxwire.Close, ID: 0, Payload: []byte("{}")}))
+	require.NoError(t, <-done)
 }
 
 func TestFilesystemProtocolRequiresSealing(t *testing.T) {
+	t.Parallel()
 	backend := openTestFilesystem(t, t.TempDir(), Read, FilesystemLimits{})
 	host, child := net.Pipe()
 	defer host.Close()
 	defer child.Close()
-	if err := ServeFilesystemBroker(child, backend); !errors.Is(err, ErrConfinement) {
-		t.Fatal("unsealed server started:", err)
-	}
+	require.ErrorIs(t, ServeFilesystemBroker(child, backend), ErrConfinement, "unsealed server started")
 	backend.sealed = true
-	if err := backend.beginProtocol(); err != nil {
-		t.Fatal(err)
-	}
-	if err := backend.beginProtocol(); !errors.Is(err, ErrClosed) {
-		t.Fatal("duplicate protocol owner:", err)
-	}
+	require.NoError(t, backend.beginProtocol())
+	require.ErrorIs(t, backend.beginProtocol(), ErrClosed, "duplicate protocol owner")
 }
 
 func TestFilesystemResponseSanitisation(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		err  error
 		code string
 	}{
-		{errLimit, "limit"}, {errBusy, "limit"}, {ErrClosed, "closed"}, {ErrConfinement, "closed"}, {errors.New("private path and secret"), "io"},
+		{err: errLimit, code: "limit"}, {err: errBusy, code: "limit"}, {err: ErrClosed, code: "closed"}, {err: ErrConfinement, code: "closed"}, {err: errors.New("private path and secret"), code: "io"},
 	} {
 		response := filesystemResponse(FilesystemResult{Data: []byte("secret"), Entries: []string{"secret"}, Written: 6, skipped: 0}, test.err)
-		if response.Code != test.code || response.Data != nil || response.Entries != nil || response.Written != 0 {
-			t.Fatal("partial result or native error escaped:", response)
-		}
+		require.Equal(t, test.code, response.Code, "partial result or native error escaped: %v", response)
+		require.Nil(t, response.Data)
+		require.Nil(t, response.Entries)
+		require.Equal(t, 0, response.Written)
 	}
 }

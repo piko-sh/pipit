@@ -24,6 +24,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -68,19 +70,16 @@ func EntrypointRun() float64 {
 	service := app.NewService(app.WithMaxCallDepth(200000))
 	compiled, err := service.CompileFileSet(context.Background(),
 		map[string]string{"main.go": source})
-	if err != nil {
-		b.Fatalf("compile: %v", err)
-	}
-	if _, err := service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun"); err != nil {
-		b.Fatalf("warmup: %v", err)
-	}
+	require.NoError(b, err, "compile")
+	_, err = service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
+	require.NoError(b, err, "warmup")
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		_, err := service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
 		if err != nil {
-			b.Fatalf("exec: %v", err)
+			require.NoError(b, err, "exec")
 		}
 	}
 }
@@ -108,19 +107,16 @@ func EntrypointRun() float64 {
 	service := app.NewService(app.WithMaxCallDepth(200000))
 	compiled, err := service.CompileFileSet(context.Background(),
 		map[string]string{"main.go": source})
-	if err != nil {
-		b.Fatalf("compile: %v", err)
-	}
-	if _, err := service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun"); err != nil {
-		b.Fatalf("warmup: %v", err)
-	}
+	require.NoError(b, err, "compile")
+	_, err = service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
+	require.NoError(b, err, "warmup")
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		_, err := service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
 		if err != nil {
-			b.Fatalf("exec: %v", err)
+			require.NoError(b, err, "exec")
 		}
 	}
 }

@@ -21,18 +21,19 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
 func TestEmbeddedFieldSelectorLowering(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name   string
-		code   string
-		expect any
+		name string
+		code string
+		want any
 	}{
 		{
 			name: "value_embedded_assign_compound_incdec",
@@ -43,7 +44,7 @@ o.Value = 5
 o.Value += 3
 o.Value++
 o.Value`,
-			expect: 9,
+			want: 9,
 		},
 		{
 			name: "pointer_embedded_assign_compound_incdec",
@@ -54,7 +55,7 @@ p.Count = 10
 p.Count += 5
 p.Count++
 p.Count`,
-			expect: 16,
+			want: 16,
 		},
 		{
 			name: "string_leaf_promoted_assign",
@@ -63,7 +64,7 @@ type SOuter struct{ SInner }
 s := SOuter{}
 s.Name = "hello"
 s.Name`,
-			expect: "hello",
+			want: "hello",
 		},
 		{
 			name: "address_of_promoted_field",
@@ -73,7 +74,7 @@ q := &QOuter{}
 ptr := &q.N
 *ptr = 42
 q.N`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "two_level_value_embedding",
@@ -84,7 +85,7 @@ c := C{}
 c.X = 7
 c.X *= 6
 c.X`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "float_promoted_field",
@@ -94,16 +95,17 @@ f := FOuter{}
 f.Ratio = 1.5
 f.Ratio += 0.5
 f.Ratio`,
-			expect: 2.0,
+			want: 2.0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

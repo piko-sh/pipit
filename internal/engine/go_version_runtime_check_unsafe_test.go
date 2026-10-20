@@ -33,4 +33,7 @@ func TestUnsafeRuntimeLayoutSelfCheck(t *testing.T) {
 	require.NoError(t, verifyNonAddressableValueLayout())
 	require.NoError(t, verifyUnsafeNewAtRoundTrip())
 	require.NoError(t, verifyMapAccessFastStr())
+	require.NoError(t, verifyMapAssignFastStr())
+	require.NoError(t, verifyMapInlineElemBoundary())
+	require.NoError(t, verifyMapFast64())
 }

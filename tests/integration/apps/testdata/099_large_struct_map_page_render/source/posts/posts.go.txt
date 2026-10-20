@@ -1,0 +1,51 @@
+package posts
+
+import (
+	"fmt"
+	"sort"
+)
+
+type Post struct {
+	Title, Description, Slug, Date, Story, Label, Summary, Updated  string
+	Author, Image, Series, ArticleDate, URL, DateLabel, Year, Byline string
+	Tags, Related                                                    []string
+	Order, Minutes                                                   int
+	Draft, Retro                                                     bool
+}
+
+var tagPool = []string{"go", "interpreters", "maps", "memory", "parsing", "testing", "web"}
+
+var catalogue = func() map[string]Post {
+	out := make(map[string]Post, 14)
+	for i := range 14 {
+		slug := fmt.Sprintf("post-%02d", i)
+		out[slug] = Post{
+			Title:       "Title of " + slug,
+			Description: "A description of " + slug,
+			Slug:        slug,
+			URL:         "/thoughts/" + slug,
+			Year:        fmt.Sprint(2020 + i%5),
+			Byline:      "by the author",
+			Tags:        []string{tagPool[i%7], tagPool[(i*3+1)%7]},
+			Related:     []string{fmt.Sprintf("post-%02d", (i+1)%14), fmt.Sprintf("post-%02d", (i+6)%14)},
+			Order:       i,
+			Minutes:     3 + i%9,
+			Draft:       i%5 == 4,
+		}
+	}
+	return out
+}()
+
+func All() []Post {
+	out := make([]Post, 0, len(catalogue))
+	for _, post := range catalogue {
+		out = append(out, post)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Order < out[j].Order })
+	return out
+}
+
+func Find(slug string) (Post, bool) {
+	post, ok := catalogue[slug]
+	return post, ok
+}

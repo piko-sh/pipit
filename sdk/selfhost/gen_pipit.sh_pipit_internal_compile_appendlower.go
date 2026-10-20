@@ -9,5 +9,5 @@ import (
 )
 
 func init() {
-	Symbols["pipit.sh/pipit/internal/compile/appendlower"] = map[string]reflect.Value{"CollectAliases": reflect.ValueOf(appendlower.CollectAliases), "ElementKind": reflect.ValueOf(appendlower.ElementKind), "MatchShape": reflect.ValueOf(appendlower.MatchShape), "SameSlice": reflect.ValueOf(appendlower.SameSlice)}
+	Symbols["pipit.sh/pipit/internal/compile/appendlower"] = map[string]reflect.Value{"Aliases": reflect.ValueOf((*appendlower.Aliases)(nil)), "Body": reflect.ValueOf((*appendlower.Body)(nil)), "CollectAliases": reflect.ValueOf(appendlower.CollectAliases), "ElementKind": reflect.ValueOf(appendlower.ElementKind), "MatchShape": reflect.ValueOf(appendlower.MatchShape), "SameSlice": reflect.ValueOf(appendlower.SameSlice)}
 }

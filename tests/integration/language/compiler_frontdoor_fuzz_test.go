@@ -21,8 +21,9 @@
 package language_test
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 )
@@ -39,13 +40,8 @@ func FuzzCompileFrontDoor(f *testing.F) {
 	f.Add("package main\nimport \"fmt\"\nfunc run() { fmt.Println(1) }\n")
 
 	f.Fuzz(func(t *testing.T, source string) {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Fatalf("compiler front door panicked on input %q: %v", source, r)
-			}
-		}()
-
-		service := app.NewService()
-		_, _ = service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+		require.NotPanics(t, func() {
+			_, _ = app.NewService().CompileFileSet(t.Context(), map[string]string{"main.go": source})
+		}, "the compiler front door does not panic on %q", source)
 	})
 }

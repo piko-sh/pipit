@@ -130,21 +130,31 @@ func TestCallBuiltinClearEmptiesTheCollection(t *testing.T) {
 	}{
 		{
 			name: "a map is emptied", argumentCount: 1, collection: map[string]int{"a": 1},
-			inspect: func(t *testing.T, v reflect.Value) { require.Zero(t, v.Len()) },
+			inspect: func(t *testing.T, v reflect.Value) {
+				t.Helper()
+				require.Zero(t, v.Len())
+			},
 		},
 		{
 			name: "a slice is zeroed without shrinking", argumentCount: 1, collection: []int{1, 2},
 			inspect: func(t *testing.T, v reflect.Value) {
+				t.Helper()
 				require.Equal(t, []int{0, 0}, v.Interface())
 			},
 		},
 		{
 			name: "a value of another kind is left alone", argumentCount: 1, collection: "text",
-			inspect: func(t *testing.T, v reflect.Value) { require.Equal(t, "text", v.Interface()) },
+			inspect: func(t *testing.T, v reflect.Value) {
+				t.Helper()
+				require.Equal(t, "text", v.Interface())
+			},
 		},
 		{
 			name: "a call with no argument does nothing", argumentCount: 0, collection: map[string]int{"a": 1},
-			inspect: func(t *testing.T, v reflect.Value) { require.Equal(t, 1, v.Len()) },
+			inspect: func(t *testing.T, v reflect.Value) {
+				t.Helper()
+				require.Equal(t, 1, v.Len())
+			},
 		},
 	}
 
@@ -429,59 +439,101 @@ func TestPlaceOneReflectArgumentWritesTheNamedBank(t *testing.T) {
 	}{
 		{
 			name: "the int bank", kind: isa.RegisterInt, argument: int64(4),
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(4), r.Ints[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(4), r.Ints[0])
+			},
 		},
 		{
 			name: "the float bank", kind: isa.RegisterFloat, argument: 1.5,
-			inspect: func(t *testing.T, r *Registers) { require.InDelta(t, 1.5, r.Floats[0], 0) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.InDelta(t, 1.5, r.Floats[0], 0)
+			},
 		},
 		{
 			name: "the string bank", kind: isa.RegisterString, argument: "s",
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "s", r.Strings[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "s", r.Strings[0])
+			},
 		},
 		{
 			name: "the general bank", kind: isa.RegisterGeneral, argument: "boxed",
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "boxed", r.General[0].Interface()) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "boxed", r.General[0].Interface())
+			},
 		},
 		{
 			name: "the bool bank", kind: isa.RegisterBool, argument: true,
-			inspect: func(t *testing.T, r *Registers) { require.True(t, r.Bools[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.True(t, r.Bools[0])
+			},
 		},
 		{
 			name: "the uint bank", kind: isa.RegisterUint, argument: uint64(6),
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, uint64(6), r.Uints[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(6), r.Uints[0])
+			},
 		},
 		{
 			name: "the complex bank", kind: isa.RegisterComplex, argument: 2i,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, 2i, r.Complex[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, 2i, r.Complex[0])
+			},
 		},
 		{
 			name: "the int-slice bank", kind: isa.RegisterSliceInt, argument: []int64{1},
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []int64{1}, r.SlicesInt[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []int64{1}, r.SlicesInt[0])
+			},
 		},
 		{
 			name: "the int-slice bank from a platform-width slice", kind: isa.RegisterSliceInt, argument: []int{2},
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []int64{2}, r.SlicesInt[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []int64{2}, r.SlicesInt[0])
+			},
 		},
 		{
 			name: "the float-slice bank", kind: isa.RegisterSliceFloat, argument: []float64{1.5},
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []float64{1.5}, r.slicesFloat[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []float64{1.5}, r.slicesFloat[0])
+			},
 		},
 		{
 			name: "the string-slice bank", kind: isa.RegisterSliceString, argument: []string{"s"},
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []string{"s"}, r.slicesString[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []string{"s"}, r.slicesString[0])
+			},
 		},
 		{
 			name: "the bool-slice bank", kind: isa.RegisterSliceBool, argument: []bool{true},
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []bool{true}, r.slicesBool[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []bool{true}, r.slicesBool[0])
+			},
 		},
 		{
 			name: "the uint-slice bank", kind: isa.RegisterSliceUint, argument: []uint64{3},
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []uint64{3}, r.slicesUint[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []uint64{3}, r.slicesUint[0])
+			},
 		},
 		{
 			name: "the byte-slice bank", kind: isa.RegisterSliceByte, argument: []byte{4},
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, []byte{4}, r.slicesByte[0]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, []byte{4}, r.slicesByte[0])
+			},
 		},
 	}
 

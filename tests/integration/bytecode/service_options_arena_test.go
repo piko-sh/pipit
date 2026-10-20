@@ -21,11 +21,12 @@
 package bytecode_test
 
 import (
-	"context"
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/isa"
@@ -44,12 +45,12 @@ func TestArenaIsolation(t *testing.T) {
 	}
 
 	service := app.NewService(app.WithArenaFactory(factory))
-	ctx := context.Background()
+	ctx := t.Context()
 
 	for i := range 5 {
 		result, err := service.Eval(ctx, "1 + 2")
 		require.NoError(t, err, "iteration %d", i)
-		require.Equal(t, 3, result, "iteration %d", i)
+		require.Equal(t, 3, result)
 	}
 
 	mu.Lock()
@@ -72,15 +73,16 @@ func TestArenaIsolationParallel(t *testing.T) {
 	}
 
 	service := app.NewService(app.WithArenaFactory(factory))
-	ctx := context.Background()
+	ctx := t.Context()
 
 	var wg sync.WaitGroup
 	const concurrency = 10
 	for range concurrency {
 		wg.Go(func() {
 			result, err := service.Eval(ctx, "2 + 3")
-			require.NoError(t, err)
-			require.Equal(t, 5, result)
+			if assert.NoError(t, err) {
+				assert.Equal(t, 5, result)
+			}
 		})
 	}
 	wg.Wait()
@@ -96,7 +98,7 @@ func TestArenaDefaultPoolUsed(t *testing.T) {
 	t.Parallel()
 
 	service := app.NewService()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	result, err := service.Eval(ctx, "10 * 4")
 	require.NoError(t, err)
@@ -123,7 +125,7 @@ func TestArenaFactoryWithExecute(t *testing.T) {
 	b.Emit(isa.OpAddInt, 0, 1, 2)
 	b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
-	result, err := service.Execute(context.Background(), b.build())
+	result, err := service.Execute(t.Context(), b.build())
 	require.NoError(t, err)
 	require.Equal(t, 42, result)
 	require.True(t, factoryCalled, "arena factory should have been called")
@@ -148,7 +150,7 @@ func run() int {
 
 func main() {}
 `
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 1275, result)
 }
@@ -169,7 +171,7 @@ func run() int {
 
 func main() {}
 `
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 1000, result)
 }
@@ -190,7 +192,7 @@ func run() uint {
 
 func main() {}
 `
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, uint(4950), result)
 }
@@ -215,7 +217,7 @@ func run() int {
 
 func main() {}
 `
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 80, result)
 }
@@ -238,7 +240,7 @@ func run() int {
 
 func main() {}
 `
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 19900, result)
 }
@@ -259,7 +261,7 @@ func run() int {
 
 func main() {}
 `
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 1000, result)
 }
@@ -284,7 +286,7 @@ func run() int {
 
 func main() {}
 `
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 285, result, "sum of i*i for i in 0..10")
 }

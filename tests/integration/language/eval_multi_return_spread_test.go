@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -63,7 +63,7 @@ func run() int {
 	return sumTwo(pair())*1000000 + sumThree(triple())*1000 + acc.addPair(pair())
 }
 `
-	ctx := context.Background()
+	ctx := t.Context()
 	service := app.NewService()
 	compiled, err := service.CompileFileSet(ctx, map[string]string{"main.go": program})
 	require.NoError(t, err)

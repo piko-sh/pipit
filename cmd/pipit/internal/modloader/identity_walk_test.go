@@ -24,21 +24,20 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestScriptIdentityBoundsIgnoredEntries(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	for index := range maxIdentityEntries + 1 {
-		if err := os.WriteFile(filepath.Join(directory, fmt.Sprintf("%05d.txt", index)), nil, 0600); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.WriteFile(filepath.Join(directory, fmt.Sprintf("%05d.txt", index)), nil, 0600))
 	}
-	if _, _, err := ScriptIdentity(directory); err == nil || !strings.Contains(err.Error(), "directory entry limit") {
-		t.Fatalf("irrelevant files escaped traversal budget: %v", err)
-	}
+	_, _, err := ScriptIdentity(directory)
+	require.Error(t, err, "irrelevant files count towards the traversal budget")
+	require.Contains(t, err.Error(), "directory entry limit")
 }
 
 func TestScriptIdentityBoundsDirectoryDepth(t *testing.T) {
@@ -48,12 +47,10 @@ func TestScriptIdentityBoundsDirectoryDepth(t *testing.T) {
 	for range maxIdentityDepth + 1 {
 		nested = filepath.Join(nested, "d")
 	}
-	if err := os.MkdirAll(nested, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := ScriptIdentity(directory); err == nil || !strings.Contains(err.Error(), "directory depth limit") {
-		t.Fatalf("empty directories escaped depth budget: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(nested, 0700))
+	_, _, err := ScriptIdentity(directory)
+	require.Error(t, err, "empty directories count towards the depth budget")
+	require.Contains(t, err.Error(), "directory depth limit")
 }
 
 func TestScriptIdentityPreservesLexicalHash(t *testing.T) {
@@ -61,17 +58,11 @@ func TestScriptIdentityPreservesLexicalHash(t *testing.T) {
 	directory := t.TempDir()
 	for _, name := range []string{"z.go", "b/helper.go", "a.go", "b/ignored.txt", "go.mod", ".git/deep/ignored.go"} {
 		path := filepath.Join(directory, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(name), 0600); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
+		require.NoError(t, os.WriteFile(path, []byte(name), 0600))
 	}
 	root, err := os.OpenRoot(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer root.Close()
 	var reference scriptIdentityScan
 	reference.digest = sha256.New()
@@ -92,36 +83,27 @@ func TestScriptIdentityPreservesLexicalHash(t *testing.T) {
 		}
 		return reference.visit(path, entry)
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, actual, err := ScriptIdentity(directory)
 	expected := fmt.Sprintf("sha256:%x", reference.digest.Sum(nil))
-	if err != nil || actual != expected {
-		t.Fatalf("bounded traversal changed stable identity: actual=%q expected=%q error=%v", actual, expected, err)
-	}
+	require.NoError(t, err, "bounded traversal keeps a stable identity")
+	require.Equal(t, expected, actual)
 }
 
 func TestIdentityDirectoryReadsAreRootedAndRejectSymlinks(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	root, err := os.OpenRoot(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer root.Close()
 	var scan scriptIdentityScan
 	scan.rootHandle = root
-	if _, err := scan.readDirectory("../outside"); err == nil {
-		t.Fatal("directory traversal escaped the pinned root")
-	}
-	if err := os.Mkdir(filepath.Join(directory, "real"), 0700); err != nil {
-		t.Fatal(err)
-	}
+	_, err = scan.readDirectory("../outside")
+	require.Error(t, err, "directory traversal stays inside the pinned root")
+	require.NoError(t, os.Mkdir(filepath.Join(directory, "real"), 0700))
 	if err := os.Symlink("real", filepath.Join(directory, "link")); err != nil {
 		t.Skipf("cannot create symlink on this host: %v", err)
 	}
-	if _, err := scan.readDirectory("link"); err == nil {
-		t.Fatal("directory symlink was followed")
-	}
+	_, err = scan.readDirectory("link")
+	require.Error(t, err, "a directory symlink is not followed")
 }

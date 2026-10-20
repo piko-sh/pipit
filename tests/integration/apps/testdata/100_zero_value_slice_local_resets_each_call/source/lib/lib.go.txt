@@ -1,0 +1,66 @@
+package lib
+
+func Ints(n int) int {
+	var items []int
+	for i := range n {
+		items = append(items, i)
+	}
+	return len(items)
+}
+
+func Strings(n int) int {
+	var items []string
+	for range n {
+		items = append(items, "x")
+	}
+	return len(items)
+}
+
+func Floats(n int) int {
+	var items []float64
+	for i := range n {
+		items = append(items, float64(i))
+	}
+	return len(items)
+}
+
+func Bytes(n int) int {
+	var items []byte
+	for range n {
+		items = append(items, 'x')
+	}
+	return len(items)
+}
+
+func Bools(n int) int {
+	var items []bool
+	for range n {
+		items = append(items, true)
+	}
+	return len(items)
+}
+
+type record struct {
+	name  string
+	score int
+}
+
+func Records(n int) int {
+	var items []record
+	for i := range n {
+		items = append(items, record{name: "r", score: i})
+	}
+	return len(items)
+}
+
+func Joined(n int) string {
+	var parts []string
+	for i := range n {
+		parts = append(parts, string(rune('a'+i)))
+	}
+	out := ""
+	for _, part := range parts {
+		out += part
+	}
+	return out
+}

@@ -332,7 +332,8 @@ type RegisterArena struct {
 	// floatBoxSlab backs boxed float64-to-general reflect.Values.
 	floatBoxSlab []float64
 
-	// byteSlab holds bump-allocated byte storage for interned strings.
+	// byteSlab holds bump-allocated byte storage for interned strings. It is replaced only
+	// through replaceByteSlab, which keeps the arena slab registry current.
 	byteSlab []byte
 
 	// oldByteSlabs retains previous byte slabs so existing strings remain valid.
@@ -455,6 +456,18 @@ type RegisterArena struct {
 	// generation.
 	slabGeneration uint64
 
+	// slabOwner identifies the arena in the arena slab registry; assigned by the first
+	// replaceByteSlab.
+	slabOwner uint64
+
+	// foreignSlabStart is the start address of the last foreign arena slab inAnArenaSlab
+	// found. It is a plain address, so it keeps nothing alive.
+	foreignSlabStart uintptr
+
+	// foreignSlabLength is the length of the slab at foreignSlabStart; zero when none has
+	// been found.
+	foreignSlabLength uintptr
+
 	// sliceHeaderIndex tracks the bump position in sliceHeaderSlab. Not saved per-frame;
 	// cleared only on arena Reset.
 	sliceHeaderIndex int
@@ -573,6 +586,10 @@ type RegisterArena struct {
 	// disableMinorGC keeps MinorGC() from running for this owner (VMLimits.DisableMinorGC).
 	// Diagnostic: bytesAllocated then grows until MaxArenaBytes is hit.
 	disableMinorGC bool
+
+	// cloneUnownedStrings enables cloning strings that may belong to another VM's
+	// arena.
+	cloneUnownedStrings bool
 }
 
 var (
@@ -604,7 +621,7 @@ var (
 //
 // Returns a newly allocated RegisterArena with all slabs at initial capacity.
 func NewRegisterArena() *RegisterArena {
-	return &RegisterArena{
+	arena := &RegisterArena{
 		recycleChunks:        ArenaChunkRecyclingEnabled,
 		intSlab:              make([]int64, initialIntSlabs),
 		floatSlab:            make([]float64, initialFloatSlabs),
@@ -622,7 +639,6 @@ func NewRegisterArena() *RegisterArena {
 		frameSlab:            make([]CallFrame, initialFrameSlabs),
 		callInfoBasesSlab:    make([]uintptr, initialFrameSlabs),
 		dispatchSavesSlab:    make([]asmDispatchSave, initialFrameSlabs),
-		byteSlab:             make([]byte, InitialByteSlabSize),
 		intBackingSlab:       make([]int64, InitialIntBackingSize),
 		floatBackingSlab:     make([]float64, initialFloatBackingSize),
 		stringBackingSlab:    make([]string, initialStringBackingSize),
@@ -631,6 +647,8 @@ func NewRegisterArena() *RegisterArena {
 		upvalueCellSlab:      make([]program.UpvalueCell, initialUpvalueCellSlabs),
 		upvalueReferenceSlab: make([]upvalue, initialUpvalueRefSlabs),
 	}
+	arena.replaceByteSlab(make([]byte, InitialByteSlabSize), false)
+	return arena
 }
 
 // AllocRegisters returns a registers struct backed by sub-slices of the arena's
@@ -739,6 +757,7 @@ func (a *RegisterArena) Reset() {
 	a.clearAllocatedRegisterRanges()
 	a.clearBoxSlabsAndReset()
 	a.poisonReleasedGenericBytes()
+	a.poisonReleasedStringBytes()
 	a.genericBytesIndex = 0
 	clear(a.sliceHeaderSlab[:a.sliceHeaderIndex])
 	a.sliceHeaderIndex = 0
@@ -756,7 +775,27 @@ func (a *RegisterArena) Reset() {
 	a.ownerVM = nil
 	a.MaxAllocSize = 0
 	a.MaxArenaBytes = 0
+	a.cloneUnownedStrings = false
+	a.foreignSlabStart, a.foreignSlabLength = 0, 0
 	a.shrinkOvergrownSlabs()
+}
+
+// replaceByteSlab installs slab as the arena's current byte slab and records it in the
+// arena slab registry.
+//
+// Takes slab ([]byte) which becomes the current byte slab.
+// Takes previousRetired (bool) which is true when the previous slab moved to
+// oldByteSlabs.
+func (a *RegisterArena) replaceByteSlab(slab []byte, previousRetired bool) {
+	if a.slabOwner == 0 {
+		a.slabOwner = arenaSlabOwners.Add(1)
+		runtime.AddCleanup(a, forgetArenaSlabOwner, a.slabOwner)
+	}
+	if !previousRetired {
+		forgetArenaSlab(a.byteSlab)
+	}
+	a.byteSlab = slab
+	recordArenaSlab(a.slabOwner, slab)
 }
 
 // callInfoBases returns the arena's pre-allocated slab for ASM call-info base pointers,
@@ -1053,6 +1092,9 @@ func (a *RegisterArena) resetAllocationIndices() {
 // references are themselves collected.
 func (a *RegisterArena) dropRetainedOldSlabs() {
 	a.dropFreeChunks()
+	for _, slab := range a.oldByteSlabs {
+		forgetArenaSlab(slab)
+	}
 	a.oldByteSlabs = a.oldByteSlabs[:0]
 	clear(a.oldGenericByteSlabs)
 	a.oldGenericByteSlabs = a.oldGenericByteSlabs[:0]
@@ -1120,7 +1162,7 @@ func (a *RegisterArena) ensureSliceBankCapacity(counts program.TypedSlabCounts) 
 // Takes counts (typedSlabCounts) which are the required per-kind backing capacities.
 func (a *RegisterArena) ensureBackingCapacity(counts program.TypedSlabCounts) {
 	if counts.Bytes > len(a.byteSlab) {
-		a.byteSlab = make([]byte, counts.Bytes)
+		a.replaceByteSlab(make([]byte, counts.Bytes), false)
 	}
 	if counts.IntBacking > len(a.intBackingSlab) {
 		a.intBackingSlab = make([]int64, counts.IntBacking)
@@ -1399,7 +1441,9 @@ func (a *RegisterArena) shrinkOvergrownFrameSlabs() {
 // shrinkOvergrownBackingSlabs replaces the byte slab and the typed backing slabs (used by
 // arena-routed make() and append-grow) that grew past the threshold.
 func (a *RegisterArena) shrinkOvergrownBackingSlabs() {
-	a.byteSlab = shrinkSlabWithHysteresis(a.byteSlab, InitialByteSlabSize, a.byteSlabPeakIndexLastReset, &a.byteSlabIdleResetCount)
+	if shrunk := shrinkSlabWithHysteresis(a.byteSlab, InitialByteSlabSize, a.byteSlabPeakIndexLastReset, &a.byteSlabIdleResetCount); unsafe.SliceData(shrunk) != unsafe.SliceData(a.byteSlab) {
+		a.replaceByteSlab(shrunk, false)
+	}
 	if len(a.intBackingSlab) > InitialIntBackingSize*maxArenaMultiplier {
 		a.intBackingSlab = make([]int64, InitialIntBackingSize)
 	}
@@ -1677,7 +1721,7 @@ func initRegisterArenaInPlace(a *RegisterArena) {
 	a.frameSlab = make([]CallFrame, initialFrameSlabs)
 	a.callInfoBasesSlab = make([]uintptr, initialFrameSlabs)
 	a.dispatchSavesSlab = make([]asmDispatchSave, initialFrameSlabs)
-	a.byteSlab = make([]byte, InitialByteSlabSize)
+	a.replaceByteSlab(make([]byte, InitialByteSlabSize), false)
 	a.sliceHeaderSlab = make([]arenaSliceHeader, initialSliceHeaderCapacity)
 	a.intBackingSlab = make([]int64, InitialIntBackingSize)
 	a.floatBackingSlab = make([]float64, initialFloatBackingSize)

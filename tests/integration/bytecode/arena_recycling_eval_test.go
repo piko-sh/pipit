@@ -21,12 +21,11 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
 
-	"pipit.sh/pipit/internal/engine"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/engine"
 )
 
 const (
@@ -68,7 +67,7 @@ func TestArenaRecyclingKeepsReachableValuesAcrossMinorGC(t *testing.T) {
 	require.True(t, engine.ArenaChunkRecyclingEnabled)
 	service := newTestService(t)
 	for cycle := range 3 {
-		result, err := service.Eval(context.Background(), arenaRecyclingChurn)
+		result, err := service.Eval(t.Context(), arenaRecyclingChurn)
 		require.NoError(t, err)
 		require.Equalf(t, int(97920+2016+15), result, "cycle %d", cycle)
 	}

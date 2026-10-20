@@ -63,7 +63,7 @@ func IsSupportedAdapterInterface(expectedType reflect.Type) bool {
 		HeapInterfaceReflectType:
 		return true
 	}
-	_, registered := registeredAdapterBuilder(expectedType)
+	_, registered := lookupRegisteredAdapter(expectedType)
 	return registered
 }
 

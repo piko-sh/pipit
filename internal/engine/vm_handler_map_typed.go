@@ -32,7 +32,21 @@ const (
 	// runtimeMapaccess2_fast64. Keys that are not exactly this wide cannot use the fast
 	// specialisation.
 	mapKeyFast64SizeBytes = 8
+
+	// mapFastPathMaxElemBytes is Go's maximum inline map-element size
+	// (abi.MapMaxElemBytes).
+	mapFastPathMaxElemBytes = 128
 )
+
+// mapElemStoredInline reports whether a map with element type elemType stores the element
+// inline in its slot, the layout the faststr and fast64 fast paths read and write.
+//
+// Takes elemType (reflect.Type) which is the map's element type.
+//
+// Returns true when the element is at most mapFastPathMaxElemBytes.
+func mapElemStoredInline(elemType reflect.Type) bool {
+	return elemType.Size() <= mapFastPathMaxElemBytes
+}
 
 // mapAccessCacheEntry memoises the per-map-type info that typed map handlers would
 // otherwise recompute on every invocation.
@@ -46,6 +60,10 @@ type mapAccessCacheEntry struct {
 	// fast64Eligible records whether keyType passes mapKeyIsFast64Eligible so the handler
 	// can branch without recomputing the size+kind check.
 	fast64Eligible bool
+
+	// elemInline records whether elemType passes mapElemStoredInline, which every faststr or
+	// fast64 slot access requires.
+	elemInline bool
 }
 
 // mapKindError reports whether the supplied value is a map, raising an interpreted
@@ -79,8 +97,8 @@ func mapKindErrorSlow(vm *VM, m reflect.Value) bool {
 	return false
 }
 
-// resolveMapAccessCache returns the cached (keyType, elemType, fast64Eligible) tuple for
-// the given map's reflect.Type, recomputing on a type-pointer miss.
+// resolveMapAccessCache returns the cached mapAccessCacheEntry for the given map's
+// reflect.Type, recomputing on a type-pointer miss.
 //
 // Takes vm (*VM) which owns the single-slot cache.
 // Takes mapType (reflect.Type) which is the map's static type.
@@ -96,6 +114,7 @@ func resolveMapAccessCache(vm *VM, mapType reflect.Type) mapAccessCacheEntry {
 		keyType:        keyType,
 		elemType:       elemType,
 		fast64Eligible: mapKeyIsFast64Eligible(keyType),
+		elemInline:     mapElemStoredInline(elemType),
 	}
 	vm.mapAccessCacheLastType = mapType
 	vm.mapAccessCacheLastEntry = entry
@@ -135,7 +154,7 @@ func handleMapIndexOkIntInt(vm *VM, frame *CallFrame, registers *Registers, inst
 		registers.Ints[extensionWord.A] = boolToInt64(present)
 		return opContinue
 	}
-	keyReflectValue := intMapKeyScratch(vm, m.Type().Key())
+	keyReflectValue := mapKeyScratchFor(vm, m.Type().Key())
 	keyReflectValue.SetInt(key)
 	result := m.MapIndex(keyReflectValue)
 	if result.IsValid() {
@@ -265,7 +284,7 @@ func handleMapIndexOkIntString(vm *VM, frame *CallFrame, registers *Registers, i
 		registers.Ints[extensionWord.A] = boolToInt64(present)
 		return opContinue
 	}
-	keyReflectValue := intMapKeyScratch(vm, m.Type().Key())
+	keyReflectValue := mapKeyScratchFor(vm, m.Type().Key())
 	keyReflectValue.SetInt(key)
 	result := m.MapIndex(keyReflectValue)
 	if result.IsValid() {
@@ -278,18 +297,14 @@ func handleMapIndexOkIntString(vm *VM, frame *CallFrame, registers *Registers, i
 	return opContinue
 }
 
-// intMapKeyScratch returns a reusable, addressable reflect.Value for the given
-// integer-kind map key type.
-//
-// The first call per key type pays a reflect.New allocation; subsequent calls return the
-// cached scratch. Callers must SetInt before passing to MapIndex - the scratch is shared
-// so previous contents are arbitrary.
+// mapKeyScratchFor returns reusable addressable storage for a map key type. Callers
+// must set its contents before each use.
 //
 // Takes vm (*VM) which owns the per-VM scratch cache.
 // Takes keyType (reflect.Type) which is the map's declared key type.
 //
 // Returns the reusable scratch reflect.Value.
-func intMapKeyScratch(vm *VM, keyType reflect.Type) reflect.Value {
+func mapKeyScratchFor(vm *VM, keyType reflect.Type) reflect.Value {
 	if cached, ok := vm.mapKeyScratch[keyType]; ok {
 		return cached
 	}
@@ -299,6 +314,48 @@ func intMapKeyScratch(vm *VM, keyType reflect.Type) reflect.Value {
 	}
 	vm.mapKeyScratch[keyType] = scratch
 	return scratch
+}
+
+// mapIndexStringKey reads key from a string-kinded-key map through reflect, for maps
+// whose element the faststr fast path cannot address. The key goes into the per-VM key
+// scratch, so a named string key type is honoured and no key box is allocated per call.
+//
+// Takes vm (*VM) which owns the key scratch.
+// Takes m (reflect.Value) which is the map.
+// Takes keyType (reflect.Type) which is the map's key type, of string kind.
+// Takes key (string) which is the lookup key.
+//
+// Returns the element, or the zero reflect.Value when key is absent.
+func mapIndexStringKey(vm *VM, m reflect.Value, keyType reflect.Type, key string) reflect.Value {
+	keyScratch := mapKeyScratchFor(vm, keyType)
+	keyScratch.SetString(key)
+	return m.MapIndex(keyScratch)
+}
+
+// mapLookupStringKeyGeneral reads key from a string-kinded-key map whose element lives in
+// the general bank. Elements stored inline take runtime.mapaccess2_faststr; larger
+// elements, and every lookup in a build without the linknamed fast paths, go through
+// mapIndexStringKey, which converts the key to the map's declared key type.
+//
+// Takes vm (*VM) which owns the access cache and the key scratch.
+// Takes m (reflect.Value) which is the map.
+// Takes key (string) which is the lookup key.
+//
+// Returns the element, or the element type's zero value when key is absent.
+// Returns true when key is present.
+func mapLookupStringKeyGeneral(vm *VM, m reflect.Value, key string) (reflect.Value, bool) {
+	entry := resolveMapAccessCache(vm, m.Type())
+	if !useMapFastLinkname() || !entry.elemInline {
+		if result := mapIndexStringKey(vm, m, entry.keyType, key); result.IsValid() {
+			return result, true
+		}
+		return symtab.ZeroValueForType(entry.elemType), false
+	}
+	resultPtr, present := mapAccessFastStrToGeneral(m, key)
+	if !present {
+		return symtab.ZeroValueForType(entry.elemType), false
+	}
+	return wrapMapElemFast(vm, entry.elemType, resultPtr), true
 }
 
 // handleMapGetIntGeneral handles isa.OpMapGetIntGeneral.
@@ -324,7 +381,7 @@ func handleMapGetIntGeneral(vm *VM, frame *CallFrame, registers *Registers, inst
 		return opPanicError
 	}
 	key := registers.Ints[instruction.C]
-	keyScratch := intMapKeyScratch(vm, m.Type().Key())
+	keyScratch := mapKeyScratchFor(vm, m.Type().Key())
 	keyScratch.SetInt(key)
 	result := m.MapIndex(keyScratch)
 	if result.IsValid() {
@@ -362,7 +419,7 @@ func handleMapIndexOkIntGeneral(vm *VM, frame *CallFrame, registers *Registers, 
 	cacheEntry := resolveMapAccessCache(vm, m.Type())
 	keyType := cacheEntry.keyType
 	elemType := cacheEntry.elemType
-	if useMapFastLinkname() && cacheEntry.fast64Eligible {
+	if useMapFastLinkname() && cacheEntry.fast64Eligible && cacheEntry.elemInline {
 		resultPtr, present := mapAccessFast64ToGeneral(m, key)
 		if !present {
 			registers.General[instruction.A] = symtab.ZeroValueForType(elemType)
@@ -373,7 +430,7 @@ func handleMapIndexOkIntGeneral(vm *VM, frame *CallFrame, registers *Registers, 
 		registers.Ints[extensionWord.A] = 1
 		return opContinue
 	}
-	keyScratch := intMapKeyScratch(vm, keyType)
+	keyScratch := mapKeyScratchFor(vm, keyType)
 	keyScratch.SetInt(key)
 	result := m.MapIndex(keyScratch)
 	if result.IsValid() {
@@ -465,7 +522,7 @@ func handleMapGetIntInt(vm *VM, frame *CallFrame, registers *Registers, instruct
 		return opContinue
 	}
 
-	keyReflectValue := intMapKeyScratch(vm, m.Type().Key())
+	keyReflectValue := mapKeyScratchFor(vm, m.Type().Key())
 	keyReflectValue.SetInt(key)
 	result := m.MapIndex(keyReflectValue)
 	if result.IsValid() {
@@ -501,7 +558,7 @@ func handleMapSetIntInt(vm *VM, frame *CallFrame, registers *Registers, instruct
 			concreteMap[int(key)] = int(value)
 			return
 		}
-		keyReflectValue := intMapKeyScratch(vm, m.Type().Key())
+		keyReflectValue := mapKeyScratchFor(vm, m.Type().Key())
 		keyReflectValue.SetInt(key)
 		valueReflectValue := reflect.New(m.Type().Elem()).Elem()
 		valueReflectValue.SetInt(value)
@@ -683,7 +740,7 @@ func handleMapGetIntString(vm *VM, frame *CallFrame, registers *Registers, instr
 		registers.Strings[instruction.A] = concrete[key]
 		return opContinue
 	}
-	keyReflectValue := intMapKeyScratch(vm, m.Type().Key())
+	keyReflectValue := mapKeyScratchFor(vm, m.Type().Key())
 	keyReflectValue.SetInt(key)
 	result := m.MapIndex(keyReflectValue)
 	if result.IsValid() {
@@ -722,7 +779,7 @@ func handleMapSetIntString(vm *VM, frame *CallFrame, registers *Registers, instr
 			concrete[key] = value
 			return
 		}
-		keyReflectValue := intMapKeyScratch(vm, m.Type().Key())
+		keyReflectValue := mapKeyScratchFor(vm, m.Type().Key())
 		keyReflectValue.SetInt(key)
 		valueReflectValue := reflect.ValueOf(value).Convert(m.Type().Elem())
 		m.SetMapIndex(keyReflectValue, valueReflectValue)
@@ -763,7 +820,7 @@ func handleMapAddIntInt(vm *VM, frame *CallFrame, registers *Registers, instruct
 		concrete[key] += delta
 		return opContinue
 	}
-	keyReflectValue := intMapKeyScratch(vm, m.Type().Key())
+	keyReflectValue := mapKeyScratchFor(vm, m.Type().Key())
 	keyReflectValue.SetInt(key)
 	current := int64(0)
 	if existing := m.MapIndex(keyReflectValue); existing.IsValid() {
@@ -841,23 +898,7 @@ func handleMapGetStringGeneral(vm *VM, frame *CallFrame, registers *Registers, i
 	if !mapKindError(vm, m) {
 		return opPanicError
 	}
-	key := registers.Strings[instruction.C]
-	elemType := m.Type().Elem()
-	if !useMapFastLinkname() {
-		result := m.MapIndex(reflect.ValueOf(key))
-		if !result.IsValid() {
-			registers.General[instruction.A] = symtab.ZeroValueForType(elemType)
-		} else {
-			registers.General[instruction.A] = result
-		}
-		return opContinue
-	}
-	resultPtr, present := mapAccessFastStrToGeneral(m, key)
-	if !present {
-		registers.General[instruction.A] = symtab.ZeroValueForType(elemType)
-		return opContinue
-	}
-	registers.General[instruction.A] = wrapMapElemFast(vm, elemType, resultPtr)
+	registers.General[instruction.A], _ = mapLookupStringKeyGeneral(vm, m, registers.Strings[instruction.C])
 	return opContinue
 }
 
@@ -883,27 +924,9 @@ func handleMapIndexOkStringGeneral(vm *VM, frame *CallFrame, registers *Register
 	}
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
-	key := registers.Strings[instruction.C]
-	elemType := m.Type().Elem()
-	if !useMapFastLinkname() {
-		result := m.MapIndex(reflect.ValueOf(key))
-		if !result.IsValid() {
-			registers.General[instruction.A] = symtab.ZeroValueForType(elemType)
-			registers.Ints[extensionWord.A] = 0
-		} else {
-			registers.General[instruction.A] = result
-			registers.Ints[extensionWord.A] = 1
-		}
-		return opContinue
-	}
-	resultPtr, present := mapAccessFastStrToGeneral(m, key)
-	if !present {
-		registers.General[instruction.A] = symtab.ZeroValueForType(elemType)
-		registers.Ints[extensionWord.A] = 0
-		return opContinue
-	}
-	registers.General[instruction.A] = wrapMapElemFast(vm, elemType, resultPtr)
-	registers.Ints[extensionWord.A] = 1
+	value, ok := mapLookupStringKeyGeneral(vm, m, registers.Strings[instruction.C])
+	registers.General[instruction.A] = value
+	registers.Ints[extensionWord.A] = boolToInt64(ok)
 	return opContinue
 }
 
@@ -936,7 +959,7 @@ func handleMapSetIntGeneral(vm *VM, frame *CallFrame, registers *Registers, inst
 			return opContinue
 		}
 	}
-	keyScratch := intMapKeyScratch(vm, cacheEntry.keyType)
+	keyScratch := mapKeyScratchFor(vm, cacheEntry.keyType)
 	keyScratch.SetInt(key)
 	value := MaterialiseArenaValue(vm.Arena, coerceValue(vm, registers.General[instruction.C], elemType))
 	if recovered, panicked := guardChannelOp(func() {

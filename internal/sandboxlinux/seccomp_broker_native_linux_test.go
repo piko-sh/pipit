@@ -25,7 +25,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -34,6 +33,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"pipit.sh/pipit/internal/sandboxbroker"
+	"pipit.sh/pipit/internal/sandboxtest"
 	"pipit.sh/pipit/internal/sandboxwire"
 )
 
@@ -43,21 +43,14 @@ func TestNativeFilesystemBrokerFilter(t *testing.T) {
 		exerciseNativeFilesystemBrokerFilter(t)
 		return
 	}
-	version, _, errno := unix.Syscall(unix.SYS_LANDLOCK_CREATE_RULESET, 0, 0, unix.LANDLOCK_CREATE_RULESET_VERSION)
-	if errno != 0 || version < 8 {
-		if os.Getenv("PIPIT_REQUIRE_BROKER_LANDLOCK") == "1" {
-			t.Fatalf("Landlock TSYNC unavailable: %d: %v", version, errno)
-		}
-		t.Skipf("Landlock TSYNC unavailable: %d: %v", version, errno)
-	}
+	requireLandlockTSYNC(t)
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestNativeFilesystemBrokerFilter$")
-	command.Env = append(os.Environ(), "PIPIT_BROKER_FILTER_CHILD=1", "PIPIT_BROKER_FILTER_ROOT="+root)
+	command := sandboxtest.Command(ctx, "TestNativeFilesystemBrokerFilter", "PIPIT_BROKER_FILTER_CHILD=1", "PIPIT_BROKER_FILTER_ROOT="+root)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("broker filter subprocess: %v\n%s", err, output)
@@ -69,6 +62,7 @@ func TestNativeFilesystemBrokerFilter(t *testing.T) {
 }
 
 func exerciseNativeFilesystemBrokerFilter(t *testing.T) {
+	t.Helper()
 	root := os.Getenv("PIPIT_BROKER_FILTER_ROOT")
 	backend, err := sandboxbroker.OpenLinuxFilesystem([]sandboxbroker.LinuxRootGrant{
 		{Name: "data", Path: root, Rights: sandboxbroker.Read | sandboxbroker.Write | sandboxbroker.List},

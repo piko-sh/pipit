@@ -21,21 +21,20 @@
 package bytecode_test
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/isa"
 )
 
 func requireSpillOccurred(t *testing.T, source string, bank isa.RegisterKind) {
 	t.Helper()
 	service := app.NewService()
-	cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	cfs, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoError(t, err)
 	fn, err := cfs.FindFunction("run")
 	require.NoError(t, err)
@@ -87,7 +86,7 @@ func TestRegisterSpillAllAliveInt(t *testing.T) {
 	requireSpillOccurred(t, source, isa.RegisterInt)
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, triangular(n), result)
 }
@@ -114,7 +113,7 @@ func TestRegisterSpillAllAliveString(t *testing.T) {
 	requireSpillOccurred(t, source, isa.RegisterString)
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 
 	parts := make([]string, n)
@@ -129,7 +128,7 @@ func TestRegisterSpillPreservesIntValues(t *testing.T) {
 	const n = 260
 	source := generateIntSpillProgram(n)
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 
 	sumAll := n * (n - 1) / 2
@@ -155,7 +154,7 @@ func TestRegisterSpillStringBank(t *testing.T) {
 	b.WriteString("}\n")
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), b.String(), "run")
+	result, err := service.EvalFile(t.Context(), b.String(), "run")
 	require.NoError(t, err)
 	expected := fmt.Sprintf("0-%d-%d", n/2, n-1)
 	require.Equal(t, expected, result)
@@ -180,7 +179,7 @@ func TestRegisterSpillReassignment(t *testing.T) {
 	b.WriteString("}\n")
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), b.String(), "run")
+	result, err := service.EvalFile(t.Context(), b.String(), "run")
 	require.NoError(t, err)
 	require.Equal(t, int(999+888), result)
 }
@@ -204,7 +203,7 @@ func TestRegisterSpillInExpression(t *testing.T) {
 	b.WriteString("}\n")
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), b.String(), "run")
+	result, err := service.EvalFile(t.Context(), b.String(), "run")
 	require.NoError(t, err)
 	require.Equal(t, secondLast+last, result)
 }
@@ -226,7 +225,7 @@ func TestRegisterSpillAsFunctionArgument(t *testing.T) {
 	b.WriteString("}\n")
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), b.String(), "run")
+	result, err := service.EvalFile(t.Context(), b.String(), "run")
 	require.NoError(t, err)
 	require.Equal(t, (n-1)*2, result)
 }
@@ -251,7 +250,7 @@ func TestRegisterSpillInIfElse(t *testing.T) {
 	b.WriteString("}\n")
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), b.String(), "run")
+	result, err := service.EvalFile(t.Context(), b.String(), "run")
 	require.NoError(t, err)
 	require.Equal(t, int(n-1), result)
 }
@@ -277,7 +276,7 @@ func TestRegisterSpillInForLoop(t *testing.T) {
 	b.WriteString("}\n")
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), b.String(), "run")
+	result, err := service.EvalFile(t.Context(), b.String(), "run")
 	require.NoError(t, err)
 	require.Equal(t, int((n-1)*3), result)
 }
@@ -301,7 +300,7 @@ func TestRegisterSpillMinimal(t *testing.T) {
 	b.WriteString("}\n")
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), b.String(), "run")
+	result, err := service.EvalFile(t.Context(), b.String(), "run")
 	require.NoError(t, err)
 	require.Equal(t, int(n-1), result)
 }
@@ -323,7 +322,7 @@ func run() int {
 }
 `
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, 30, result)
 }
@@ -349,11 +348,45 @@ func TestRegisterSpillClosureCapture(t *testing.T) {
 	requireSpillOccurred(t, source, isa.RegisterInt)
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 
 	expected := int(n-1) + triangular(n-1)
 	require.Equal(t, expected, result)
+}
+
+func TestRegisterSpillRangeOverFuncCapture(t *testing.T) {
+	t.Parallel()
+	const n = 260
+	bodies := map[string]string{
+		"a capture that does not run": "\tif cond {\n\t\tfor x := range seq {\n\t\t\tv%[1]d += x\n\t\t}\n\t}\n",
+		"a capture inside a loop":     "\tfor k := 0; k < 2; k++ {\n\t\tv%[1]d++\n\t\tfor x := range seq {\n\t\t\tv%[1]d += x\n\t\t}\n\t}\n",
+	}
+	want := map[string]int{
+		"a capture that does not run": n - 1,
+		"a capture inside a loop":     n - 1 + 2*(1+5),
+	}
+	for name, body := range bodies {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var b strings.Builder
+			b.WriteString("package main\n\nvar cond = false\n\nfunc seq(yield func(int) bool) { yield(5) }\n\nfunc run() int {\n")
+			for i := range n {
+				fmt.Fprintf(&b, "\tv%d := %d\n", i, i)
+			}
+			fmt.Fprintf(&b, body, n-1)
+			fmt.Fprintf(&b, "\tresult := v%d\n", n-1)
+			for i := range n - 1 {
+				fmt.Fprintf(&b, "\tresult += v%d\n", i)
+			}
+			b.WriteString("\treturn result\n}\n")
+
+			result, err := app.NewService().EvalFile(t.Context(), b.String(), "run")
+			require.NoError(t, err)
+			require.Equal(t, want[name]+triangular(n-1), result)
+		})
+	}
 }
 
 func TestRegisterSpillAddressOf(t *testing.T) {
@@ -376,7 +409,7 @@ func TestRegisterSpillAddressOf(t *testing.T) {
 	source := b.String()
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 
 	expected := 999 + triangular(n-1)
@@ -403,7 +436,7 @@ func TestRegisterSpillIncDec(t *testing.T) {
 	requireSpillOccurred(t, source, isa.RegisterInt)
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 
 	require.Equal(t, triangular(n)+1, result)
@@ -426,7 +459,7 @@ func TestRegisterSpillDecrement(t *testing.T) {
 	source := b.String()
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, triangular(n)-1, result)
 }
@@ -462,7 +495,7 @@ func TestRegisterSpillMultipleBanks(t *testing.T) {
 	requireSpillOccurred(t, source, isa.RegisterString)
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, triangular(n), result)
 }
@@ -491,7 +524,7 @@ func TestRegisterSpillScopeReclaim(t *testing.T) {
 	source := b.String()
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, triangular(n)+3, result)
 }
@@ -521,7 +554,7 @@ func TestRegisterSpillCompoundAssignAllOps(t *testing.T) {
 	requireSpillOccurred(t, source, isa.RegisterInt)
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 
 	expected := triangular(n) + 269 + 258
@@ -536,7 +569,7 @@ func TestRegisterSpillAcrossFiveHundredLocals(t *testing.T) {
 	requireSpillOccurred(t, source, isa.RegisterInt)
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, triangular(n), result)
 }
@@ -549,7 +582,7 @@ func TestRegisterSpillAcrossOneThousandLocals(t *testing.T) {
 	requireSpillOccurred(t, source, isa.RegisterInt)
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, triangular(n), result)
 }
@@ -591,7 +624,7 @@ func TestRegisterSpillStressMixedOps(t *testing.T) {
 	requireSpillOccurred(t, source, isa.RegisterInt)
 
 	service := app.NewService()
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 
 	expected := triangular(n) + 701 + 1702 + 100 + 0 + 1 - 1 + 1 + 3

@@ -1,0 +1,5 @@
+var b []int
+b = append(b, 1)
+a := b
+a = append(a, 2)
+[]int{len(a), len(b)}

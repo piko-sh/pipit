@@ -37,20 +37,20 @@ func RunExtract(ctx context.Context, args []string, streams output.IO) int {
 	return extract.RunCommand(ctx, args, streams.Stdout, streams.Stderr, extractConfig())
 }
 
-// extractConfig adapts the shared extract command to pipit: pipit names the tool, the
-// standard library is already provided, and a project's own packages are compiled from
-// source rather than registered.
+// extractConfig configures the shared extract command for pipit.
 //
 // Returns extract.Config which configures the command for pipit.
 func extractConfig() extract.Config {
 	return extract.Config{
-		AlreadyProvided:     pipit.StandardLibraryPaths,
-		ToolName:            "pipit extract",
-		DefaultManifest:     "pipit-symbols.yaml",
-		InitPackage:         "symbols",
-		InitDirectory:       "symbols",
-		SourceDirs:          nil,
-		Scanners:            nil,
-		IgnoreProjectModule: true,
+		AlreadyProvided:      pipit.StandardLibraryPaths,
+		ToolName:             "pipit extract",
+		DefaultManifest:      "pipit-symbols.yaml",
+		InitPackage:          "symbols",
+		InitDirectory:        "symbols",
+		SourceDirs:           nil,
+		Scanners:             nil,
+		IgnoreProjectModule:  true,
+		FollowProjectImports: false,
+		FileFilter:           extract.FileFilter(pipit.NewFileFilter()),
 	}
 }

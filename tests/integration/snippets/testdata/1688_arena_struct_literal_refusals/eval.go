@@ -12,22 +12,16 @@ var published *holder
 var registry = map[string]*holder{}
 var pile []*holder
 
-// self returns its receiver, so the pointer escapes through the return.
 func (h *holder) self() *holder { return h }
 
-// publish stores its receiver in a package variable.
 func (h *holder) publish() { published = h }
 
-// register stores its receiver in a map.
 func (h *holder) register() { registry[h.name] = h }
 
-// enqueue stores its receiver in a slice.
 func (h *holder) enqueue() { pile = append(pile, h) }
 
-// capture closes over its receiver.
 func (h *holder) capture() func() int { return func() int { return len(h.items) } }
 
-// alias links the receiver to another holder, which then reaches it.
 func (h *holder) alias(other *holder) { other.link = h }
 
 func (h *holder) total() int {

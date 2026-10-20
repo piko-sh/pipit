@@ -21,15 +21,13 @@
 package bytecode_test
 
 import (
-	"context"
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/fault"
-
-	"github.com/stretchr/testify/require"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -37,9 +35,9 @@ func TestTypedSliceIntDirectOps(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		build  func() *program.CompiledFunction
-		name   string
+		want  any
+		build func() *program.CompiledFunction
+		name  string
 	}{
 		{
 			name: "make_then_len",
@@ -54,7 +52,7 @@ func TestTypedSliceIntDirectOps(t *testing.T) {
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return builder.build()
 			},
-			expect: 7,
+			want: 7,
 		},
 		{
 			name: "set_then_get_round_trip",
@@ -74,7 +72,7 @@ func TestTypedSliceIntDirectOps(t *testing.T) {
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return builder.build()
 			},
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "sum_three_elements",
@@ -113,7 +111,7 @@ func TestTypedSliceIntDirectOps(t *testing.T) {
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return builder.build()
 			},
-			expect: 60,
+			want: 60,
 		},
 		{
 			name: "negative_index_panics",
@@ -130,7 +128,7 @@ func TestTypedSliceIntDirectOps(t *testing.T) {
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return builder.build()
 			},
-			expect: fault.ErrIndexOutOfRange,
+			want: fault.ErrIndexOutOfRange,
 		},
 		{
 			name: "out_of_range_index_panics",
@@ -147,24 +145,22 @@ func TestTypedSliceIntDirectOps(t *testing.T) {
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return builder.build()
 			},
-			expect: fault.ErrIndexOutOfRange,
+			want: fault.ErrIndexOutOfRange,
 		},
 	}
 
-	for _, testCase := range tests {
-		t.Run(testCase.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			compiled := testCase.build()
-			result, err := service.Execute(context.Background(), compiled)
-			if expectedError, ok := testCase.expect.(error); ok {
-				require.Error(t, err)
-				require.True(t, errors.Is(err, expectedError),
-					"expected error wrapping %v, got %v", expectedError, err)
+			compiled := tt.build()
+			result, err := service.Execute(t.Context(), compiled)
+			if expectedError, ok := tt.want.(error); ok {
+				require.ErrorIs(t, err, expectedError)
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, testCase.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

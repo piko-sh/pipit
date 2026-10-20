@@ -86,6 +86,7 @@ func TestAppendFastPathHandlesEveryTypedElementBank(t *testing.T) {
 		{
 			name: "an int64 slice", slice: []int64{1, 2}, element: int64(3),
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, 3, got.Len())
 				require.Equal(t, int64(3), got.Index(2).Int())
 			},
@@ -93,6 +94,7 @@ func TestAppendFastPathHandlesEveryTypedElementBank(t *testing.T) {
 		{
 			name: "a plain int slice", slice: []int{1, 2}, element: 3,
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, 3, got.Len())
 				require.Equal(t, int64(3), got.Index(2).Int())
 			},
@@ -100,6 +102,7 @@ func TestAppendFastPathHandlesEveryTypedElementBank(t *testing.T) {
 		{
 			name: "a float slice", slice: []float64{1}, element: 2.5,
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, 2, got.Len())
 				require.InDelta(t, 2.5, got.Index(1).Float(), 0)
 			},
@@ -107,6 +110,7 @@ func TestAppendFastPathHandlesEveryTypedElementBank(t *testing.T) {
 		{
 			name: "a string slice", slice: []string{"a"}, element: "b",
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, 2, got.Len())
 				require.Equal(t, "b", got.Index(1).String())
 			},
@@ -114,6 +118,7 @@ func TestAppendFastPathHandlesEveryTypedElementBank(t *testing.T) {
 		{
 			name: "a bool slice", slice: []bool{true}, element: false,
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, 2, got.Len())
 				require.False(t, got.Index(1).Bool())
 			},
@@ -121,17 +126,24 @@ func TestAppendFastPathHandlesEveryTypedElementBank(t *testing.T) {
 		{
 			name: "a byte slice", slice: []byte{1}, element: byte(2),
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, 2, got.Len())
 				require.Equal(t, uint64(2), got.Index(1).Uint())
 			},
 		},
 		{
 			name: "an empty slice grows to one element", slice: []int64{}, element: int64(1),
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, 1, got.Len()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, 1, got.Len())
+			},
 		},
 		{
 			name: "a nil slice grows to one element", slice: []int64(nil), element: int64(1),
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, 1, got.Len()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, 1, got.Len())
+			},
 		},
 	}
 
@@ -206,12 +218,16 @@ func TestConformSpreadSourceConvertsOnlyWhenTheTypesDiffer(t *testing.T) {
 		{
 			name:   "an identical type passes through untouched",
 			source: reflect.ValueOf([]int{1, 2}), destinationType: reflect.TypeFor[[]int](),
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, reflect.TypeFor[[]int](), got.Type()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, reflect.TypeFor[[]int](), got.Type())
+			},
 		},
 		{
 			name:   "a convertible element type is converted",
 			source: reflect.ValueOf([]int{1, 2}), destinationType: reflect.TypeFor[[]int32](),
 			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
 				require.Equal(t, reflect.TypeFor[[]int32](), got.Type())
 				require.Equal(t, int64(2), got.Index(1).Int())
 			},
@@ -219,12 +235,18 @@ func TestConformSpreadSourceConvertsOnlyWhenTheTypesDiffer(t *testing.T) {
 		{
 			name:   "an unconvertible element type passes through untouched",
 			source: reflect.ValueOf([]int{1}), destinationType: reflect.TypeFor[[]struct{ X int }](),
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, reflect.TypeFor[[]int](), got.Type()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, reflect.TypeFor[[]int](), got.Type())
+			},
 		},
 		{
 			name:   "an empty slice converts to an empty slice",
 			source: reflect.ValueOf([]int{}), destinationType: reflect.TypeFor[[]int32](),
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, 0, got.Len()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, 0, got.Len())
+			},
 		},
 	}
 

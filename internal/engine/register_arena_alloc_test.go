@@ -98,8 +98,8 @@ func TestArenaAllocatorsHandOutDistinctBuffers(t *testing.T) {
 		t.Parallel()
 		arena := newTestArena(t)
 
-		require.Equal(t, arena.AllocBytes(0, 8), arena.AllocBytes(0, 8),
-			"zero-size allocations share one address rather than consuming the slab")
+		first := arena.AllocBytes(0, 8)
+		require.Equal(t, first, arena.AllocBytes(0, 8), "zero-size allocations share one address rather than consuming the slab")
 	})
 }
 

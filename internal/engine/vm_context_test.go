@@ -22,24 +22,22 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/symtab"
 )
 
 func TestParentContextPropagatesToChildVM(t *testing.T) {
 	t.Parallel()
 
-	parentCtx, parentCancel := context.WithCancel(context.Background())
+	parentCtx, parentCancel := context.WithCancel(t.Context())
 	defer parentCancel()
 
 	parentVM := NewVM(parentCtx, NewGlobalStore(), symtab.NewSymbolRegistry(nil))
 
 	child := NewVM(parentVM.executionContext(), parentVM.Globals, parentVM.symbols)
-	if child.executionContext() != parentCtx {
-		t.Fatal("child VM did not inherit parent context")
-	}
+	require.Same(t, parentCtx, child.executionContext(), "the child VM inherits its parent's context")
 
 	parentCancel()
-	if err := child.executionContext().Err(); err == nil {
-		t.Fatal("after parent cancel, child ctx.Err() == nil; want non-nil")
-	}
+	require.Error(t, child.executionContext().Err(), "cancelling the parent cancels the child's context")
 }

@@ -21,32 +21,31 @@
 package bytecode_test
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/symtab"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestEvalDeclarations(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "const declaration int",
 			code: `const x = 42
 x`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "multiple const grouped",
@@ -55,31 +54,31 @@ x`,
 	b = 2
 )
 a + b`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "const string",
 			code: `const s = "hello"
 s`,
-			expect: "hello",
+			want: "hello",
 		},
 		{
 			name: "const float typed",
 			code: `const f float64 = 3.14
 f`,
-			expect: 3.14,
+			want: 3.14,
 		},
 		{
 			name: "var with type no value",
 			code: `var x int
 x`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "var with type and value",
 			code: `var x int = 42
 x`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "multiple var grouped",
@@ -88,39 +87,39 @@ x`,
 	y int = 2
 )
 x + y`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "var string zero value",
 			code: `var s string
 s`,
-			expect: "",
+			want: "",
 		},
 		{
 			name: "var float64 zero value",
 			code: `var f float64
 f`,
-			expect: 0.0,
+			want: 0.0,
 		},
 		{
 			name: "var bool zero value",
 			code: `var b bool
 b`,
-			expect: false,
+			want: false,
 		},
 		{
 			name: "const used in arithmetic",
 			code: `const base = 100
 offset := 42
 base + offset`,
-			expect: 142,
+			want: 142,
 		},
 		{
 			name: "multiple const separate declarations",
 			code: `const a = 10
 const b = 20
 a * b`,
-			expect: 200,
+			want: 200,
 		},
 	}
 
@@ -128,18 +127,18 @@ a * b`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 
 	t.Run("untyped const float", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), "const f = 3.14\nf")
+		result, err := service.Eval(t.Context(), "const f = 3.14\nf")
 		require.NoError(t, err)
-		require.Equal(t, 3.14, result)
+		require.InDelta(t, 3.14, result, 0)
 	})
 }
 
@@ -147,9 +146,9 @@ func TestEvalScoping(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "closure shadows outer variable",
@@ -160,7 +159,7 @@ f := func() int {
 }
 _ = x
 f()`,
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "outer unaffected by if-block shadow",
@@ -170,7 +169,7 @@ if true {
 	_ = x
 }
 x`,
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "mutation in if block visible outside",
@@ -179,7 +178,7 @@ if true {
 	x = x + 5
 }
 x`,
-			expect: 15,
+			want: 15,
 		},
 		{
 			name: "for loop variable scoped to loop",
@@ -188,7 +187,7 @@ for i := 0; i < 5; i++ {
 	sum = sum + i
 }
 sum`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "nested closure captures outer",
@@ -198,7 +197,7 @@ f := func() int {
 	return a + b
 }
 f()`,
-			expect: 30,
+			want: 30,
 		},
 		{
 			name: "if-else both branches assign outer",
@@ -210,7 +209,7 @@ if cond {
 	x = 99
 }
 x`,
-			expect: 42,
+			want: 42,
 		},
 	}
 
@@ -218,9 +217,9 @@ x`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 
@@ -228,7 +227,7 @@ x`,
 		t.Parallel()
 		service := app.NewService()
 		code := "x := 0\ninc := func() {\n\tx = x + 1\n}\ninc()\ninc()\ninc()\nx"
-		result, err := service.Eval(context.Background(), code)
+		result, err := service.Eval(t.Context(), code)
 		require.NoError(t, err)
 		require.Equal(t, 3, result)
 	})
@@ -249,30 +248,30 @@ func TestEvalImportsWithSymbols(t *testing.T) {
 	})
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "fmt Sprintf with int",
 			code: `import "fmt"
 result := fmt.Sprintf("hello %d", 42)
 result`,
-			expect: "hello 42",
+			want: "hello 42",
 		},
 		{
 			name: "strings Contains true",
 			code: `import "strings"
 result := strings.Contains("hello world", "ell")
 result`,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "strings HasPrefix",
 			code: `import "strings"
 result := strings.HasPrefix("hello", "hel")
 result`,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "grouped import both packages",
@@ -283,7 +282,7 @@ result`,
 name := strings.ToUpper("pipit")
 result := fmt.Sprintf("hello %s", name)
 result`,
-			expect: "hello PIPIT",
+			want: "hello PIPIT",
 		},
 		{
 			name: "import result used in expression",
@@ -292,7 +291,7 @@ a := 10
 b := 20
 result := fmt.Sprintf("%d", a + b)
 result`,
-			expect: "30",
+			want: "30",
 		},
 	}
 
@@ -301,9 +300,9 @@ result`,
 			t.Parallel()
 			service := app.NewService()
 			service.UseSymbols(symbols)
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -312,54 +311,54 @@ func TestEvalPredeclaredLiterals(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "hex literal",
-			code:   `x := 0x1F; x`,
-			expect: 31,
+			name: "hex literal",
+			code: `x := 0x1F; x`,
+			want: 31,
 		},
 		{
-			name:   "binary literal",
-			code:   `x := 0b1010; x`,
-			expect: 10,
+			name: "binary literal",
+			code: `x := 0b1010; x`,
+			want: 10,
 		},
 		{
-			name:   "octal literal",
-			code:   `x := 0o17; x`,
-			expect: 15,
+			name: "octal literal",
+			code: `x := 0o17; x`,
+			want: 15,
 		},
 		{
-			name:   "underscored int literal",
-			code:   `x := 1_000_000; x`,
-			expect: 1000000,
+			name: "underscored int literal",
+			code: `x := 1_000_000; x`,
+			want: 1000000,
 		},
 		{
-			name:   "scientific notation float",
-			code:   `x := 3.14e2; x`,
-			expect: 314.0,
+			name: "scientific notation float",
+			code: `x := 3.14e2; x`,
+			want: 314.0,
 		},
 		{
-			name:   "rune literal",
-			code:   `x := 'A'; x`,
-			expect: int32(65),
+			name: "rune literal",
+			code: `x := 'A'; x`,
+			want: int32(65),
 		},
 		{
-			name:   "negative hex via variable",
-			code:   `x := 0xFF; y := -x; y`,
-			expect: -255,
+			name: "negative hex via variable",
+			code: `x := 0xFF; y := -x; y`,
+			want: -255,
 		},
 		{
-			name:   "large binary literal",
-			code:   `x := 0b11111111; x`,
-			expect: 255,
+			name: "large binary literal",
+			code: `x := 0b11111111; x`,
+			want: 255,
 		},
 		{
-			name:   "underscored float literal",
-			code:   `x := 1_000.5; x`,
-			expect: 1000.5,
+			name: "underscored float literal",
+			code: `x := 1_000.5; x`,
+			want: 1000.5,
 		},
 	}
 
@@ -367,9 +366,9 @@ func TestEvalPredeclaredLiterals(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -384,7 +383,7 @@ func TestClosurePassedToNativeWithInnerCall(t *testing.T) {
 	})
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -412,7 +411,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     11345,
+			want:       11345,
 		},
 		{
 			name: "sort.Slice with direct closure no inner call",
@@ -433,7 +432,7 @@ func run() int {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     258,
+			want:       258,
 		},
 	}
 
@@ -442,9 +441,9 @@ func main() {}
 			t.Parallel()
 			service := app.NewService()
 			service.UseSymbols(symbols)
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

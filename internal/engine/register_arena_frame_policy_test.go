@@ -108,9 +108,9 @@ func TestGrowCallStackJumpsToObservedDepth(t *testing.T) {
 	vm.rootFunction = root
 	vm.Arena = NewRegisterArena()
 	vm.CallStack = vm.Arena.frameStack()
-	require.Equal(t, initialFrameSlabs, len(vm.CallStack))
+	require.Len(t, vm.CallStack, initialFrameSlabs)
 	vm.growCallStack()
-	require.Equal(t, 5000+frameStackSafetyMargin, len(vm.CallStack))
+	require.Len(t, vm.CallStack, 5000+frameStackSafetyMargin)
 	require.Equal(t, 1, vm.Arena.frameStackGrowths)
 }
 

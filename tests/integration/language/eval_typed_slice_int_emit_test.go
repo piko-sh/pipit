@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,7 +32,7 @@ func TestTypedSliceIntCompilerEmission(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
+		want   any
 		name   string
 		source string
 	}{
@@ -46,7 +46,7 @@ func TestTypedSliceIntCompilerEmission(t *testing.T) {
 	return s[0] + s[1] + s[2] + len(s)
 }
 run()`,
-			expect: 34,
+			want: 34,
 		},
 		{
 			name: "range_over_typed_slice",
@@ -63,7 +63,7 @@ run()`,
 	return total
 }
 run()`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "address_of_index_disqualifies",
@@ -75,7 +75,7 @@ run()`,
 	return s[0]
 }
 run()`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "closure_capture_disqualifies",
@@ -87,7 +87,7 @@ run()`,
 	return s[0]
 }
 run()`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "function_argument_disqualifies",
@@ -106,7 +106,7 @@ func run() int {
 	return sum(s)
 }
 run()`,
-			expect: 6,
+			want: 6,
 		},
 		{
 			name: "return_disqualifies",
@@ -121,7 +121,7 @@ func run() int {
 	return x[0] + x[1]
 }
 run()`,
-			expect: 9,
+			want: 9,
 		},
 		{
 			name: "empty_typed_slice",
@@ -130,17 +130,17 @@ run()`,
 	return len(s)
 }
 run()`,
-			expect: 0,
+			want: 0,
 		},
 	}
 
-	for _, testCase := range tests {
-		t.Run(testCase.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), testCase.source)
+			result, err := service.Eval(t.Context(), tt.source)
 			require.NoError(t, err)
-			require.Equal(t, testCase.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

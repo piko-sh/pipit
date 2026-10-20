@@ -35,6 +35,7 @@ func decodeReport(t *testing.T, text string) report {
 }
 
 func TestConvertLaterReportReplacesItsRunners(t *testing.T) {
+	t.Parallel()
 	sweep := decodeReport(t, `{"generated_at_utc":"t1","host":{"os":"linux","arch":"amd64","cpu_count_logical":8},
 		"runs":[{"benchmark":"b","runner":"cpython","mode":"innerloop","status":"ok"},
 		        {"benchmark":"b","runner":"pipit","mode":"innerloop","status":"ok"},
@@ -57,6 +58,7 @@ func TestConvertLaterReportReplacesItsRunners(t *testing.T) {
 }
 
 func TestConvertFailedRunGivesFailedRow(t *testing.T) {
+	t.Parallel()
 	input := decodeReport(t, `{"generated_at_utc":"t","host":{},
 		"runs":[{"benchmark":"b","runner":"yaegi","mode":"endtoend","status":"ok"},
 		        {"benchmark":"b","runner":"yaegi","mode":"endtoend","status":"error","note":"timeout"},
@@ -67,11 +69,12 @@ func TestConvertFailedRunGivesFailedRow(t *testing.T) {
 
 	require.Len(t, rows, 2)
 	assert.Equal(t, row{Lang: "yaegi", Bench: "b", Mode: "endtoend", Status: "failed", Reason: "timeout", Timestamp: "t"}, rows[0])
-	assert.Equal(t, "failed", rows[1].Status, "no aggregate")
+	assert.Equal(t, "failed", rows[1].Status, "a run without an aggregate gives a failed row")
 	assert.Equal(t, "failed", rows[1].Reason)
 }
 
 func TestWriteMatchesSweepFormat(t *testing.T) {
+	t.Parallel()
 	var buffer bytes.Buffer
 	require.NoError(t, write(&buffer, []row{{Lang: "go", Bench: "b", Mode: "innerloop", Status: "ok", RuntimeNs: 7}}))
 	assert.Equal(t, `{"lang":"go","bench":"b","mode":"innerloop","status":"ok","reason":"","runs":0,"compile_ns":0,"runtime_ns":7,"cold_start_ns":0,"mean_ns":0,"stddev_ns":0,"min_ns":0,"p95_ns":0,"peak_rss_kb":0,"timestamp":"","host_os":"","host_arch":"","go_version":"","cpu_count_logical":0}`+"\n", buffer.String())

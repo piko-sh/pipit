@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,32 +32,46 @@ func TestUnsafePointerConversions(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "unsafe_slice_from_array", code: `
+		{
+			name: "unsafe_slice_from_array",
+			code: `
 import (
 	"unsafe"
 )
 arr := [3]int{10, 20, 30}
 s := unsafe.Slice(&arr[0], 3)
-s[0] + s[1] + s[2]`, expect: 60},
-		{name: "unsafe_slice_data", code: `
+s[0] + s[1] + s[2]`,
+			want: 60,
+		},
+		{
+			name: "unsafe_slice_data",
+			code: `
 import (
 	"unsafe"
 )
 s := []int{1, 2, 3}
 p := unsafe.SliceData(s)
-p != nil`, expect: true},
-		{name: "unsafe_slice_data_empty", code: `
+p != nil`,
+			want: true,
+		},
+		{
+			name: "unsafe_slice_data_empty",
+			code: `
 import (
 	"unsafe"
 )
 s := make([]int, 0)
 p := unsafe.SliceData(s)
-p == nil`, expect: true},
-		{name: "unsafe_add_pointer", code: `
+p == nil`,
+			want: true,
+		},
+		{
+			name: "unsafe_add_pointer",
+			code: `
 import (
 	"unsafe"
 )
@@ -65,16 +79,18 @@ arr := [3]int{10, 20, 30}
 p := unsafe.Pointer(&arr[0])
 p2 := unsafe.Add(p, 8)
 result := *(*int)(p2)
-result`, expect: 20},
+result`,
+			want: 20,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -83,25 +99,35 @@ func TestUnsafePointerConversionsUnderGoDispatch(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "unsafe_slice", code: `
+		{
+			name: "unsafe_slice",
+			code: `
 import (
 	"unsafe"
 )
 arr := [3]int{10, 20, 30}
 s := unsafe.Slice(&arr[0], 3)
-s[2]`, expect: 30},
-		{name: "unsafe_slice_data", code: `
+s[2]`,
+			want: 30,
+		},
+		{
+			name: "unsafe_slice_data",
+			code: `
 import (
 	"unsafe"
 )
 s := []int{1, 2, 3}
 p := unsafe.SliceData(s)
-p != nil`, expect: true},
-		{name: "unsafe_add", code: `
+p != nil`,
+			want: true,
+		},
+		{
+			name: "unsafe_add",
+			code: `
 import (
 	"unsafe"
 )
@@ -109,16 +135,18 @@ arr := [3]int{10, 20, 30}
 p := unsafe.Pointer(&arr[0])
 p2 := unsafe.Add(p, 16)
 result := *(*int)(p2)
-result`, expect: 30},
+result`,
+			want: 30,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService(app.WithForceGoDispatch())
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

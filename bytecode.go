@@ -38,7 +38,7 @@ var (
 	LoadCompiledFromBytes = adapters.LoadCompiledFromBytes
 
 	// PackCompiledFileSetToBytes serialises a compiled program into the schema-versioned
-	// wire format. Pass it to Interpreter.PackageModule as the bytecode packer.
+	// wire format.
 	PackCompiledFileSetToBytes = adapters.PackCompiledFileSetToBytes
 )
 

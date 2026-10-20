@@ -53,22 +53,34 @@ func TestUnwrapInterfaceLeafPeelsOnlyANonNilInterface(t *testing.T) {
 		{
 			name:  "a non-nil interface is peeled to its dynamic value",
 			field: interfaceValue,
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, reflect.Int, got.Kind()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, reflect.Int, got.Kind())
+			},
 		},
 		{
 			name:  "a nil interface becomes the invalid value",
 			field: nilInterface,
-			check: func(t *testing.T, got reflect.Value) { require.False(t, got.IsValid()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.False(t, got.IsValid())
+			},
 		},
 		{
 			name:  "a concrete value passes through",
 			field: reflect.ValueOf("pipit"),
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, "pipit", got.String()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, "pipit", got.String())
+			},
 		},
 		{
 			name:  "an invalid value stays invalid",
 			field: reflect.Value{},
-			check: func(t *testing.T, got reflect.Value) { require.False(t, got.IsValid()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.False(t, got.IsValid())
+			},
 		},
 	}
 

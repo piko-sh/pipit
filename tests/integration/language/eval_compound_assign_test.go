@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,20 +32,20 @@ func TestEvalCompoundAssignAcrossOperators(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "string_concat_assign", code: `s := "hello"` + "\ns += \" world\"\ns", expect: "hello world"},
+		{name: "string_concat_assign", code: `s := "hello"` + "\ns += \" world\"\ns", want: "hello world"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -54,19 +54,19 @@ func TestEvalCompoundAssignMap(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
-			name:   "map_add_assign",
-			code:   "m := map[string]int{\"a\": 1}\nm[\"a\"] += 5\nm[\"a\"]",
-			expect: 6,
+			name: "map_add_assign",
+			code: "m := map[string]int{\"a\": 1}\nm[\"a\"] += 5\nm[\"a\"]",
+			want: 6,
 		},
 		{
-			name:   "map_sub_assign",
-			code:   "m := map[string]int{\"x\": 10}\nm[\"x\"] -= 3\nm[\"x\"]",
-			expect: 7,
+			name: "map_sub_assign",
+			code: "m := map[string]int{\"x\": 10}\nm[\"x\"] -= 3\nm[\"x\"]",
+			want: 7,
 		},
 	}
 
@@ -74,9 +74,9 @@ func TestEvalCompoundAssignMap(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -85,7 +85,7 @@ func TestEvalCompoundAssignInterfaceSlice(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect     any
+		want       any
 		name       string
 		source     string
 		entrypoint string
@@ -105,7 +105,7 @@ func run() interface{} {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     int(20),
+			want:       int(20),
 		},
 		{
 			name: "interface_slice_set_string",
@@ -121,7 +121,7 @@ func run() interface{} {
 func main() {}
 `,
 			entrypoint: "run",
-			expect:     "hello",
+			want:       "hello",
 		},
 	}
 
@@ -129,9 +129,9 @@ func main() {}
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.EvalFile(context.Background(), tt.source, tt.entrypoint)
+			result, err := service.EvalFile(t.Context(), tt.source, tt.entrypoint)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -140,9 +140,9 @@ func TestEvalSwitchAcrossClauseForms(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "switch_with_return_in_function",
@@ -157,7 +157,7 @@ func TestEvalSwitchAcrossClauseForms(t *testing.T) {
 	}
 }
 classify(2)`,
-			expect: "two",
+			want: "two",
 		},
 		{
 			name: "tagless_switch_with_return",
@@ -172,7 +172,7 @@ classify(2)`,
 	}
 }
 bracket(15)`,
-			expect: "mid",
+			want: "mid",
 		},
 		{
 			name: "multi_value_case_with_return",
@@ -187,7 +187,7 @@ bracket(15)`,
 	}
 }
 group(3)`,
-			expect: "low",
+			want: "low",
 		},
 	}
 
@@ -195,9 +195,9 @@ group(3)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

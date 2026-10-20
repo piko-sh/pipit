@@ -223,15 +223,9 @@ func convertMapKey(vm *VM, key reflect.Value, keyType reflect.Type) reflect.Valu
 	return key
 }
 
-// fastIntKindConvert attempts an allocation-free integer kind reinterpret matching the
-// semantics of `reflect.Value.Convert` for integer-to-integer casts.
-//
-// Uses the per-vm intMapKeyScratch as the result holder, caller-safe because the scratch
-// is consumed immediately by the caller (map ops capture the value, slice/array Set ops
-// copy out). It covers signed-to-signed, unsigned-to-unsigned and same-width
-// cross-signedness reinterprets (two's complement is representation- preserving), and
-// both width-narrowing and width-widening because SetInt / SetUint on a narrower scratch
-// truncates and on a wider scratch sign- or zero-extends identically to reflect.Convert.
+// fastIntKindConvert converts between integer kinds using per-VM scratch storage with
+// reflect.Value.Convert semantics. The caller must consume or copy the result before
+// reusing the scratch.
 //
 // Takes vm (*VM) which owns the per-vm scratch cache.
 // Takes value (reflect.Value) which is the source integer value.
@@ -250,7 +244,7 @@ func fastIntKindConvert(vm *VM, value reflect.Value, dstType reflect.Type) (refl
 	if !sourceIsIntegral || !destinationIsIntegral {
 		return reflect.Value{}, false
 	}
-	scratch := intMapKeyScratch(vm, dstType)
+	scratch := mapKeyScratchFor(vm, dstType)
 	switch {
 	case destinationIsSigned && sourceIsSigned:
 		scratch.SetInt(value.Int())
@@ -405,38 +399,6 @@ func mapSetFast64Pointer(vm *VM, m reflect.Value, elemType reflect.Type, registe
 	return mapSetFast64PointerKeyed(vm, m, elemType, key, registers.General[instr.C])
 }
 
-// mapSetFast64PointerKeyed is mapSetFast64Pointer with the key already extracted, shared
-// by the generic handler (general-bank keys) and the typed isa.OpMapSetIntGeneral handler
-// (int-bank keys).
-//
-// Takes vm (*VM) which owns the arena for value materialisation.
-// Takes m (reflect.Value) which is the destination map.
-// Takes elemType (reflect.Type) which is the map's element type.
-// Takes key (int64) which is the 8-byte-kinded key value.
-// Takes rawValue (reflect.Value) which is the value to store.
-//
-// Returns true when the fast path stored the value, false to fall back.
-func mapSetFast64PointerKeyed(vm *VM, m reflect.Value, elemType reflect.Type, key int64, rawValue reflect.Value) bool {
-	mapRaw := (*unsafeReflectValue)(unsafe.Pointer(&m))
-	mapPtr := dereferenceIndirectPointer(mapRaw)
-	if mapPtr == nil {
-		return false
-	}
-	valueValue := coerceValue(vm, rawValue, elemType)
-	if !valueValue.IsValid() || valueValue.Kind() != reflect.Pointer {
-		return false
-	}
-	valueValue = MaterialiseArenaValue(vm.Arena, valueValue)
-	valueRaw := (*unsafeReflectValue)(unsafe.Pointer(&valueValue))
-	ptrValue := dereferenceIndirectPointer(valueRaw)
-	slotPtr := runtimeMapassignFast64(mapRaw.typ, mapPtr, safeconv.Int64ToUint64Reinterpret(key))
-	if slotPtr == nil {
-		return true
-	}
-	runtimeTypedmemmove(reflectValueABIType(elemType), slotPtr, unsafe.Pointer(new(ptrValue)))
-	return true
-}
-
 // mapKeyAsInt64 extracts an int64-wide key value from any integer- kind reflect.Value,
 // mirroring Go's implicit width conversion for integer map keys.
 //
@@ -453,19 +415,6 @@ func mapKeyAsInt64(keyValue reflect.Value) (int64, bool) {
 	default:
 	}
 	return 0, false
-}
-
-// dereferenceIndirectPointer reads through a punned reflect.Value's flagIndir bit,
-// returning either the indirected pointer or the raw pointer slot.
-//
-// Takes raw (*unsafeReflectValue) which is the punned reflect.Value internals.
-//
-// Returns the resolved unsafe.Pointer.
-func dereferenceIndirectPointer(raw *unsafeReflectValue) unsafe.Pointer {
-	if raw.flag&flagIndir != 0 {
-		return *(*unsafe.Pointer)(raw.ptr)
-	}
-	return raw.ptr
 }
 
 // mapSetReflectSlow is the reflect-driven map-set fallback used when the fast64 path
@@ -511,7 +460,7 @@ func handleMapDelete(vm *VM, frame *CallFrame, registers *Registers, instruction
 	cacheEntry := resolveMapAccessCache(vm, m.Type())
 	if cacheEntry.fast64Eligible {
 		if key, ok := mapKeyAsInt64(registers.General[instruction.B]); ok {
-			keyScratch := intMapKeyScratch(vm, cacheEntry.keyType)
+			keyScratch := mapKeyScratchFor(vm, cacheEntry.keyType)
 			keyScratch.SetInt(key)
 			m.SetMapIndex(keyScratch, reflect.Value{})
 			return opContinue

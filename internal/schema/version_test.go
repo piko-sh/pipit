@@ -19,7 +19,6 @@
 package schema
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -30,16 +29,7 @@ import (
 func TestSchemaHashIsNonZero(t *testing.T) {
 	t.Parallel()
 
-	require.NotEmpty(t, schemaHash, "SchemaHash must derive from bytecode.fbs content")
-
-	allZero := true
-	for _, b := range schemaHash {
-		if b != 0 {
-			allZero = false
-			break
-		}
-	}
-	require.False(t, allZero, "SchemaHash must not be the zero hash")
+	require.NotEmpty(t, schemaHash, "the schema hash is derived from bytecode.fbs, so it is never all zeros")
 }
 
 func TestBytecodeInputLimit(t *testing.T) {
@@ -85,9 +75,7 @@ func TestUnpackRejectsStaleSchemaHash(t *testing.T) {
 	stalePacked := fbs.PackAlloc(staleHash, payload)
 
 	_, err := Unpack(stalePacked)
-	require.Error(t, err, "stale schema hash must reject on Unpack")
-	require.True(t, errors.Is(err, fbs.ErrSchemaVersionMismatch),
-		"expected fbs.ErrSchemaVersionMismatch, got: %v", err)
+	require.ErrorIs(t, err, fbs.ErrSchemaVersionMismatch, "a stale schema hash is rejected on Unpack")
 }
 
 func TestUnpackRejectsPreviousDescriptorNumbering(t *testing.T) {

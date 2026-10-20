@@ -25,13 +25,15 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/symtab"
-
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
 func TestArenaCheck(t *testing.T) {
+	t.Parallel()
 	code := `import "strings"
 
 const size = 100
@@ -52,9 +54,7 @@ n`
 	service := app.NewService()
 	service.UseSymbols(symbols)
 	compiledFunction, err := service.Compile(context.Background(), code)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	fmt.Printf("Root function: %s\n", compiledFunction.FunctionName())
 	fmt.Printf("  NumRegisters: %v\n", compiledFunction.RegisterCounts())
 	fmt.Printf("  Body length: %d\n", compiledFunction.BodyLen())
@@ -64,9 +64,7 @@ n`
 	}
 
 	result, err := service.Execute(context.Background(), compiledFunction)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	fmt.Printf("  Result: %v\n", result)
 }
 
@@ -84,15 +82,13 @@ var (
 func BenchmarkPipit_ConcatOnly(b *testing.B) {
 	service := app.NewService()
 	compiledFunction, err := service.Compile(context.Background(), concatOnlyCode)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		_, err = service.Execute(context.Background(), compiledFunction)
 		if err != nil {
-			b.Fatal(err)
+			require.NoError(b, err)
 		}
 	}
 }

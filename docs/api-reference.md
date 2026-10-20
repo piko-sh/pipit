@@ -21,6 +21,7 @@ Pipit's [compatibility limits](compatibility.md). For complete programs, see
 | `Compile` / `Execute` | Expression or statement source / compiled function | Compiled function / execution result |
 | `CompileFileSet` / `ExecuteEntrypoint` | Named files in one package / compiled package and entrypoint | Compiled package / entrypoint result |
 | `NewSession` / `Submit` | Interpreter / incremental source submission | Session / final expression result |
+| `MatchFile` | File name and content | Whether `CompileFileSet` and `CompileProgram` compile the file |
 
 Compilation and execution return errors. Ordinary integer results have type `int`;
 explicit numeric types retain their types. `EvalFile` takes source text, not a path.
@@ -69,12 +70,20 @@ Use `errors.Is` to check for these exported error values:
 
 | Failure | Examples |
 |---|---|
-| Invalid source | `ErrParse`, `ErrTypeCheck`, `ErrCompilation` |
+| Invalid source | `ErrParse`, `ErrTypeCheck`, `ErrCompilation`, `ErrCyclicImport`, `ErrEmbedUnsupported` (a `//go:embed` directive in a file the interpreter compiles) |
+| Function too large | `ErrRegisterOverflow`, for a statement that needs more live values than the interpreter has registers; the error names the function and the statement |
 | Disallowed feature/import | `ErrFeatureNotAllowed`, `ErrPackageNotInRegistry`, `ErrCapabilityDenied`; an import outside `WithImportAllowlist` is reported as `ErrParse` |
 | Resource limit | `ErrCostBudgetExceeded`, `ErrAllocationLimit`, `ErrOutputLimit`, `ErrGoroutineLimit`, `ErrStackOverflow` |
-| Cancellation | `ErrExecutionCancelled`; the context error remains in the chain |
+| Cancellation | `ErrExecutionCancelled`; the context error remains in the chain. `ErrCallbackTimeout` for a closure that runs past `WithCallbackTimeout`; it also matches `ErrExecutionCancelled` |
 | Runtime failure | `ErrUncaughtPanic`, `ErrDeadlock`, `ErrDivisionByZero`, `ErrIndexOutOfRange` |
 | Interpreter defect | `ErrInterpreterInvariant`; report it as a Pipit bug |
+
+`CompileProgram` keeps going after a package fails, so it can report every failed
+package at once. When more than one package fails, the error is a `ProblemList` with one
+problem per package, and `CompileProblems(err)` returns them; for a single problem it
+returns the error itself. Each problem names its package. The type errors of one package
+stay together as one problem, up to 10 of them. The message starts with the first
+problem, and the others follow, each after a blank line.
 
 The string-size and literal-element limits have no exported error value.
 `UncaughtPanicValue(err)` retrieves the value of an unrecovered panic. The exported
@@ -98,6 +107,7 @@ or a yield interval selects the Go dispatch loop. The public
 | `WithMaxStringSize(n)` | Bytes in one string built by concatenation, `strings.Repeat`, or rune appends | No string-size limit |
 | `WithMaxLiteralElements(n)` | Elements in one composite literal | No literal-element limit |
 | `WithCostBudget(n)` | Instruction cost | Metering disabled |
+| `WithCallbackTimeout(d)` | Duration of one call of an interpreted closure from native code, including time blocked on channels, `select` or sleep | No per-call limit; a negative value also disables it |
 
 With a debugger attached, the default execution timeout is disabled. Set an
 explicit timeout or pass a context with a deadline when you need a time limit.
@@ -109,7 +119,8 @@ See the [CLI defaults](cli.md#resource-limits).
 Other options include:
 
 - `WithYieldInterval(n)` - how often the dispatch loop checks for cancellation
-- `WithBuildTags("integration", ...)` - //go:build evaluation
+- `WithBuildTags("integration", ...)` - tags set alongside `interp` when choosing
+  files; see [build constraints](compatibility.md#build-constraints)
 - `WithEnv(map[string]string{...})` - variables overlaid on the host environment
   for `os.Getenv`, `os.LookupEnv`, `os.ExpandEnv` and `os.Environ`; a script's
   `os.Setenv` and `os.Unsetenv` change only its own view

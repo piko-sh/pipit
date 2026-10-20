@@ -19,7 +19,6 @@
 package app
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
@@ -43,13 +42,13 @@ func newCallbackHarness(t *testing.T, exports map[string]reflect.Value) *callbac
 	service.UseSymbols(symbols)
 	return &callbackHarness{
 		service: service,
-		vm:      engine.NewVM(context.Background(), engine.NewGlobalStore(), symbols),
+		vm:      engine.NewVM(t.Context(), engine.NewGlobalStore(), symbols),
 	}
 }
 
 func (h *callbackHarness) compile(t *testing.T, source string) *program.CompiledFunction {
 	t.Helper()
-	compiled, err := h.service.Compile(context.Background(), source)
+	compiled, err := h.service.Compile(t.Context(), source)
 	require.NoError(t, err)
 	return compiled
 }

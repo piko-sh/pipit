@@ -19,12 +19,12 @@
 package app
 
 import (
-	"context"
 	"reflect"
 	"testing"
 	"unsafe"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/debug"
 	"pipit.sh/pipit/internal/symtab"
 )
@@ -46,7 +46,7 @@ func TestSnapshotCaptureWithNativeAliasedBytes(t *testing.T) {
 					return unsafe.Slice((*byte)(unsafe.Pointer(field.UnsafeAddr())), 1)
 				}),
 			}}))
-			files, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": `package main
+			files, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": `package main
 import "host"
 type color struct { Red byte }
 var source = []color{{3}}
@@ -57,7 +57,7 @@ func run() int {
  return int(copied.Red)*100 + int(source[0].Red)*10 + int(raw[0])
 }`})
 			require.NoError(t, err)
-			value, err := service.ExecuteEntrypoint(context.Background(), files, "run")
+			value, err := service.ExecuteEntrypoint(t.Context(), files, "run")
 			require.NoError(t, err)
 			require.Equal(t, 377, value)
 		})

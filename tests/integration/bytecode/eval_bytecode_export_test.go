@@ -24,12 +24,12 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/codec"
 	"pipit.sh/pipit/internal/engine/program"
-	"pipit.sh/pipit/internal/symtab/descriptor"
-
-	"github.com/stretchr/testify/require"
 	"pipit.sh/pipit/internal/isa"
+	"pipit.sh/pipit/internal/symtab/descriptor"
 )
 
 func TestCompiledFileSetGetters(t *testing.T) {
@@ -240,7 +240,7 @@ func main() {
 		t.Parallel()
 		mainFn, err := cfs.FindFunction("main")
 		require.NoError(t, err)
-		require.Greater(t, mainFn.BodyLen(), 0)
+		require.Positive(t, mainFn.BodyLen())
 	})
 
 	t.Run("sub_functions_on_root", func(t *testing.T) {
@@ -499,7 +499,8 @@ func TestImportGeneralConstantDescriptor(t *testing.T) {
 			GeneralConstants:           []reflect.Value{reflect.ValueOf(0)},
 			GeneralConstantDescriptors: []descriptor.GeneralConstantDescriptor{internal},
 		})
-		exported := codec.GeneralConstantDescriptors(compiledFunction)
+		exported, err := codec.GeneralConstantDescriptors(compiledFunction)
+		require.NoError(t, err)
 		require.Len(t, exported, 1)
 		require.Equal(t, data.PackagePath, exported[0].PackagePath)
 		require.Equal(t, data.SymbolName, exported[0].SymbolName)
@@ -520,7 +521,8 @@ func TestImportGeneralConstantDescriptor(t *testing.T) {
 			GeneralConstants:           []reflect.Value{reflect.ValueOf(0)},
 			GeneralConstantDescriptors: []descriptor.GeneralConstantDescriptor{internal},
 		})
-		exported := codec.GeneralConstantDescriptors(compiledFunction)
+		exported, err := codec.GeneralConstantDescriptors(compiledFunction)
+		require.NoError(t, err)
 		require.Len(t, exported, 1)
 		require.Equal(t, data.PackagePath, exported[0].PackagePath)
 		require.Equal(t, data.SymbolName, exported[0].SymbolName)
@@ -661,7 +663,8 @@ func TestNewCompiledFunctionFromDataRoundTrip(t *testing.T) {
 
 	t.Run("general_constant_descriptors", func(t *testing.T) {
 		t.Parallel()
-		gcd := codec.GeneralConstantDescriptors(compiledFunction)
+		gcd, err := codec.GeneralConstantDescriptors(compiledFunction)
+		require.NoError(t, err)
 		require.Len(t, gcd, 1)
 		require.Equal(t, "pkg", gcd[0].PackagePath)
 		require.Equal(t, "Sym", gcd[0].SymbolName)
@@ -963,7 +966,9 @@ func TestGeneralConstantDescriptorsEmpty(t *testing.T) {
 	t.Parallel()
 
 	compiledFunction := codec.NewCompiledFunctionFromData(&codec.CompiledFunctionData{})
-	require.Empty(t, codec.GeneralConstantDescriptors(compiledFunction))
+	descriptors, err := codec.GeneralConstantDescriptors(compiledFunction)
+	require.NoError(t, err)
+	require.Empty(t, descriptors)
 }
 
 func TestTypeTableDescriptorsEmpty(t *testing.T) {

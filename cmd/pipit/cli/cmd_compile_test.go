@@ -19,11 +19,11 @@
 package cli
 
 import (
-	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/cmd/pipit/internal/clitest"
 )
@@ -42,36 +42,21 @@ func main() {
 	fmt.Println("Hello, roundtrip!")
 }
 `
-	if err := os.WriteFile(source, []byte(program), 0o644); err != nil {
-		t.Fatalf("write source: %v", err)
-	}
+	require.NoError(t, os.WriteFile(source, []byte(program), 0o644))
 
-	compile := clitest.Run(context.Background(), RunCompile, []string{"-o", out, source}, "")
-	if compile.Code != 0 {
-		t.Fatalf("compile failed: code=%d stderr=%q", compile.Code, compile.Stderr)
-	}
-	if _, err := os.Stat(out); err != nil {
-		t.Fatalf("output not created: %v", err)
-	}
+	compile := clitest.Run(t.Context(), RunCompile, []string{"-o", out, source}, "")
+	require.Equal(t, 0, compile.Code, "compile stderr: %q", compile.Stderr)
+	_, err := os.Stat(out)
+	require.NoError(t, err, "the output is created")
 
-	inspect := clitest.Run(context.Background(), RunBytecode, []string{"inspect", out}, "")
-	if inspect.Code != 0 {
-		t.Fatalf("inspect failed: code=%d stderr=%q", inspect.Code, inspect.Stderr)
-	}
-	if !strings.Contains(inspect.Stdout, "main") {
-		t.Fatalf("expected 'main' in inspect output: %q", inspect.Stdout)
-	}
+	inspect := clitest.Run(t.Context(), RunBytecode, []string{"inspect", out}, "")
+	require.Equal(t, 0, inspect.Code, "inspect stderr: %q", inspect.Stderr)
+	require.Contains(t, inspect.Stdout, "main")
 
-	run := clitest.Run(context.Background(), RunBytecode, []string{"run", out}, "")
-	if run.Code != 0 {
-		t.Fatalf("run failed: code=%d stderr=%q", run.Code, run.Stderr)
-	}
+	run := clitest.Run(t.Context(), RunBytecode, []string{"run", out}, "")
+	require.Equal(t, 0, run.Code, "run stderr: %q", run.Stderr)
 
-	disasm := clitest.Run(context.Background(), RunBytecode, []string{"disasm", "--no-colour", out}, "")
-	if disasm.Code != 0 {
-		t.Fatalf("disasm failed: code=%d stderr=%q", disasm.Code, disasm.Stderr)
-	}
-	if disasm.Stdout == "" {
-		t.Fatal("expected disasm output")
-	}
+	disasm := clitest.Run(t.Context(), RunBytecode, []string{"disasm", "--no-colour", out}, "")
+	require.Equal(t, 0, disasm.Code, "disasm stderr: %q", disasm.Stderr)
+	require.NotEmpty(t, disasm.Stdout)
 }

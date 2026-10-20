@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,7 +32,7 @@ func TestEvalStringRange(t *testing.T) {
 	t.Parallel()
 
 	service := app.NewService()
-	result, err := service.Eval(context.Background(), `s := "hello"
+	result, err := service.Eval(t.Context(), `s := "hello"
 n := 0
 for range s {
 	n = n + 1
@@ -45,41 +45,41 @@ n`)
 func TestEvalStringIndexSliceAndConcat(t *testing.T) {
 	t.Parallel()
 
-	intTests := []struct {
-		name   string
-		code   string
-		expect int
+	tests := []struct {
+		name string
+		code string
+		want int
 	}{
-		{name: "len hello", code: `len("hello")`, expect: 5},
+		{name: "len hello", code: `len("hello")`, want: 5},
 	}
 
-	for _, tt := range intTests {
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 
 	boolTests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "eq true", code: `"abc" == "abc"`, expect: true},
-		{name: "lt", code: `"abc" < "abd"`, expect: true},
-		{name: "le equal", code: `"abc" <= "abc"`, expect: true},
+		{name: "eq true", code: `"abc" == "abc"`, want: true},
+		{name: "lt", code: `"abc" < "abd"`, want: true},
+		{name: "le equal", code: `"abc" <= "abc"`, want: true},
 	}
 
 	for _, tt := range boolTests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

@@ -31,8 +31,8 @@ import (
 
 func TestABITypeOffsetsMatchASMDefines(t *testing.T) {
 	t.Parallel()
-	require.EqualValues(t, program.AbiTypeKindByteOffset, asm.ABITypeKindByteOffset)
-	require.EqualValues(t, program.AbiTypePointerElemOffset, asm.ABITypePointerElemOffset)
+	require.Equal(t, program.AbiTypeKindByteOffset, asm.ABITypeKindByteOffset)
+	require.Equal(t, program.AbiTypePointerElemOffset, asm.ABITypePointerElemOffset)
 }
 
 func TestCallSiteIndexWithinRejectsForeignSites(t *testing.T) {

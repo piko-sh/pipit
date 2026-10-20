@@ -19,11 +19,11 @@
 package app_test
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -142,9 +142,9 @@ func main() {}
 func runLRUProgram(t *testing.T, options ...app.Option) string {
 	t.Helper()
 	service := app.NewService(options...)
-	compiled, err := service.CompileProgram(context.Background(), "main", map[string]map[string]string{"": {"main.go": lruProgram}})
+	compiled, err := service.CompileProgram(t.Context(), "main", map[string]map[string]string{"": {"main.go": lruProgram}})
 	require.NoError(t, err)
-	result, err := service.ExecuteEntrypoint(context.Background(), compiled, "entrypoint")
+	result, err := service.ExecuteEntrypoint(t.Context(), compiled, "entrypoint")
 	require.NoError(t, err)
 	return fmt.Sprint(result)
 }

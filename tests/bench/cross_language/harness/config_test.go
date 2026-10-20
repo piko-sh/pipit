@@ -30,6 +30,7 @@ import (
 )
 
 func TestLoadSpecRejectsMissingName(t *testing.T) {
+	t.Parallel()
 	tempDirectory := t.TempDir()
 	path := filepath.Join(tempDirectory, "bad.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"description":"oops"}`), 0o644))
@@ -38,6 +39,7 @@ func TestLoadSpecRejectsMissingName(t *testing.T) {
 }
 
 func TestLoadSpecRejectsZeroKInner(t *testing.T) {
+	t.Parallel()
 	tempDirectory := t.TempDir()
 	path := filepath.Join(tempDirectory, "bad.json")
 	body := `{"name":"x","expected_stdout_sha256":"abc","k_inner":0}`
@@ -47,6 +49,7 @@ func TestLoadSpecRejectsZeroKInner(t *testing.T) {
 }
 
 func TestLoadSpecDefaultsTimeoutWhenAbsent(t *testing.T) {
+	t.Parallel()
 	tempDirectory := t.TempDir()
 	path := filepath.Join(tempDirectory, "ok.json")
 	body := `{"name":"x","expected_stdout_sha256":"abc","k_inner":1}`
@@ -57,6 +60,7 @@ func TestLoadSpecDefaultsTimeoutWhenAbsent(t *testing.T) {
 }
 
 func TestMatchesFilterMatchesSubstrings(t *testing.T) {
+	t.Parallel()
 	config := SuiteConfig{Filter: []string{"fib", "trie"}}
 	assert.True(t, config.MatchesFilter("01_fib_iterative"))
 	assert.True(t, config.MatchesFilter("11_trie_50k_words"))
@@ -64,11 +68,13 @@ func TestMatchesFilterMatchesSubstrings(t *testing.T) {
 }
 
 func TestMatchesFilterEmptyAllowsEverything(t *testing.T) {
+	t.Parallel()
 	config := SuiteConfig{}
 	assert.True(t, config.MatchesFilter("anything"))
 }
 
 func TestRunnerEnabledChecksSet(t *testing.T) {
+	t.Parallel()
 	config := SuiteConfig{Runners: []RunnerKind{RunnerPipit, RunnerGo}}
 	assert.True(t, config.RunnerEnabled(RunnerPipit))
 	assert.False(t, config.RunnerEnabled(RunnerCPython))

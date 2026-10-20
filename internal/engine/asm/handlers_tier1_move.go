@@ -47,7 +47,7 @@ func tier1MoveHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 		moveHandlerFloat("handlerSubOpMoveFloat"),
 		moveHandlerContextBased("handlerSubOpMoveBool", contextBaseBool),
 		moveHandlerContextBased("handlerSubOpMoveUint", contextBaseUint),
-		moveHandlerString("handlerSubOpMoveString"),
+		guardPointerBankWriter(moveHandlerString("handlerSubOpMoveString")),
 	}
 }
 

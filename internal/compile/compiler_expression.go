@@ -669,10 +669,12 @@ func (c *Compiler) compileBinaryExpression(ctx context.Context, expression *ast.
 		return location, err
 	}
 
+	mark := c.Scopes.Alloc.Snapshot()
 	left, err := c.compileExpression(ctx, expression.X)
 	if err != nil {
 		return program.VarLocation{}, err
 	}
+	afterLeft := c.Scopes.Alloc.Snapshot()
 
 	right, err := c.compileShiftCountOrExpression(ctx, expression)
 	if err != nil {
@@ -690,9 +692,14 @@ func (c *Compiler) compileBinaryExpression(ctx context.Context, expression *ast.
 	if right, err = c.unboxScalarOperand(ctx, right, c.staticTypeOf(expression.Y)); err != nil {
 		return program.VarLocation{}, err
 	}
-	result, err := c.emitBinaryOp(ctx, expression.Op, left, right)
+	destination := binaryResultDestination(expression, mark, afterLeft, left, right)
+	result, err := c.emitBinaryOpInto(ctx, expression.Op, left, right, destination)
 	if err != nil {
 		return result, err
+	}
+	if destination != nil {
+		c.Scopes.RestoreWatermark(afterLeft)
+		c.Scopes.KeepLocation(result)
 	}
 	if t := c.staticTypeOf(expression); t != nil {
 		c.EmitNarrowIntegerTruncation(result, t)
@@ -837,7 +844,7 @@ func (c *Compiler) compileTypedNilOrExpression(ctx context.Context, expression a
 		return program.VarLocation{}, false, nil
 	}
 	constIndex, err := program.AddGeneralConstant(c.Function, reflect.Zero(reflectType), descriptor.GeneralConstantDescriptor{Kind: descriptor.GeneralConstantCompositeZero,
-		TypeDescriptor: descriptor.ReflectTypeToDescriptor(reflectType), PackagePath: "", SymbolName: ""})
+		TypeDescriptor: descriptor.TypeDescriptor{}, PackagePath: "", SymbolName: ""})
 	if err != nil {
 		c.recordStickyError(err)
 		return program.VarLocation{}, false, err
@@ -886,24 +893,31 @@ func (c *Compiler) compileShortCircuitOr(ctx context.Context, expression *ast.Bi
 	return c.compileShortCircuit(ctx, expression, isa.OpJumpIfTrue)
 }
 
-// compileShortCircuit compiles a boolean short-circuit expression using skipOp
-// (isa.OpJumpIfFalse for AND, isa.OpJumpIfTrue for OR) to bypass the right operand. The
-// result is an int register holding 0 or 1.
+// compileShortCircuit compiles a boolean expression that skips the right operand when
+// the left determines the result.
+//
+// The left-to-result move is emitted even when both registers are the same because
+// range-check fusion depends on that instruction pattern.
 //
 // Takes expression (*ast.BinaryExpr) which is the binary expression to compile.
-// Takes skipOp (isa.Opcode) which is the conditional branch opcode used to skip the right
-// operand.
+// Takes skipOp (isa.Opcode) which is the conditional branch opcode used to skip the
+// right operand.
 //
-// Returns the int register location holding 0 or 1, or an error when either operand fails
-// to compile.
+// Returns the int register location holding 0 or 1, or an error when either operand
+// fails to compile.
 func (c *Compiler) compileShortCircuit(ctx context.Context, expression *ast.BinaryExpr, skipOp isa.Opcode) (program.VarLocation, error) {
+	mark := c.Scopes.Alloc.Snapshot()
 	left, err := c.compileExpression(ctx, expression.X)
 	if err != nil {
 		return program.VarLocation{}, err
 	}
 	left = c.ensureIntForBranch(ctx, left)
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
+	dest := left.Register
+	if !reusableShortCircuitResult(expression.X, left, mark) {
+		dest = c.Scopes.Alloc.Alloc(isa.RegisterInt)
+	}
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveInt), dest, left.Register)
+	afterLeft := c.Scopes.Alloc.Snapshot()
 	jumpToEnd := program.EmitJump(c.Function, skipOp, dest)
 	right, err := c.compileExpression(ctx, expression.Y)
 	if err != nil {
@@ -912,6 +926,7 @@ func (c *Compiler) compileShortCircuit(ctx context.Context, expression *ast.Bina
 	right = c.ensureIntForBranch(ctx, right)
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveInt), dest, right.Register)
 	program.PatchJump(c.Function, jumpToEnd)
+	c.Scopes.RestoreWatermark(afterLeft)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterInt}, nil
 }
 
@@ -925,26 +940,39 @@ func (c *Compiler) compileShortCircuit(ctx context.Context, expression *ast.Bina
 // Returns the register location holding the result, or an error when the operator is
 // unsupported for the operand banks.
 func (c *Compiler) emitBinaryOp(ctx context.Context, op token.Token, left, right program.VarLocation) (program.VarLocation, error) {
+	return c.emitBinaryOpInto(ctx, op, left, right, nil)
+}
+
+// emitBinaryOpInto is emitBinaryOp writing an arithmetic or bitwise result into dest when
+// dest is non-nil and of the result's bank; comparisons always take a fresh register.
+//
+// Takes op (token.Token) which is the binary operator.
+// Takes left (VarLocation) which is the left operand.
+// Takes right (VarLocation) which is the right operand.
+// Takes dest (*program.VarLocation) which is the register to overwrite, or nil.
+//
+// Returns the result location and any error.
+func (c *Compiler) emitBinaryOpInto(ctx context.Context, op token.Token, left, right program.VarLocation, dest *program.VarLocation) (program.VarLocation, error) {
 	switch op {
 	case token.ADD, token.SUB, token.MUL, token.QUO, token.REM:
-		return c.emitArithmetic(ctx, op, left, right, nil)
+		return c.emitArithmetic(ctx, op, left, right, dest)
 
 	case token.EQL, token.NEQ, token.LSS, token.LEQ, token.GTR, token.GEQ:
 		ops, _ := comparisonOpcodes(op)
 		return c.emitCompareOp(ctx, ops.intOp, ops.floatOp, ops.strOp, ops.genOp, left, right)
 
 	case token.AND:
-		return c.emitIntOnlyOp(ctx, isa.OpBitAnd, left, right)
+		return c.emitIntOnlyOp(ctx, isa.OpBitAnd, left, right, dest)
 	case token.OR:
-		return c.emitIntOnlyOp(ctx, isa.OpBitOr, left, right)
+		return c.emitIntOnlyOp(ctx, isa.OpBitOr, left, right, dest)
 	case token.XOR:
-		return c.emitIntOnlyOp(ctx, isa.OpBitXor, left, right)
+		return c.emitIntOnlyOp(ctx, isa.OpBitXor, left, right, dest)
 	case token.AND_NOT:
-		return c.emitIntOnlyOp(ctx, isa.OpBitAndNot, left, right)
+		return c.emitIntOnlyOp(ctx, isa.OpBitAndNot, left, right, dest)
 	case token.SHL:
-		return c.emitIntOnlyOp(ctx, isa.OpShiftLeft, left, right)
+		return c.emitIntOnlyOp(ctx, isa.OpShiftLeft, left, right, dest)
 	case token.SHR:
-		return c.emitIntOnlyOp(ctx, isa.OpShiftRight, left, right)
+		return c.emitIntOnlyOp(ctx, isa.OpShiftRight, left, right, dest)
 
 	default:
 		return program.VarLocation{}, fmt.Errorf("unsupported binary operator: %s (left=%v, right=%v)", op, left.Kind, right.Kind)
@@ -1103,6 +1131,20 @@ func (c *Compiler) emitComplexCompare(_ context.Context, intOp isa.Opcode, dest 
 	return nil
 }
 
+// intOnlyDestination returns into's register when it matches kind, or a fresh register
+// otherwise.
+//
+// Takes kind (isa.RegisterKind) which is the result's bank.
+// Takes into (*program.VarLocation) which is the preferred register, or nil.
+//
+// Returns uint8 which is the destination register.
+func (c *Compiler) intOnlyDestination(kind isa.RegisterKind, into *program.VarLocation) uint8 {
+	if into != nil && into.Kind == kind {
+		return into.Register
+	}
+	return c.Scopes.Alloc.Alloc(kind)
+}
+
 // emitIntOnlyOp emits a bitwise or shift operation that requires integer operands. uint
 // operands are routed to their uint-specific opcode; mixed int/uint operand pairs are
 // bridged through an IntToUint or UintToInt temporary so the dispatched instruction
@@ -1112,10 +1154,12 @@ func (c *Compiler) emitComplexCompare(_ context.Context, intOp isa.Opcode, dest 
 // applies).
 // Takes left (program.VarLocation) which is the left operand register location.
 // Takes right (program.VarLocation) which is the right operand register location.
+// Takes into (*program.VarLocation) which is a register of the result's bank to write the
+// result into, or nil for a fresh one.
 //
 // Returns the register location holding the result, or an error when the operand banks
 // are unsupported for the operation.
-func (c *Compiler) emitIntOnlyOp(_ context.Context, op isa.Opcode, left, right program.VarLocation) (program.VarLocation, error) {
+func (c *Compiler) emitIntOnlyOp(_ context.Context, op isa.Opcode, left, right program.VarLocation, into *program.VarLocation) (program.VarLocation, error) {
 	if left.Kind == isa.RegisterUint {
 		var uintOp isa.Opcode
 		switch op {
@@ -1134,7 +1178,7 @@ func (c *Compiler) emitIntOnlyOp(_ context.Context, op isa.Opcode, left, right p
 		default:
 			return program.VarLocation{}, fault.ErrCompileArithUintUnsupported
 		}
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterUint)
+		dest := c.intOnlyDestination(isa.RegisterUint, into)
 		rightRegister := right.Register
 		if right.Kind == isa.RegisterInt {
 			rightRegister = c.Scopes.Alloc.AllocTemp(isa.RegisterUint)
@@ -1149,7 +1193,7 @@ func (c *Compiler) emitIntOnlyOp(_ context.Context, op isa.Opcode, left, right p
 	if left.Kind != isa.RegisterInt {
 		return program.VarLocation{}, fault.ErrCompileBitwiseRequiresInteger
 	}
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
+	dest := c.intOnlyDestination(isa.RegisterInt, into)
 	rightRegister := right.Register
 	if right.Kind == isa.RegisterUint {
 		rightRegister = c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
@@ -1474,4 +1518,107 @@ func intToUintCmpOp(intOp isa.Opcode) (isa.Opcode, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// reusableShortCircuitResult reports whether the left operand is a short-circuit
+// expression with a temporary result register that can be reused.
+//
+// Takes operand (ast.Expr) which is the left operand.
+// Takes left (program.VarLocation) which is where its value is.
+// Takes mark ([isa.NumRegisterKinds]uint32) which is the state before the operand.
+//
+// Returns bool which is true when the left register may be overwritten.
+func reusableShortCircuitResult(operand ast.Expr, left program.VarLocation, mark [isa.NumRegisterKinds]uint32) bool {
+	return isShortCircuitOperand(operand) && isDirectScalarRegister(left) && allocatedSince(left, mark)
+}
+
+// allocatedSince reports whether location's register was allocated after mark, so it
+// holds a temporary of the expression being compiled.
+//
+// Takes location (program.VarLocation) which is a register location.
+// Takes mark ([isa.NumRegisterKinds]uint32) which is an earlier allocation state.
+//
+// Returns bool which is true for a register at or above the mark.
+func allocatedSince(location program.VarLocation, mark [isa.NumRegisterKinds]uint32) bool {
+	return uint32(location.Register) >= mark[location.Kind]
+}
+
+// canHoldResultOf reports whether the right operand allocated a temporary register of
+// kind after the left operand was evaluated.
+//
+// Takes right (program.VarLocation) which is the right operand.
+// Takes kind (isa.RegisterKind) which is the left operand's bank.
+// Takes afterLeft ([isa.NumRegisterKinds]uint32) which is the state after the left
+// operand.
+//
+// Returns bool which is true when the result may overwrite the right operand.
+func canHoldResultOf(right program.VarLocation, kind isa.RegisterKind, afterLeft [isa.NumRegisterKinds]uint32) bool {
+	return isDirectScalarRegister(right) && right.Kind == kind && allocatedSince(right, afterLeft)
+}
+
+// binaryResultDestination selects a temporary operand register for a chained arithmetic
+// or bitwise result.
+//
+// Operations outside a chain keep a fresh destination to preserve the instruction
+// patterns used by later optimisation passes.
+//
+// Takes expression (*ast.BinaryExpr) which is the operation.
+// Takes mark ([isa.NumRegisterKinds]uint32) which is the allocation state before the
+// left operand was compiled.
+// Takes afterLeft ([isa.NumRegisterKinds]uint32) which is the state after it.
+// Takes left (program.VarLocation) which is the left operand.
+// Takes right (program.VarLocation) which is the right operand.
+//
+// Returns *program.VarLocation which is the operand to overwrite, or nil for a fresh
+// register.
+func binaryResultDestination(expression *ast.BinaryExpr, mark, afterLeft [isa.NumRegisterKinds]uint32, left, right program.VarLocation) *program.VarLocation {
+	if !isChainOperator(expression.Op) || !isDirectScalarRegister(left) {
+		return nil
+	}
+	leftInChain, rightInChain := isChainOperand(expression.X), isChainOperand(expression.Y)
+	if (leftInChain || rightInChain) && allocatedSince(left, mark) {
+		return &left
+	}
+	if rightInChain && canHoldResultOf(right, left.Kind, afterLeft) {
+		return &right
+	}
+	return nil
+}
+
+// isChainOperator reports whether op is an arithmetic or bitwise operator whose result a
+// chain can accumulate in place.
+//
+// Takes op (token.Token) which is the operator.
+//
+// Returns bool which is true for + - * / % & | ^ &^ << >>.
+func isChainOperator(op token.Token) bool {
+	switch op {
+	case token.ADD, token.SUB, token.MUL, token.QUO, token.REM,
+		token.AND, token.OR, token.XOR, token.AND_NOT, token.SHL, token.SHR:
+		return true
+	default:
+		return false
+	}
+}
+
+// isChainOperand reports whether operand is itself an arithmetic or bitwise expression,
+// so its value is a temporary the enclosing operation may overwrite.
+//
+// Takes operand (ast.Expr) which is one side of a binary expression.
+//
+// Returns bool which is true for an inner chain step.
+func isChainOperand(operand ast.Expr) bool {
+	inner, ok := ast.Unparen(operand).(*ast.BinaryExpr)
+	return ok && isChainOperator(inner.Op)
+}
+
+// isShortCircuitOperand reports whether operand is itself an && or || expression, whose
+// result register the enclosing one may reuse.
+//
+// Takes operand (ast.Expr) which is the left side of a short-circuit expression.
+//
+// Returns bool which is true for an inner && or ||.
+func isShortCircuitOperand(operand ast.Expr) bool {
+	inner, ok := ast.Unparen(operand).(*ast.BinaryExpr)
+	return ok && (inner.Op == token.LAND || inner.Op == token.LOR)
 }

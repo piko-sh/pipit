@@ -98,7 +98,10 @@ func TestWideStructFieldScalarReadsLandInTheirBank(t *testing.T) {
 	}{
 		{
 			name: "a float field", field: 2, handler: handleGetStructFieldUnsafeFloat,
-			inspect: func(t *testing.T, r *Registers) { require.InDelta(t, 1.5, r.Floats[0], 0) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.InDelta(t, 1.5, r.Floats[0], 0)
+			},
 		},
 	}
 
@@ -164,18 +167,27 @@ func TestWideStructFieldWritesFallBackOnANonPointerReceiver(t *testing.T) {
 	}{
 		{
 			name: "a float field", field: 2, handler: handleSetStructFieldUnsafeFloat,
-			load:    func(r *Registers) { r.Floats[2] = 3.5 },
-			inspect: func(t *testing.T, v reflect.Value) { require.InDelta(t, 3.5, v.Interface().(wideFields).Ratio, 0) },
+			load: func(r *Registers) { r.Floats[2] = 3.5 },
+			inspect: func(t *testing.T, v reflect.Value) {
+				t.Helper()
+				require.InDelta(t, 3.5, v.Interface().(wideFields).Ratio, 0)
+			},
 		},
 		{
 			name: "a bool field", field: 3, handler: handleSetStructFieldUnsafeBool,
-			load:    func(r *Registers) { r.Bools[2] = true },
-			inspect: func(t *testing.T, v reflect.Value) { require.True(t, v.Interface().(wideFields).Flag) },
+			load: func(r *Registers) { r.Bools[2] = true },
+			inspect: func(t *testing.T, v reflect.Value) {
+				t.Helper()
+				require.True(t, v.Interface().(wideFields).Flag)
+			},
 		},
 		{
 			name: "a string field", field: 4, handler: handleSetStructFieldUnsafeString,
-			load:    func(r *Registers) { r.Strings[2] = "walked" },
-			inspect: func(t *testing.T, v reflect.Value) { require.Equal(t, "walked", v.Interface().(wideFields).Label) },
+			load: func(r *Registers) { r.Strings[2] = "walked" },
+			inspect: func(t *testing.T, v reflect.Value) {
+				t.Helper()
+				require.Equal(t, "walked", v.Interface().(wideFields).Label)
+			},
 		},
 	}
 
@@ -300,6 +312,7 @@ func TestWideByteFieldReadPreservesHeadersAndBacking(t *testing.T) {
 	for _, source := range []any{[]byte(nil), []byte{}, make([]byte, 0, 7), bytes{3, 5}, []octet{7, 11}} {
 		value := reflect.ValueOf(source)
 		t.Run(value.Type().String()+"/"+fmt.Sprint(value.Len(), "/", value.Cap()), func(t *testing.T) {
+			t.Parallel()
 			fieldType := reflect.StructOf([]reflect.StructField{{Name: "Bytes", Type: value.Type()}})
 			receiver := reflect.New(fieldType).Elem()
 			receiver.Field(0).Set(value)
@@ -308,7 +321,7 @@ func TestWideByteFieldReadPreservesHeadersAndBacking(t *testing.T) {
 			frame.Function.StructLayoutTable[10].Offset = 0
 			require.Equal(t, opContinue, handleGetStructFieldUnsafeSliceByte(vm, frame, registers, op(0, 0, 1)))
 			got := registers.slicesByte[0]
-			require.Equal(t, value.Len(), len(got))
+			require.Len(t, got, value.Len())
 			require.Equal(t, value.Cap(), cap(got))
 			require.Equal(t, value.IsNil(), got == nil)
 			if len(got) > 0 {

@@ -16,11 +16,9 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
-// Package appendlower holds the analysis behind the in-place append lowering: which slice
-// locals may be appended to in place (their register is the only handle on the slice
-// header) and whether an assignment has the `x = append(x, ...)` shape that the lowering
-// rewrites.
+// Package appendlower checks whether an append assignment can safely update a slice
+// header in place.
 //
-// Everything here reads go/ast and go/types only. The emitters that act on the answers
-// stay in the compiler, which owns the scope stack the final register check needs.
+// Variables are tracked by go/types object and the position at which sharing begins.
+// The compiler uses this analysis with its scope stack to select the opcode.
 package appendlower

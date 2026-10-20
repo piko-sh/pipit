@@ -89,19 +89,19 @@ func (vm *VM) runDispatchedLoop(baseFramePointer int) (any, error) {
 	vm.buildDispatchContext(&ctx, &asmJumpTable)
 	vm.saveCurrentDispatchRegisters(&ctx)
 
+	ctx.pollBudget = dispatchPollBudget
 	for {
 		if vm.dispatchCheckpointDue() {
 			frame, registers = vm.runDispatchCheckpoint(&ctx)
 		}
-		ctx.pollBudget = dispatchPollBudget
 		dispatchLoop(&ctx)
 
 		vm.syncCallContextFromASM(&ctx)
 		exitedFramePointer := vm.FramePointer
 		frame, registers = vm.recordDispatchExit(&ctx, frame, registers)
 
-		if vm.Cancelled.Load() != 0 {
-			return nil, cancellationError(vm.ctx)
+		if vm.Cancelled.Load() != 0 || (pollDue(&ctx) && vm.pollContext()) {
+			return nil, vm.stopError()
 		}
 
 		result, action, err := vm.handleDispatchExit(
@@ -119,6 +119,21 @@ func (vm *VM) runDispatchedLoop(baseFramePointer int) (any, error) {
 		registers = &frame.Registers
 		vm.rebuildDispatchPointers(&ctx, frame, registers)
 	}
+}
+
+// pollDue charges an exit to Go against the poll budget and re-arms it when polling is
+// due. Counting exits ensures loops that repeatedly leave assembly still poll.
+//
+// Takes ctx (*dispatchContext) which carries the budget and the exit reason.
+//
+// Returns bool which is true when the context must be polled.
+func pollDue(ctx *dispatchContext) bool {
+	ctx.pollBudget--
+	if ctx.exitReason != exitPoll && ctx.pollBudget > 0 {
+		return false
+	}
+	ctx.pollBudget = dispatchPollBudget
+	return true
 }
 
 // handleDispatchExit routes an ASM dispatch exit to the appropriate handler and returns

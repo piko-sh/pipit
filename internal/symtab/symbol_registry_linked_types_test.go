@@ -119,6 +119,7 @@ func TestLinkedFieldToTypeBadTypeArgIndexReturnsNil(t *testing.T) {
 }
 
 func TestRegisterNativeBackedGenericTypesMultiMethodNoPanic(t *testing.T) {
+	t.Parallel()
 	registry := NewSymbolRegistry(nil)
 	pkg := types.NewPackage("sync/atomic", "atomic")
 	converter := &reflectTypeConverter{

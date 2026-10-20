@@ -28,6 +28,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/sandboxwire"
 )
 
@@ -68,9 +71,7 @@ func openTestSession(t *testing.T, imports []string) (*SessionClient, *sessionPi
 		stream.err = Serve(worker)
 	}()
 	session, err := OpenSession(stream, Configuration{Profile: SessionProfile, Imports: imports})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = session.Close() })
 	return session, stream
 }
@@ -81,34 +82,30 @@ func TestWorkerSessionRetainsStateAndCloses(t *testing.T) {
 	session, stream := openTestSession(t, imports)
 	imports[0] = "os"
 	for _, source := range []string{"import \"math\"", "var value = math.Sqrt(144)", "print(\"ok\")"} {
-		if _, err := session.Submit(source); err != nil {
-			t.Fatal(err)
-		}
+		_, err := session.Submit(source)
+		require.NoError(t, err)
 	}
 	response, err := session.Submit("value + 30")
 
-	if err != nil || string(response.Value) != "42" || stream.charged != 16 {
-		t.Fatalf("response=%+v charged=%d error=%v", response, stream.charged, err)
-	}
-	if err := session.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := session.Submit("42"); !errors.Is(err, ErrSessionClosed) {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "response=%+v", response)
+	require.Equal(t, "42", string(response.Value))
+	require.Equal(t, 16, stream.charged)
+	require.NoError(t, session.Close())
+	_, err = session.Submit("42")
+	require.ErrorIs(t, err, ErrSessionClosed)
 }
 
 func TestWorkerSessionFailuresAreTerminal(t *testing.T) {
 	t.Parallel()
 	for _, source := range []string{"import \"os\"", "go func() {}()", "[]int{1}", "syntax error"} {
 		t.Run(source, func(t *testing.T) {
+			t.Parallel()
 			session, _ := openTestSession(t, nil)
-			if response, err := session.Submit(source); err == nil || response.Value != nil {
-				t.Fatalf("failed submission published result: %+v %v", response, err)
-			}
-			if _, err := session.Submit("42"); !errors.Is(err, ErrSessionClosed) {
-				t.Fatal(err)
-			}
+			response, err := session.Submit(source)
+			require.Error(t, err, "failed submission published result: %+v", response)
+			require.Nil(t, response.Value)
+			_, err = session.Submit("42")
+			require.ErrorIs(t, err, ErrSessionClosed)
 		})
 	}
 }
@@ -117,12 +114,11 @@ func TestWorkerSessionHostOutputFailureCloses(t *testing.T) {
 	t.Parallel()
 	session, stream := openTestSession(t, nil)
 	stream.chargeErr = errors.New("native output budget exceeded")
-	if response, err := session.Submit("println(42)"); !errors.Is(err, stream.chargeErr) || response.Value != nil {
-		t.Fatalf("accounting failure ignored: %+v %v", response, err)
-	}
-	if _, err := session.Submit("42"); !errors.Is(err, ErrSessionClosed) {
-		t.Fatal(err)
-	}
+	response, err := session.Submit("println(42)")
+	require.ErrorIs(t, err, stream.chargeErr, "accounting failure ignored: %+v", response)
+	require.Nil(t, response.Value)
+	_, err = session.Submit("42")
+	require.ErrorIs(t, err, ErrSessionClosed)
 }
 
 func TestWorkerSessionFinalSubmissionReaps(t *testing.T) {
@@ -130,18 +126,16 @@ func TestWorkerSessionFinalSubmissionReaps(t *testing.T) {
 	session, stream := openTestSession(t, nil)
 	for count := range sessionSubmissions {
 		response, err := session.Submit("1")
-		if err != nil || string(response.Value) != "1" {
-			t.Fatalf("submission %d: %+v %v", count, response, err)
-		}
+		require.NoError(t, err, "submission %d: %+v", count, response)
+		require.Equal(t, "1", string(response.Value))
 	}
 	select {
 	case <-stream.done:
 	default:
-		t.Fatal("final result published before worker exit")
+		require.FailNow(t, "the final result is published only after the worker exits")
 	}
-	if _, err := session.Submit("1"); !errors.Is(err, ErrSessionClosed) {
-		t.Fatal(err)
-	}
+	_, err := session.Submit("1")
+	require.ErrorIs(t, err, ErrSessionClosed)
 }
 
 type sessionReplyFixture struct {
@@ -185,15 +179,12 @@ func TestWorkerSessionRejectsReplayedAndPrematureResults(t *testing.T) {
 			fixtureMessage(t, sandboxwire.Result, identity, sessionResponse("ok")),
 		)
 		session, err := OpenSession(stream, Configuration{Profile: SessionProfile, Imports: nil})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := session.Submit("42"); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := session.Submit("42"); !errors.Is(err, sandboxwire.ErrProtocol) || stream.closes == 0 {
-			t.Fatalf("replay/premature ID %d accepted: %v", identity, err)
-		}
+		require.NoError(t, err)
+		_, err = session.Submit("42")
+		require.NoError(t, err)
+		_, err = session.Submit("42")
+		require.ErrorIs(t, err, sandboxwire.ErrProtocol, "replay/premature ID %d accepted", identity)
+		require.NotEqual(t, 0, stream.closes)
 	}
 }
 
@@ -201,6 +192,7 @@ func TestWorkerSessionHostBudgetsAndCleanup(t *testing.T) {
 	t.Parallel()
 	for _, kind := range []string{"source", "output", "cleanup"} {
 		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
 			response := sessionResponse("ok")
 			response.Output = "four"
 			stream := sessionReplies(t,
@@ -208,9 +200,7 @@ func TestWorkerSessionHostBudgetsAndCleanup(t *testing.T) {
 				fixtureMessage(t, sandboxwire.Result, 2, response),
 			)
 			session, err := OpenSession(stream, Configuration{Profile: SessionProfile, Imports: nil})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			expected := ErrSessionLimit
 			if kind == "source" {
 				session.sourceRemaining = 1
@@ -223,9 +213,10 @@ func TestWorkerSessionHostBudgetsAndCleanup(t *testing.T) {
 				stream.waitErr = errors.New("native cleanup failed")
 				expected = stream.waitErr
 			}
-			if response, err := session.Submit("42"); !errors.Is(err, expected) || response.Value != nil || stream.closes == 0 {
-				t.Fatalf("host %s failure ignored: %+v %v", kind, response, err)
-			}
+			response, err = session.Submit("42")
+			require.ErrorIs(t, err, expected, "host %s failure ignored: %+v", kind, response)
+			require.Nil(t, response.Value)
+			require.NotEqual(t, 0, stream.closes)
 		})
 	}
 }
@@ -240,9 +231,7 @@ func TestWorkerSessionRejectsAlternateRequestsAndGrants(t *testing.T) {
 		stream := sourceFixture(t,
 			fixtureMessage(t, sandboxwire.Configure, 0, Configuration{Profile: SessionProfile, Imports: nil}),
 			fixtureMessage(t, sandboxwire.Run, 1, request))
-		if err := Serve(stream); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatalf("alternate request accepted: %v", err)
-		}
+		require.ErrorIs(t, Serve(stream), sandboxwire.ErrProtocol, "alternate request accepted")
 	}
 	for _, grant := range []sandboxwire.Message{
 		fixtureMessage(t, sandboxwire.Run, 4, Request{Kind: "execute", Source: "", Entrypoint: ""}),
@@ -252,9 +241,7 @@ func TestWorkerSessionRejectsAlternateRequestsAndGrants(t *testing.T) {
 		stream := sourceFixture(t,
 			fixtureMessage(t, sandboxwire.Configure, 0, Configuration{Profile: SessionProfile, Imports: nil}),
 			fixtureMessage(t, sandboxwire.Run, 1, Request{Kind: "submission", Source: "42", Entrypoint: ""}), grant)
-		if err := Serve(stream); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatalf("alternate grant accepted: %v", err)
-		}
+		require.ErrorIs(t, Serve(stream), sandboxwire.ErrProtocol, "alternate grant accepted")
 	}
 }
 
@@ -290,9 +277,7 @@ func gateSessionRead(t *testing.T, session *SessionClient) *gatedSessionTranspor
 		release: make(chan struct{}), stopped: make(chan struct{}), once: sync.Once{}, paused: atomic.Bool{}}
 	session.stream = gate
 	codec, err := sandboxwire.New(gate, gate, sandboxwire.Limits{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	session.connection.codec = codec
 	return gate
 }
@@ -304,16 +289,12 @@ func TestWorkerSessionConcurrentAdmissionAndClose(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { _, err := session.Submit("42"); done <- err }()
 	<-gate.entered
-	if _, err := session.Submit("1"); !errors.Is(err, ErrSessionBusy) {
-		t.Errorf("overlapping submission admitted: %v", err)
-	}
+	_, err := session.Submit("1")
+	assert.ErrorIs(t, err, ErrSessionBusy, "an overlapping submission is refused")
 	_ = session.Close()
-	if err := <-done; err == nil {
-		t.Fatal("active close allowed a successful result")
-	}
-	if _, err := session.Submit("42"); !errors.Is(err, ErrSessionClosed) {
-		t.Fatalf("closed worker reused: %v", err)
-	}
+	require.Error(t, <-done, "active close allowed a successful result")
+	_, err = session.Submit("42")
+	require.ErrorIs(t, err, ErrSessionClosed, "closed worker reused")
 }
 
 func TestWorkerSessionDeadlinesNeverExtendLifetime(t *testing.T) {
@@ -322,22 +303,13 @@ func TestWorkerSessionDeadlinesNeverExtendLifetime(t *testing.T) {
 		fixtureMessage(t, sandboxwire.Result, 1, sessionResponse("compiled")),
 		fixtureMessage(t, sandboxwire.Result, 2, sessionResponse("ok")))
 	session, err := OpenSession(stream, Configuration{Profile: SessionProfile, Imports: nil})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = session.Close() })
 	session.expires = time.Now().Add(time.Second)
-	if _, err := session.Submit("42"); err != nil {
-		t.Fatal(err)
-	}
-	if !stream.deadline.Equal(session.expires) {
-		t.Fatal("idle deadline extended the session lifetime")
-	}
+	_, err = session.Submit("42")
+	require.NoError(t, err)
+	require.True(t, stream.deadline.Equal(session.expires), "idle deadline extended the session lifetime")
 	bounded := sessionDeadlineTransport{transport: stream, expires: session.expires}
-	if err := bounded.SetDeadline(time.Now().Add(compilationTimeout)); err != nil {
-		t.Fatal(err)
-	}
-	if !stream.deadline.Equal(session.expires) {
-		t.Fatal("compilation deadline extended the session lifetime")
-	}
+	require.NoError(t, bounded.SetDeadline(time.Now().Add(compilationTimeout)))
+	require.True(t, stream.deadline.Equal(session.expires), "compilation deadline extended the session lifetime")
 }

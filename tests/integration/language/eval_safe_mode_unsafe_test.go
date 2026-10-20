@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -69,11 +69,11 @@ out`,
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			fast, fastErr := app.NewService().Eval(context.Background(), tt.code)
+			fast, fastErr := app.NewService().Eval(t.Context(), tt.code)
 			require.NoError(t, fastErr)
 			require.Equal(t, tt.want, fast)
 
-			safe, safeErr := app.NewService(app.WithSafeMode()).Eval(context.Background(), tt.code)
+			safe, safeErr := app.NewService(app.WithSafeMode()).Eval(t.Context(), tt.code)
 			require.NoError(t, safeErr, "in-bounds unsafe must still work in safe mode")
 			require.Equal(t, tt.want, safe)
 		})
@@ -123,7 +123,7 @@ int(u) - int(u)`,
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := app.NewService(app.WithSafeMode()).Eval(context.Background(), tt.code)
+			_, err := app.NewService(app.WithSafeMode()).Eval(t.Context(), tt.code)
 			require.Error(t, err, "safe mode must reject the escape")
 			require.ErrorContains(t, err, "out of bounds")
 		})

@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/codec"
 	"pipit.sh/pipit/internal/fbs"
 	"pipit.sh/pipit/internal/rootfs"
@@ -38,7 +39,7 @@ func TestBytecodeCacheRejectsOversizedSave(t *testing.T) {
 	require.NoError(t, store.WriteFileAtomic("bytecode-large.bin", original, 0o600))
 	compiled := codec.NewCompiledFileSetFromData(nil, nil,
 		map[string]uint16{strings.Repeat("x", schema.MaximumBytecodePayloadBytes): 0}, nil)
-	err := NewBytecodeStore(store).SaveCompiledFileSet(context.Background(), "large", compiled)
+	err := NewBytecodeStore(store).SaveCompiledFileSet(t.Context(), "large", compiled)
 	require.ErrorIs(t, err, schema.ErrBytecodeTooLarge)
 	require.Equal(t, original, store.GetFile("bytecode-large.bin"))
 }
@@ -59,28 +60,38 @@ func (*cancellingCacheStore) WriteFileAtomic(string, []byte, fs.FileMode) error 
 
 func TestBytecodeCacheCancelledSaveDoesNotPublish(t *testing.T) {
 	t.Parallel()
-	for _, early := range []bool{false, true} {
-		ctx, cancel := context.WithCancel(context.Background())
-		if early {
-			cancel()
-		}
-		store := &cancellingCacheStore{Store: nil, cancel: cancel}
-		compiled := codec.NewCompiledFileSetFromData(nil, nil, nil, nil)
-		err := NewBytecodeStore(store).SaveCompiledFileSet(ctx, "cancelled", compiled)
-		cancel()
-		require.ErrorIs(t, err, context.Canceled)
+	tests := []struct {
+		name  string
+		early bool
+	}{
+		{name: "cancelled while preparing the cache", early: false},
+		{name: "cancelled before the save", early: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithCancel(t.Context())
+			t.Cleanup(cancel)
+			if tt.early {
+				cancel()
+			}
+			store := &cancellingCacheStore{Store: nil, cancel: cancel}
+			compiled := codec.NewCompiledFileSetFromData(nil, nil, nil, nil)
+			err := NewBytecodeStore(store).SaveCompiledFileSet(ctx, "cancelled", compiled)
+			require.ErrorIs(t, err, context.Canceled)
+		})
 	}
 }
 
 func TestBytecodeCacheRejectsNilSave(t *testing.T) {
 	t.Parallel()
-	err := NewBytecodeStore(rootfs.NewMemoryStore()).SaveCompiledFileSet(context.Background(), "nil", nil)
+	err := NewBytecodeStore(rootfs.NewMemoryStore()).SaveCompiledFileSet(t.Context(), "nil", nil)
 	require.Error(t, err)
 }
 
 func TestBytecodeRawInputLimit(t *testing.T) {
 	t.Parallel()
-	decoded, err := decodeCompiledFileSet(context.Background(), make([]byte, schema.MaximumBytecodePayloadBytes+1), nil)
+	decoded, err := decodeCompiledFileSet(t.Context(), make([]byte, schema.MaximumBytecodePayloadBytes+1), nil)
 	require.ErrorIs(t, err, schema.ErrBytecodeTooLarge)
 	require.Nil(t, decoded)
 }
@@ -90,7 +101,7 @@ func TestBytecodeCacheReadLimit(t *testing.T) {
 	store := rootfs.NewMemoryStore()
 	oversized := make([]byte, fbs.PackedSize(schema.MaximumBytecodePayloadBytes)+1)
 	require.NoError(t, store.WriteFileAtomic("bytecode-oversized.bin", oversized, 0o600))
-	decoded, err := NewBytecodeStore(store).LoadCompiledFileSet(context.Background(), "oversized", nil)
+	decoded, err := NewBytecodeStore(store).LoadCompiledFileSet(t.Context(), "oversized", nil)
 	require.ErrorIs(t, err, rootfs.ErrReadLimit)
 	require.Nil(t, decoded)
 }
@@ -106,7 +117,7 @@ func (*legacyBytecodeStore) ReadFile(string) ([]byte, error) {
 func TestBytecodeCacheRequiresBoundedRead(t *testing.T) {
 	t.Parallel()
 	store := &legacyBytecodeStore{Store: nil}
-	decoded, err := NewBytecodeStore(store).LoadCompiledFileSet(context.Background(), "legacy", nil)
+	decoded, err := NewBytecodeStore(store).LoadCompiledFileSet(t.Context(), "legacy", nil)
 	require.ErrorIs(t, err, rootfs.ErrBoundedReadUnavailable)
 	require.Nil(t, decoded)
 }

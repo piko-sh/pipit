@@ -9,5 +9,5 @@ import (
 )
 
 func init() {
-	Symbols["pipit.sh/pipit/internal/compile/scope"] = map[string]reflect.Value{"NewScopeStack": reflect.ValueOf(scope.NewScopeStack), "RegisterAllocator": reflect.ValueOf((*scope.RegisterAllocator)(nil)), "ScopeStack": reflect.ValueOf((*scope.ScopeStack)(nil)), "SyntheticNamePrefix": reflect.ValueOf(scope.SyntheticNamePrefix)}
+	Symbols["pipit.sh/pipit/internal/compile/scope"] = map[string]reflect.Value{"AddressableRegisters": reflect.ValueOf(scope.AddressableRegisters), "LoweredLimit": reflect.ValueOf((*scope.LoweredLimit)(nil)), "NewScopeStack": reflect.ValueOf(scope.NewScopeStack), "RegisterAllocator": reflect.ValueOf((*scope.RegisterAllocator)(nil)), "RegisterSet": reflect.ValueOf((*scope.RegisterSet)(nil)), "ScopeStack": reflect.ValueOf((*scope.ScopeStack)(nil)), "StatementMark": reflect.ValueOf((*scope.StatementMark)(nil)), "StatementUsage": reflect.ValueOf((*scope.StatementUsage)(nil)), "SyntheticNamePrefix": reflect.ValueOf(scope.SyntheticNamePrefix)}
 }

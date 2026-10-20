@@ -27,9 +27,10 @@ import (
 	"runtime/pprof"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/symtab"
-
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
@@ -76,32 +77,22 @@ func TestProfileFibInnerLoop(t *testing.T) {
 	compiledFileSet, err := service.CompileFileSet(context.Background(), map[string]string{
 		"main.go": fibInnerLoopSource,
 	})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
+	require.NoError(t, err, "compile")
 
 	_, err = service.ExecuteEntrypoint(context.Background(), compiledFileSet, "EntrypointRun")
-	if err != nil {
-		t.Fatalf("warmup execute: %v", err)
-	}
+	require.NoError(t, err, "warmup execute")
 
 	cpuFile, err := os.Create("/tmp/pipit_fib.prof")
-	if err != nil {
-		t.Fatalf("create profile: %v", err)
-	}
+	require.NoError(t, err, "create profile")
 	defer cpuFile.Close()
 
 	memBefore := readAllocs()
 
-	if err := pprof.StartCPUProfile(cpuFile); err != nil {
-		t.Fatalf("start cpu profile: %v", err)
-	}
+	require.NoError(t, pprof.StartCPUProfile(cpuFile), "start cpu profile")
 
 	for range 5 {
 		_, err := service.ExecuteEntrypoint(context.Background(), compiledFileSet, "EntrypointRun")
-		if err != nil {
-			t.Fatalf("execute: %v", err)
-		}
+		require.NoError(t, err, "execute")
 	}
 
 	pprof.StopCPUProfile()
@@ -110,15 +101,11 @@ func TestProfileFibInnerLoop(t *testing.T) {
 	t.Logf("Allocs delta: total=%d bytes, count=%d", memAfter.totalAlloc-memBefore.totalAlloc, memAfter.mallocs-memBefore.mallocs)
 
 	memFile, err := os.Create("/tmp/pipit_fib.memprof")
-	if err != nil {
-		t.Fatalf("create memprof: %v", err)
-	}
+	require.NoError(t, err, "create memprof")
 	defer memFile.Close()
 
 	runtime.GC()
-	if err := pprof.WriteHeapProfile(memFile); err != nil {
-		t.Fatalf("write heap profile: %v", err)
-	}
+	require.NoError(t, pprof.WriteHeapProfile(memFile), "write heap profile")
 
 	t.Logf("wrote /tmp/pipit_fib.prof (CPU) and /tmp/pipit_fib.memprof (heap)")
 }
@@ -131,5 +118,5 @@ type allocSnapshot struct {
 func readAllocs() allocSnapshot {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
-	return allocSnapshot{ms.TotalAlloc, ms.Mallocs}
+	return allocSnapshot{totalAlloc: ms.TotalAlloc, mallocs: ms.Mallocs}
 }

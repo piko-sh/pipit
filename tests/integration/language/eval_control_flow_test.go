@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalBreakContinue(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "break in for",
@@ -46,7 +46,7 @@ for i := 0; i < 100; i++ {
 	sum = sum + i
 }
 sum`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "continue in for",
@@ -58,7 +58,7 @@ for i := 0; i < 10; i++ {
 	sum = sum + i
 }
 sum`,
-			expect: 25,
+			want: 25,
 		},
 		{
 			name: "break in while-style for",
@@ -70,7 +70,7 @@ for {
 	}
 }
 n`,
-			expect: 5,
+			want: 5,
 		},
 		{
 			name: "continue skips to post",
@@ -82,7 +82,7 @@ for i := 0; i < 10; i++ {
 	sum = sum + i
 }
 sum`,
-			expect: 35,
+			want: 35,
 		},
 		{
 			name: "nested break",
@@ -96,7 +96,7 @@ for i := 0; i < 10; i++ {
 	}
 }
 count`,
-			expect: 30,
+			want: 30,
 		},
 	}
 
@@ -104,9 +104,9 @@ count`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -115,9 +115,9 @@ func TestEvalSwitch(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "switch basic",
@@ -132,7 +132,7 @@ case 3:
 	result = 30
 }
 result`,
-			expect: 20,
+			want: 20,
 		},
 		{
 			name: "switch default",
@@ -147,7 +147,7 @@ default:
 	result = -1
 }
 result`,
-			expect: -1,
+			want: -1,
 		},
 		{
 			name: "switch no match no default",
@@ -160,7 +160,7 @@ case 2:
 	result = 20
 }
 result`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "switch string",
@@ -173,7 +173,7 @@ case "hello":
 	result = 2
 }
 result`,
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "switch true",
@@ -188,7 +188,7 @@ case x < 30:
 	result = 3
 }
 result`,
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "switch with init",
@@ -200,7 +200,7 @@ default:
 	result = -1
 }
 result`,
-			expect: 50,
+			want: 50,
 		},
 		{
 			name: "switch multi-value case",
@@ -215,7 +215,7 @@ default:
 	result = 30
 }
 result`,
-			expect: 20,
+			want: 20,
 		},
 	}
 
@@ -223,9 +223,9 @@ result`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -234,9 +234,9 @@ func TestEvalIfElseIf(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "else if chain",
@@ -250,7 +250,7 @@ if x < 10 {
 	result = 3
 }
 result`,
-			expect: 2,
+			want: 2,
 		},
 		{
 			name: "if with init statement",
@@ -259,7 +259,7 @@ if x := 10; x > 5 {
 	result = x
 }
 result`,
-			expect: 10,
+			want: 10,
 		},
 	}
 
@@ -267,9 +267,9 @@ result`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

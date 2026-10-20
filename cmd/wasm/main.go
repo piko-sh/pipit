@@ -57,6 +57,10 @@ const (
 	// resultKeyError names the result field carrying the failure message.
 	resultKeyError = "error"
 
+	// resultKeyTruncated names the result field reporting whether output was cut at the size
+	// limit.
+	resultKeyTruncated = "truncated"
+
 	// stderrFD is the file descriptor the WASM host writes script stderr through.
 	stderrFD = 2
 
@@ -167,16 +171,7 @@ func jsRun(_ js.Value, arguments []js.Value) any {
 // Returns any which is a Promise resolving to { ok: bool, formatted: string, error:
 // string }.
 func jsFormat(_ js.Value, arguments []js.Value) any {
-	if !browserBusy.CompareAndSwap(false, true) {
-		return newPromise(func() any { return map[string]any{resultKeyOK: false, resultKeyError: "browser interpreter is busy"} })
-	}
-	return newPromise(func() any {
-		defer browserBusy.Store(false)
-		if len(arguments) != 1 || arguments[0].Type() != js.TypeString {
-			return map[string]any{resultKeyOK: false, resultKeyError: "format requires a source string"}
-		}
-		return formatSource(arguments[0].String())
-	})
+	return sourceRequest(arguments, "format", func(source string) any { return formatSource(source) })
 }
 
 // jsDisassemble compiles a Go source string and renders the bytecode as pkasm.
@@ -186,15 +181,27 @@ func jsFormat(_ js.Value, arguments []js.Value) any {
 // Returns any which is a Promise resolving to { ok: bool, assembly: string, truncated:
 // bool, error: string }.
 func jsDisassemble(_ js.Value, arguments []js.Value) any {
+	return sourceRequest(arguments, "disassemble", func(source string) any { return disassembleSource(source) })
+}
+
+// sourceRequest runs handle on a call's one source-string argument inside a Promise,
+// refusing while the browser interpreter is busy.
+//
+// Takes arguments ([]js.Value) which should hold one source string.
+// Takes operation (string) which names the call in the argument error.
+// Takes handle (func(string) any) which produces the Promise's result.
+//
+// Returns any which is the Promise.
+func sourceRequest(arguments []js.Value, operation string, handle func(string) any) any {
 	if !browserBusy.CompareAndSwap(false, true) {
 		return newPromise(func() any { return map[string]any{resultKeyOK: false, resultKeyError: "browser interpreter is busy"} })
 	}
 	return newPromise(func() any {
 		defer browserBusy.Store(false)
 		if len(arguments) != 1 || arguments[0].Type() != js.TypeString {
-			return map[string]any{resultKeyOK: false, resultKeyError: "disassemble requires a source string"}
+			return map[string]any{resultKeyOK: false, resultKeyError: operation + " requires a source string"}
 		}
-		return disassembleSource(arguments[0].String())
+		return handle(arguments[0].String())
 	})
 }
 
@@ -250,13 +257,13 @@ func developerCaps() runCaps {
 // truncated fields.
 func runSource(source, mode string) (result map[string]any) {
 	result = map[string]any{
-		resultKeyOK:    false,
-		"stdout":       "",
-		"stderr":       "",
-		"result":       "",
-		resultKeyError: "",
-		"durationMs":   float64(0),
-		"truncated":    false,
+		resultKeyOK:        false,
+		"stdout":           "",
+		"stderr":           "",
+		"result":           "",
+		resultKeyError:     "",
+		"durationMs":       float64(0),
+		resultKeyTruncated: false,
 	}
 
 	start := time.Now()
@@ -295,7 +302,7 @@ func runSource(source, mode string) (result map[string]any) {
 	stderr, stderrTruncated := truncateOutput(stderrBytes, caps.maxOutput)
 	result["stdout"] = stdout
 	result["stderr"] = stderr
-	result["truncated"] = capturedTruncated || stdoutTruncated || stderrTruncated
+	result[resultKeyTruncated] = capturedTruncated || stdoutTruncated || stderrTruncated
 
 	if evalErr != nil {
 		result[resultKeyError] = evalErr.Error()
@@ -325,7 +332,7 @@ func runRestrictedSource(source string, result map[string]any) map[string]any {
 	}
 	value, err := interpreter.EvalFile(context.Background(), source, "main")
 	result["stdout"] = value.Output
-	result["truncated"] = value.OutputTruncated
+	result[resultKeyTruncated] = value.OutputTruncated
 	if len(value.Value) != 0 && string(value.Value) != "null" {
 		result["result"] = string(value.Value)
 	}
@@ -379,16 +386,16 @@ func formatSource(source string) (result map[string]any) {
 // error (string).
 func disassembleSource(source string) (result map[string]any) {
 	result = map[string]any{
-		resultKeyOK:    false,
-		"assembly":     "",
-		"truncated":    false,
-		resultKeyError: "",
+		resultKeyOK:        false,
+		"assembly":         "",
+		resultKeyTruncated: false,
+		resultKeyError:     "",
 	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			result[resultKeyOK] = false
 			result["assembly"] = ""
-			result["truncated"] = false
+			result[resultKeyTruncated] = false
 			result[resultKeyError] = fmt.Sprintf("panic in pipit.disassemble: %v", recovered)
 		}
 	}()
@@ -409,7 +416,7 @@ func disassembleSource(source string) (result map[string]any) {
 	assembly, truncated := clipListing(pipit.DisassembleAssembly(cfs), browserAssemblyLimit)
 	result[resultKeyOK] = true
 	result["assembly"] = assembly
-	result["truncated"] = truncated
+	result[resultKeyTruncated] = truncated
 	return result
 }
 

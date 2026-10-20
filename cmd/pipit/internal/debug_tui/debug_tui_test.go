@@ -21,22 +21,25 @@ package debug_tui
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit"
 	"pipit.sh/pipit/cmd/pipit/internal/styles"
 	"pipit.sh/pipit/internal/debug"
 )
 
-func newTestModel() *model {
+func newTestModel(t *testing.T) *model {
+	t.Helper()
 	debugger := pipit.NewDebugger()
 	interpreter := pipit.NewInterpreter(pipit.WithDebugger(debugger))
-	return newModel(context.Background(), interpreter, debugger, "main.go", "package main\n\nfunc main() {\n\tx := 1\n\t_ = x\n}\n", styles.For(false))
+	return newModel(t.Context(), interpreter, debugger, "main.go", "package main\n\nfunc main() {\n\tx := 1\n\t_ = x\n}\n", styles.For(false))
 }
 
 func TestModelAppliesDebuggerEvents(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		message    eventMsg
@@ -90,53 +93,46 @@ func TestModelAppliesDebuggerEvents(t *testing.T) {
 			wantPaused: false,
 		},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			m := newTestModel()
-			updated, _ := m.applyEvent(tc.message)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			m := newTestModel(t)
+			updated, _ := m.applyEvent(tt.message)
 			got, ok := updated.(*model)
-			if !ok {
-				t.Fatalf("applyEvent returned %T", updated)
-			}
-			if got.runStatus != tc.wantStatus {
-				t.Fatalf("status: got %q, want %q", got.runStatus, tc.wantStatus)
-			}
-			if got.paused != tc.wantPaused {
-				t.Fatalf("paused: got %v, want %v", got.paused, tc.wantPaused)
-			}
-			if tc.wantPaused && got.location.Line != tc.wantLine {
-				t.Fatalf("line: got %d, want %d", got.location.Line, tc.wantLine)
+			require.True(t, ok, "applyEvent returned %T", updated)
+			require.Equal(t, tt.wantStatus, got.runStatus, "status")
+			require.Equal(t, tt.wantPaused, got.paused, "paused")
+			if tt.wantPaused {
+				require.Equal(t, tt.wantLine, got.location.Line, "line")
 			}
 			view := got.renderSource()
-			if tc.wantPaused && !strings.Contains(view, "▶") {
-				t.Fatalf("the paused line is not marked in the source view")
+			if tt.wantPaused {
+				require.Contains(t, view, "▶", "the paused line is marked in the source view")
 			}
 		})
 	}
 }
 
 func TestStepCommandsNeedAPausedProgram(t *testing.T) {
-	m := newTestModel()
-	if cmd := m.stepCommand("c"); cmd != nil {
-		t.Fatalf("continue while not paused returned a command")
-	}
+	t.Parallel()
+	m := newTestModel(t)
+	require.Nil(t, m.stepCommand("c"), "continue needs a paused program")
 	m.paused = true
 	m.threadID = 1
 	m.stepCommand("n")
-	if !strings.Contains(m.runStatus, "debugger:") {
-		t.Fatalf("a step without a paused debugger must report the debugger's error, got %q", m.runStatus)
-	}
+	require.Contains(t, m.runStatus, "debugger:", "a step without a paused debugger must report the debugger's error")
 }
 
 func TestBreakpointCommandFiresForAnyScriptPath(t *testing.T) {
+	t.Parallel()
 	debugger := pipit.NewDebugger()
 	interpreter := pipit.NewInterpreter(pipit.WithDebugger(debugger))
 	const source = "package main\n\nfunc main() {\n\tx := 1\n\t_ = x\n}\n"
-	m := newModel(context.Background(), interpreter, debugger, "/scripts/tool.go", source, styles.For(false))
+	m := newModel(t.Context(), interpreter, debugger, "/scripts/tool.go", source, styles.For(false))
 	m.commandInput = "b 4"
 	m.applyCommandInput()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
@@ -146,7 +142,6 @@ func TestBreakpointCommandFiresForAnyScriptPath(t *testing.T) {
 	defer func() { debugger.Stop(); <-done }()
 
 	event, err := debugger.WaitForPause(ctx)
-	if err != nil || event.Location.Line != 4 {
-		t.Fatalf("breakpoint set from /scripts/tool.go did not fire: line=%d err=%v", event.Location.Line, err)
-	}
+	require.NoError(t, err, "a breakpoint set from /scripts/tool.go fires")
+	require.Equal(t, 4, event.Location.Line)
 }

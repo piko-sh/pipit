@@ -77,7 +77,7 @@ func runMakeMethodExpr(vm *VM, frame *CallFrame, registers *Registers, instructi
 	if fieldCount > 0 {
 		signature = eraseReceiverParameter(signature)
 	}
-	bound := &boundMethodVM{vm: vm, callee: callee, limits: vm.Limits, rootFunctionOverride: nil}
+	bound := newBoundMethodVM(vm, callee, nil)
 	boundFieldPath := fieldPath
 	registers.General[instruction.B] = reflect.MakeFunc(signature, func(arguments []reflect.Value) []reflect.Value {
 		if len(arguments) == 0 || !arguments[0].IsValid() {

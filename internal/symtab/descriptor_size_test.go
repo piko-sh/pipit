@@ -19,32 +19,40 @@
 package symtab
 
 import (
-	"errors"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/symtab/descriptor"
 )
 
 func TestReconstructedArraySizeBound(t *testing.T) {
 	t.Parallel()
+	err := checkReconstructedArraySize(int(^uint(0)>>1), reflect.TypeFor[uint64]())
+	require.ErrorIs(t, err, errCorruptTypeDescriptor, "array size multiplication is checked for overflow")
+	require.NoError(t, checkReconstructedArraySize(int(^uint(0)>>1), reflect.TypeFor[struct{}]()), "a zero-size array costs nothing")
 	element := &descriptor.TypeDescriptor{Kind: descriptor.KindBasic, BasicKind: uint8(reflect.Uint8)}
-	for _, length := range []int{maximumReconstructedTypeBytes, maximumReconstructedTypeBytes + 1} {
-		value := descriptor.TypeDescriptor{Kind: descriptor.KindArray, Length: length, Element: element}
-		resolved, err := ReflectTypeFor(value, nil)
-		if length > maximumReconstructedTypeBytes {
-			if resolved != nil || !errors.Is(err, errCorruptTypeDescriptor) {
-				t.Fatal("oversized array reached reflection:", err)
+	tests := []struct {
+		name    string
+		length  int
+		wantErr error
+	}{
+		{name: "at the size limit", length: maximumReconstructedTypeBytes, wantErr: nil},
+		{name: "one byte over the size limit", length: maximumReconstructedTypeBytes + 1, wantErr: errCorruptTypeDescriptor},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			value := descriptor.TypeDescriptor{Kind: descriptor.KindArray, Length: tt.length, Element: element}
+			resolved, err := ReflectTypeFor(value, nil)
+			require.ErrorIs(t, err, tt.wantErr)
+			if tt.wantErr != nil {
+				require.Nil(t, resolved, "an oversized array is rejected before reflection")
+				return
 			}
-		} else if err != nil || resolved.Size() != uintptr(length) {
-			t.Fatal("boundary array rejected:", err)
-		}
-	}
-	if err := checkReconstructedArraySize(int(^uint(0)>>1), reflect.TypeFor[uint64]()); !errors.Is(err, errCorruptTypeDescriptor) {
-		t.Fatal("array multiplication could overflow:", err)
-	}
-	if err := checkReconstructedArraySize(int(^uint(0)>>1), reflect.TypeFor[struct{}]()); err != nil {
-		t.Fatal("zero-size array incorrectly charged:", err)
+			require.Equal(t, uintptr(tt.length), resolved.Size())
+		})
 	}
 }
 
@@ -54,9 +62,8 @@ func TestNestedReconstructedArraySizeBound(t *testing.T) {
 	inner := &descriptor.TypeDescriptor{Kind: descriptor.KindArray, Length: 8192, Element: element}
 	outer := descriptor.TypeDescriptor{Kind: descriptor.KindArray, Length: 8192, Element: inner}
 	resolved, err := ReflectTypeFor(outer, nil)
-	if resolved != nil || !errors.Is(err, errCorruptTypeDescriptor) {
-		t.Fatal("nested layout multiplication bypassed limit:", err)
-	}
+	require.ErrorIs(t, err, errCorruptTypeDescriptor, "nested array sizes multiply towards the limit")
+	require.Nil(t, resolved)
 }
 
 func TestReconstructedStructSizeBound(t *testing.T) {
@@ -70,43 +77,40 @@ func TestReconstructedStructSizeBound(t *testing.T) {
 		{Name: "Second", Typ: half},
 	}}
 	resolved, err := ReflectTypeFor(value, nil)
-	if err != nil || resolved.Size() != maximumReconstructedTypeBytes {
-		t.Fatal("boundary struct rejected:", err)
-	}
+	require.NoError(t, err, "a struct at the size limit is accepted")
+	require.Equal(t, uintptr(maximumReconstructedTypeBytes), resolved.Size())
 	value.Fields = append(value.Fields, descriptor.TypeDescriptorField{
 		Name: "Extra", Typ: descriptor.TypeDescriptor{Kind: descriptor.KindBasic, BasicKind: uint8(reflect.Uint8)},
 	})
 	resolved, err = ReflectTypeFor(value, nil)
-	if resolved != nil || !errors.Is(err, errCorruptTypeDescriptor) {
-		t.Fatal("oversized struct reached reflection:", err)
-	}
+	require.ErrorIs(t, err, errCorruptTypeDescriptor, "an oversized struct is rejected before reflection")
+	require.Nil(t, resolved)
 }
 
 func TestReconstructedStructPaddingBound(t *testing.T) {
 	t.Parallel()
-	for _, mode := range []string{"field-alignment", "trailing-zero", "final-alignment"} {
-		t.Run(mode, func(t *testing.T) {
-			var fields []reflect.StructField
-			switch mode {
-			case "field-alignment":
-				fields = []reflect.StructField{
-					{Name: "Large", Type: reflect.ArrayOf(maximumReconstructedTypeBytes-1, reflect.TypeFor[byte]())},
-					{Name: "Aligned", Type: reflect.TypeFor[uint16]()},
-				}
-			case "trailing-zero":
-				fields = []reflect.StructField{
-					{Name: "Large", Type: reflect.ArrayOf(maximumReconstructedTypeBytes, reflect.TypeFor[byte]())},
-					{Name: "Empty", Type: reflect.TypeFor[struct{}]()},
-				}
-			case "final-alignment":
-				fields = []reflect.StructField{
-					{Name: "Aligned", Type: reflect.TypeFor[uint64]()},
-					{Name: "Large", Type: reflect.ArrayOf(maximumReconstructedTypeBytes-7, reflect.TypeFor[byte]())},
-				}
-			}
-			if err := checkReconstructedStructSize(fields); !errors.Is(err, errCorruptTypeDescriptor) {
-				t.Fatal("padding bypassed layout ceiling:", err)
-			}
+	tests := []struct {
+		name   string
+		fields []reflect.StructField
+	}{
+		{name: "field-alignment", fields: []reflect.StructField{
+			{Name: "Large", Type: reflect.ArrayOf(maximumReconstructedTypeBytes-1, reflect.TypeFor[byte]())},
+			{Name: "Aligned", Type: reflect.TypeFor[uint16]()},
+		}},
+		{name: "trailing-zero", fields: []reflect.StructField{
+			{Name: "Large", Type: reflect.ArrayOf(maximumReconstructedTypeBytes, reflect.TypeFor[byte]())},
+			{Name: "Empty", Type: reflect.TypeFor[struct{}]()},
+		}},
+		{name: "final-alignment", fields: []reflect.StructField{
+			{Name: "Aligned", Type: reflect.TypeFor[uint64]()},
+			{Name: "Large", Type: reflect.ArrayOf(maximumReconstructedTypeBytes-7, reflect.TypeFor[byte]())},
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := checkReconstructedStructSize(tt.fields)
+			require.ErrorIs(t, err, errCorruptTypeDescriptor, "padding counts towards the layout ceiling")
 		})
 	}
 }
@@ -114,7 +118,7 @@ func TestReconstructedStructPaddingBound(t *testing.T) {
 func TestReconstructedLayoutAdditionDoesNotOverflow(t *testing.T) {
 	t.Parallel()
 	size := uintptr(maximumReconstructedTypeBytes)
-	if err := addReconstructedLayout(&size, ^uintptr(0)); !errors.Is(err, errCorruptTypeDescriptor) || size != maximumReconstructedTypeBytes {
-		t.Fatal("layout addition wrapped or changed rejected size:", size, err)
-	}
+	err := addReconstructedLayout(&size, ^uintptr(0))
+	require.ErrorIs(t, err, errCorruptTypeDescriptor, "layout addition is checked for overflow")
+	require.Equal(t, uintptr(maximumReconstructedTypeBytes), size, "a rejected addition leaves the size unchanged")
 }

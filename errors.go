@@ -72,6 +72,16 @@ var (
 	// ErrCyclicImport is returned when the import graph contains a cycle.
 	ErrCyclicImport = fault.ErrCyclicImport
 
+	// ErrEmbedUnsupported is returned when a file the interpreter compiles carries a
+	// //go:embed directive. Guard such a file with //go:build !interp and give the
+	// interpreter a //go:build interp alternative that reads the files at run time.
+	ErrEmbedUnsupported = fault.ErrCompileEmbedUnsupported
+
+	// ErrRegisterOverflow is returned when a function needs more live registers in one bank
+	// than the bytecode can address, even after spilling its locals. The error names the
+	// function and, when known, the statement where it ran out.
+	ErrRegisterOverflow = fault.ErrRegisterOverflow
+
 	// ErrSourceSizeLimit is returned when the source exceeds the configured maximum size.
 	ErrSourceSizeLimit = fault.ErrSourceSizeLimit
 
@@ -80,6 +90,11 @@ var (
 
 	// ErrExecutionCancelled is returned when the context ends an execution early.
 	ErrExecutionCancelled = fault.ErrExecutionCancelled
+
+	// ErrCallbackTimeout is returned when an interpreted closure called from native code
+	// runs past the timeout set by WithCallbackTimeout. An error carrying it also matches
+	// ErrExecutionCancelled.
+	ErrCallbackTimeout = fault.ErrCallbackTimeout
 
 	// ErrFeatureNotAllowed is returned when the source uses a language feature the
 	// configured feature set forbids.
@@ -149,6 +164,22 @@ var (
 // configuration, transport or resource error. A host distinguishes the two with
 // errors.As.
 type EvaluationError = fault.EvaluationError
+
+// ProblemList reports several independent problems that one CompileProgram call found,
+// such as type errors in two packages and a //go:embed directive in a third. errors.Is
+// matches the sentinel of any problem; CompileProblems lists them.
+type ProblemList = fault.ProblemList
+
+// CompileProblems splits a compile error for display, returning err itself when it has
+// no ProblemList. Problems are grouped by package, with each group containing its type
+// errors or register overflows.
+//
+// Takes err (error) which is the error from a compile call.
+//
+// Returns []error which is nil for a nil err.
+func CompileProblems(err error) []error {
+	return fault.Problems(err)
+}
 
 // UncaughtPanicValue returns the value of the panic behind an ErrUncaughtPanic error.
 //

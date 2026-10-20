@@ -51,7 +51,7 @@ func TestNamedInterfaceWrapperPointerShape(t *testing.T) {
 	wrapper := NewNamedInterfaceWrapper(reflect.PointerTo(reflect.TypeFor[any]()), ptr)
 
 	require.Equal(t, "*main.myiface", wrapper.String())
-	require.Equal(t, "", wrapper.Name(), "pointer types have empty Name")
+	require.Empty(t, wrapper.Name(), "pointer types have an empty name")
 	require.Equal(t, reflect.Pointer, wrapper.Kind())
 
 	elem := wrapper.Elem()

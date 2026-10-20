@@ -67,7 +67,7 @@ func TestClosureWriteScalarStoresThroughPointer(t *testing.T) {
 		}
 	})
 	require.Zero(t, allocs)
-	require.EqualValues(t, 1<<40, *intBox)
+	require.Equal(t, 1<<40, *intBox)
 	require.InDelta(t, 2.5, *floatBox, 0)
 	require.True(t, *boolBox)
 	require.EqualValues(t, 7, *uintBox)
@@ -81,7 +81,7 @@ func TestClosureWriteNarrowScalarFallsBackToReflect(t *testing.T) {
 	cell := newIndirectCell(t, box)
 
 	writeRegisterToCell(vm, vm.Arena, cell, registers, isa.RegisterInt, 0)
-	require.EqualValues(t, int8(0x34), *box)
+	require.Equal(t, int8(0x34), *box)
 }
 
 func TestClosureWriteArenaSliceBackingIsMaterialised(t *testing.T) {

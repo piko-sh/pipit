@@ -21,11 +21,10 @@
 package bytecode_test
 
 import (
-	"context"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/isa"
 )
@@ -49,8 +48,7 @@ func TestTieredDisassemblyShowsSubOpName(t *testing.T) {
 		"expected disassembly to label the tier-1 sub-op by name; got:\n%s", disassembly)
 	require.Contains(t, disassembly, "1:LEN_SLICE_INT_DIRECT",
 		"expected disassembly to label the second tier-1 sub-op by name; got:\n%s", disassembly)
-	require.False(t, strings.Contains(disassembly, "UMBRELLA"),
-		"expected no legacy 'UMBRELLA' labels; got:\n%s", disassembly)
+	require.NotContains(t, disassembly, "UMBRELLA", "no legacy UMBRELLA labels remain")
 }
 
 func TestTier2DispatchRejectsInvalidSubOp(t *testing.T) {
@@ -63,7 +61,7 @@ func TestTier2DispatchRejectsInvalidSubOp(t *testing.T) {
 	compiled := builder.build()
 
 	service := app.NewService()
-	_, err := service.Execute(context.Background(), compiled)
+	_, err := service.Execute(t.Context(), compiled)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "tier-2 sub-op",
 		"expected tier-2 dispatch error; got: %v", err)
@@ -79,7 +77,7 @@ func TestTier3DispatchTreatsZeroWordAsNop(t *testing.T) {
 	compiled := builder.build()
 
 	service := app.NewService()
-	_, err := service.Execute(context.Background(), compiled)
+	_, err := service.Execute(t.Context(), compiled)
 	require.NoError(t, err, "tier-3 nop must dispatch as a no-op")
 }
 
@@ -93,7 +91,7 @@ func TestTier3DispatchRejectsInvalidSubOp(t *testing.T) {
 	compiled := builder.build()
 
 	service := app.NewService()
-	_, err := service.Execute(context.Background(), compiled)
+	_, err := service.Execute(t.Context(), compiled)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "tier-3 sub-op",
 		"expected tier-3 dispatch error; got: %v", err)

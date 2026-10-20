@@ -28,18 +28,18 @@ import (
 // cacheIndirectTarget is a no-op in the safe build, where closure writes always take the
 // reflect path.
 //
-// Takes cell (*UpvalueCell) which is ignored in the safe build.
-func cacheIndirectTarget(cell *program.UpvalueCell) {}
+// Takes cell (*program.UpvalueCell) which is the indirect cell; ignored in this build.
+func cacheIndirectTarget(*program.UpvalueCell) {}
 
 // writeIndirectCellDirect never stores directly in the safe build.
 //
-// Takes arena (*RegisterArena) which is ignored in the safe build.
-// Takes cell (*UpvalueCell) which is ignored in the safe build.
-// Takes registers (*Registers) which is ignored in the safe build.
-// Takes kind (isa.RegisterKind) which is ignored in the safe build.
-// Takes index (byte) which is ignored in the safe build.
+// Takes arena (*RegisterArena) which owns the candidate slabs; ignored in this build.
+// Takes cell (*program.UpvalueCell) which is the destination cell; ignored in this build.
+// Takes registers (*Registers) which holds the source banks; ignored in this build.
+// Takes kind (isa.RegisterKind) which selects the source bank; ignored in this build.
+// Takes index (byte) which is the source register index; ignored in this build.
 //
 // Returns false so the caller takes the reflect path.
-func writeIndirectCellDirect(arena *RegisterArena, cell *program.UpvalueCell, registers *Registers, kind isa.RegisterKind, index byte) bool {
+func writeIndirectCellDirect(*RegisterArena, *program.UpvalueCell, *Registers, isa.RegisterKind, byte) bool {
 	return false
 }

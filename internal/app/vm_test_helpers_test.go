@@ -19,18 +19,16 @@
 package app
 
 import (
-	"context"
 	"testing"
 
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/engine/program"
-
 	"pipit.sh/pipit/internal/symtab"
 )
 
 func newTestVM(t *testing.T) *engine.VM {
 	t.Helper()
-	return engine.NewVM(context.Background(), engine.NewGlobalStore(), symtab.NewSymbolRegistry(nil))
+	return engine.NewVM(t.Context(), engine.NewGlobalStore(), symtab.NewSymbolRegistry(nil))
 }
 
 func executeTestBytecode(t *testing.T, compiledFunction *program.CompiledFunction) (any, error) {

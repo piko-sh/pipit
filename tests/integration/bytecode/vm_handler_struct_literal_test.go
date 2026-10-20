@@ -25,9 +25,9 @@ import (
 	"strings"
 	"testing"
 
-	"pipit.sh/pipit/internal/engine"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/isa"
 )
 

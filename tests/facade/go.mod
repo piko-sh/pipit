@@ -21,12 +21,14 @@ module pipit.sh/pipit/tests/facade
 go 1.27.0
 
 require (
+	github.com/stretchr/testify v1.12.1
 	pipit.sh/pipit v0.0.0
 	pipit.sh/pipit/sdk/stdlib v0.0.0
 )
 
 require (
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/tools v0.50.0 // indirect
 	piko.sh/asmgen v0.2.0 // indirect

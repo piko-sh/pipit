@@ -28,6 +28,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -83,7 +84,7 @@ func TestGoldenHashes(t *testing.T) {
 	if len(changed)+len(added)+len(removed) == 0 {
 		return
 	}
-	t.Errorf("golden: %d snippet(s) changed, %d added, %d removed\nchanged: %s\nadded: %s\nremoved: %s\n"+
+	assert.Failf(t, "golden snippets changed", "%d snippet(s) changed, %d added, %d removed\nchanged: %s\nadded: %s\nremoved: %s\n"+
 		"run with %s=1 after reviewing the listings above",
 		len(changed), len(added), len(removed),
 		strings.Join(changed, ", "), strings.Join(added, ", "), strings.Join(removed, ", "), updateEnv)

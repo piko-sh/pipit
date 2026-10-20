@@ -62,7 +62,7 @@ func handleMapIndexOkJumpIfFalseIntInt(vm *VM, frame *CallFrame, registers *Regi
 		registers.Ints[instruction.A] = value
 		ok = present
 	} else {
-		keyReflectValue := intMapKeyScratch(vm, m.Type().Key())
+		keyReflectValue := mapKeyScratchFor(vm, m.Type().Key())
 		keyReflectValue.SetInt(key)
 		result := m.MapIndex(keyReflectValue)
 		if result.IsValid() {
@@ -213,7 +213,7 @@ func handleMapIndexOkJumpIfFalseIntString(vm *VM, frame *CallFrame, registers *R
 		registers.Strings[instruction.A] = value
 		ok = present
 	} else {
-		keyScratch := intMapKeyScratch(vm, m.Type().Key())
+		keyScratch := mapKeyScratchFor(vm, m.Type().Key())
 		keyScratch.SetInt(key)
 		result := m.MapIndex(keyScratch)
 		if result.IsValid() {
@@ -261,7 +261,7 @@ func handleMapIndexOkJumpIfFalseIntGeneral(vm *VM, frame *CallFrame, registers *
 	keyType := m.Type().Key()
 	elemType := m.Type().Elem()
 	ok := false
-	if useMapFastLinkname() && mapKeyIsFast64Eligible(keyType) {
+	if useMapFastLinkname() && mapKeyIsFast64Eligible(keyType) && mapElemStoredInline(elemType) {
 		resultPtr, present := mapAccessFast64ToGeneral(m, key)
 		if present {
 			registers.General[instruction.A] = wrapMapElemFast(vm, elemType, resultPtr)
@@ -270,7 +270,7 @@ func handleMapIndexOkJumpIfFalseIntGeneral(vm *VM, frame *CallFrame, registers *
 			registers.General[instruction.A] = symtab.ZeroValueForType(elemType)
 		}
 	} else {
-		keyScratch := intMapKeyScratch(vm, keyType)
+		keyScratch := mapKeyScratchFor(vm, keyType)
 		keyScratch.SetInt(key)
 		result := m.MapIndex(keyScratch)
 		if result.IsValid() {
@@ -311,26 +311,8 @@ func handleMapIndexOkJumpIfFalseStringGeneral(vm *VM, frame *CallFrame, register
 	}
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
-	key := registers.Strings[instruction.C]
-	elemType := m.Type().Elem()
-	ok := false
-	if !useMapFastLinkname() {
-		result := m.MapIndex(reflect.ValueOf(key))
-		if result.IsValid() {
-			registers.General[instruction.A] = result
-			ok = true
-		} else {
-			registers.General[instruction.A] = symtab.ZeroValueForType(elemType)
-		}
-	} else {
-		resultPtr, present := mapAccessFastStrToGeneral(m, key)
-		if present {
-			registers.General[instruction.A] = wrapMapElemFast(vm, elemType, resultPtr)
-			ok = true
-		} else {
-			registers.General[instruction.A] = symtab.ZeroValueForType(elemType)
-		}
-	}
+	value, ok := mapLookupStringKeyGeneral(vm, m, registers.Strings[instruction.C])
+	registers.General[instruction.A] = value
 	registers.Ints[extensionWord.A] = boolToInt64(ok)
 	if !ok {
 		offset := isa.JoinOffset(extensionWord.B, extensionWord.C)

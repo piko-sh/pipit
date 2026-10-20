@@ -19,39 +19,39 @@
 package pipit_test
 
 import (
-	"context"
-	"fmt"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit"
 )
 
 func TestEvalResultsKeepExactTypes(t *testing.T) {
 	t.Parallel()
-	interpreter := pipit.NewInterpreter(pipit.WithMaxExecutionTime(5 * time.Second))
-	cases := []struct {
+	tests := []struct {
+		name   string
 		source string
 		want   any
 	}{
-		{source: "1 + 2 * 3", want: 7},
-		{source: "var x int64 = 5\nx", want: int64(5)},
-		{source: "int32(7)", want: int32(7)},
-		{source: "var u uint8 = 200\nu", want: uint8(200)},
-		{source: "var f float32 = 1.5\nf", want: float32(1.5)},
-		{source: "2.5", want: 2.5},
-		{source: "\"s\"", want: "s"},
-		{source: "1 < 2", want: true},
-		{source: "var a any = int16(3)\na", want: int16(3)},
-		{source: "[]int{1, 2}", want: []int{1, 2}},
+		{name: "untyped integer", source: "1 + 2 * 3", want: 7},
+		{name: "int64 variable", source: "var x int64 = 5\nx", want: int64(5)},
+		{name: "int32 conversion", source: "int32(7)", want: int32(7)},
+		{name: "uint8 variable", source: "var u uint8 = 200\nu", want: uint8(200)},
+		{name: "float32 variable", source: "var f float32 = 1.5\nf", want: float32(1.5)},
+		{name: "untyped float", source: "2.5", want: 2.5},
+		{name: "string", source: "\"s\"", want: "s"},
+		{name: "comparison", source: "1 < 2", want: true},
+		{name: "int16 inside any", source: "var a any = int16(3)\na", want: int16(3)},
+		{name: "slice literal", source: "[]int{1, 2}", want: []int{1, 2}},
 	}
-	for _, tc := range cases {
-		result, err := interpreter.Eval(context.Background(), tc.source)
-		if err != nil {
-			t.Fatalf("%q: %v", tc.source, err)
-		}
-		if fmt.Sprintf("%T %v", result, result) != fmt.Sprintf("%T %v", tc.want, tc.want) {
-			t.Fatalf("%q: got %T %v, want %T %v", tc.source, result, result, tc.want, tc.want)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			interpreter := pipit.NewInterpreter(pipit.WithMaxExecutionTime(5 * time.Second))
+			result, err := interpreter.Eval(t.Context(), tt.source)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, result)
+		})
 	}
 }

@@ -23,6 +23,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/sandboxwire"
 )
 
@@ -31,42 +33,31 @@ const readPayload = `{"operation":"fs.read","root":"data","path":"file","max_byt
 func testBudget(t *testing.T, limits FilesystemLimits) *FilesystemBudget {
 	t.Helper()
 	budget, err := NewFilesystemBudget([]RootGrant{{Name: "data", Rights: Read | Write | List}}, limits)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return budget
 }
 
 func TestFilesystemPolicy(t *testing.T) {
+	t.Parallel()
 	grants := []RootGrant{{Name: "data", Rights: Read}}
 	budget, err := NewFilesystemBudget(grants, FilesystemLimits{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	grants[0] = RootGrant{Name: "other", Rights: Write}
 	call, err := budget.Admit(brokerMessage(1, readPayload))
-	if err != nil {
-		t.Fatal("caller changed authority:", err)
-	}
-	if err := call.Finish(0); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "caller changed authority")
+	require.NoError(t, call.Finish(0))
 	for index, payload := range []string{
 		`{"operation":"fs.write","root":"data","path":"file","data":""}`,
 		`{"operation":"fs.list","root":"data","path":".","max_entries":1}`,
 		`{"operation":"fs.read","root":"other","path":"file","max_bytes":1}`,
 	} {
-		if _, err := budget.Admit(brokerMessage(uint64(index+2), payload)); !errors.Is(err, ErrDenied) {
-			t.Fatal("rights inherited:", err)
-		}
+		_, err := budget.Admit(brokerMessage(uint64(index+2), payload))
+		require.ErrorIs(t, err, ErrDenied, "rights inherited")
 	}
 	empty, err := NewFilesystemBudget(nil, FilesystemLimits{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := empty.Admit(brokerMessage(1, readPayload)); !errors.Is(err, ErrDenied) {
-		t.Fatal("empty grants allowed access:", err)
-	}
+	require.NoError(t, err)
+	_, err = empty.Admit(brokerMessage(1, readPayload))
+	require.ErrorIs(t, err, ErrDenied, "empty grants allowed access")
 	for _, invalid := range [][]RootGrant{
 		{{Name: "data", Rights: 0}},
 		{{Name: "data", Rights: 8}},
@@ -74,165 +65,131 @@ func TestFilesystemPolicy(t *testing.T) {
 		{{Name: "data", Rights: Read}, {Name: "data", Rights: Write}},
 		make([]RootGrant, maximumRoots+1),
 	} {
-		if _, err := NewFilesystemBudget(invalid, FilesystemLimits{}); !errors.Is(err, ErrInvalidPolicy) {
-			t.Fatal("invalid grant accepted:", err)
-		}
+		_, err := NewFilesystemBudget(invalid, FilesystemLimits{})
+		require.ErrorIs(t, err, ErrInvalidPolicy, "invalid grant accepted")
 	}
 }
 
 func TestFilesystemLimits(t *testing.T) {
+	t.Parallel()
 	for _, limits := range []FilesystemLimits{
 		{Calls: -1}, {Calls: defaultCalls + 1}, {Outstanding: -1}, {Outstanding: defaultOutstanding + 1},
 		{ReadBytes: -1}, {ReadBytes: defaultReadBytes + 1}, {WriteBytes: -1}, {WriteBytes: defaultWriteBytes + 1},
 		{ListEntries: -1}, {ListEntries: defaultEntries + 1}, {Calls: 1, Outstanding: 2},
 	} {
-		if _, err := NewFilesystemBudget(nil, limits); !errors.Is(err, ErrInvalidPolicy) {
-			t.Fatalf("accepted %+v: %v", limits, err)
-		}
+		_, err := NewFilesystemBudget(nil, limits)
+		require.ErrorIs(t, err, ErrInvalidPolicy, "accepted %+v", limits)
 	}
 }
 
 func TestFilesystemReservations(t *testing.T) {
-	for _, test := range []struct {
+	t.Parallel()
+	tests := []struct {
 		name, payload string
 		limits        FilesystemLimits
 	}{
-		{"read", readPayload, FilesystemLimits{ReadBytes: 4}},
-		{"write", `{"operation":"fs.write","root":"data","path":"file","data":"YWJjZA=="}`, FilesystemLimits{WriteBytes: 4}},
-		{"list", `{"operation":"fs.list","root":"data","path":".","max_entries":4}`, FilesystemLimits{ListEntries: 4}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			budget := testBudget(t, test.limits)
-			call, err := budget.Admit(brokerMessage(1, test.payload))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if call.root() != "data" || call.limit() != 4 || call.path() == "" || call.Operation() == "" {
-				t.Fatal("reservation metadata lost")
-			}
-			if err := call.Finish(0); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := budget.Admit(brokerMessage(2, test.payload)); !errors.Is(err, errLimit) {
-				t.Fatal("short I/O refunded quota:", err)
-			}
+		{name: "read", payload: readPayload, limits: FilesystemLimits{ReadBytes: 4}},
+		{name: "write", payload: `{"operation":"fs.write","root":"data","path":"file","data":"YWJjZA=="}`, limits: FilesystemLimits{WriteBytes: 4}},
+		{name: "list", payload: `{"operation":"fs.list","root":"data","path":".","max_entries":4}`, limits: FilesystemLimits{ListEntries: 4}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			budget := testBudget(t, tt.limits)
+			call, err := budget.Admit(brokerMessage(1, tt.payload))
+			require.NoError(t, err)
+			require.Equal(t, "data", call.root(), "reservation metadata lost")
+			require.Equal(t, 4, call.limit())
+			require.NotEmpty(t, call.path())
+			require.NotEmpty(t, call.Operation())
+			require.NoError(t, call.Finish(0))
+			_, err = budget.Admit(brokerMessage(2, tt.payload))
+			require.ErrorIs(t, err, errLimit, "short I/O refunded quota")
 		})
 	}
 }
 
 func TestFilesystemBusyAndDeniedConsumeCalls(t *testing.T) {
+	t.Parallel()
 	budget := testBudget(t, FilesystemLimits{Calls: 3, Outstanding: 1})
 	call, err := budget.Admit(brokerMessage(1, readPayload))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := budget.Admit(brokerMessage(2, readPayload)); !errors.Is(err, errBusy) {
-		t.Fatal(err)
-	}
-	if err := call.Finish(4); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = budget.Admit(brokerMessage(2, readPayload))
+	require.ErrorIs(t, err, errBusy)
+	require.NoError(t, call.Finish(4))
 	denied := `{"operation":"fs.read","root":"missing","path":"file","max_bytes":1}`
-	if _, err := budget.Admit(brokerMessage(3, denied)); !errors.Is(err, ErrDenied) {
-		t.Fatal(err)
-	}
-	if _, err := budget.Admit(brokerMessage(4, readPayload)); !errors.Is(err, errLimit) {
-		t.Fatal("attempts not charged:", err)
-	}
-	if _, err := budget.Admit(brokerMessage(5, readPayload)); !errors.Is(err, ErrClosed) {
-		t.Fatal("exhaustion not terminal:", err)
-	}
+	_, err = budget.Admit(brokerMessage(3, denied))
+	require.ErrorIs(t, err, ErrDenied)
+	_, err = budget.Admit(brokerMessage(4, readPayload))
+	require.ErrorIs(t, err, errLimit, "attempts not charged")
+	_, err = budget.Admit(brokerMessage(5, readPayload))
+	require.ErrorIs(t, err, ErrClosed, "exhaustion not terminal")
 }
 
 func TestFilesystemTerminalViolations(t *testing.T) {
+	t.Parallel()
 	for _, message := range []sandboxwire.Message{
 		brokerMessage(1, readPayload), brokerMessage(0, readPayload), brokerMessage(2, "{}"),
 		{Kind: sandboxwire.Result, ID: 2, Payload: []byte(readPayload)},
 	} {
 		budget := testBudget(t, FilesystemLimits{})
 		call, err := budget.Admit(brokerMessage(1, readPayload))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := budget.Admit(message); !errors.Is(err, sandboxwire.ErrProtocol) {
-			t.Fatal("violation accepted:", err)
-		}
-		if _, err := budget.Admit(brokerMessage(3, readPayload)); !errors.Is(err, ErrClosed) {
-			t.Fatal("violation not terminal:", err)
-		}
-		if err := call.Finish(0); err != nil {
-			t.Fatal("closed budget prevented cleanup:", err)
-		}
+		require.NoError(t, err)
+		_, err = budget.Admit(message)
+		require.ErrorIs(t, err, sandboxwire.ErrProtocol, "violation accepted")
+		_, err = budget.Admit(brokerMessage(3, readPayload))
+		require.ErrorIs(t, err, ErrClosed, "violation not terminal")
+		require.NoError(t, call.Finish(0), "closed budget prevented cleanup")
 	}
 }
 
 func TestFilesystemCallCompletion(t *testing.T) {
+	t.Parallel()
 	for _, used := range []int{-1, 5} {
 		budget := testBudget(t, FilesystemLimits{})
 		call, err := budget.Admit(brokerMessage(1, readPayload))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := call.Finish(used); !errors.Is(err, errLimit) {
-			t.Fatal(err)
-		}
-		if _, err := budget.Admit(brokerMessage(2, readPayload)); !errors.Is(err, ErrClosed) {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+		err = call.Finish(used)
+		require.ErrorIs(t, err, errLimit)
+		_, err = budget.Admit(brokerMessage(2, readPayload))
+		require.ErrorIs(t, err, ErrClosed)
 	}
 	budget := testBudget(t, FilesystemLimits{Outstanding: 1})
 	call, err := budget.Admit(brokerMessage(1, readPayload))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := call.Finish(4); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, call.Finish(4))
 	next, err := budget.Admit(brokerMessage(2, readPayload))
-	if err != nil {
-		t.Fatal("slot not released:", err)
-	}
-	if err := call.Finish(0); !errors.Is(err, sandboxwire.ErrProtocol) {
-		t.Fatal("duplicate completion accepted:", err)
-	}
-	if err := next.Finish(0); err != nil {
-		t.Fatal(err)
-	}
-	if budget.outstanding != 0 {
-		t.Fatal("outstanding counter corrupted")
-	}
+	require.NoError(t, err, "slot not released")
+	require.ErrorIs(t, call.Finish(0), sandboxwire.ErrProtocol, "duplicate completion accepted")
+	require.NoError(t, next.Finish(0))
+	require.Equal(t, 0, budget.outstanding, "outstanding counter corrupted")
 }
 
 func TestFilesystemWriteOwnership(t *testing.T) {
+	t.Parallel()
 	budget := testBudget(t, FilesystemLimits{})
 	message := brokerMessage(1, `{"operation":"fs.write","root":"data","path":"file","data":"YWJjZA=="}`)
 	call, err := budget.Admit(message)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for index := range message.Payload {
 		message.Payload[index] = 0
 	}
 	data := call.data()
 	data[0] = 'z'
-	if string(call.data()) != "abcd" || call.Operation() != WriteFile || call.path() != "file" {
-		t.Fatal("caller mutated reservation")
-	}
+	require.Equal(t, "abcd", string(call.data()), "caller mutated reservation")
+	require.Equal(t, WriteFile, call.Operation())
+	require.Equal(t, "file", call.path())
 	budget.Close()
-	if err := call.Finish(4); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := budget.Admit(brokerMessage(2, readPayload)); !errors.Is(err, ErrClosed) {
-		t.Fatal(err)
-	}
+	require.NoError(t, call.Finish(4))
+	_, err = budget.Admit(brokerMessage(2, readPayload))
+	require.ErrorIs(t, err, ErrClosed)
 }
 
 func TestFilesystemConcurrentCompletion(t *testing.T) {
+	t.Parallel()
 	budget := testBudget(t, FilesystemLimits{})
 	call, err := budget.Admit(brokerMessage(1, readPayload))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	results := make(chan error, 2)
 	var group sync.WaitGroup
 	for range 2 {
@@ -247,43 +204,32 @@ func TestFilesystemConcurrentCompletion(t *testing.T) {
 		} else if errors.Is(err, sandboxwire.ErrProtocol) {
 			duplicates++
 		} else {
-			t.Fatal(err)
+			require.NoError(t, err, "only duplicates fail")
 		}
 	}
-	if successes != 1 || duplicates != 1 || budget.outstanding != 0 {
-		t.Fatal("completion was not atomic")
-	}
+	require.Equal(t, 1, successes, "completion was not atomic")
+	require.Equal(t, 1, duplicates)
+	require.Equal(t, 0, budget.outstanding)
 }
 
 func TestFilesystemNilOwners(t *testing.T) {
+	t.Parallel()
 	var budget *FilesystemBudget
 	budget.Close()
-	if _, err := budget.Admit(brokerMessage(1, readPayload)); !errors.Is(err, ErrClosed) {
-		t.Fatal(err)
-	}
+	_, err := budget.Admit(brokerMessage(1, readPayload))
+	require.ErrorIs(t, err, ErrClosed)
 	var call *FilesystemCall
-	if err := call.Finish(0); !errors.Is(err, ErrClosed) {
-		t.Fatal(err)
-	}
-	if err := new(FilesystemCall).Finish(0); !errors.Is(err, ErrClosed) {
-		t.Fatal(err)
-	}
+	require.ErrorIs(t, call.Finish(0), ErrClosed)
+	require.ErrorIs(t, new(FilesystemCall).Finish(0), ErrClosed)
 }
 
 func TestFilesystemCopiedReservation(t *testing.T) {
+	t.Parallel()
 	budget := testBudget(t, FilesystemLimits{})
 	call, err := budget.Admit(brokerMessage(1, readPayload))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	duplicate := *call
-	if err := call.Finish(0); err != nil {
-		t.Fatal(err)
-	}
-	if err := duplicate.Finish(0); !errors.Is(err, sandboxwire.ErrProtocol) {
-		t.Fatal("copy completed the same reservation twice:", err)
-	}
-	if budget.outstanding != 0 {
-		t.Fatal("copy corrupted the outstanding counter")
-	}
+	require.NoError(t, call.Finish(0))
+	require.ErrorIs(t, duplicate.Finish(0), sandboxwire.ErrProtocol, "copy completed the same reservation twice")
+	require.Equal(t, 0, budget.outstanding, "copy corrupted the outstanding counter")
 }

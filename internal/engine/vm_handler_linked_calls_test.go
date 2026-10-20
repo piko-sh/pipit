@@ -19,7 +19,6 @@
 package engine
 
 import (
-	"errors"
 	"reflect"
 	"testing"
 
@@ -149,6 +148,6 @@ func TestUnwrapReflectValueResultPassesThroughNonWrapper(t *testing.T) {
 func TestErrLinkedSentinelsAreDistinct(t *testing.T) {
 	t.Parallel()
 
-	require.False(t, errors.Is(errLinkedSiblingPanic, errLinkedSiblingShapeMismatch))
-	require.False(t, errors.Is(errLinkedSiblingShapeMismatch, errLinkedSiblingPanic))
+	require.NotErrorIs(t, errLinkedSiblingPanic, errLinkedSiblingShapeMismatch)
+	require.NotErrorIs(t, errLinkedSiblingShapeMismatch, errLinkedSiblingPanic)
 }

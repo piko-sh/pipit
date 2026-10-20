@@ -26,91 +26,64 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/sandboxhost"
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func crashPublicRecoveryAttempts(t *testing.T, ctx context.Context, config sandboxhost.IsolatedFilesystemConfig, staging, images string) {
 	t.Helper()
 	unexpected := filepath.Join(images, "unexpected")
-	if err := os.WriteFile(unexpected, []byte("preserve"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(unexpected, []byte("preserve"), 0600))
 	before, err := os.ReadDir(images)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	crashPublicRecoveryClaimant(t, ctx, config, images)
 	after, err := os.ReadDir(images)
-	if err != nil || len(after) != len(before) {
-		t.Fatal("failed image planning changed orphan storage:", err)
-	}
+	require.NoError(t, err, "failed image planning changed orphan storage")
+	require.Len(t, after, len(before))
 	for index, entry := range before {
-		if after[index].Name() != entry.Name() {
-			t.Fatal("failed image planning replaced an entry")
-		}
+		require.Equal(t, entry.Name(), after[index].Name(), "failed image planning replaces no entry")
 	}
-	if data, err := os.ReadFile(unexpected); err != nil || string(data) != "preserve" {
-		t.Fatal("failed image cleanup changed unexpected contents:", err)
-	}
-	if err := os.Remove(unexpected); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(config.BrokerPath, config.BrokerPath+".held"); err != nil {
-		t.Fatal(err)
-	}
+	data, err := os.ReadFile(unexpected)
+	require.NoError(t, err, "failed image cleanup changed unexpected contents")
+	require.Equal(t, "preserve", string(data))
+	require.NoError(t, os.Remove(unexpected))
+	require.NoError(t, os.Rename(config.BrokerPath, config.BrokerPath+".held"))
 	crashPublicRecoveryClaimant(t, ctx, config, images)
-	if err := os.Rename(config.BrokerPath+".held", config.BrokerPath); err != nil {
-		t.Fatal(err)
-	}
-	if entries, err := os.ReadDir(images); err != nil || len(entries) != 0 {
-		t.Fatal("replacement host did not finish original image cleanup:", err)
-	}
-	if data, err := os.ReadFile(staging); err != nil || string(data) != "new" {
-		t.Fatal("failed helper launch modified original staging data:", err)
-	}
-	if data, err := os.ReadFile(filepath.Join(config.Roots[0].HostPath, "file")); err != nil || string(data) != "published" {
-		t.Fatal("replacement-host crashes changed the published destination:", err)
-	}
+	require.NoError(t, os.Rename(config.BrokerPath+".held", config.BrokerPath))
+	entries, err := os.ReadDir(images)
+	require.NoError(t, err, "replacement host did not finish original image cleanup")
+	require.Empty(t, entries)
+	data, err = os.ReadFile(staging)
+	require.NoError(t, err, "failed helper launch modified original staging data")
+	require.Equal(t, "new", string(data))
+	data, err = os.ReadFile(filepath.Join(config.Roots[0].HostPath, "file"))
+	require.NoError(t, err, "replacement-host crashes changed the published destination")
+	require.Equal(t, "published", string(data))
 }
 
 func crashPublicRecoveryClaimant(t *testing.T, ctx context.Context, config sandboxhost.IsolatedFilesystemConfig, images string) {
 	t.Helper()
 	encoded, err := json.Marshal(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestPublicFilesystemRecoveryClaimantChild$")
-	command.Env = append(os.Environ(), "PIPIT_TEST_PUBLIC_RECOVERY_CLAIMANT="+string(encoded))
+	require.NoError(t, err)
+	command := sandboxtest.Command(ctx, "TestPublicFilesystemRecoveryClaimantChild", "PIPIT_TEST_PUBLIC_RECOVERY_CLAIMANT="+string(encoded))
 	command.Stderr = os.Stderr
 	output, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer output.Close()
 	input, err := command.StdinPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer input.Close()
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, command.Start())
 	defer func() { _ = command.Process.Kill(); _ = command.Wait() }()
-	ready, err := bufio.NewReader(output).ReadString('\n')
-	if err != nil || ready != "ready\n" {
-		t.Fatal("replacement host did not retain failed recovery:", ready, err)
-	}
+	sandboxtest.WaitForLine(t, bufio.NewReader(output), "ready", "the replacement host keeps the failed recovery")
 	assertLeasedRecordUntouched(t, ctx, config, filepath.Dir(images))
-	if err := command.Process.Kill(); err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Wait(); err == nil {
-		t.Fatal("replacement recovery host survived SIGKILL")
-	}
+	require.NoError(t, command.Process.Kill())
+	require.Error(t, command.Wait(), "replacement recovery host survived SIGKILL")
 }
 
 func TestPublicFilesystemRecoveryClaimantChild(t *testing.T) {
@@ -119,22 +92,14 @@ func TestPublicFilesystemRecoveryClaimantChild(t *testing.T) {
 		return
 	}
 	var config sandboxhost.IsolatedFilesystemConfig
-	if err := json.Unmarshal([]byte(encoded), &config); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(encoded), &config))
 	recovery, err := sandboxhost.NewIsolatedFilesystemRecovery(context.Background(), config)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer recovery.Close()
-	if err := recovery.Recover(context.Background()); err == nil {
-		t.Fatal("recovery unexpectedly succeeded with a blocked cleanup phase")
-	}
-	if err := recovery.Close(); err == nil {
-		t.Fatal("failed replacement recovery released its ownership")
-	}
+	require.Error(t, recovery.Recover(context.Background()), "recovery fails while a cleanup phase is blocked")
+	require.Error(t, recovery.Close(), "a failed replacement recovery keeps its ownership")
 	fmt.Println("ready")
 	var input [1]byte
 	_, err = os.Stdin.Read(input[:])
-	t.Fatal("replacement recovery host returned before SIGKILL:", err)
+	require.FailNow(t, "the replacement recovery host is killed before it returns", "read: %v", err)
 }

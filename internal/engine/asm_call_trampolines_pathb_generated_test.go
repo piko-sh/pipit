@@ -352,23 +352,38 @@ func TestPathBTypedSliceAccessReadsAndWritesElements(t *testing.T) {
 		}{
 			{
 				name: "an int element", trampoline: asmCallHandleSliceGetInt, collection: []int{4, 5},
-				inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(5), r.Ints[0]) },
+				inspect: func(t *testing.T, r *Registers) {
+					t.Helper()
+					require.Equal(t, int64(5), r.Ints[0])
+				},
 			},
 			{
 				name: "a float element", trampoline: asmCallHandleSliceGetFloat, collection: []float64{1.5, 2.5},
-				inspect: func(t *testing.T, r *Registers) { require.InDelta(t, 2.5, r.Floats[0], 0) },
+				inspect: func(t *testing.T, r *Registers) {
+					t.Helper()
+					require.InDelta(t, 2.5, r.Floats[0], 0)
+				},
 			},
 			{
 				name: "a string element", trampoline: asmCallHandleSliceGetString, collection: []string{"a", "b"},
-				inspect: func(t *testing.T, r *Registers) { require.Equal(t, "b", r.Strings[0]) },
+				inspect: func(t *testing.T, r *Registers) {
+					t.Helper()
+					require.Equal(t, "b", r.Strings[0])
+				},
 			},
 			{
 				name: "a bool element", trampoline: asmCallHandleSliceGetBool, collection: []bool{false, true},
-				inspect: func(t *testing.T, r *Registers) { require.True(t, r.Bools[0]) },
+				inspect: func(t *testing.T, r *Registers) {
+					t.Helper()
+					require.True(t, r.Bools[0])
+				},
 			},
 			{
 				name: "a uint element", trampoline: asmCallHandleSliceGetUint, collection: []uint64{4, 5},
-				inspect: func(t *testing.T, r *Registers) { require.Equal(t, uint64(5), r.Uints[0]) },
+				inspect: func(t *testing.T, r *Registers) {
+					t.Helper()
+					require.Equal(t, uint64(5), r.Uints[0])
+				},
 			},
 		}
 

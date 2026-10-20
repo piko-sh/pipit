@@ -39,7 +39,7 @@ func makeSliceHeapFlagOf(t *testing.T, source, function string) uint8 {
 			return body[pc+1].C & isa.MakeSliceExtHeapFlag
 		}
 	}
-	t.Fatalf("no generic make in %s:\n%v", function, body)
+	require.Failf(t, "no generic make", "%s:\n%v", function, body)
 	return 0
 }
 

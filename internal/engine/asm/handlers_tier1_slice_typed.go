@@ -322,7 +322,7 @@ func handlerSubOpMoveSliceByte() asmgen.HandlerDefinition[BytecodeArchitecturePo
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
 func moveSliceHandler(name, contextOffset, bankLabel string) asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
+	return guardPointerBankWriter(asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 		Name:      name,
 		Comment:   name + " copies " + bankLabel + "[C] to " + bankLabel + "[B] for the tier-1 typed-slice header move sub-op.",
 		FrameSize: frameSizeZero,
@@ -330,7 +330,7 @@ func moveSliceHandler(name, contextOffset, bankLabel string) asmgen.HandlerDefin
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.EmitTypedSliceMove(emitter, contextOffset)
 		},
-	}
+	})
 }
 
 // handlerSubOpSliceSliceIntDirect builds the tier-1 handler for
@@ -388,15 +388,15 @@ func handlerSubOpSliceSliceUintDirect() asmgen.HandlerDefinition[BytecodeArchite
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
 func sliceSliceHandler(name, contextOffset, bankLabel string, elementSizeShift uint8) asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
+	return guardPointerBankWriter(asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 		Name:      name,
-		Comment:   name + " performs " + bankLabel + "[A] = " + bankLabel + "[C][low:high] with bounds check (low+high only).",
+		Comment:   name + " performs " + bankLabel + "[A] = " + bankLabel + "[C][low:high] with bounds check (any two-index form).",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.EmitTypedSliceSliceSlice(emitter, contextOffset, elementSizeShift)
 		},
-	}
+	})
 }
 
 // handlerSubOpSliceGetFloatDirect builds the handler for the tier-1 sub-op
@@ -504,7 +504,7 @@ func handlerSubOpSliceSetBoolDirect() asmgen.HandlerDefinition[BytecodeArchitect
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
 func handlerSubOpSliceGetStringDirect() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
+	return guardPointerBankWriter(asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 		Name:      "handlerSubOpSliceGetStringDirect",
 		Comment:   "handlerSubOpSliceGetStringDirect sets strings[B] = slicesString[C][ints[ext.A]] with bounds check.",
 		FrameSize: frameSizeZero,
@@ -512,7 +512,7 @@ func handlerSubOpSliceGetStringDirect() asmgen.HandlerDefinition[BytecodeArchite
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.EmitTypedSliceStringGet(emitter, contextOffsetSlicesStringBase)
 		},
-	}
+	})
 }
 
 // handlerSubOpLenSliceIntDirect builds the handler for the tier-1 sub-op
@@ -654,15 +654,12 @@ func handlerSubOpSliceSetByteDirect() asmgen.HandlerDefinition[BytecodeArchitect
 	}
 }
 
-// handlerSubOpSliceByteSlice builds the handler for the tier-1 sub-op
-// isa.SubOpSliceByteSlice, which computes slicesByte[A] =
-// slicesByte[C][ints[ext.b]:ints[ext.c]]. Pure ASM body for the low+high case
-// (isa.SliceLowBoundFlag | isa.SliceHighBoundFlag); other flag shapes (max-bound,
-// low-only, high-only, no-flag) defer to the Go fallback via pathBFallback.
+// handlerSubOpSliceByteSlice builds the tier-1 byte-slice handler. Two-index slices run
+// in assembly, while three-index slices use the Go handler.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
 func handlerSubOpSliceByteSlice() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
+	return guardPointerBankWriter(asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 		Name:      "handlerSubOpSliceByteSlice",
 		Comment:   "handlerSubOpSliceByteSlice sets slicesByte[A] = slicesByte[C][ints[ext.b]:ints[ext.c]] (no max-bound) inline.",
 		FrameSize: frameSizeZero,
@@ -670,5 +667,5 @@ func handlerSubOpSliceByteSlice() asmgen.HandlerDefinition[BytecodeArchitectureP
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.EmitTypedSliceByteSlice(emitter, contextOffsetSlicesByteBase)
 		},
-	}
+	})
 }

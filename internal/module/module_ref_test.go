@@ -20,42 +20,38 @@ package module
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseModuleRef(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		input    string
-		expected Ref
-		wantErr  bool
+		name    string
+		input   string
+		want    Ref
+		wantErr bool
 	}{
-		{"path only", "github.com/foo/bar", Ref{Path: "github.com/foo/bar"}, false},
-		{"path and version", "github.com/foo/bar@v1.2.3", Ref{Path: "github.com/foo/bar", Version: "v1.2.3"}, false},
-		{"path version pin", "github.com/foo/bar@v1.2.3#sha256:abc", Ref{Path: "github.com/foo/bar", Version: "v1.2.3", Pin: "sha256:abc"}, false},
-		{"path with pin only", "github.com/foo/bar#sha256:abc", Ref{Path: "github.com/foo/bar", Pin: "sha256:abc"}, false},
-		{"whitespace", "  github.com/foo/bar@v1.0.0  ", Ref{Path: "github.com/foo/bar", Version: "v1.0.0"}, false},
-		{"empty input", "", Ref{}, true},
-		{"whitespace only", "   ", Ref{}, true},
-		{"no path", "@v1.0.0", Ref{}, true},
+		{name: "path only", input: "github.com/foo/bar", want: Ref{Path: "github.com/foo/bar"}, wantErr: false},
+		{name: "path and version", input: "github.com/foo/bar@v1.2.3", want: Ref{Path: "github.com/foo/bar", Version: "v1.2.3"}, wantErr: false},
+		{name: "path version pin", input: "github.com/foo/bar@v1.2.3#sha256:abc", want: Ref{Path: "github.com/foo/bar", Version: "v1.2.3", Pin: "sha256:abc"}, wantErr: false},
+		{name: "path with pin only", input: "github.com/foo/bar#sha256:abc", want: Ref{Path: "github.com/foo/bar", Pin: "sha256:abc"}, wantErr: false},
+		{name: "whitespace", input: "  github.com/foo/bar@v1.0.0  ", want: Ref{Path: "github.com/foo/bar", Version: "v1.0.0"}, wantErr: false},
+		{name: "empty input", input: "", want: Ref{}, wantErr: true},
+		{name: "whitespace only", input: "   ", want: Ref{}, wantErr: true},
+		{name: "no path", input: "@v1.0.0", want: Ref{}, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := ParseRef(tt.input)
 			if tt.wantErr {
-				if err == nil {
-					t.Fatalf("ParseRef(%q) = %v, want error", tt.input, got)
-				}
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("ParseRef(%q) returned error: %v", tt.input, err)
-			}
-			if got != tt.expected {
-				t.Fatalf("ParseRef(%q) = %+v, want %+v", tt.input, got, tt.expected)
-			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -64,30 +60,25 @@ func TestModuleRefString(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		input    Ref
-		expected string
+		name  string
+		input Ref
+		want  string
 	}{
-		{Ref{Path: "foo"}, "foo"},
-		{Ref{Path: "foo", Version: "v1"}, "foo@v1"},
-		{Ref{Path: "foo", Version: "v1", Pin: "sha256:abc"}, "foo@v1#sha256:abc"},
-		{Ref{Path: "foo", Pin: "sha256:abc"}, "foo#sha256:abc"},
+		{name: "path only", input: Ref{Path: "foo"}, want: "foo"},
+		{name: "path and version", input: Ref{Path: "foo", Version: "v1"}, want: "foo@v1"},
+		{name: "path, version and pin", input: Ref{Path: "foo", Version: "v1", Pin: "sha256:abc"}, want: "foo@v1#sha256:abc"},
+		{name: "path and pin", input: Ref{Path: "foo", Pin: "sha256:abc"}, want: "foo#sha256:abc"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.expected, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := tt.input.String(); got != tt.expected {
-				t.Fatalf("Ref.String() = %q, want %q", got, tt.expected)
-			}
+			require.Equal(t, tt.want, tt.input.String())
 		})
 	}
 }
 
 func TestModuleRefIsZero(t *testing.T) {
 	t.Parallel()
-	if !(Ref{}).IsZero() {
-		t.Fatalf("zero Ref should report IsZero=true")
-	}
-	if (Ref{Path: "x"}).IsZero() {
-		t.Fatalf("populated Ref should report IsZero=false")
-	}
+	require.True(t, (Ref{}).IsZero(), "the zero Ref reports IsZero")
+	require.False(t, (Ref{Path: "x"}).IsZero(), "a populated Ref is not zero")
 }

@@ -21,7 +21,6 @@
 package language_test
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
@@ -53,7 +52,7 @@ func TestEvalReflectStructTagOnASelfReferentialType(t *testing.T) {
 	tests := []struct {
 		name   string
 		source string
-		expect any
+		want   any
 	}{
 		{
 
@@ -78,7 +77,7 @@ func run() string {
 
 func main() {}
 `,
-			expect: "N=[]Next=[]",
+			want: "N=[]Next=[]",
 		},
 		{
 			name: "a self-referential field keeps the tag the program wrote",
@@ -99,7 +98,7 @@ func run() string {
 
 func main() {}
 `,
-			expect: "next,omitempty|json:\"next,omitempty\"",
+			want: "next,omitempty|json:\"next,omitempty\"",
 		},
 		{
 			name: "a mutually recursive pair reports no tags either",
@@ -123,7 +122,7 @@ func run() string {
 
 func main() {}
 `,
-			expect: "[][]",
+			want: "[][]",
 		},
 		{
 			name: "a type with no cycle is unaffected",
@@ -143,16 +142,16 @@ func run() string {
 
 func main() {}
 `,
-			expect: "[json:\"a\"][]",
+			want: "[json:\"a\"][]",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result, err := reflectingService(t).EvalFile(context.Background(), tt.source, "run")
+			result, err := reflectingService(t).EvalFile(t.Context(), tt.source, "run")
 			require.NoError(t, err, "source:\n%s", tt.source)
-			require.Equal(t, tt.expect, result,
+			require.Equal(t, tt.want, result,
 				"a program must see the struct tags it declared, and only those")
 		})
 	}

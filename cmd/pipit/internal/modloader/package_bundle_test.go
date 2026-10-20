@@ -19,8 +19,10 @@
 package modloader
 
 import (
-	"context"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit"
 )
@@ -28,62 +30,46 @@ import (
 func failOnWarning(t *testing.T) func(error) {
 	t.Helper()
 	return func(err error) {
-		t.Errorf("unexpected cache warning: %v", err)
+		assert.NoError(t, err, "the cache reports no warning")
 	}
 }
 
 func TestLoadOrCompilePackagePinsBundleOnBothPaths(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := t.Context()
 	interpreter := pipit.NewInterpreter()
 	cache := NewBytecodeCache(t.TempDir())
 	sources := map[string]string{"lib.go": "package lib\n\nfunc Answer() int { return 42 }\n"}
 
 	compiled, hit, err := LoadOrCompilePackage(ctx, interpreter, cache, "example.com/lib", "v1.0.0", sources, failOnWarning(t))
-	if err != nil {
-		t.Fatalf("compile path: %v", err)
-	}
-	if hit {
-		t.Fatalf("compile path reported a cache hit")
-	}
-	if compiled.Descriptor.Ref.Pin == "" {
-		t.Fatalf("compile path returned an unpinned bundle")
-	}
+	require.NoError(t, err)
+	require.False(t, hit, "the compile path reports a miss")
+	require.NotEmpty(t, compiled.Descriptor.Ref.Pin, "the compile path returns a pinned bundle")
 
 	cached, hit, err := LoadOrCompilePackage(ctx, interpreter, cache, "example.com/lib", "v1.0.0", sources, failOnWarning(t))
-	if err != nil {
-		t.Fatalf("cache path: %v", err)
-	}
-	if !hit {
-		t.Fatalf("cache path reported a miss")
-	}
-	if cached.Descriptor.Ref.Pin != compiled.Descriptor.Ref.Pin {
-		t.Fatalf("cache path pin = %q, want %q", cached.Descriptor.Ref.Pin, compiled.Descriptor.Ref.Pin)
-	}
+	require.NoError(t, err)
+	require.True(t, hit, "the cache path reports a hit")
+	require.Equal(t, compiled.Descriptor.Ref.Pin, cached.Descriptor.Ref.Pin)
 }
 
 func TestPackageCacheInvalidatesChangedSource(t *testing.T) {
 	t.Parallel()
 	cache := NewBytecodeCache(t.TempDir())
 	sources := map[string]string{"lib.go": "package lib; func Answer() int { return 42 }"}
-	original, _, err := LoadOrCompilePackage(context.Background(), pipit.NewInterpreter(), cache, "example.com/lib", "v1", sources, failOnWarning(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	original, _, err := LoadOrCompilePackage(t.Context(), pipit.NewInterpreter(), cache, "example.com/lib", "v1", sources, failOnWarning(t))
+	require.NoError(t, err)
 	sources["lib.go"] = "package lib; func Answer() int { return 99 }"
-	changed, hit, err := LoadOrCompilePackage(context.Background(), pipit.NewInterpreter(), cache, "example.com/lib", "v1", sources, failOnWarning(t))
-	if err != nil || hit || changed.Descriptor.Ref.Pin == original.Descriptor.Ref.Pin {
-		t.Fatalf("changed source reused stale bytecode: hit=%v error=%v", hit, err)
-	}
+	changed, hit, err := LoadOrCompilePackage(t.Context(), pipit.NewInterpreter(), cache, "example.com/lib", "v1", sources, failOnWarning(t))
+	require.NoError(t, err, "changed source does not reuse stale bytecode")
+	require.False(t, hit)
+	require.NotEqual(t, original.Descriptor.Ref.Pin, changed.Descriptor.Ref.Pin)
 }
 
 func TestStdlibPackageSetClassifiesStandardLibraryImports(t *testing.T) {
 	t.Parallel()
 	set := StdlibPackageSet()
-	if _, ok := set["strings"]; !ok {
-		t.Fatalf("strings is missing from the stdlib set")
-	}
-	if _, ok := set["example.com/lib"]; ok {
-		t.Fatalf("a module path was classified as stdlib")
-	}
+	_, ok := set["strings"]
+	require.True(t, ok, "strings is in the stdlib set")
+	_, ok = set["example.com/lib"]
+	require.False(t, ok, "a module path is not stdlib")
 }

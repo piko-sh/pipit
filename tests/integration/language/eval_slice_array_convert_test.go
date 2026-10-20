@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -73,7 +73,7 @@ func TestEvalSliceToArrayPointerBounds(t *testing.T) {
 			t.Run(mode.name+"/"+tt.name, func(t *testing.T) {
 				t.Parallel()
 				service := app.NewService(mode.opts...)
-				result, err := service.Eval(context.Background(), tt.code)
+				result, err := service.Eval(t.Context(), tt.code)
 				if tt.wantErr {
 					require.Error(t, err)
 					return

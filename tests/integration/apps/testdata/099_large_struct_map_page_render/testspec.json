@@ -1,0 +1,5 @@
+{
+  "description": "A multi-package page server whose related-posts helper builds map[string]Post with a Post well over Go's 128-byte inline map element, under 30 sequential and 16x30 concurrent httptest requests; the string-keyed map fast path used to write the whole element into an 8-byte indirect slot and hang a later lookup",
+  "modulePath": "testpkg",
+  "expected": "requests=510 distinct=13 combined=8866b2ea sample=<h1>Title of post-03</h1><p>A description of post-03</p><p>6 min, 2023</p><ul><li><a href=\"/thoughts/post-10\">Title of post-10</a></li></ul>"
+}

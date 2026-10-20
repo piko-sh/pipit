@@ -19,9 +19,10 @@
 package cli
 
 import (
-	"context"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/cmd/pipit/internal/clitest"
 )
@@ -29,33 +30,33 @@ import (
 func TestRunEvalInlineExpression(t *testing.T) {
 	t.Parallel()
 
-	result := clitest.Run(context.Background(), RunEval, []string{"-e", "1 + 2 * 3"}, "")
-	if result.Code != 0 {
-		t.Fatalf("exit code = %d (stderr=%q)", result.Code, result.Stderr)
-	}
-	if strings.TrimSpace(result.Stdout) != "7" {
-		t.Fatalf("stdout = %q", result.Stdout)
-	}
+	result := clitest.Run(t.Context(), RunEval, []string{"-e", "1 + 2 * 3"}, "")
+	require.Equal(t, 0, result.Code, "stderr: %q", result.Stderr)
+	require.Equal(t, "7", strings.TrimSpace(result.Stdout), "stdout: %q", result.Stdout)
 }
 
 func TestRunEvalStdin(t *testing.T) {
 	t.Parallel()
 
 	const source = "import \"strings\"\nstrings.ToUpper(\"hi\")\n"
-	result := clitest.Run(context.Background(), RunEval, []string{"-"}, source)
-	if result.Code != 0 {
-		t.Fatalf("exit code = %d (stderr=%q)", result.Code, result.Stderr)
-	}
-	if !strings.Contains(result.Stdout, "HI") {
-		t.Fatalf("expected HI in stdout, got %q", result.Stdout)
-	}
+	result := clitest.Run(t.Context(), RunEval, []string{"-"}, source)
+	require.Equal(t, 0, result.Code, "stderr: %q", result.Stderr)
+	require.Contains(t, result.Stdout, "HI")
 }
 
 func TestRunEvalEmptyExitsOne(t *testing.T) {
 	t.Parallel()
 
-	result := clitest.Run(context.Background(), RunEval, nil, "")
-	if result.Code != 1 {
-		t.Fatalf("expected exit 1, got %d (stderr=%q)", result.Code, result.Stderr)
-	}
+	result := clitest.Run(t.Context(), RunEval, nil, "")
+	require.Equal(t, 1, result.Code, "stderr: %q", result.Stderr)
+}
+
+func TestRunEvalGoEmbedHasNoScriptDirectoryHint(t *testing.T) {
+	t.Parallel()
+
+	const source = "import \"embed\"\n\n//go:embed x.txt\nvar files embed.FS\n\nfiles\n"
+	result := clitest.Run(t.Context(), RunEval, []string{"-"}, source)
+	require.NotEqual(t, 0, result.Code, "stdout=%q", result.Stdout)
+	require.Contains(t, result.Stderr, "//go:embed is not supported")
+	require.NotContains(t, result.Stderr, "PIPIT_SCRIPT_DIR", "eval has no script directory")
 }

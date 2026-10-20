@@ -113,73 +113,109 @@ func TestFlatDispatchRoutesToTheHandlerTheOpcodeNames(t *testing.T) {
 			name:  "integer addition",
 			build: func() isa.Instruction { return isa.NewInstruction(isa.OpAddInt, 0, 1, 2) },
 			seed:  func(registers *Registers) { registers.Ints[1], registers.Ints[2] = 10, 32 },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(42), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(42), registers.Ints[0])
+			},
 		},
 		{
 			name:  "unsigned addition",
 			build: func() isa.Instruction { return isa.NewInstruction(isa.OpAddUint, 0, 1, 2) },
 			seed:  func(registers *Registers) { registers.Uints[1], registers.Uints[2] = 10, 32 },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, uint64(42), registers.Uints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(42), registers.Uints[0])
+			},
 		},
 		{
 			name:  "float multiplication",
 			build: func() isa.Instruction { return isa.NewInstruction(isa.OpMulFloat, 0, 1, 2) },
 			seed:  func(registers *Registers) { registers.Floats[1], registers.Floats[2] = 1.5, 4 },
-			check: func(t *testing.T, registers *Registers) { require.InDelta(t, 6, registers.Floats[0], 0) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.InDelta(t, 6, registers.Floats[0], 0)
+			},
 		},
 		{
 			name:  "string equality",
 			build: func() isa.Instruction { return isa.NewInstruction(isa.OpEqString, 0, 1, 2) },
 			seed:  func(registers *Registers) { registers.Strings[1], registers.Strings[2] = "a", "a" },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(1), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(1), registers.Ints[0])
+			},
 		},
 		{
 			name:  "integer comparison",
 			build: func() isa.Instruction { return isa.NewInstruction(isa.OpLtInt, 0, 1, 2) },
 			seed:  func(registers *Registers) { registers.Ints[1], registers.Ints[2] = 1, 2 },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(1), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(1), registers.Ints[0])
+			},
 		},
 		{
 			name:  "bitwise exclusive or",
 			build: func() isa.Instruction { return isa.NewInstruction(isa.OpBitXor, 0, 1, 2) },
 			seed:  func(registers *Registers) { registers.Ints[1], registers.Ints[2] = 0b1100, 0b1010 },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(0b0110), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(0b0110), registers.Ints[0])
+			},
 		},
 		{
 			name:  "a first-tier integer negation",
 			build: func() isa.Instruction { return isa.NewTier1Instruction(isa.SubOpNegInt, 0, 1) },
 			seed:  func(registers *Registers) { registers.Ints[1] = 42 },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(-42), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(-42), registers.Ints[0])
+			},
 		},
 		{
 			name:  "a first-tier unsigned move",
 			build: func() isa.Instruction { return isa.NewTier1Instruction(isa.SubOpMoveUint, 0, 1) },
 			seed:  func(registers *Registers) { registers.Uints[1] = 42 },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, uint64(42), registers.Uints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(42), registers.Uints[0])
+			},
 		},
 		{
 			name:  "a first-tier bitwise complement",
 			build: func() isa.Instruction { return isa.NewTier1Instruction(isa.SubOpBitNotUint, 0, 1) },
 			seed:  func(registers *Registers) { registers.Uints[1] = 0 },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, ^uint64(0), registers.Uints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, ^uint64(0), registers.Uints[0])
+			},
 		},
 		{
 			name:  "a first-tier string length",
 			build: func() isa.Instruction { return isa.NewTier1Instruction(isa.SubOpLenString, 0, 1) },
 			seed:  func(registers *Registers) { registers.Strings[1] = "pipit" },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(5), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(5), registers.Ints[0])
+			},
 		},
 		{
 			name:  "a first-tier logical negation",
 			build: func() isa.Instruction { return isa.NewTier1Instruction(isa.SubOpNot, 0, 1) },
 			seed:  func(registers *Registers) { registers.Ints[1] = 0 },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(1), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(1), registers.Ints[0])
+			},
 		},
 		{
 			name:  "an extension word is inert",
 			build: func() isa.Instruction { return isa.NewInstruction(isa.OpExt, 1, 2, 3) },
 			seed:  func(registers *Registers) { registers.Ints[0] = 7 },
-			check: func(t *testing.T, registers *Registers) { require.Equal(t, int64(7), registers.Ints[0]) },
+			check: func(t *testing.T, registers *Registers) {
+				t.Helper()
+				require.Equal(t, int64(7), registers.Ints[0])
+			},
 		},
 	}
 

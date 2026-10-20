@@ -21,47 +21,43 @@
 package bytecode_test
 
 import (
-	"context"
 	"strings"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-
-	"pipit.sh/pipit/internal/compile"
-	"pipit.sh/pipit/internal/engine/program"
-
-	"pipit.sh/pipit/internal/debug"
-
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/app"
+	"pipit.sh/pipit/internal/compile"
+	"pipit.sh/pipit/internal/debug"
+	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 )
 
 func compileSourceForOpcodeCheck(t *testing.T, source string) string {
 	t.Helper()
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": source})
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
 	require.NoErrorf(t, err, "compile failed")
 	return debug.DisassembleAssembly(compiled)
 }
 
-func TestSelectDirectCallOpcodeGate_PositiveScalar(t *testing.T) {
+func TestSelectDirectCallOpcodeGate(t *testing.T) {
 	t.Parallel()
-	dump := compileSourceForOpcodeCheck(t, `package main
+	runDisassemblyExpectations(t, compileSourceForOpcodeCheck, []disassemblyExpectation{
+		{
+			name: "accepts scalar call",
+			source: `package main
 func fib(n int) int {
 	if n < 2 { return n }
 	return fib(n-1) + fib(n-2)
 }
-func EntrypointRun() int { return fib(10) }`)
-
-	require.Positivef(t, strings.Count(dump, "CALL_SCALAR"),
-		"expected opCallScalar to be emitted for a scalar-only recursive call; disasm:\n%s", dump)
-	require.Zerof(t, strings.Count(dump, ":CALL "),
-		"expected zero plain opCall instructions in a scalar-only program; disasm:\n%s", dump)
-}
-
-func TestSelectDirectCallOpcodeGate_RejectsVariadic(t *testing.T) {
-	t.Parallel()
-	dump := compileSourceForOpcodeCheck(t, `package main
+func EntrypointRun() int { return fib(10) }`,
+			contains: []string{"CALL_SCALAR"},
+			absent:   []string{":CALL "},
+		},
+		{
+			name: "rejects variadic",
+			source: `package main
 func sumAll(values ...int) int {
 	total := 0
 	for _, value := range values {
@@ -69,40 +65,31 @@ func sumAll(values ...int) int {
 	}
 	return total
 }
-func EntrypointRun() int { return sumAll(1, 2, 3, 4, 5) }`)
-
-	require.Zerof(t, strings.Count(dump, "CALL_SCALAR"),
-		"expected NO opCallScalar for a variadic callee; disasm:\n%s", dump)
-}
-
-func TestSelectDirectCallOpcodeGate_RejectsStructParam(t *testing.T) {
-	t.Parallel()
-	dump := compileSourceForOpcodeCheck(t, `package main
+func EntrypointRun() int { return sumAll(1, 2, 3, 4, 5) }`,
+			absent: []string{"CALL_SCALAR"},
+		},
+		{
+			name: "rejects struct param",
+			source: `package main
 type Pair struct { Left int; Right int }
 func add(pair Pair) int { return pair.Left + pair.Right }
-func EntrypointRun() int { return add(Pair{Left: 3, Right: 4}) }`)
-
-	require.Zerof(t, strings.Count(dump, "CALL_SCALAR"),
-		"expected NO opCallScalar for a struct-parameter callee; disasm:\n%s", dump)
-}
-
-func TestSelectDirectCallOpcodeGate_RejectsStructResult(t *testing.T) {
-	t.Parallel()
-	dump := compileSourceForOpcodeCheck(t, `package main
+func EntrypointRun() int { return add(Pair{Left: 3, Right: 4}) }`,
+			absent: []string{"CALL_SCALAR"},
+		},
+		{
+			name: "rejects struct result",
+			source: `package main
 type Point struct { X int; Y int }
 func origin() Point { return Point{X: 0, Y: 0} }
 func EntrypointRun() int {
 	point := origin()
 	return point.X + point.Y
-}`)
-
-	require.Zerof(t, strings.Count(dump, "CALL_SCALAR"),
-		"expected NO opCallScalar for a struct-return callee; disasm:\n%s", dump)
-}
-
-func TestSelectDirectCallOpcodeGate_RejectsSliceParam(t *testing.T) {
-	t.Parallel()
-	dump := compileSourceForOpcodeCheck(t, `package main
+}`,
+			absent: []string{"CALL_SCALAR"},
+		},
+		{
+			name: "rejects slice param",
+			source: `package main
 func sumSlice(values []int) int {
 	total := 0
 	for _, value := range values {
@@ -113,31 +100,24 @@ func sumSlice(values []int) int {
 func EntrypointRun() int {
 	values := []int{1, 2, 3, 4, 5}
 	return sumSlice(values)
-}`)
-
-	require.Zerof(t, strings.Count(dump, "CALL_SCALAR"),
-		"expected NO opCallScalar for a slice-parameter callee; disasm:\n%s", dump)
-}
-
-func TestSelectDirectCallOpcodeGate_RejectsClosureCall(t *testing.T) {
-	t.Parallel()
-	dump := compileSourceForOpcodeCheck(t, `package main
+}`,
+			absent: []string{"CALL_SCALAR"},
+		},
+		{
+			name: "rejects closure call",
+			source: `package main
 func makeAdd(delta int) func(int) int {
 	return func(value int) int { return value + delta }
 }
 func EntrypointRun() int {
 	addOne := makeAdd(1)
 	return addOne(41)
-}`)
-
-	require.Positivef(t, strings.Count(dump, ":CALL "),
-		"expected plain opCall for the closure call; disasm:\n%s", dump)
-}
-
-func TestSelectDirectCallOpcodeGate_AcceptsMixedScalarKinds(t *testing.T) {
-	t.Parallel()
-
-	dump := compileSourceForOpcodeCheck(t, `package main
+}`,
+			contains: []string{":CALL "},
+		},
+		{
+			name: "accepts mixed scalar kinds",
+			source: `package main
 func mix(intValue int, uintValue uint, floatValue float64, boolValue bool, textValue string) int {
 	if boolValue {
 		return intValue + int(uintValue) + int(floatValue) + len(textValue)
@@ -147,15 +127,15 @@ func mix(intValue int, uintValue uint, floatValue float64, boolValue bool, textV
 func EntrypointRun() int {
 	value := mix(1, 2, 3.0, true, "abcd")
 	return value + 1
-}`)
-
-	require.Positivef(t, strings.Count(dump, "CALL_SCALAR"),
-		"expected opCallScalar for an all-scalar mixed-kind callee; disasm:\n%s", dump)
+}`,
+			contains: []string{"CALL_SCALAR"},
+		},
+	})
 }
 
 func TestCalleeUsesScalarBanksOnly_Direct(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	tests := []struct {
 		name        string
 		paramKinds  []isa.RegisterKind
 		resultKinds []isa.RegisterKind
@@ -168,14 +148,14 @@ func TestCalleeUsesScalarBanksOnly_Direct(t *testing.T) {
 		{name: "general result", paramKinds: []isa.RegisterKind{isa.RegisterInt}, resultKinds: []isa.RegisterKind{isa.RegisterGeneral}, want: false},
 		{name: "general buried in mixed params", paramKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterGeneral, isa.RegisterString}, resultKinds: []isa.RegisterKind{isa.RegisterInt}, want: false},
 	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			callee := &program.CompiledFunction{
-				ParameterKinds: testCase.paramKinds,
-				ResultKinds:    testCase.resultKinds,
+				ParameterKinds: tt.paramKinds,
+				ResultKinds:    tt.resultKinds,
 			}
-			require.Equal(t, testCase.want, compile.CalleeUsesScalarBanksOnly(callee))
+			require.Equal(t, tt.want, compile.CalleeUsesScalarBanksOnly(callee))
 		})
 	}
 }

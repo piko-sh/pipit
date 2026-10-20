@@ -21,10 +21,10 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
@@ -94,7 +94,7 @@ func TestDestinationDrivenArithmeticKeepsOperandOrder(t *testing.T) {
 		`var x uint = 3; var y uint = x * x; int(x + y)`:          int64(12),
 	}
 	for source, expected := range cases {
-		result, err := app.NewService().Eval(context.Background(), source)
+		result, err := app.NewService().Eval(t.Context(), source)
 		require.NoError(t, err, source)
 		require.EqualValues(t, expected, result, source)
 	}
@@ -105,7 +105,7 @@ func TestArithConstFusionKeepsLiveLoad(t *testing.T) {
 	compiledFunction := compileExpression(t, `x := 2; y := x * x; x + y`)
 	requireContainsOpcode(t, compiledFunction, isa.OpMulInt)
 	requireNoOpcode(t, compiledFunction, isa.OpMulIntConst)
-	result, err := app.NewService().Eval(context.Background(), `x := 2; y := x * x; x + y`)
+	result, err := app.NewService().Eval(t.Context(), `x := 2; y := x * x; x + y`)
 	require.NoError(t, err)
 	require.EqualValues(t, 6, result)
 }

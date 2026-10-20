@@ -21,43 +21,39 @@
 package adapters
 
 import (
-	"errors"
+	"fmt"
 	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/isa"
 )
 
-func TestBoundedCount_RejectsLengthsLargerThanPayload(t *testing.T) {
+func TestBoundedCount(t *testing.T) {
 	t.Parallel()
 
-	count, err := boundedCount(math.MaxInt32, 100, "function body")
-
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, errCorruptBytecodePayload), "error should wrap errCorruptBytecodePayload")
-	assert.Equal(t, 0, count)
-}
-
-func TestBoundedCount_RejectsNegativeLength(t *testing.T) {
-	t.Parallel()
-
-	count, err := boundedCount(-1, 100, "int constants")
-
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, errCorruptBytecodePayload))
-	assert.Equal(t, 0, count)
-}
-
-func TestBoundedCount_AcceptsPlausibleLengths(t *testing.T) {
-	t.Parallel()
-
-	for _, declared := range []int{0, 1, 50, 100} {
-		count, err := boundedCount(declared, 100, "call sites")
-
-		require.NoError(t, err)
-		assert.Equal(t, declared, count)
+	tests := []struct {
+		name      string
+		declared  int
+		wantCount int
+		wantErr   error
+	}{
+		{name: "longer than the payload", declared: math.MaxInt32, wantCount: 0, wantErr: errCorruptBytecodePayload},
+		{name: "negative", declared: -1, wantCount: 0, wantErr: errCorruptBytecodePayload},
+		{name: "empty", declared: 0, wantCount: 0, wantErr: nil},
+		{name: "one element", declared: 1, wantCount: 1, wantErr: nil},
+		{name: "half the payload", declared: 50, wantCount: 50, wantErr: nil},
+		{name: "the whole payload", declared: 100, wantCount: 100, wantErr: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			count, err := boundedCount(tt.declared, 100, "function body")
+			require.ErrorIs(t, err, tt.wantErr)
+			assert.Equal(t, tt.wantCount, count)
+		})
 	}
 }
 
@@ -65,11 +61,12 @@ func TestValidatedRegisterKind_RejectsOutOfRange(t *testing.T) {
 	t.Parallel()
 
 	for _, raw := range []int8{-1, int8(isa.NumRegisterKinds), 14, 100, 127} {
-		kind, err := validatedRegisterKind(raw, "parameter")
-
-		require.Errorf(t, err, "raw %d should be rejected", raw)
-		assert.True(t, errors.Is(err, errCorruptBytecodePayload))
-		assert.Equal(t, uint8(0), kind)
+		t.Run(fmt.Sprintf("raw %d", raw), func(t *testing.T) {
+			t.Parallel()
+			kind, err := validatedRegisterKind(raw, "parameter")
+			require.ErrorIs(t, err, errCorruptBytecodePayload)
+			assert.Equal(t, uint8(0), kind)
+		})
 	}
 }
 
@@ -77,9 +74,11 @@ func TestValidatedRegisterKind_AcceptsEveryRealKind(t *testing.T) {
 	t.Parallel()
 
 	for raw := range isa.NumRegisterKinds {
-		kind, err := validatedRegisterKind(int8(raw), "result")
-
-		require.NoErrorf(t, err, "raw %d should be accepted", raw)
-		assert.Equal(t, uint8(raw), kind)
+		t.Run(isa.RegisterKind(raw).String(), func(t *testing.T) {
+			t.Parallel()
+			kind, err := validatedRegisterKind(int8(raw), "result")
+			require.NoError(t, err)
+			assert.Equal(t, uint8(raw), kind)
+		})
 	}
 }

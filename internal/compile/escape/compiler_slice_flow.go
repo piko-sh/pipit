@@ -22,6 +22,8 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+
+	"pipit.sh/pipit/internal/compile/sliceshare"
 )
 
 // CallFlow is what a call's possible callees do with its operands, as the slice-flow
@@ -345,35 +347,14 @@ func markEach(expressions []ast.Expr, mark func(ast.Expr)) {
 // Returns the name, and false when the header comes from anything but a variable.
 func sliceSourceName(info *types.Info, expression ast.Expr) (string, bool) {
 	for {
-		switch value := ast.Unparen(expression).(type) {
+		switch value := sliceshare.StripSharing(info, expression).(type) {
 		case *ast.Ident:
 			return value.Name, true
 		case *ast.SliceExpr:
 			expression = value.X
-		case *ast.CallExpr:
-			target := info.Types[value.Fun]
-			if len(value.Args) != 1 || !target.IsType() || conversionCopies(target.Type) {
-				return "", false
-			}
-			expression = value.Args[0]
 		default:
 			return "", false
 		}
-	}
-}
-
-// conversionCopies reports whether converting a slice to a type copies its elements, as a
-// string or array conversion does, rather than sharing the backing.
-//
-// Takes target (types.Type) which is the conversion's target type.
-//
-// Returns bool which is true when the result holds its own copy.
-func conversionCopies(target types.Type) bool {
-	switch target.Underlying().(type) {
-	case *types.Basic, *types.Array:
-		return true
-	default:
-		return false
 	}
 }
 

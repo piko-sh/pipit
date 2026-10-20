@@ -51,25 +51,25 @@ func fusionWindowsThatDropWrites() []fusionWindow {
 			name:    "concat rune",
 			fuser:   FuseConcatRune,
 			window:  []isa.Instruction{isa.NewTier1Instruction(isa.SubOpRuneToString, 4, 5), mk(isa.OpConcatString, 1, 2, 4)},
-			dropped: []droppedWrite{{isa.RegisterString, 4}},
+			dropped: []droppedWrite{{kind: isa.RegisterString, reg: 4}},
 		},
 		{
 			name:    "string index to int",
 			fuser:   FuseStringIndexToInt,
 			window:  []isa.Instruction{mk(isa.OpStringIndex, 4, 2, 3), isa.NewTier1Instruction(isa.SubOpUintToInt, 7, 4)},
-			dropped: []droppedWrite{{isa.RegisterUint, 4}},
+			dropped: []droppedWrite{{kind: isa.RegisterUint, reg: 4}},
 		},
 		{
 			name:    "boxed append and move",
 			fuser:   FuseAppendMove,
 			window:  []isa.Instruction{mk(isa.OpAppend, 6, 2, 3), mk(isa.OpMoveGeneral, 2, 6, 0)},
-			dropped: []droppedWrite{{isa.RegisterGeneral, 6}},
+			dropped: []droppedWrite{{kind: isa.RegisterGeneral, reg: 6}},
 		},
 		{
 			name:    "typed append and move",
 			fuser:   FuseAppendMove,
 			window:  []isa.Instruction{isa.NewTier1Instruction(isa.SubOpAppendInt, 6, 2), mk(isa.OpExt, 3, 0, 0), mk(isa.OpMoveGeneral, 2, 6, 0)},
-			dropped: []droppedWrite{{isa.RegisterGeneral, 6}},
+			dropped: []droppedWrite{{kind: isa.RegisterGeneral, reg: 6}},
 		},
 		{
 			name:   "string constant compare and branch",
@@ -80,7 +80,7 @@ func fusionWindowsThatDropWrites() []fusionWindow {
 				mk(isa.OpEqString, 3, 1, 4),
 				mk(isa.OpJumpIfFalse, 3, 0, 0),
 			},
-			dropped: []droppedWrite{{isa.RegisterString, 4}, {isa.RegisterInt, 3}},
+			dropped: []droppedWrite{{kind: isa.RegisterString, reg: 4}, {kind: isa.RegisterInt, reg: 3}},
 		},
 		{
 			name:   "nil test and branch",
@@ -91,7 +91,7 @@ func fusionWindowsThatDropWrites() []fusionWindow {
 				mk(isa.OpEqGeneral, 3, 1, 4),
 				mk(isa.OpJumpIfTrue, 3, 0, 0),
 			},
-			dropped: []droppedWrite{{isa.RegisterGeneral, 4}, {isa.RegisterInt, 3}},
+			dropped: []droppedWrite{{kind: isa.RegisterGeneral, reg: 4}, {kind: isa.RegisterInt, reg: 3}},
 		},
 		{
 			name:   "increment and loop-back compare",
@@ -102,7 +102,7 @@ func fusionWindowsThatDropWrites() []fusionWindow {
 				mk(isa.OpLtInt, 3, 1, 2),
 				mk(isa.OpJumpIfTrue, 3, 0, 0),
 			},
-			dropped: []droppedWrite{{isa.RegisterInt, 3}},
+			dropped: []droppedWrite{{kind: isa.RegisterInt, reg: 3}},
 		},
 		{
 			name:   "string length compare and branch",
@@ -113,7 +113,7 @@ func fusionWindowsThatDropWrites() []fusionWindow {
 				mk(isa.OpLtInt, 3, 2, 4),
 				mk(isa.OpJumpIfFalse, 3, 0, 0),
 			},
-			dropped: []droppedWrite{{isa.RegisterInt, 4}, {isa.RegisterInt, 3}},
+			dropped: []droppedWrite{{kind: isa.RegisterInt, reg: 4}, {kind: isa.RegisterInt, reg: 3}},
 		},
 		{
 			name:   "uint constant compare and branch",
@@ -124,7 +124,7 @@ func fusionWindowsThatDropWrites() []fusionWindow {
 				mk(isa.OpEqUint, 3, 1, 4),
 				mk(isa.OpJumpIfFalse, 3, 0, 0),
 			},
-			dropped: []droppedWrite{{isa.RegisterUint, 4}, {isa.RegisterInt, 3}},
+			dropped: []droppedWrite{{kind: isa.RegisterUint, reg: 4}, {kind: isa.RegisterInt, reg: 3}},
 		},
 		{
 			name:   "int constant compare and branch",
@@ -135,14 +135,14 @@ func fusionWindowsThatDropWrites() []fusionWindow {
 				mk(isa.OpLtInt, 3, 1, 4),
 				mk(isa.OpJumpIfFalse, 3, 0, 0),
 			},
-			dropped: []droppedWrite{{isa.RegisterInt, 4}, {isa.RegisterInt, 3}},
+			dropped: []droppedWrite{{kind: isa.RegisterInt, reg: 4}, {kind: isa.RegisterInt, reg: 3}},
 		},
 		{
 			name:    "uint range check",
 			fuser:   fuseLongPatterns,
 			branch:  true,
 			window:  rangeCheckWindow(1, 4, 6),
-			dropped: []droppedWrite{{isa.RegisterUint, 4}, {isa.RegisterUint, 6}, {isa.RegisterInt, 5}, {isa.RegisterInt, 7}, {isa.RegisterInt, 3}},
+			dropped: []droppedWrite{{kind: isa.RegisterUint, reg: 4}, {kind: isa.RegisterUint, reg: 6}, {kind: isa.RegisterInt, reg: 5}, {kind: isa.RegisterInt, reg: 7}, {kind: isa.RegisterInt, reg: 3}},
 		},
 	}
 }

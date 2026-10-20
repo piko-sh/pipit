@@ -347,22 +347,33 @@ func handleBindMethod(vm *VM, frame *CallFrame, registers *Registers, instructio
 		return opPanicError
 	}
 
-	bound := &boundMethodVM{vm: vm, callee: callee, limits: vm.Limits, rootFunctionOverride: nil}
+	bound := newBoundMethodVM(vm, callee, nil)
 
-	boundReceiver := receiver
-	switch {
-	case receiver.Kind() == reflect.Struct:
-		cp := reflect.New(receiver.Type()).Elem()
-		cp.Set(receiver)
-		boundReceiver = cp
-	case vm.Arena != nil && receiver.CanAddr() && vm.Arena.ownsBytePointer(ReflectValuePtr(receiver)):
-
-		boundReceiver = copyReflectValue(receiver)
-	}
+	boundReceiver := bindableReceiver(vm.Arena, receiver)
 	registers.General[instruction.A] = reflect.MakeFunc(signature, func(arguments []reflect.Value) []reflect.Value {
 		return conformReflectResults(bound.invoke(boundReceiver, arguments, identityArg), signature)
 	})
 	return opContinue
+}
+
+// bindableReceiver snapshots a method value's receiver so later writes cannot change
+// it. Slice backing remains shared.
+//
+// Takes arena (*RegisterArena) which owns the VM's register storage; may be nil.
+// Takes receiver (reflect.Value) which is the evaluated receiver.
+//
+// Returns the receiver to bind, copied when its storage could change.
+func bindableReceiver(arena *RegisterArena, receiver reflect.Value) reflect.Value {
+	switch {
+	case receiver.Kind() == reflect.Struct:
+		return copyReflectValue(receiver)
+	case receiver.Kind() == reflect.Slice && receiver.CanAddr():
+		return copyReflectValue(receiver)
+	case arena != nil && receiver.CanAddr() && arena.ownsBytePointer(ReflectValuePtr(receiver)):
+		return copyReflectValue(receiver)
+	default:
+		return receiver
+	}
 }
 
 // ensureAddressableStructReceiver returns an addressable copy of receiver so

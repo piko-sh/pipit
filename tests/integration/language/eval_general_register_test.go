@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalExplicitReturnVoid(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "explicit return in void function mutates slice",
@@ -42,7 +42,7 @@ func TestEvalExplicitReturnVoid(t *testing.T) {
 s := make([]int, 1)
 f(s)
 s[0]`,
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "early return in void function via conditional",
@@ -56,7 +56,7 @@ s[0]`,
 s := []int{0}
 f(s)
 s[0]`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "explicit return skips subsequent statements",
@@ -68,7 +68,7 @@ s[0]`,
 s := make([]int, 1)
 f(s)
 s[0]`,
-			expect: 10,
+			want: 10,
 		},
 	}
 
@@ -76,9 +76,9 @@ s[0]`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -89,7 +89,7 @@ func TestEvalNilLoad(t *testing.T) {
 	t.Run("nil passed to function returns sentinel", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), "func f(s []int) int { if s == nil { return -1 }; return len(s) }\nf(nil)")
+		result, err := service.Eval(t.Context(), "func f(s []int) int { if s == nil { return -1 }; return len(s) }\nf(nil)")
 		require.NoError(t, err)
 		require.Equal(t, -1, result)
 	})
@@ -97,7 +97,7 @@ func TestEvalNilLoad(t *testing.T) {
 	t.Run("nil slice append creates new slice", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), "s := append([]int(nil), 1, 2, 3)\nlen(s)")
+		result, err := service.Eval(t.Context(), "s := append([]int(nil), 1, 2, 3)\nlen(s)")
 		require.NoError(t, err)
 		require.Equal(t, 3, result)
 	})
@@ -105,7 +105,7 @@ func TestEvalNilLoad(t *testing.T) {
 	t.Run("var slice append without initialiser", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), "var s []int\ns = append(s, 10)\ns = append(s, 20)\ns = append(s, 30)\ns[0] + s[1] + s[2]")
+		result, err := service.Eval(t.Context(), "var s []int\ns = append(s, 10)\ns = append(s, 20)\ns = append(s, 30)\ns[0] + s[1] + s[2]")
 		require.NoError(t, err)
 		require.Equal(t, 60, result)
 	})
@@ -113,7 +113,7 @@ func TestEvalNilLoad(t *testing.T) {
 	t.Run("nil map passed to function", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), "func f(m map[string]int) int { if m == nil { return -1 }; return len(m) }\nf(nil)")
+		result, err := service.Eval(t.Context(), "func f(m map[string]int) int { if m == nil { return -1 }; return len(m) }\nf(nil)")
 		require.NoError(t, err)
 		require.Equal(t, -1, result)
 	})
@@ -121,7 +121,7 @@ func TestEvalNilLoad(t *testing.T) {
 	t.Run("make empty slice then var nil check", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), "s := make([]int, 0)\nlen(s)")
+		result, err := service.Eval(t.Context(), "s := make([]int, 0)\nlen(s)")
 		require.NoError(t, err)
 		require.Equal(t, 0, result)
 	})
@@ -131,9 +131,9 @@ func TestEvalGeneralComparisonsAcrossKinds(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "struct equality same values",
@@ -141,7 +141,7 @@ func TestEvalGeneralComparisonsAcrossKinds(t *testing.T) {
 a := Point{X: 1, Y: 2}
 b := Point{X: 1, Y: 2}
 a == b`,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "struct inequality different values",
@@ -149,7 +149,7 @@ a == b`,
 a := Point{X: 1, Y: 2}
 b := Point{X: 3, Y: 4}
 a == b`,
-			expect: false,
+			want: false,
 		},
 		{
 			name: "struct not-equal operator",
@@ -157,19 +157,19 @@ a == b`,
 a := Point{X: 1, Y: 2}
 b := Point{X: 3, Y: 4}
 a != b`,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "interface nil equality via function",
 			code: `func isNil(v any) bool { return v == nil }
 isNil(nil)`,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "interface non-nil equality via function",
 			code: `func isNil(v any) bool { return v == nil }
 isNil(42)`,
-			expect: false,
+			want: false,
 		},
 	}
 
@@ -177,9 +177,9 @@ isNil(42)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -188,9 +188,9 @@ func TestEvalDeferExplicit(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "defer runs after early return",
@@ -202,7 +202,7 @@ func TestEvalDeferExplicit(t *testing.T) {
 s := make([]int, 1)
 run(s)
 s[0]`,
-			expect: 105,
+			want: 105,
 		},
 		{
 			name: "multiple defers LIFO order with early return",
@@ -215,7 +215,7 @@ s[0]`,
 s := make([]int, 1)
 run(s)
 s[0]`,
-			expect: 60,
+			want: 60,
 		},
 	}
 
@@ -223,9 +223,9 @@ s[0]`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -236,7 +236,7 @@ func TestEvalDeferExplicitConditional(t *testing.T) {
 	t.Run("defer in conditional branch fires when taken", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `func run(s []int, flag bool) {
+		result, err := service.Eval(t.Context(), `func run(s []int, flag bool) {
 	if flag {
 		defer func() { s[0] = s[0] + 50 }()
 	}
@@ -252,7 +252,7 @@ s[0]`)
 	t.Run("defer does not fire when branch not taken", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		result, err := service.Eval(context.Background(), `func run(s []int, flag bool) {
+		result, err := service.Eval(t.Context(), `func run(s []int, flag bool) {
 	if flag {
 		defer func() { s[0] = s[0] + 50 }()
 	}

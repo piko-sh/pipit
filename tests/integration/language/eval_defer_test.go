@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalDefer(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "defer modifies slice",
@@ -47,7 +47,7 @@ func TestEvalDefer(t *testing.T) {
 s := make([]int, 1)
 run(s)
 s[0]`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "multiple defers LIFO",
@@ -63,7 +63,7 @@ s[0]`,
 s := make([]int, 1)
 run(s)
 s[0]`,
-			expect: 60,
+			want: 60,
 		},
 		{
 			name: "defer named function",
@@ -78,7 +78,7 @@ func run(s []int) {
 s := make([]int, 1)
 run(s)
 s[0]`,
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "defer with arguments evaluated eagerly",
@@ -93,7 +93,7 @@ s[0]`,
 	return s[0]
 }
 run()`,
-			expect: 0,
+			want: 0,
 		},
 	}
 
@@ -101,9 +101,9 @@ run()`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -114,7 +114,7 @@ func TestEvalPanic(t *testing.T) {
 	t.Run("unrecovered panic returns error", func(t *testing.T) {
 		t.Parallel()
 		service := app.NewService()
-		_, err := service.Eval(context.Background(), `panic("boom")`)
+		_, err := service.Eval(t.Context(), `panic("boom")`)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "boom")
 	})

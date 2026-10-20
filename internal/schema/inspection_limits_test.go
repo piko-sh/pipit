@@ -19,11 +19,11 @@
 package schema
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
 	flatbuffers "github.com/google/flatbuffers/go"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/schema/schemagen"
 )
@@ -54,37 +54,41 @@ func inspectionGraph(depth int, bothRoots bool) []byte {
 func TestInspectionRejectsExponentialGraph(t *testing.T) {
 	t.Parallel()
 	payload := inspectionGraph(24, false)
-	if len(payload) > 2048 {
-		t.Fatal("fixture is no longer compact")
-	}
+	require.LessOrEqual(t, len(payload), 2048, "the fixture stays compact")
 	inspection, err := ConvertBytecode(payload)
-	if inspection != nil || !errors.Is(err, errInspectionLimit) {
-		t.Fatal("expansion reached summary construction:", err)
-	}
+	require.Nil(t, inspection)
+	require.ErrorIs(t, err, errInspectionLimit, "alias expansion stops before summary construction")
 }
 
 func TestInspectionSharesRootBudget(t *testing.T) {
 	t.Parallel()
-	for _, bothRoots := range []bool{false, true} {
-		payload := inspectionGraph(15, bothRoots)
-		err := validateInspectionExpansion(schemagen.GetRootAsCompiledFileSet(payload, 0), len(payload))
-		if bothRoots {
-			if !errors.Is(err, errInspectionLimit) {
-				t.Fatal("root budget reset:", err)
-			}
-		} else if err != nil {
-			t.Fatal("bounded alias expansion rejected:", err)
-		}
+	tests := []struct {
+		name      string
+		bothRoots bool
+		wantErr   error
+	}{
+		{name: "one root stays within the budget", bothRoots: false, wantErr: nil},
+		{name: "both roots share one budget", bothRoots: true, wantErr: errInspectionLimit},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			payload := inspectionGraph(15, tt.bothRoots)
+			err := validateInspectionExpansion(schemagen.GetRootAsCompiledFileSet(payload, 0), len(payload))
+			require.ErrorIs(t, err, tt.wantErr)
+		})
 	}
 }
 
 func TestInspectionBoundedAliasesStillConvert(t *testing.T) {
 	t.Parallel()
 	inspection, err := ConvertBytecode(inspectionGraph(3, true))
-	if err != nil || inspection == nil || inspection.Root == nil || inspection.VarInit == nil ||
-		len(inspection.Root.Functions) != 2 || len(inspection.VarInit.Functions) != 2 {
-		t.Fatal("bounded graph inspection changed:", err)
-	}
+	require.NoError(t, err, "a bounded graph is inspected")
+	require.NotNil(t, inspection)
+	require.NotNil(t, inspection.Root)
+	require.NotNil(t, inspection.VarInit)
+	require.Len(t, inspection.Root.Functions, 2)
+	require.Len(t, inspection.VarInit.Functions, 2)
 }
 
 func inspectionAmplification(source string) []byte {
@@ -125,45 +129,53 @@ func TestInspectionRejectsAliasAmplification(t *testing.T) {
 	t.Parallel()
 	for _, source := range []string{"strings", "vectors"} {
 		t.Run(source, func(t *testing.T) {
+			t.Parallel()
 			payload := inspectionAmplification(source)
-			if len(payload) > 40000 {
-				t.Fatal("fixture is no longer compact")
-			}
+			require.LessOrEqual(t, len(payload), 40000, "the fixture stays compact")
 			inspection, err := ConvertBytecode(payload)
-			if inspection != nil || !errors.Is(err, errInspectionLimit) {
-				t.Fatal("alias amplification reached summary allocation:", err)
-			}
+			require.Nil(t, inspection)
+			require.ErrorIs(t, err, errInspectionLimit, "alias amplification stops before summary allocation")
 		})
 	}
 }
 
 func TestInspectionVectorBounds(t *testing.T) {
 	t.Parallel()
-	for _, count := range []int{-1, 11, int(^uint(0) >> 1)} {
-		budget := inspectionBudget{payloadLen: 10, elements: 100}
-		if err := budget.chargeVectors(count); !errors.Is(err, errInspectionLimit) || budget.elements != 100 {
-			t.Fatal("impossible count admitted:", err)
-		}
+	tests := []struct {
+		name  string
+		count int
+	}{
+		{name: "negative count", count: -1},
+		{name: "count above the payload length", count: 11},
+		{name: "largest count", count: int(^uint(0) >> 1)},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			budget := inspectionBudget{payloadLen: 10, elements: 100}
+			err := budget.chargeVectors(tt.count)
+			require.ErrorIs(t, err, errInspectionLimit, "an impossible count is rejected")
+			require.Equal(t, 100, budget.elements, "a rejected charge leaves the budget unchanged")
+		})
+	}
+}
+
+func TestInspectionBudgetIsSpentExactly(t *testing.T) {
+	t.Parallel()
 	budget := inspectionBudget{payloadLen: 100, elements: 10, strings: 4}
-	if err := budget.chargeVectors(4, 6); err != nil || budget.elements != 0 {
-		t.Fatal(err)
-	}
-	if err := budget.chargeVectors(1); !errors.Is(err, errInspectionLimit) {
-		t.Fatal(err)
-	}
-	if err := budget.chargeStrings([]byte("é"), []byte("é")); err != nil || budget.strings != 0 {
-		t.Fatal(err)
-	}
-	if err := budget.chargeStrings([]byte("x")); !errors.Is(err, errInspectionLimit) {
-		t.Fatal(err)
-	}
+	require.NoError(t, budget.chargeVectors(4, 6))
+	require.Equal(t, 0, budget.elements)
+	err := budget.chargeVectors(1)
+	require.ErrorIs(t, err, errInspectionLimit)
+	require.NoError(t, budget.chargeStrings([]byte("é"), []byte("é")))
+	require.Equal(t, 0, budget.strings)
+	err = budget.chargeStrings([]byte("x"))
+	require.ErrorIs(t, err, errInspectionLimit)
 }
 
 func TestInspectionRetainsDepthLimit(t *testing.T) {
 	t.Parallel()
 	inspection, err := ConvertBytecode(inspectionGraph(maxInspectedFunctionNestingDepth+1, false))
-	if inspection != nil || !errors.Is(err, errFunctionNestingTooDeep) {
-		t.Fatal("depth limit bypassed:", err)
-	}
+	require.Nil(t, inspection)
+	require.ErrorIs(t, err, errFunctionNestingTooDeep, "the nesting depth limit still applies")
 }

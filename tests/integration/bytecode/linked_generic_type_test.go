@@ -21,16 +21,14 @@
 package bytecode_test
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
-	"pipit.sh/pipit/internal/app"
-	"pipit.sh/pipit/internal/symtab"
-
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/link"
+	"pipit.sh/pipit/internal/symtab"
 )
 
 func TestLinkedGenericTypeInstantiatesAgainstUserDefinedType(t *testing.T) {
@@ -84,7 +82,7 @@ func run() string {
 func main() {}
 `
 
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "hello", result)
 }
@@ -146,7 +144,7 @@ func run() string {
 func main() {}
 `
 
-	result, err := service.EvalFile(context.Background(), source, "run")
+	result, err := service.EvalFile(t.Context(), source, "run")
 	require.NoError(t, err)
 	require.Equal(t, "first/second", result)
 }

@@ -21,7 +21,6 @@
 package app
 
 import (
-	"context"
 	"runtime"
 	"testing"
 
@@ -84,7 +83,7 @@ func TestStructLiteralStoredInGlobalSurvivesArenaReset(t *testing.T) {
 	session := NewService().NewSession()
 	submit := func(code string) any {
 		t.Helper()
-		result, err := session.Submit(context.Background(), code)
+		result, err := session.Submit(t.Context(), code)
 		require.NoError(t, err, code)
 		return result
 	}

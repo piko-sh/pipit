@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -57,7 +57,7 @@ func TestEvalNilFusedIncDecRaisesNilDereference(t *testing.T) {
 	t.Parallel()
 
 	const wantMessage = "runtime error: invalid memory address or nil pointer dereference"
-	ctx := context.Background()
+	ctx := t.Context()
 
 	tests := []struct {
 		name      string
@@ -69,13 +69,13 @@ func TestEvalNilFusedIncDecRaisesNilDereference(t *testing.T) {
 		{name: "uint decrement", statement: "p.unsigned--"},
 	}
 
-	for _, testCase := range tests {
-		t.Run(testCase.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			service := app.NewService()
 			compiled, err := service.CompileFileSet(ctx, map[string]string{
-				"main.go": nilFusedIncDecProgram(testCase.statement),
+				"main.go": nilFusedIncDecProgram(tt.statement),
 			})
 			require.NoError(t, err)
 
@@ -85,7 +85,7 @@ func TestEvalNilFusedIncDecRaisesNilDereference(t *testing.T) {
 			message, ok := result.(string)
 			require.Truef(t, ok, "entrypoint result was %T, want string", result)
 			require.Containsf(t, message, wantMessage,
-				"fused nil %s did not raise the nil-dereference panic", testCase.statement)
+				"fused nil %s did not raise the nil-dereference panic", tt.statement)
 		})
 	}
 }
@@ -109,7 +109,7 @@ func run() int {
 	return c.signed*100 + int(c.unsigned)
 }
 `
-	ctx := context.Background()
+	ctx := t.Context()
 	service := app.NewService()
 	compiled, err := service.CompileFileSet(ctx, map[string]string{"main.go": program})
 	require.NoError(t, err)

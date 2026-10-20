@@ -25,7 +25,6 @@ import (
 	"go/printer"
 	gotoken "go/token"
 	"go/types"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -260,18 +259,18 @@ func TestExtractKeyValTypes(t *testing.T) {
 		expectKey string
 		expectVal string
 	}{
-		{"map[string]int", "string", "int"},
-		{"map[int]bool", "int", "bool"},
-		{"map[string]float64", "string", "float64"},
+		{input: "map[string]int", expectKey: "string", expectVal: "int"},
+		{input: "map[int]bool", expectKey: "int", expectVal: "bool"},
+		{input: "map[string]float64", expectKey: "string", expectVal: "float64"},
 
-		{"map[[4]byte]string", "[4]byte", "string"},
-		{"map[[16]byte]int", "[16]byte", "int"},
+		{input: "map[[4]byte]string", expectKey: "[4]byte", expectVal: "string"},
+		{input: "map[[16]byte]int", expectKey: "[16]byte", expectVal: "int"},
 
-		{"map[string]map[int]bool", "string", "map[int]bool"},
-		{"map[[4]byte]map[int]string", "[4]byte", "map[int]string"},
+		{input: "map[string]map[int]bool", expectKey: "string", expectVal: "map[int]bool"},
+		{input: "map[[4]byte]map[int]string", expectKey: "[4]byte", expectVal: "map[int]string"},
 
-		{"int", "", "int"},
-		{"[]string", "", "[]string"},
+		{input: "int", expectKey: "", expectVal: "int"},
+		{input: "[]string", expectKey: "", expectVal: "[]string"},
 	}
 
 	for _, tt := range tests {
@@ -291,11 +290,11 @@ func TestParseTypeExpr(t *testing.T) {
 		input  string
 		expect string
 	}{
-		{"int", "int"},
-		{"string", "string"},
-		{"bool", "bool"},
-		{"float64", "float64"},
-		{"any", "any"},
+		{input: "int", expect: "int"},
+		{input: "string", expect: "string"},
+		{input: "bool", expect: "bool"},
+		{input: "float64", expect: "float64"},
+		{input: "any", expect: "any"},
 	}
 
 	for _, tt := range tests {
@@ -336,11 +335,11 @@ func TestParseTypeExprArrayKeyedMap(t *testing.T) {
 		input  string
 		expect string
 	}{
-		{"map[string]int", "map[string]int"},
-		{"map[[4]byte]string", "map[[4]byte]string"},
-		{"map[[16]byte]int", "map[[16]byte]int"},
-		{"map[string]map[int]bool", "map[string]map[int]bool"},
-		{"map[[4]byte]map[int]string", "map[[4]byte]map[int]string"},
+		{input: "map[string]int", expect: "map[string]int"},
+		{input: "map[[4]byte]string", expect: "map[[4]byte]string"},
+		{input: "map[[16]byte]int", expect: "map[[16]byte]int"},
+		{input: "map[string]map[int]bool", expect: "map[string]map[int]bool"},
+		{input: "map[[4]byte]map[int]string", expect: "map[[4]byte]map[int]string"},
 	}
 
 	for _, tt := range tests {
@@ -374,12 +373,12 @@ func TestTitleCase(t *testing.T) {
 		input  string
 		expect string
 	}{
-		{"", ""},
-		{"a", "A"},
-		{"slices", "Slices"},
-		{"hello", "Hello"},
-		{"ABC", "ABC"},
-		{"cmp", "Cmp"},
+		{input: "", expect: ""},
+		{input: "a", expect: "A"},
+		{input: "slices", expect: "Slices"},
+		{input: "hello", expect: "Hello"},
+		{input: "ABC", expect: "ABC"},
+		{input: "cmp", expect: "Cmp"},
 	}
 
 	for _, tt := range tests {
@@ -398,16 +397,16 @@ func TestSanitiseParamName(t *testing.T) {
 		index  int
 		expect string
 	}{
-		{"x", 0, "x"},
-		{"", 0, "p0"},
-		{"_", 3, "p3"},
-		{"slices", 0, "slicesArg"},
-		{"maps", 1, "mapsArg"},
-		{"cmp", 2, "cmpArg"},
-		{"fmt", 0, "fmtArg"},
-		{"reflect", 0, "reflectArg"},
-		{"strings", 0, "stringsArg"},
-		{"myParam", 5, "myParam"},
+		{name: "x", index: 0, expect: "x"},
+		{name: "", index: 0, expect: "p0"},
+		{name: "_", index: 3, expect: "p3"},
+		{name: "slices", index: 0, expect: "slicesArg"},
+		{name: "maps", index: 1, expect: "mapsArg"},
+		{name: "cmp", index: 2, expect: "cmpArg"},
+		{name: "fmt", index: 0, expect: "fmtArg"},
+		{name: "reflect", index: 0, expect: "reflectArg"},
+		{name: "strings", index: 0, expect: "stringsArg"},
+		{name: "myParam", index: 5, expect: "myParam"},
 	}
 
 	for _, tt := range tests {
@@ -426,15 +425,15 @@ func TestConcreteTypeName(t *testing.T) {
 		typ    types.Type
 		expect string
 	}{
-		{"Int", types.Typ[types.Int], "int"},
-		{"String", types.Typ[types.String], "string"},
-		{"Bool", types.Typ[types.Bool], "bool"},
-		{"Float64", types.Typ[types.Float64], "float64"},
-		{"Byte", types.Typ[types.Byte], "uint8"},
-		{"SliceOfInt", types.NewSlice(types.Typ[types.Int]), "[]int"},
-		{"SliceOfString", types.NewSlice(types.Typ[types.String]), "[]string"},
-		{"MapStringInt", types.NewMap(types.Typ[types.String], types.Typ[types.Int]), "map[string]int"},
-		{"PointerToInt", types.NewPointer(types.Typ[types.Int]), "*int"},
+		{name: "Int", typ: types.Typ[types.Int], expect: "int"},
+		{name: "String", typ: types.Typ[types.String], expect: "string"},
+		{name: "Bool", typ: types.Typ[types.Bool], expect: "bool"},
+		{name: "Float64", typ: types.Typ[types.Float64], expect: "float64"},
+		{name: "Byte", typ: types.Typ[types.Byte], expect: "uint8"},
+		{name: "SliceOfInt", typ: types.NewSlice(types.Typ[types.Int]), expect: "[]int"},
+		{name: "SliceOfString", typ: types.NewSlice(types.Typ[types.String]), expect: "[]string"},
+		{name: "MapStringInt", typ: types.NewMap(types.Typ[types.String], types.Typ[types.Int]), expect: "map[string]int"},
+		{name: "PointerToInt", typ: types.NewPointer(types.Typ[types.Int]), expect: "*int"},
 	}
 
 	for _, tt := range tests {
@@ -580,7 +579,6 @@ func TestGenerateFileSlicesMultipleTypes(t *testing.T) {
 	require.NoError(t, parseErr, "generated code should be valid Go:\n%s", src)
 
 	for _, et := range config.ElementTypes {
-		require.True(t, strings.Contains(src, et),
-			"expected type %s to appear in generated code", et)
+		require.Contains(t, src, et, "the generated code names every element type")
 	}
 }

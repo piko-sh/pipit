@@ -527,7 +527,7 @@ func invokeBoolMethodOnConcrete(vm *VM, concrete, target reflect.Value, methodSu
 		return false
 	}
 	callee := vm.rootFunction.Functions[methodIndex]
-	bound := &boundMethodVM{vm: vm, callee: callee, limits: vm.Limits, rootFunctionOverride: nil}
+	bound := newBoundMethodVM(vm, callee, nil)
 	receiver := pointerReceiverFor(concrete)
 	results := bound.invoke(receiver, []reflect.Value{target}, identityArg)
 	return len(results) > 0 && results[0].IsValid() && results[0].Bool()
@@ -630,7 +630,7 @@ func invokeUnwrapMethodIfPresent(vm *VM, concrete reflect.Value) (reflect.Value,
 		return reflect.Value{}, false
 	}
 	callee := vm.rootFunction.Functions[methodIndex]
-	bound := &boundMethodVM{vm: vm, callee: callee, limits: vm.Limits, rootFunctionOverride: nil}
+	bound := newBoundMethodVM(vm, callee, nil)
 	receiver := pointerReceiverFor(concrete)
 	results := bound.invoke(receiver, nil, identityArg)
 	if len(results) == 0 {

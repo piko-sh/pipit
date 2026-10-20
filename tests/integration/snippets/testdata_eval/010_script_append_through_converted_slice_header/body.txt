@@ -1,0 +1,11 @@
+type point struct{ x int }
+type points []point
+var b []point
+b = append(b, point{x: 1})
+a := points(b)
+a = append(a, point{x: 2})
+var d []point
+d = append(d, point{x: 1})
+c := points(d)
+d = append(d, point{x: 2})
+[]int{len(a), len(b), len(c), len(d)}

@@ -382,26 +382,19 @@ func handleSetStructFieldUnsafeUint(vm *VM, frame *CallFrame, registers *Registe
 	return opContinue
 }
 
-// setStructFieldUnsafeSliceImpl is the shared body for typed-slice struct-field SET
-// handlers.
-//
-// The hot path writes the slice header directly into the receiver via
-// runtime.typedmemmove (GC write barrier preserved). The cold fallback walks the field
-// via reflect.Value.Set when structFieldUnsafeBase declines (non-addressable receiver,
-// dereferenced interface, etc.). Encoding (handlers): B=receiver general register,
-// C=source typed-slice register, EXT word=uint16 layout index. The compile-side picker
-// pickSetStructFieldSliceSubOp gates emission on canonical 64-bit element widths plus
-// string/bool/byte.
+// setStructFieldUnsafeSliceImpl writes a typed-slice struct field, copying arena
+// backing when needed. It uses runtime.typedmemmove for direct stores and reflection
+// otherwise.
 //
 // Takes vm (*VM) which carries the panic machinery for nil-pointer receivers.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
 // Takes registers (*Registers) which provides the receiver bank.
 // Takes instruction (instruction) which encodes the operand indices.
-// Takes source (T) which is the typed-slice header to write - passed by value so the
-// helper can take its address for typedmemmove.
+// Takes source (S) which is the typed-slice header to write.
 //
-// Returns opContinue, or the raised interpreted panic when the receiver is a nil pointer.
-func setStructFieldUnsafeSliceImpl[T any](vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction, source T) OpResult {
+// Returns opContinue, or the raised interpreted panic when the receiver is a nil
+// pointer.
+func setStructFieldUnsafeSliceImpl[S ~[]E, E any](vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction, source S) OpResult {
 	layoutIndex := readExtensionWideIndex(frame)
 	layout := structLayoutAtWide(frame, layoutIndex)
 	base, ok := structFieldUnsafeBase(registers, instruction.B)
@@ -410,7 +403,7 @@ func setStructFieldUnsafeSliceImpl[T any](vm *VM, frame *CallFrame, registers *R
 		if !walkOK {
 			return structFieldFallbackMiss(vm, frame, registers, instruction.B)
 		}
-		field.Set(reflect.ValueOf(source))
+		field.Set(reflect.ValueOf(materialiseSliceForFieldStore(vm.Arena, nil, source)))
 		return opContinue
 	}
 	if int(layout.FieldTypeIndex) >= len(frame.Function.TypeTable) {
@@ -420,9 +413,31 @@ func setStructFieldUnsafeSliceImpl[T any](vm *VM, frame *CallFrame, registers *R
 	if fieldType == nil {
 		return opContinue
 	}
+	source = materialiseSliceForFieldStore(vm.Arena, base, source)
 	fieldPointer := unsafe.Add(base, uintptr(layout.Offset))
 	runtimeTypedmemmove(reflectValueABIType(fieldType), fieldPointer, unsafe.Pointer(&source))
 	return opContinue
+}
+
+// materialiseSliceForFieldStore is the store barrier for a typed slice written into a
+// struct field. A backing this arena owns is copied to the heap, as MaterialiseArenaValue
+// does for a general field, unless the receiving struct itself lives in the arena, which
+// copies its fields when it escapes.
+//
+// Takes arena (*RegisterArena) which owns the candidate slabs; nil stores s as it is.
+// Takes base (unsafe.Pointer) which is the receiving struct, or nil when unknown.
+// Takes s (S) which is the slice about to be stored.
+//
+// Returns s, or a heap copy of it when its backing is in the arena.
+func materialiseSliceForFieldStore[S ~[]E, E any](arena *RegisterArena, base unsafe.Pointer, s S) S {
+	if arena == nil || cap(s) == 0 || arena.ownsBytePointer(base) || !arena.OwnsSliceBacking(unsafe.Pointer(unsafe.SliceData(s))) {
+		return s
+	}
+	detached, ok := reflect.TypeAssert[S](MaterialiseArenaSliceUnconditional(arena, reflect.ValueOf(s)))
+	if !ok {
+		return s
+	}
+	return detached
 }
 
 // handleSetStructFieldUnsafeSliceInt writes a []int64 struct field.

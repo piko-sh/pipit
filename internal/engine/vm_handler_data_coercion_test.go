@@ -343,32 +343,50 @@ func TestConvertOrCoerceContainerPrefersADirectConversion(t *testing.T) {
 		{
 			name:  "a non-zero integer converts to true",
 			value: reflect.ValueOf(1), targetType: reflect.TypeFor[bool](),
-			check: func(t *testing.T, got reflect.Value) { require.True(t, got.Bool()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.True(t, got.Bool())
+			},
 		},
 		{
 			name:  "a zero integer converts to false",
 			value: reflect.ValueOf(0), targetType: reflect.TypeFor[bool](),
-			check: func(t *testing.T, got reflect.Value) { require.False(t, got.Bool()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.False(t, got.Bool())
+			},
 		},
 		{
 			name:  "a directly convertible scalar takes the conversion",
 			value: reflect.ValueOf(65), targetType: reflect.TypeFor[coercionNamedInt](),
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, int64(65), got.Int()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, int64(65), got.Int())
+			},
 		},
 		{
 			name:  "an assignable slice element takes the element copy",
 			value: reflect.ValueOf([]int{1}), targetType: reflect.TypeFor[[]any](),
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, reflect.TypeFor[[]any](), got.Type()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, reflect.TypeFor[[]any](), got.Type())
+			},
 		},
 		{
 			name:  "an assignable map element takes the element copy",
 			value: reflect.ValueOf(map[string]int{"a": 1}), targetType: reflect.TypeFor[map[string]any](),
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, reflect.TypeFor[map[string]any](), got.Type()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, reflect.TypeFor[map[string]any](), got.Type())
+			},
 		},
 		{
 			name:  "a value with no route back is returned unchanged",
 			value: reflect.ValueOf([]int{1}), targetType: reflect.TypeFor[map[string]int](),
-			check: func(t *testing.T, got reflect.Value) { require.Equal(t, reflect.TypeFor[[]int](), got.Type()) },
+			check: func(t *testing.T, got reflect.Value) {
+				t.Helper()
+				require.Equal(t, reflect.TypeFor[[]int](), got.Type())
+			},
 		},
 	}
 

@@ -21,11 +21,13 @@
 package bytecode_test
 
 import (
-	"context"
 	"maps"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/engine/program"
@@ -146,14 +148,10 @@ func EntrypointRun() uint32 {
 func TestFusedEvalShapeClassification(t *testing.T) {
 	t.Parallel()
 	service := app.NewService()
-	compiled, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": fusedEvalTestSource})
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
-	result, err := service.ExecuteEntrypoint(context.Background(), compiled, "EntrypointRun")
-	if err != nil {
-		t.Fatalf("execute: %v", err)
-	}
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": fusedEvalTestSource})
+	require.NoError(t, err)
+	result, err := service.ExecuteEntrypoint(t.Context(), compiled, "EntrypointRun")
+	require.NoError(t, err)
 	t.Logf("fused eval result: %v", result)
 	shapes := map[string]program.FusedEvalShape{}
 	for _, fn := range program.ExportFunctions(compiled.Root()) {
@@ -172,13 +170,10 @@ func TestFusedEvalShapeClassification(t *testing.T) {
 	}
 	for name, want := range expected {
 		got, found := findShapeByName(shapes, name)
-		if !found {
-			t.Errorf("function %q not found in compile output; names: %v", name, slices.Sorted(maps.Keys(shapes)))
+		if !assert.True(t, found, "function %q is in the compile output; names: %v", name, slices.Sorted(maps.Keys(shapes))) {
 			continue
 		}
-		if got != want {
-			t.Errorf("function %q evalShape = %d, want %d", name, got, want)
-		}
+		assert.Equal(t, want, got, "the eval shape of %q", name)
 	}
 }
 

@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalInit(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "init_calls_function",
@@ -43,7 +43,7 @@ func init() {
 	_ = add(20, 22)
 }
 add(1, 2)`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "init_executes_before_eval",
@@ -52,14 +52,14 @@ func init() {
 	_ = helper()
 }
 helper()`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "init_modifies_package_var",
 			code: `var count int
 func init() { count = 42 }
 count`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "init_multiple_ordered",
@@ -68,7 +68,7 @@ func init() { result = "a" }
 func init() { result += "b" }
 func init() { result += "c" }
 result`,
-			expect: "abc",
+			want: "abc",
 		},
 		{
 			name: "init_registers_to_map",
@@ -78,7 +78,7 @@ func init() {
 	registry["beta"] = 2
 }
 registry["alpha"] + registry["beta"]`,
-			expect: 3,
+			want: 3,
 		},
 		{
 			name: "init_calls_closure",
@@ -88,7 +88,7 @@ func init() {
 	value = f(7)
 }
 value`,
-			expect: 21,
+			want: 21,
 		},
 	}
 
@@ -96,9 +96,9 @@ value`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

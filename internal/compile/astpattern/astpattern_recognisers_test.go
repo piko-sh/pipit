@@ -64,7 +64,7 @@ func checkedLoop(t *testing.T, body string) (*ast.ForStmt, *types.Info) {
 			return loop, info
 		}
 	}
-	t.Fatal("the fixture must contain a for statement")
+	require.FailNow(t, "the fixture must contain a for statement")
 	return nil, nil
 }
 

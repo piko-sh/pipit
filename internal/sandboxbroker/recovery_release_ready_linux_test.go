@@ -22,100 +22,74 @@ package sandboxbroker
 
 import (
 	"bytes"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 )
 
 func TestServiceReleaseReadyPersistence(t *testing.T) {
+	t.Parallel()
 	directories, binding := recoveryClaimFixture(t)
 	claim, err := OpenLinuxRecoveryClaim(directories[0], directories[1], directories[2], binding)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer claim.Close()
-	if ready, err := claim.ServiceReleaseReady(); err != nil || ready {
-		t.Fatal("fresh claim already ready:", err)
-	}
-	if err := claim.RecordServiceReleaseReady(); err != nil {
-		t.Fatal(err)
-	}
+	ready, err := claim.ServiceReleaseReady()
+	require.NoError(t, err)
+	require.False(t, ready, "a fresh claim is not ready")
+	require.NoError(t, claim.RecordServiceReleaseReady())
 	path := filepath.Join(directories[2], serviceReleaseReadyName)
 	before, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for range 3 {
-		if err := claim.RecordServiceReleaseReady(); err != nil {
-			t.Fatal("idempotent publication failed:", err)
-		}
+		require.NoError(t, claim.RecordServiceReleaseReady(), "publication is idempotent")
 	}
 	after, err := os.Stat(path)
-	if err != nil || !os.SameFile(before, after) {
-		t.Fatal("receipt replaced on retry:", err)
-	}
-	if ready, err := claim.ServiceReleaseReady(); err != nil || !ready {
-		t.Fatal("published receipt missing:", err)
-	}
-	if bootstrap, err := claim.PrepareRecovery(nil); !errors.Is(err, ErrDenied) || bootstrap != nil {
-		t.Fatal("completed cleanup admitted another helper:", err)
-	}
+	require.NoError(t, err, "receipt replaced on retry")
+	require.True(t, os.SameFile(before, after))
+	ready, err = claim.ServiceReleaseReady()
+	require.NoError(t, err, "the published receipt is present")
+	require.True(t, ready)
+	bootstrap, err := claim.PrepareRecovery(nil)
+	require.ErrorIs(t, err, ErrDenied, "completed cleanup admitted another helper")
+	require.Nil(t, bootstrap)
 	claim.approval.storage.failed = true
-	if err := claim.RecordServiceReleaseReady(); err != nil {
-		t.Fatal("uncertain publication could not be synchronised:", err)
-	}
-	if err := claim.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := claim.ServiceReleaseReady(); !errors.Is(err, ErrClosed) {
-		t.Fatal("closed claim exposed readiness:", err)
-	}
-	if err := claim.RecordServiceReleaseReady(); !errors.Is(err, ErrClosed) {
-		t.Fatal("closed claim published readiness:", err)
-	}
+	require.NoError(t, claim.RecordServiceReleaseReady(), "uncertain publication could not be synchronised")
+	require.NoError(t, claim.Close())
+	_, err = claim.ServiceReleaseReady()
+	require.ErrorIs(t, err, ErrClosed, "closed claim exposed readiness")
+	require.ErrorIs(t, claim.RecordServiceReleaseReady(), ErrClosed, "closed claim published readiness")
 	reopened, err := OpenLinuxRecoveryClaim(directories[0], directories[1], directories[2], binding)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer reopened.Close()
-	if ready, err := reopened.ServiceReleaseReady(); err != nil || !ready {
-		t.Fatal("reopened claim lost readiness:", err)
-	}
+	ready, err = reopened.ServiceReleaseReady()
+	require.NoError(t, err, "reopened claim lost readiness")
+	require.True(t, ready)
 }
 
 func TestServiceReleaseReadyRejectsUnsafeRecords(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"truncated", "oversized", "magic", "digest", "binding", "mode", "symlink", "hardlink", "fifo", "directory", "unexpected", "missing-approval"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			directories, binding := recoveryClaimFixture(t)
 			claim, err := OpenLinuxRecoveryClaim(directories[0], directories[1], directories[2], binding)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := claim.RecordServiceReleaseReady(); err != nil {
-				t.Fatal(err)
-			}
-			if err := claim.Close(); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+			require.NoError(t, claim.RecordServiceReleaseReady())
+			require.NoError(t, claim.Close())
 			corruptReleaseReady(t, directories[2], mode)
 			reopened, err := OpenLinuxRecoveryClaim(directories[0], directories[1], directories[2], binding)
 			if reopened != nil {
 				_ = reopened.Close()
 			}
-			if err == nil || reopened != nil {
-				t.Fatal("unsafe readiness accepted:", err)
-			}
+			require.Error(t, err, "unsafe readiness accepted")
+			require.Nil(t, reopened)
 			for _, directory := range directories {
 				var storage LinuxRecoveryJournal
-				if err := storage.open(directory); err != nil {
-					t.Fatal("failed claim retained lease:", err)
-				}
-				if err := storage.Close(); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, storage.open(directory), "a failed claim keeps no lease")
+				require.NoError(t, storage.Close())
 			}
 		})
 	}
@@ -125,9 +99,7 @@ func corruptReleaseReady(t *testing.T, directory, mode string) {
 	t.Helper()
 	path := filepath.Join(directory, serviceReleaseReadyName)
 	encoded, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	switch mode {
 	case "truncated":
 		encoded = encoded[:len(encoded)-1]
@@ -142,9 +114,7 @@ func corruptReleaseReady(t *testing.T, directory, mode string) {
 	case "mode":
 		err = os.Chmod(path, 0644)
 	case "symlink", "fifo", "directory":
-		if err := os.Remove(path); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.Remove(path))
 		switch mode {
 		case "symlink":
 			err = os.Symlink(recoveryApprovalName, path)
@@ -160,60 +130,43 @@ func corruptReleaseReady(t *testing.T, directory, mode string) {
 	case "missing-approval":
 		err = os.Remove(filepath.Join(directory, recoveryApprovalName))
 	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if mode == "truncated" || mode == "oversized" || mode == "magic" || mode == "digest" || mode == "binding" {
-		if err := os.WriteFile(path, encoded, 0600); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.WriteFile(path, encoded, 0600))
 	}
 }
 
 func TestServiceReleaseReadyRejectsChangedApproval(t *testing.T) {
+	t.Parallel()
 	directories, binding := recoveryClaimFixture(t)
 	claim, err := OpenLinuxRecoveryClaim(directories[0], directories[1], directories[2], binding)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer claim.Close()
 	changed := claim.digest
 	changed[0] ^= 1
 	encoded, err := encodeRecoveryApproval(changed, binding)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(directories[2], recoveryApprovalName), encoded, 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := claim.RecordServiceReleaseReady(); err == nil {
-		t.Fatal("changed independent approval accepted")
-	}
-	if _, err := os.Stat(filepath.Join(directories[2], serviceReleaseReadyName)); !os.IsNotExist(err) {
-		t.Fatal("changed approval published a receipt:", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(directories[2], recoveryApprovalName), encoded, 0600))
+	require.Error(t, claim.RecordServiceReleaseReady(), "changed independent approval accepted")
+	_, err = os.Stat(filepath.Join(directories[2], serviceReleaseReadyName))
+	require.True(t, os.IsNotExist(err), "changed approval published a receipt: %v", err)
 }
 
 func TestServiceReleaseReadyRecordFraming(t *testing.T) {
+	t.Parallel()
 	directories, binding := recoveryClaimFixture(t)
 	claim, err := OpenLinuxRecoveryClaim(directories[0], directories[1], directories[2], binding)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer claim.Close()
 	encoded, err := encodeServiceReleaseReady(claim.digest, binding)
-	if err != nil || len(encoded) != recoveryApprovalBytes || len(serviceReleaseReadyMagic) != recoveryApprovalHeaderBytes {
-		t.Fatal("invalid fixed-size framing:", err)
-	}
+	require.NoError(t, err, "invalid fixed-size framing")
+	require.Len(t, encoded, recoveryApprovalBytes)
+	require.Len(t, serviceReleaseReadyMagic, recoveryApprovalHeaderBytes)
 	approval, err := encodeRecoveryApproval(claim.digest, binding)
-	if err != nil || bytes.Equal(encoded, approval) {
-		t.Fatal("readiness aliases approval:", err)
-	}
+	require.NoError(t, err, "readiness aliases approval")
+	require.False(t, bytes.Equal(encoded, approval))
 	var absent *LinuxRecoveryClaim
-	if err := absent.RecordServiceReleaseReady(); !errors.Is(err, ErrClosed) {
-		t.Fatal("missing owner published receipt:", err)
-	}
-	if _, err := absent.ServiceReleaseReady(); !errors.Is(err, ErrClosed) {
-		t.Fatal("missing owner read receipt:", err)
-	}
+	require.ErrorIs(t, absent.RecordServiceReleaseReady(), ErrClosed, "missing owner published receipt")
+	_, err = absent.ServiceReleaseReady()
+	require.ErrorIs(t, err, ErrClosed, "missing owner read receipt")
 }

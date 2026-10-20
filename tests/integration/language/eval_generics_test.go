@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,9 +32,9 @@ func TestEvalGenerics(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "generic identity int",
@@ -42,7 +42,7 @@ func TestEvalGenerics(t *testing.T) {
 	return v
 }
 identity(42)`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "generic identity string",
@@ -50,7 +50,7 @@ identity(42)`,
 	return v
 }
 identity("hello")`,
-			expect: "hello",
+			want: "hello",
 		},
 		{
 			name: "generic max",
@@ -64,7 +64,7 @@ func max2[T Ordered](a, b T) T {
 	return b
 }
 max2(3, 7)`,
-			expect: 7,
+			want: 7,
 		},
 		{
 			name: "multiple type params",
@@ -73,7 +73,7 @@ max2(3, 7)`,
 }
 b, _ := swap(42, "hello")
 b`,
-			expect: "hello",
+			want: "hello",
 		},
 		{
 			name: "explicit type arguments",
@@ -81,7 +81,7 @@ b`,
 	return v
 }
 identity[int](42)`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "comparable constraint",
@@ -89,7 +89,7 @@ identity[int](42)`,
 	return a == b
 }
 equal(42, 42)`,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "generic recursive",
@@ -100,7 +100,7 @@ equal(42, 42)`,
 	return s[0] + sum(s[1:])
 }
 sum([]int{1, 2, 3, 4})`,
-			expect: 10,
+			want: 10,
 		},
 		{
 			name: "generic closure",
@@ -111,7 +111,7 @@ sum([]int{1, 2, 3, 4})`,
 }
 add3 := makeAdder(3)
 add3(5)`,
-			expect: 8,
+			want: 8,
 		},
 		{
 			name: "generic slice param",
@@ -119,7 +119,7 @@ add3(5)`,
 	return s[0]
 }
 first([]int{1, 2, 3})`,
-			expect: 1,
+			want: 1,
 		},
 		{
 			name: "generic map param",
@@ -131,7 +131,7 @@ first([]int{1, 2, 3})`,
 	return definition
 }
 getOrDefault(map[string]int{"a": 1}, "b", 99)`,
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "type assertion on generic",
@@ -139,7 +139,7 @@ getOrDefault(map[string]int{"a": 1}, "b", 99)`,
 	return v
 }
 box(42).(int)`,
-			expect: int(42),
+			want: int(42),
 		},
 		{
 			name: "generic channel",
@@ -149,7 +149,7 @@ box(42).(int)`,
 	return ch
 }
 <-produce(42)`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "zero value generic",
@@ -158,7 +158,7 @@ box(42).(int)`,
 	return x
 }
 zero[int]()`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "nested generic calls",
@@ -169,7 +169,7 @@ func quadruple[T ~int](v T) T {
 	return double(double(v))
 }
 quadruple(5)`,
-			expect: 20,
+			want: 20,
 		},
 		{
 			name: "multiple returns generic",
@@ -178,7 +178,7 @@ quadruple(5)`,
 }
 _, ok := tryGet(42)
 ok`,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "generic struct",
@@ -187,7 +187,7 @@ ok`,
 }
 b := Box[int]{Value: 99}
 b.Value`,
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "generic struct method",
@@ -199,7 +199,7 @@ func (b Box[T]) Get() T {
 }
 b := Box[int]{Value: 42}
 b.Get()`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "pointer receiver generic method",
@@ -215,7 +215,7 @@ func (b Box[T]) Get() T {
 b := &Box[int]{Value: 0}
 b.Set(99)
 b.Get()`,
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "generic interface",
@@ -230,7 +230,7 @@ func applyDouble[T Doubler](d T, v int) int {
 	return d.Double(v)
 }
 applyDouble(MyDoubler{}, 21)`,
-			expect: 42,
+			want: 42,
 		},
 	}
 
@@ -238,9 +238,9 @@ applyDouble(MyDoubler{}, 21)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }
@@ -249,9 +249,9 @@ func TestEvalGenericsAtInstantiationBoundaries(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
 		{
 			name: "generic identity bool",
@@ -259,7 +259,7 @@ func TestEvalGenericsAtInstantiationBoundaries(t *testing.T) {
 	return v
 }
 identity(true)`,
-			expect: true,
+			want: true,
 		},
 		{
 			name: "generic identity float",
@@ -267,7 +267,7 @@ identity(true)`,
 	return v
 }
 identity(3.14)`,
-			expect: 3.14,
+			want: 3.14,
 		},
 		{
 			name: "generic identity multiple calls",
@@ -276,7 +276,7 @@ identity(3.14)`,
 }
 identity(42)
 identity("hello")`,
-			expect: "hello",
+			want: "hello",
 		},
 		{
 			name: "generic with named return",
@@ -284,7 +284,7 @@ identity("hello")`,
 	return
 }
 f[int]()`,
-			expect: 0,
+			want: 0,
 		},
 		{
 			name: "generic constraint method",
@@ -301,14 +301,14 @@ func getLen[T HasLen](v T) int {
 	return v.Len()
 }
 getLen(MySlice{data: []int{1, 2, 3, 4, 5}})`,
-			expect: 5,
+			want: 5,
 		},
 		{
 			name: "type alias simple",
 			code: `type MyInt = int
 var x MyInt = 42
 x`,
-			expect: 42,
+			want: 42,
 		},
 		{
 			name: "type alias chained",
@@ -316,14 +316,14 @@ x`,
 type B = A
 var x B = 99
 x`,
-			expect: 99,
+			want: 99,
 		},
 		{
 			name: "named type in func body",
 			code: `type MyInt int
 var x MyInt = 42
 int(x)`,
-			expect: 42,
+			want: 42,
 		},
 	}
 
@@ -331,9 +331,9 @@ int(x)`,
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err)
-			require.Equal(t, tt.expect, result)
+			require.Equal(t, tt.want, result)
 		})
 	}
 }

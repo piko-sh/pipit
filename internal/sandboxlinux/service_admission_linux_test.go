@@ -22,10 +22,11 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 func TestServiceAdmissionRejectsOrdinaryDirectory(t *testing.T) {
@@ -41,10 +42,7 @@ func TestServiceAdmissionRejectsOrdinaryDirectory(t *testing.T) {
 }
 
 func TestNativeServiceAdmission(t *testing.T) {
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	group, err := newServiceGroup(parent, Limits{}, testTenant)
 	if err != nil {
 		t.Fatal(err)
@@ -97,18 +95,14 @@ func TestNativeServiceAdmissionChild(t *testing.T) {
 
 func runServiceAdmissionChild(t *testing.T, ctx context.Context, mode string) {
 	t.Helper()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestNativeServiceAdmissionChild$")
-	command.Env = append(os.Environ(), "PIPIT_SERVICE_ADMISSION_CHILD="+mode)
+	command := sandboxtest.Command(ctx, "TestNativeServiceAdmissionChild", "PIPIT_SERVICE_ADMISSION_CHILD="+mode)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("service admission child %s: %v\n%s", mode, err, output)
 	}
 }
 
 func TestNativeServiceGroupsPerTenant(t *testing.T) {
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	first, err := newServiceGroup(parent, Limits{}, "tenant-a")

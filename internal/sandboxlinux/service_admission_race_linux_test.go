@@ -31,6 +31,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"pipit.sh/pipit/internal/sandboxtest"
 )
 
 type serviceAdmissionContender struct {
@@ -41,10 +43,7 @@ type serviceAdmissionContender struct {
 }
 
 func TestNativeServiceAdmissionCompetingHosts(t *testing.T) {
-	parent := os.Getenv("PIPIT_TEST_CGROUP_PARENT")
-	if parent == "" {
-		t.Skip("requires explicitly delegated cgroup-v2 parent")
-	}
+	parent := sandboxtest.CgroupParent(t)
 	path := filepath.Join(parent, serviceGroupNameFor(testTenant))
 	if _, err := os.Lstat(path); !os.IsNotExist(err) {
 		t.Fatalf("fixture requires an unoccupied service slot: %v", err)

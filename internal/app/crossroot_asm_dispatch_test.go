@@ -19,11 +19,11 @@
 package app_test
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/adapters"
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/module"
@@ -135,16 +135,16 @@ func runCrossRootMain(t *testing.T, options ...app.Option) string {
 		SchemaVersion: module.DescriptorVersion,
 		Ref:           module.Ref{Path: "example.com/lib", Version: "v0.0.0"},
 	}
-	bundle, err := builder.PackageModule(context.Background(),
+	bundle, err := builder.PackageModule(t.Context(),
 		descriptor, "example.com/lib", map[string]map[string]string{"": {"lib.go": crossRootLibrary}}, adapters.PackCompiledFileSetToBytes)
 	require.NoError(t, err)
 	consumer := app.NewService(options...)
 	reference := module.Ref{Path: descriptor.Ref.Path, Version: descriptor.Ref.Version, Pin: bundle.Descriptor.Ref.Pin}
-	_, err = consumer.LoadModule(context.Background(), bundle, reference, nil, adapters.LoadCompiledFromBytes)
+	_, err = consumer.LoadModule(t.Context(), bundle, reference, nil, adapters.LoadCompiledFromBytes)
 	require.NoError(t, err)
-	compiled, err := consumer.CompileProgram(context.Background(), "main", map[string]map[string]string{"": {"main.go": crossRootMain}})
+	compiled, err := consumer.CompileProgram(t.Context(), "main", map[string]map[string]string{"": {"main.go": crossRootMain}})
 	require.NoError(t, err)
-	result, err := consumer.ExecuteEntrypoint(context.Background(), compiled, "entrypoint")
+	result, err := consumer.ExecuteEntrypoint(t.Context(), compiled, "entrypoint")
 	require.NoError(t, err)
 	return fmt.Sprint(result)
 }

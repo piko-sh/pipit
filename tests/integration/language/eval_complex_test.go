@@ -21,10 +21,10 @@
 package language_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/internal/app"
 )
 
@@ -32,29 +32,29 @@ func TestEvalComplexArithmetic(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		code   string
-		expect complex128
+		name string
+		code string
+		want complex128
 	}{
-		{name: "literal", code: "(1+2i)", expect: 1 + 2i},
-		{name: "add", code: "(1+2i) + (3+4i)", expect: 4 + 6i},
-		{name: "sub", code: "(5+7i) - (1+2i)", expect: 4 + 5i},
-		{name: "mul", code: "(2+3i) * (4+5i)", expect: -7 + 22i},
-		{name: "div", code: "(10+0i) / (2+0i)", expect: 5 + 0i},
-		{name: "neg", code: "-(3+4i)", expect: -3 - 4i},
-		{name: "sub var", code: "a := 5+7i; b := 1+2i; a - b", expect: 4 + 5i},
-		{name: "mul var", code: "a := 2+3i; b := 4+5i; a * b", expect: -7 + 22i},
-		{name: "div var", code: "a := 10+0i; b := 2+0i; a / b", expect: 5 + 0i},
-		{name: "neg var", code: "a := 3+4i; -a", expect: -3 - 4i},
+		{name: "literal", code: "(1+2i)", want: 1 + 2i},
+		{name: "add", code: "(1+2i) + (3+4i)", want: 4 + 6i},
+		{name: "sub", code: "(5+7i) - (1+2i)", want: 4 + 5i},
+		{name: "mul", code: "(2+3i) * (4+5i)", want: -7 + 22i},
+		{name: "div", code: "(10+0i) / (2+0i)", want: 5 + 0i},
+		{name: "neg", code: "-(3+4i)", want: -3 - 4i},
+		{name: "sub var", code: "a := 5+7i; b := 1+2i; a - b", want: 4 + 5i},
+		{name: "mul var", code: "a := 2+3i; b := 4+5i; a * b", want: -7 + 22i},
+		{name: "div var", code: "a := 10+0i; b := 2+0i; a / b", want: 5 + 0i},
+		{name: "neg var", code: "a := 3+4i; -a", want: -3 - 4i},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -63,23 +63,23 @@ func TestEvalComplexBuiltins(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "complex", code: "complex(3.0, 4.0)", expect: complex128(3 + 4i)},
-		{name: "roundtrip", code: "complex(real(1+2i), imag(1+2i))", expect: complex128(1 + 2i)},
-		{name: "complex var", code: "var r float64 = 3.0; var i float64 = 4.0; complex(r, i)", expect: complex128(3 + 4i)},
-		{name: "roundtrip var", code: "c := 1+2i; complex(real(c), imag(c))", expect: complex128(1 + 2i)},
+		{name: "complex", code: "complex(3.0, 4.0)", want: complex128(3 + 4i)},
+		{name: "roundtrip", code: "complex(real(1+2i), imag(1+2i))", want: complex128(1 + 2i)},
+		{name: "complex var", code: "var r float64 = 3.0; var i float64 = 4.0; complex(r, i)", want: complex128(3 + 4i)},
+		{name: "roundtrip var", code: "c := 1+2i; complex(real(c), imag(c))", want: complex128(1 + 2i)},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }
@@ -88,21 +88,21 @@ func TestEvalComplexVariable(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expect any
-		name   string
-		code   string
+		want any
+		name string
+		code string
 	}{
-		{name: "var decl", code: "var c complex128 = 1+2i; c", expect: complex128(1 + 2i)},
-		{name: "assign and add", code: "c := 1+2i; c = c + (3+4i); c", expect: complex128(4 + 6i)},
+		{name: "var decl", code: "var c complex128 = 1+2i; c", want: complex128(1 + 2i)},
+		{name: "assign and add", code: "c := 1+2i; c = c + (3+4i); c", want: complex128(4 + 6i)},
 		{
-			name:   "complex zero var",
-			code:   "var c complex128; c",
-			expect: complex128(0),
+			name: "complex zero var",
+			code: "var c complex128; c",
+			want: complex128(0),
 		},
 		{
-			name:   "global complex",
-			code:   "var g complex128\nfunc s() { g = 1+2i }\ns()\ng",
-			expect: complex128(1 + 2i),
+			name: "global complex",
+			code: "var g complex128\nfunc s() { g = 1+2i }\ns()\ng",
+			want: complex128(1 + 2i),
 		},
 	}
 
@@ -110,9 +110,9 @@ func TestEvalComplexVariable(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			service := app.NewService()
-			result, err := service.Eval(context.Background(), tt.code)
+			result, err := service.Eval(t.Context(), tt.code)
 			require.NoError(t, err, "code: %s", tt.code)
-			require.Equal(t, tt.expect, result, "code: %s", tt.code)
+			require.Equal(t, tt.want, result, "code: %s", tt.code)
 		})
 	}
 }

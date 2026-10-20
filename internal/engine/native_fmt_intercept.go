@@ -765,6 +765,24 @@ func wrapPipitSynthesisedFmtArg(vm *VM, argument any, staticTypeName string) any
 	return fmtRendererFor(vm, value)
 }
 
+// unwrapFmtAdapter returns the script value inside an adapter, so fmt prints the value
+// script code holds rather than the adapter native code was given.
+//
+// Takes argument (any) which is the operand.
+//
+// Returns any which is the script value, or argument when it is not an adapter.
+func unwrapFmtAdapter(argument any) any {
+	adapter, ok := argument.(adapterUnwrapper)
+	if !ok {
+		return argument
+	}
+	underlying := adapter.adapterUnderlying()
+	if !underlying.IsValid() || !underlying.CanInterface() {
+		return argument
+	}
+	return underlying.Interface()
+}
+
 // wrapContainerOrScalarForFmt wraps a value that is not itself a synthesised struct for
 // fmt printing. Named scalars with adapter methods get the adapter, containers holding
 // script values get the renderer, and everything else passes through.
@@ -929,7 +947,7 @@ func typeStringForFmtT(site *program.CallSite, argumentIndex int, value any) str
 // Returns the underlying value and true, or false when value is not a wrapper or wraps
 // nothing.
 func fmtWrappedUnderlying(value any) (reflect.Value, bool) {
-	if adapter, ok := value.(fmtAdapterUnwrapper); ok {
+	if adapter, ok := value.(adapterUnwrapper); ok {
 		if underlying := adapter.adapterUnderlying(); underlying.IsValid() {
 			return underlying, true
 		}
@@ -1265,20 +1283,19 @@ func fmtVerbCallsStringMethods(verb byte) bool {
 	}
 }
 
-// wrapPipitSynthesisedFmtArgForVerb wraps a script value for fmt according to the verb
-// being applied.
-//
-// When verb calls String or Error the full adapter pipeline runs. For other verbs only a
-// Format method is honoured, so a scalar of a named type is handed over as its own kind
-// and a synthesised struct or container keeps the renderer.
+// wrapPipitSynthesisedFmtArgForVerb adapts script values for fmt printing. String and
+// Error methods apply only to verbs that call them, while other verbs honour Format
+// without converting named scalars into strings.
 //
 // Takes vm (*VM) which resolves script method tables.
 // Takes argument (any) which is the operand.
 // Takes verb (byte) which is the operand's verb.
-// Takes staticTypeName (string) which is the call site's recorded source-level type name.
+// Takes staticTypeName (string) which is the call site's recorded source-level type
+// name.
 //
 // Returns any which is the value to hand to fmt.
 func wrapPipitSynthesisedFmtArgForVerb(vm *VM, argument any, verb byte, staticTypeName string) any {
+	argument = unwrapFmtAdapter(argument)
 	if fmtVerbCallsStringMethods(verb) {
 		return wrapPipitSynthesisedFmtArg(vm, argument, staticTypeName)
 	}

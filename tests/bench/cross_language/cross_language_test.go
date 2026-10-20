@@ -25,23 +25,23 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"pipit.sh/pipit/tests/bench/cross_language/harness"
 )
 
-func TestCrossLanguage(testingHandle *testing.T) {
+func TestCrossLanguage(t *testing.T) {
 	if os.Getenv("RUN_CROSS_LANG_BENCH") != "1" {
-		testingHandle.Skip("set RUN_CROSS_LANG_BENCH=1 to run cross-language suite")
+		t.Skip("set RUN_CROSS_LANG_BENCH=1 to run cross-language suite")
 	}
-	benchmarksDirectory := mustResolveBenchmarksDir(testingHandle)
-	suite := harness.Load(testingHandle, benchmarksDirectory)
-	suite.Run(testingHandle)
+	benchmarksDirectory := mustResolveBenchmarksDir(t)
+	suite := harness.Load(t, benchmarksDirectory)
+	suite.Run(t)
 }
 
-func mustResolveBenchmarksDir(testingHandle *testing.T) string {
-	testingHandle.Helper()
+func mustResolveBenchmarksDir(t *testing.T) string {
+	t.Helper()
 	cwd, err := os.Getwd()
-	if err != nil {
-		testingHandle.Fatalf("getwd: %v", err)
-	}
+	require.NoError(t, err, "getwd")
 	return filepath.Join(cwd, "benchmarks")
 }

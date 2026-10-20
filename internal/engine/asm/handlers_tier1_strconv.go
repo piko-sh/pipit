@@ -49,7 +49,7 @@ func tier1StrconvHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort]
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
 func handlerSubOpStrconvFormatBool() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
+	return guardPointerBankWriter(asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 		Name:      "handlerSubOpStrconvFormatBool",
 		Comment:   "handlerSubOpStrconvFormatBool sets strings[B] = bools[C] ? \"true\" : \"false\" by stamping a pre-allocated header.",
 		FrameSize: frameSizeZero,
@@ -57,7 +57,7 @@ func handlerSubOpStrconvFormatBool() asmgen.HandlerDefinition[BytecodeArchitectu
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.EmitSubOpStrconvFormatBool(emitter)
 		},
-	}
+	})
 }
 
 // handlerSubOpStrconvItoa builds the SubOpStrconvItoa handler, setting strings[B] =

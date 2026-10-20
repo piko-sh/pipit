@@ -66,18 +66,23 @@ func ValueCopyForBoundary(v reflect.Value) reflect.Value {
 	}
 }
 
-// MaterialiseArenaValue forces an arena-backed value onto the heap so it can outlive the
-// bump pointer's window, heap-copying Struct/Array kinds from the byte slab and giving
-// arena-owned Slices a fresh heap header and backing while letting other kinds pass
-// through.
+// MaterialiseArenaValue copies arena-backed structs, arrays and slices to the heap and
+// clones strings that may belong to a foreign arena.
+//
+// Foreign strings nested in shared containers are left untouched to avoid rewriting
+// maps another goroutine may use.
 //
 // Takes arena (*RegisterArena) which owns the candidate slabs.
 // Takes v (reflect.Value) which is the value about to escape.
 //
-// Returns the heap-materialised equivalent of v when it was arena-backed, or v unchanged.
+// Returns the heap-materialised equivalent of v when it was arena-backed, or v
+// unchanged.
 func MaterialiseArenaValue(arena *RegisterArena, v reflect.Value) reflect.Value {
 	if !v.IsValid() || arena == nil {
 		return v
+	}
+	if clone, ok := cloneForeignStringValue(arena, v); ok {
+		return clone
 	}
 	if !arenaUsesUnsafeSlabs && !arenaResidentCompositeKind(v.Kind()) {
 		return v
@@ -86,6 +91,37 @@ func MaterialiseArenaValue(arena *RegisterArena, v reflect.Value) reflect.Value 
 		return v
 	}
 	return materialiseArenaValueUnconditional(arena, v)
+}
+
+// cloneForeignStringValue returns a heap clone of v when v is a string, or an interface
+// holding one, that may point into another VM's arena.
+//
+// Takes arena (*RegisterArena) which decides whether the string may be foreign.
+// Takes v (reflect.Value) which is the value about to be stored.
+//
+// Returns the clone, typed as v, and true when one was made.
+func cloneForeignStringValue(arena *RegisterArena, v reflect.Value) (reflect.Value, bool) {
+	if !arenaUsesUnsafeSlabs || !arena.cloneUnownedStrings {
+		return reflect.Value{}, false
+	}
+	switch v.Kind() {
+	case reflect.String:
+		if s := v.String(); arena.mayHoldForeignString(s) {
+			return reflect.ValueOf(strings.Clone(s)).Convert(v.Type()), true
+		}
+	case reflect.Interface:
+		if v.IsNil() || v.Elem().Kind() != reflect.String {
+			return reflect.Value{}, false
+		}
+		inner := v.Elem()
+		if s := inner.String(); arena.mayHoldForeignString(s) {
+			clone := reflect.New(v.Type()).Elem()
+			clone.Set(reflect.ValueOf(strings.Clone(s)).Convert(inner.Type()))
+			return clone, true
+		}
+	default:
+	}
+	return reflect.Value{}, false
 }
 
 // MaterialiseArenaSliceUnconditional severs slice arena aliasing by heap-copying both the
@@ -136,8 +172,33 @@ func MaterialiseArenaSliceUnconditional(arena *RegisterArena, v reflect.Value) r
 		if materialised.IsValid() && materialised != elem {
 			elem.Set(materialised)
 		}
+		cloneForeignStrings(arena, elem)
 	}
 	return fresh
+}
+
+// cloneForeignStrings clones foreign arena strings through interfaces, structs and
+// arrays in a fresh escape copy. It leaves pointers, maps and slices untouched because
+// their contents may be shared.
+//
+// Takes arena (*RegisterArena) which decides whether a string may be foreign.
+// Takes v (reflect.Value) which is an addressable value in fresh memory.
+func cloneForeignStrings(arena *RegisterArena, v reflect.Value) {
+	if !arenaUsesUnsafeSlabs || !arena.cloneUnownedStrings || !v.CanAddr() || typeIsPointerFree(v.Type()) {
+		return
+	}
+	v = unsafeNewAt(reflectValueABIType(v.Type()), ReflectValuePtr(v), v.Kind())
+	switch v.Kind() {
+	case reflect.String, reflect.Interface:
+		if cloned, ok := cloneForeignStringValue(arena, v); ok {
+			v.Set(cloned)
+		}
+	case reflect.Struct, reflect.Array:
+		for index := range compositeElementCount(v) {
+			cloneForeignStrings(arena, compositeElement(v, index))
+		}
+	default:
+	}
 }
 
 // materialisePointerFreeSlice heap-copies a pointer-free slice in a single allocation
@@ -664,6 +725,7 @@ func materialiseArenaCompositeFields(arena *RegisterArena, v reflect.Value, alia
 	}
 
 	if copied {
+		cloneForeignStrings(arena, work)
 		return work
 	}
 	return v

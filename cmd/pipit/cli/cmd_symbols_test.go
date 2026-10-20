@@ -19,45 +19,55 @@
 package cli
 
 import (
-	"context"
-	"strings"
+	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit"
 	"pipit.sh/pipit/cmd/pipit/internal/clitest"
 )
 
 func TestRunSymbolsListMentionsStrings(t *testing.T) {
 	t.Parallel()
 
-	result := clitest.Run(context.Background(), RunSymbols, []string{"list"}, "")
-	if result.Code != 0 {
-		t.Fatalf("exit code = %d (stderr=%q)", result.Code, result.Stderr)
-	}
-	if !strings.Contains(result.Stdout, "strings") {
-		t.Fatalf("expected 'strings' in stdout, got %q", result.Stdout)
-	}
+	result := clitest.Run(t.Context(), RunSymbols, []string{"list"}, "")
+	require.Equal(t, 0, result.Code, "stderr: %q", result.Stderr)
+	require.Contains(t, result.Stdout, "strings")
 }
 
 func TestRunSymbolsShowStrings(t *testing.T) {
 	t.Parallel()
 
-	result := clitest.Run(context.Background(), RunSymbols, []string{"show", "strings"}, "")
-	if result.Code != 0 {
-		t.Fatalf("exit code = %d (stderr=%q)", result.Code, result.Stderr)
-	}
-	if !strings.Contains(result.Stdout, "HasPrefix") {
-		t.Fatalf("expected 'HasPrefix' in stdout, got %q", result.Stdout)
-	}
+	result := clitest.Run(t.Context(), RunSymbols, []string{"show", "strings"}, "")
+	require.Equal(t, 0, result.Code, "stderr: %q", result.Stderr)
+	require.Contains(t, result.Stdout, "HasPrefix")
 }
 
 func TestRunSymbolsShowMissingPackage(t *testing.T) {
 	t.Parallel()
 
-	result := clitest.Run(context.Background(), RunSymbols, []string{"show", "no-such-pkg"}, "")
-	if result.Code != 1 {
-		t.Fatalf("expected exit 1, got %d", result.Code)
-	}
-	if !strings.Contains(result.Stderr, "no-such-pkg") {
-		t.Fatalf("expected stderr to mention pkg, got %q", result.Stderr)
-	}
+	result := clitest.Run(t.Context(), RunSymbols, []string{"show", "no-such-pkg"}, "")
+	require.Equal(t, 1, result.Code)
+	require.Contains(t, result.Stderr, "no-such-pkg")
+}
+
+func TestRunSymbolsShowsTheDeclaredNameApart(t *testing.T) {
+	t.Parallel()
+
+	ctx := withConfig(t.Context(), newConfig([]Option{WithSymbols(pipit.SymbolExports{
+		"github.com/example/go-widgets": {
+			pipit.PackageNameSymbol: reflect.ValueOf("widgetkit"),
+			"Count":                 reflect.ValueOf(func() int { return 0 }),
+		},
+	})}))
+
+	show := clitest.Run(ctx, RunSymbols, []string{"show", "github.com/example/go-widgets"}, "")
+	require.Equal(t, 0, show.Code, "stderr: %q", show.Stderr)
+	require.Contains(t, show.Stdout, "(1 symbols)")
+	require.Contains(t, show.Stdout, "declared name widgetkit")
+	require.NotContains(t, show.Stdout, pipit.PackageNameSymbol, "the name entry is listed as a symbol")
+
+	list := clitest.Run(ctx, RunSymbols, []string{"list", "-filter", "go-widgets"}, "")
+	require.Contains(t, list.Stdout, "   1  github.com/example/go-widgets")
 }

@@ -124,26 +124,33 @@ func (c *Compiler) compileClosureBody(ctx context.Context, lit *ast.FuncLit) (ui
 	c.populateClosureParameterAndResultKinds(ctx, compiledFunction, lit, signature)
 	upvalueMap := make(map[string]upvalueReference)
 	c.buildFreeVarUpvalues(ctx, compiledFunction, freeVars, upvalueMap, 0)
-	functionIndex := safeconv.MustIntToUint16(len(c.RootFunction.Functions))
-	c.RootFunction.Functions = append(c.RootFunction.Functions, compiledFunction)
-
-	sub := newFunctionCompiler(ctx, c.programContext, compiledFunction, functionOptions{
-		scopeName:         "<closure>",
-		upvalues:          upvalueMap,
-		substitutions:     c.typeSubstitutions,
-		substitutionCache: c.typeSubstitutionsCache,
-		rangeOverFunction: nil,
-	})
-	sub.recordUpvalueDebugEntries(upvalueMap)
-	sub.prepareBody(bodySpec{body: lit.Body, signature: lit.Type, resultTypes: resultTypesOf(signature)})
-	sub.declareClosureParams(ctx, lit)
-	sub.declareNamedResults(ctx, lit.Type.Results, sub.Function)
-
-	if _, err := sub.compileStmtList(ctx, lit.Body.List); err != nil {
-		return 0, nil, fmt.Errorf("compiling closure: %w", err)
+	functionIndex, err := c.registerCreatedFunction(compiledFunction)
+	if err != nil {
+		return 0, nil, err
 	}
 
-	if err := sub.finishBody(ctx, compiledFunction, lit.Body, finishFlags{tailCall: true, finaliseDefer: true, classifyEscapes: true}); err != nil {
+	attempt := func(settings registerSettings) (*Compiler, error) {
+		sub := newFunctionCompiler(ctx, c.programContext, compiledFunction, functionOptions{
+			scopeName:         "<closure>",
+			upvalues:          upvalueMap,
+			substitutions:     c.typeSubstitutions,
+			substitutionCache: c.typeSubstitutionsCache,
+			rangeOverFunction: nil,
+		})
+		sub.recordUpvalueDebugEntries(upvalueMap)
+		sub.prepareBody(bodySpec{body: lit.Body, receiver: nil, signature: lit.Type, resultTypes: resultTypesOf(signature)})
+		sub.declareClosureParams(ctx, lit)
+		sub.declareNamedResults(ctx, lit.Type.Results, sub.Function)
+		sub.applyRegisterSettings(settings)
+
+		_, err := sub.compileStmtList(ctx, lit.Body.List)
+		return sub, err
+	}
+	finish := func(sub *Compiler) error {
+		return sub.finishBody(ctx, compiledFunction, lit.Body, finishFlags{tailCall: true, finaliseDefer: true, classifyEscapes: true})
+	}
+	unit := retryUnit{function: compiledFunction, node: lit, substitutions: c.typeSubstitutions}
+	if err := c.compileNestedBodyWithRetry(ctx, unit, attempt, finish); err != nil {
 		return 0, nil, fmt.Errorf("compiling closure: %w", err)
 	}
 
@@ -256,7 +263,7 @@ func (c *Compiler) declareClosureParam(ctx context.Context, name *ast.Ident, par
 	if c.Function != nil && parameterPosition < len(c.Function.ParameterKinds) {
 		kind = c.Function.ParameterKinds[parameterPosition]
 	}
-	location := c.Scopes.DeclareVar(name.Name, kind)
+	location := c.Scopes.DeclareParameter(name.Name, kind)
 	recordParam(location)
 	c.tryHeapPromoteCapturedLocal(ctx, name.Name, name)
 	return parameterPosition + 1
@@ -350,11 +357,12 @@ func (c *Compiler) compileIIFE(ctx context.Context, lit *ast.FuncLit, expression
 
 	argumentLocations := make([]program.VarLocation, len(expression.Args))
 	for i, argument := range expression.Args {
+		mark := c.Scopes.Alloc.Snapshot()
 		location, err := c.compileExpression(ctx, argument)
 		if err != nil {
 			return program.VarLocation{}, err
 		}
-		argumentLocations[i] = location
+		argumentLocations[i] = c.compactArgument(ctx, mark, location, c.staticTypeOf(argument))
 	}
 
 	tv := c.Info.Types[lit]
@@ -573,12 +581,14 @@ func (c *Compiler) compileClosureCall(ctx context.Context, identifier *ast.Ident
 
 	argumentLocations := make([]program.VarLocation, len(expression.Args))
 	for i, argument := range expression.Args {
+		mark := c.Scopes.Alloc.Snapshot()
 		location, argErr := c.compileExpression(ctx, argument)
 		if argErr != nil {
 			return program.VarLocation{}, argErr
 		}
 		location = c.coerceEvalBoolResult(ctx, c.Info, argument, location)
-		argumentLocations[i] = c.preboxNativeInterfaceArgument(ctx, signature, i, location)
+		location = c.preboxNativeInterfaceArgument(ctx, signature, i, location)
+		argumentLocations[i] = c.compactArgument(ctx, mark, location, c.staticTypeOf(argument))
 	}
 
 	returnLocations, resultLocation := c.allocateNativeReturns(signature)

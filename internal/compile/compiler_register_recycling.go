@@ -38,13 +38,13 @@ type activeDeclaration struct {
 	location program.VarLocation
 }
 
-// recycleOrTrackDeclarations appends each name introduced by a declaring statement to
-// active, or restores the register-allocation watermark when statement does not declare
-// any name.
+// recycleOrTrackDeclarations restores the register-allocation watermark after a
+// statement, freeing its temporaries, and appends each name a declaring statement
+// introduced to active.
 //
 // Takes statement (ast.Stmt) which is the statement being processed for declarations.
 // Takes watermark ([NumRegisterKinds]uint32) which is the register-allocation watermark
-// to restore when no declaration is present.
+// taken before the statement.
 // Takes active ([]activeDeclaration) which is the current list of tracked active
 // declarations.
 //
@@ -54,14 +54,43 @@ func (c *Compiler) recycleOrTrackDeclarations(
 	watermark [isa.NumRegisterKinds]uint32,
 	active []activeDeclaration,
 ) []activeDeclaration {
+	c.Scopes.RestoreWatermark(watermark)
 	if !isDeclaringStatement(statement) {
-		c.Scopes.RestoreWatermark(watermark)
 		return active
 	}
+	c.keepDestructuredBindings(statement)
 	for _, name := range liveness.ExtractDeclaredNames(statement) {
 		active = c.trackDeclaredName(name, active)
 	}
 	return active
+}
+
+// keepDestructuredBindings keeps the registers holding the fields of any local that
+// statement declared and destructured into registers, which the scope stack does not
+// track.
+//
+// Takes statement (ast.Stmt) which is a declaring statement.
+func (c *Compiler) keepDestructuredBindings(statement ast.Stmt) {
+	if len(c.destructuredLocals) == 0 {
+		return
+	}
+	if labelled, ok := statement.(*ast.LabeledStmt); ok {
+		c.keepDestructuredBindings(labelled.Stmt)
+		return
+	}
+	assignment, ok := statement.(*ast.AssignStmt)
+	if !ok {
+		return
+	}
+	for _, target := range assignment.Lhs {
+		identifier, isIdent := target.(*ast.Ident)
+		if !isIdent {
+			continue
+		}
+		for _, location := range c.destructuredLocals[c.Info.Defs[identifier]] {
+			c.Scopes.KeepLocation(location)
+		}
+	}
 }
 
 // trackDeclaredName appends a new activeDeclaration for name when it is visible in the
@@ -111,12 +140,13 @@ func (c *Compiler) recycleDeadDeclarations(
 	return remaining
 }
 
-// shouldRetainDeclaration reports whether declaration's register must survive past
-// currentIndex. Upvalue, captured, and indirect locations are always retained; otherwise
-// the decision follows the recorded last-use index.
+// shouldRetainDeclaration reports whether declaration must survive past currentIndex.
 //
-// Takes declaration (activeDeclaration) which is the declaration whose retention is being
-// decided.
+// Dead spilled locals must be dropped without recycling because their Register field is
+// zero and does not identify their storage.
+//
+// Takes declaration (activeDeclaration) which is the declaration whose retention is
+// being decided.
 // Takes lastUseIndices (map[string]int) which maps each name to the index of its last
 // use.
 // Takes currentIndex (int) which is the index of the statement just compiled.
@@ -134,6 +164,9 @@ func (c *Compiler) shouldRetainDeclaration(
 	currentLocation, found := c.Scopes.LookupVar(declaration.Name)
 	if !found || currentLocation.IsUpvalue || currentLocation.IsCaptured || currentLocation.IsIndirect {
 		return true
+	}
+	if currentLocation.IsSpilled {
+		return false
 	}
 	c.Scopes.Alloc.RecycleRegister(currentLocation.Kind, currentLocation.Register)
 	return false

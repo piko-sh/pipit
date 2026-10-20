@@ -73,7 +73,10 @@ func TestDispatchExitHandlersRunTheirOwnInstruction(t *testing.T) {
 			name: "a general field read", exit: (*VM).processExitGetField,
 			instruction: isa.NewInstruction(isa.OpGetField, 0, 1, 1),
 			load:        func(r *Registers, h *recordHolder) { h.Label = "read"; r.General[1] = reflect.ValueOf(h) },
-			inspect:     func(t *testing.T, r *Registers, _ *recordHolder) { require.Equal(t, "read", r.General[0].Interface()) },
+			inspect: func(t *testing.T, r *Registers, _ *recordHolder) {
+				t.Helper()
+				require.Equal(t, "read", r.General[0].Interface())
+			},
 		},
 		{
 			name: "a general field write", exit: (*VM).processExitSetField,
@@ -82,7 +85,10 @@ func TestDispatchExitHandlersRunTheirOwnInstruction(t *testing.T) {
 				r.General[0] = reflect.ValueOf(h)
 				r.General[2] = reflect.ValueOf("written")
 			},
-			inspect: func(t *testing.T, _ *Registers, h *recordHolder) { require.Equal(t, "written", h.Label) },
+			inspect: func(t *testing.T, _ *Registers, h *recordHolder) {
+				t.Helper()
+				require.Equal(t, "written", h.Label)
+			},
 		},
 		{
 			name: "a map index", exit: (*VM).processExitMapIndex,
@@ -91,7 +97,10 @@ func TestDispatchExitHandlersRunTheirOwnInstruction(t *testing.T) {
 				r.General[1] = reflect.ValueOf(map[string]int{"a": 5})
 				r.General[2] = reflect.ValueOf("a")
 			},
-			inspect: func(t *testing.T, r *Registers, _ *recordHolder) { require.Equal(t, 5, r.General[0].Interface()) },
+			inspect: func(t *testing.T, r *Registers, _ *recordHolder) {
+				t.Helper()
+				require.Equal(t, 5, r.General[0].Interface())
+			},
 		},
 	}
 
@@ -126,31 +135,44 @@ func TestTier0StructFieldDispatchExitsReadAndWriteTheirBank(t *testing.T) {
 			name: "an int read", exit: (*VM).processExitGetStructFieldIntT0,
 			instruction: isa.NewInstruction(isa.OpGetStructFieldIntT0, 0, 1, 0),
 			load:        func(r *Registers, w *wideFields) { w.Signed = 42; r.General[1] = reflect.ValueOf(w) },
-			inspect:     func(t *testing.T, r *Registers, _ *wideFields) { require.Equal(t, int64(42), r.Ints[0]) },
+			inspect: func(t *testing.T, r *Registers, _ *wideFields) {
+				t.Helper()
+				require.Equal(t, int64(42), r.Ints[0])
+			},
 		},
 		{
 			name: "a uint read", exit: (*VM).processExitGetStructFieldUintT0,
 			instruction: isa.NewInstruction(isa.OpGetStructFieldUint, 0, 1, 1),
 			load:        func(r *Registers, w *wideFields) { w.Unsigned = 7; r.General[1] = reflect.ValueOf(w) },
-			inspect:     func(t *testing.T, r *Registers, _ *wideFields) { require.Equal(t, uint64(7), r.Uints[0]) },
+			inspect: func(t *testing.T, r *Registers, _ *wideFields) {
+				t.Helper()
+				require.Equal(t, uint64(7), r.Uints[0])
+			},
 		},
 		{
 			name: "a float read", exit: (*VM).processExitGetStructFieldFloatT0,
 			instruction: isa.NewInstruction(isa.OpGetStructFieldFloat, 0, 1, 2),
 			load:        func(r *Registers, w *wideFields) { w.Ratio = 1.5; r.General[1] = reflect.ValueOf(w) },
-			inspect:     func(t *testing.T, r *Registers, _ *wideFields) { require.InDelta(t, 1.5, r.Floats[0], 0) },
+			inspect: func(t *testing.T, r *Registers, _ *wideFields) {
+				t.Helper()
+				require.InDelta(t, 1.5, r.Floats[0], 0)
+			},
 		},
 		{
 			name: "a bool read", exit: (*VM).processExitGetStructFieldBoolT0,
 			instruction: isa.NewInstruction(isa.OpGetStructFieldBool, 0, 1, 3),
 			load:        func(r *Registers, w *wideFields) { w.Flag = true; r.General[1] = reflect.ValueOf(w) },
-			inspect:     func(t *testing.T, r *Registers, _ *wideFields) { require.True(t, r.Bools[0]) },
+			inspect: func(t *testing.T, r *Registers, _ *wideFields) {
+				t.Helper()
+				require.True(t, r.Bools[0])
+			},
 		},
 		{
 			name: "a general read", exit: (*VM).processExitGetStructFieldGeneralT0,
 			instruction: isa.NewInstruction(isa.OpGetStructFieldGeneral, 0, 1, 4),
 			load:        func(r *Registers, w *wideFields) { w.Label = "read"; r.General[1] = reflect.ValueOf(w) },
 			inspect: func(t *testing.T, r *Registers, _ *wideFields) {
+				t.Helper()
 				require.Equal(t, "read", r.General[0].Interface())
 			},
 		},
@@ -158,25 +180,37 @@ func TestTier0StructFieldDispatchExitsReadAndWriteTheirBank(t *testing.T) {
 			name: "an int write", exit: (*VM).processExitSetStructFieldIntT0,
 			instruction: isa.NewInstruction(isa.OpSetStructFieldIntT0, 1, 2, 0),
 			load:        func(r *Registers, w *wideFields) { r.General[1] = reflect.ValueOf(w); r.Ints[2] = 11 },
-			inspect:     func(t *testing.T, _ *Registers, w *wideFields) { require.Equal(t, int64(11), w.Signed) },
+			inspect: func(t *testing.T, _ *Registers, w *wideFields) {
+				t.Helper()
+				require.Equal(t, int64(11), w.Signed)
+			},
 		},
 		{
 			name: "a uint write", exit: (*VM).processExitSetStructFieldUintT0,
 			instruction: isa.NewInstruction(isa.OpSetStructFieldUint, 1, 2, 1),
 			load:        func(r *Registers, w *wideFields) { r.General[1] = reflect.ValueOf(w); r.Uints[2] = 12 },
-			inspect:     func(t *testing.T, _ *Registers, w *wideFields) { require.Equal(t, uint64(12), w.Unsigned) },
+			inspect: func(t *testing.T, _ *Registers, w *wideFields) {
+				t.Helper()
+				require.Equal(t, uint64(12), w.Unsigned)
+			},
 		},
 		{
 			name: "a float write", exit: (*VM).processExitSetStructFieldFloatT0,
 			instruction: isa.NewInstruction(isa.OpSetStructFieldFloat, 1, 2, 2),
 			load:        func(r *Registers, w *wideFields) { r.General[1] = reflect.ValueOf(w); r.Floats[2] = 2.5 },
-			inspect:     func(t *testing.T, _ *Registers, w *wideFields) { require.InDelta(t, 2.5, w.Ratio, 0) },
+			inspect: func(t *testing.T, _ *Registers, w *wideFields) {
+				t.Helper()
+				require.InDelta(t, 2.5, w.Ratio, 0)
+			},
 		},
 		{
 			name: "a bool write", exit: (*VM).processExitSetStructFieldBoolT0,
 			instruction: isa.NewInstruction(isa.OpSetStructFieldBool, 1, 2, 3),
 			load:        func(r *Registers, w *wideFields) { r.General[1] = reflect.ValueOf(w); r.Bools[2] = true },
-			inspect:     func(t *testing.T, _ *Registers, w *wideFields) { require.True(t, w.Flag) },
+			inspect: func(t *testing.T, _ *Registers, w *wideFields) {
+				t.Helper()
+				require.True(t, w.Flag)
+			},
 		},
 		{
 			name: "a general write", exit: (*VM).processExitSetStructFieldGeneralT0,
@@ -185,7 +219,10 @@ func TestTier0StructFieldDispatchExitsReadAndWriteTheirBank(t *testing.T) {
 				r.General[1] = reflect.ValueOf(w)
 				r.General[2] = reflect.ValueOf("written")
 			},
-			inspect: func(t *testing.T, _ *Registers, w *wideFields) { require.Equal(t, "written", w.Label) },
+			inspect: func(t *testing.T, _ *Registers, w *wideFields) {
+				t.Helper()
+				require.Equal(t, "written", w.Label)
+			},
 		},
 	}
 

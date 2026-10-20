@@ -248,27 +248,45 @@ func TestWriteFrameVariableStoresScalarBanks(t *testing.T) {
 	}{
 		{
 			name: "the int bank", kind: isa.RegisterInt, value: 7,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, int64(7), r.Ints[1]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, int64(7), r.Ints[1])
+			},
 		},
 		{
 			name: "the float bank", kind: isa.RegisterFloat, value: 2.5,
-			inspect: func(t *testing.T, r *Registers) { require.InDelta(t, 2.5, r.Floats[1], 0) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.InDelta(t, 2.5, r.Floats[1], 0)
+			},
 		},
 		{
 			name: "the string bank", kind: isa.RegisterString, value: "written",
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, "written", r.Strings[1]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, "written", r.Strings[1])
+			},
 		},
 		{
 			name: "the bool bank", kind: isa.RegisterBool, value: true,
-			inspect: func(t *testing.T, r *Registers) { require.True(t, r.Bools[1]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.True(t, r.Bools[1])
+			},
 		},
 		{
 			name: "the uint bank", kind: isa.RegisterUint, value: uint(8),
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, uint64(8), r.Uints[1]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, uint64(8), r.Uints[1])
+			},
 		},
 		{
 			name: "the complex bank", kind: isa.RegisterComplex, value: 3i,
-			inspect: func(t *testing.T, r *Registers) { require.Equal(t, 3i, r.Complex[1]) },
+			inspect: func(t *testing.T, r *Registers) {
+				t.Helper()
+				require.Equal(t, 3i, r.Complex[1])
+			},
 		},
 	}
 
