@@ -49,17 +49,16 @@ type Body struct {
 	// value of a range-over-func body.
 	Entry []ast.Expr
 
-	// Repeats makes sharing events count from entry because an enclosing loop repeats
-	// the body.
+	// Repeats makes sharing events count from entry because an enclosing loop repeats the
+	// body.
 	Repeats bool
 }
 
-// Aliases records when each slice variable's header may become shared, preventing
-// unsafe in-place appends. A nil *Aliases treats every variable as shared.
+// Aliases records when each slice variable's header may become shared, preventing unsafe
+// in-place appends. A nil *Aliases treats every variable as shared.
 //
-// Sharing events in loops count from the outermost loop's start because later
-// iterations repeat them. Events in function literals or bodies using goto count from
-// entry.
+// Sharing events in loops count from the outermost loop's start because later iterations
+// repeat them. Events in function literals or bodies using goto count from entry.
 type Aliases struct {
 	// info resolves identifiers to the variables they denote.
 	info *types.Info

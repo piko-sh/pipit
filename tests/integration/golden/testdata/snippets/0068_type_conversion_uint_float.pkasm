@@ -4,8 +4,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function <varinit>
-;   registers: uint=1
-;   dispatch:  asm=2 shim=1 exit=0 go=0
+;   registers: uint64=1
+;   dispatch:  asm=3 shim=0 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (none)
 ; ═════════════════════════════════════════════════════════════
@@ -13,25 +13,25 @@
 ; constants:
 ;   uints:   [0]=7
 
-0000 A 0:LOAD_UINT_CONST            0   0   0
-0001 S 0:SET_GLOBAL                 0   0   5
-0002 A 3:TIER3_RETURN_VOID          0   0   1
+0000 A 0:LOAD_UINT64_CONSTANT                                 0   0   0
+0001 A 0:SET_GLOBAL                                           0   0   5
+0002 A 3:RETURN_VOID                                          0   0   1
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=1 float=3 uint=1
-;   dispatch:  asm=5 shim=1 exit=0 go=1
+;   registers: int64=1 float64=3 uint64=1
+;   dispatch:  asm=7 shim=0 exit=0 go=0
 ;   params:    (none)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   floats:  [0]=3
 
-0000 S 0:GET_GLOBAL                 0   0   5
-0001 A 1:UINT_TO_FLOAT             57   0   0
-0002 A 0:LOAD_FLOAT_CONST           1   0   0    ; floats[1] = 3
-0003 A 0:MUL_FLOAT                  2   0   1
-0004 A 1:FLOAT_TO_UINT             58   0   2
-0005 G 1:UINT_TO_INT               56   0   0
-0006 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 0:GET_GLOBAL                                           0   0   5
+0001 A 1:CONVERT_UINT64_TO_FLOAT64                           57   0   0
+0002 A 0:LOAD_FLOAT64_CONSTANT                                1   0   0    ; floats[1] = 3
+0003 A 0:MULTIPLY_FLOAT64                                     2   0   1
+0004 A 1:CONVERT_FLOAT64_TO_UINT64                           58   0   2
+0005 A 1:CONVERT_UINT64_TO_INT64                             56   0   0
+0006 A 2:RETURN                                               0  10   1    ; 1 values

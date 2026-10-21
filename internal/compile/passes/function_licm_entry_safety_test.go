@@ -19,7 +19,6 @@
 package passes
 
 import (
-	"context"
 	"slices"
 	"testing"
 
@@ -37,17 +36,17 @@ func exitTestedLoop(pre isa.Instruction, exitBlock ...isa.Instruction) []isa.Ins
 	return slices.Concat([]isa.Instruction{
 		pre,
 		condJump(isa.OpJumpIfFalse, 3, 3),
-		mk(isa.OpGetStructFieldIntT0, 1, 4, 0),
-		mk(isa.OpAddInt, 2, 2, 1),
+		mk(isa.OpGetStructFieldInt64, 1, 4, 0),
+		mk(isa.OpAddInt64, 2, 2, 1),
 		tier1Jump(-4),
 	}, exitBlock)
 }
 
 func TestLicmEntrySafetyOnExitTestedLoops(t *testing.T) {
 	t.Parallel()
-	dominatingDeref := mk(isa.OpGetStructFieldIntT0, 6, 4, 0)
-	deadOnExit := mk(isa.OpLoadIntConst, 1, 0, 0)
-	liveOnExit := mk(isa.OpAddInt, 0, 1, 1)
+	dominatingDeref := mk(isa.OpGetStructFieldInt64, 6, 4, 0)
+	deadOnExit := mk(isa.OpLoadInt64Constant, 1, 0, 0)
+	liveOnExit := mk(isa.OpAddInt64, 0, 1, 1)
 	tests := []struct {
 		name      string
 		body      []isa.Instruction
@@ -65,7 +64,7 @@ func TestLicmEntrySafetyOnExitTestedLoops(t *testing.T) {
 		},
 		{
 			name:      "refuses when nothing before the loop dereferences the receiver",
-			body:      exitTestedLoop(mk(isa.OpLoadIntConst, 7, 0, 0), deadOnExit),
+			body:      exitTestedLoop(mk(isa.OpLoadInt64Constant, 7, 0, 0), deadOnExit),
 			wantHoist: false,
 		},
 		{
@@ -79,8 +78,8 @@ func TestLicmEntrySafetyOnExitTestedLoops(t *testing.T) {
 				dominatingDeref,
 				mk(isa.OpMoveGeneral, 4, 8, 0),
 				condJump(isa.OpJumpIfFalse, 3, 3),
-				mk(isa.OpGetStructFieldIntT0, 1, 4, 0),
-				mk(isa.OpAddInt, 2, 2, 1),
+				mk(isa.OpGetStructFieldInt64, 1, 4, 0),
+				mk(isa.OpAddInt64, 2, 2, 1),
 				tier1Jump(-4),
 				deadOnExit,
 			},
@@ -92,8 +91,8 @@ func TestLicmEntrySafetyOnExitTestedLoops(t *testing.T) {
 				mk(isa.OpMoveGeneral, 4, 8, 0),
 				dominatingDeref,
 				condJump(isa.OpJumpIfFalse, 3, 3),
-				mk(isa.OpGetStructFieldIntT0, 1, 4, 0),
-				mk(isa.OpAddInt, 2, 2, 1),
+				mk(isa.OpGetStructFieldInt64, 1, 4, 0),
+				mk(isa.OpAddInt64, 2, 2, 1),
 				tier1Jump(-4),
 				deadOnExit,
 			},
@@ -104,9 +103,9 @@ func TestLicmEntrySafetyOnExitTestedLoops(t *testing.T) {
 			body: []isa.Instruction{
 				dominatingDeref,
 				condJump(isa.OpJumpIfFalse, 3, 4),
-				mk(isa.OpAddInt, 2, 2, 1),
-				mk(isa.OpGetStructFieldIntT0, 1, 4, 0),
-				mk(isa.OpLoadIntConst, 7, 0, 0),
+				mk(isa.OpAddInt64, 2, 2, 1),
+				mk(isa.OpGetStructFieldInt64, 1, 4, 0),
+				mk(isa.OpLoadInt64Constant, 7, 0, 0),
 				tier1Jump(-5),
 				deadOnExit,
 			},
@@ -115,10 +114,10 @@ func TestLicmEntrySafetyOnExitTestedLoops(t *testing.T) {
 		{
 			name: "hoists a read that runs before the exit test without any receiver proof",
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 7, 0, 0),
-				mk(isa.OpGetStructFieldIntT0, 1, 4, 0),
+				mk(isa.OpLoadInt64Constant, 7, 0, 0),
+				mk(isa.OpGetStructFieldInt64, 1, 4, 0),
 				condJump(isa.OpJumpIfFalse, 3, 2),
-				mk(isa.OpLoadIntConst, 8, 0, 0),
+				mk(isa.OpLoadInt64Constant, 8, 0, 0),
 				tier1Jump(-4),
 				liveOnExit,
 			},
@@ -129,8 +128,8 @@ func TestLicmEntrySafetyOnExitTestedLoops(t *testing.T) {
 			body: []isa.Instruction{
 				dominatingDeref,
 				condJump(isa.OpJumpIfFalse, 3, 6),
-				mk(isa.OpGetStructFieldIntT0, 1, 4, 0),
-				mk(isa.OpAddInt, 2, 2, 1),
+				mk(isa.OpGetStructFieldInt64, 1, 4, 0),
+				mk(isa.OpAddInt64, 2, 2, 1),
 				condJump(isa.OpJumpIfTrue, 3, -4),
 				mk(isa.OpMoveGeneral, 4, 8, 0),
 				tier1Jump(-6),
@@ -143,7 +142,7 @@ func TestLicmEntrySafetyOnExitTestedLoops(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			compiledFunction := &program.CompiledFunction{Body: tt.body}
-			_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
+			_ = HoistLoopInvariantStructFieldReads(t.Context(), compiledFunction)
 			require.Equal(t, tt.wantHoist, len(compiledFunction.PeepholeProvenance) > 0, "hoist recorded in the provenance")
 		})
 	}
@@ -152,17 +151,17 @@ func TestLicmEntrySafetyOnExitTestedLoops(t *testing.T) {
 func TestLicmZeroTripHoistWritesOnlyDeadRegisters(t *testing.T) {
 	t.Parallel()
 
-	body := exitTestedLoop(mk(isa.OpGetStructFieldIntT0, 6, 4, 0), mk(isa.OpLoadIntConst, 1, 0, 0))
+	body := exitTestedLoop(mk(isa.OpGetStructFieldInt64, 6, 4, 0), mk(isa.OpLoadInt64Constant, 1, 0, 0))
 	compiledFunction := &program.CompiledFunction{Body: body}
-	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
+	_ = HoistLoopInvariantStructFieldReads(t.Context(), compiledFunction)
 	require.Len(t, compiledFunction.Body, 6)
-	require.Equal(t, isa.OpGetStructFieldIntT0, compiledFunction.Body[1].Op)
+	require.Equal(t, isa.OpGetStructFieldInt64, compiledFunction.Body[1].Op)
 	require.Equal(t, uint8(1), compiledFunction.Body[1].A)
 	require.Equal(t, isa.OpJumpIfFalse, compiledFunction.Body[2].Op)
 	target, isJump := program.JumpTargetAt(compiledFunction.Body, 2)
 	require.True(t, isJump)
 	require.Equal(t, 5, target, "exit test still lands on the exit block")
-	require.Equal(t, isa.OpAddInt, compiledFunction.Body[3].Op, "the loop body follows the exit test with no remnant")
+	require.Equal(t, isa.OpAddInt64, compiledFunction.Body[3].Op, "the loop body follows the exit test with no remnant")
 	backEdge, isJump := program.JumpTargetAt(compiledFunction.Body, 4)
 	require.True(t, isJump)
 	require.Equal(t, 2, backEdge, "back-edge skips the hoisted read")
@@ -170,8 +169,8 @@ func TestLicmZeroTripHoistWritesOnlyDeadRegisters(t *testing.T) {
 
 func TestLoopExitsBeforeRead(t *testing.T) {
 	t.Parallel()
-	read := mk(isa.OpGetStructFieldIntT0, 1, 4, 0)
-	filler := mk(isa.OpLoadIntConst, 7, 0, 0)
+	read := mk(isa.OpGetStructFieldInt64, 1, 4, 0)
+	filler := mk(isa.OpLoadInt64Constant, 7, 0, 0)
 	tests := []struct {
 		name      string
 		body      []isa.Instruction
@@ -198,7 +197,7 @@ func TestLoopExitsBeforeRead(t *testing.T) {
 		},
 		{
 			name:      "fused exit with an extension word is recorded and its footprint skipped",
-			body:      []isa.Instruction{mk(isa.OpDrillTier1, uint8(isa.SubOpLtIntJumpFalse), 2, 0), mk(isa.OpExt, 4, 0, 0), read, filler, tier1Jump(-5), filler},
+			body:      []isa.Instruction{mk(isa.OpDrillTier1, uint8(isa.SubOpLessThanInt64ThenJumpIfFalse), 2, 0), mk(isa.OpExtension, 4, 0, 0), read, filler, tier1Jump(-5), filler},
 			loop:      loopRange{header: 0, latch: 4},
 			readPC:    2,
 			wantExits: []int{6},

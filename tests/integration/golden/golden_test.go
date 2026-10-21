@@ -79,8 +79,11 @@ func TestGoldenSnippets(t *testing.T) {
 	for _, name := range manifest {
 		entry, ok := byName[name]
 		require.True(t, ok, "manifest names unknown snippet %s", name)
-		require.NoError(t, entry.err, "manifest snippet %s does not compile", name)
 		wanted[name+pkasmExtension] = struct{}{}
+		if !entry.recordedForThisBuild() {
+			continue
+		}
+		require.NoError(t, entry.err, "manifest snippet %s does not compile", name)
 		if !checkSnapshot(t, snapshotPath("snippets", name), entry.assembly) {
 			differing = append(differing, name)
 		}

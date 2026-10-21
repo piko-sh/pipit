@@ -22,20 +22,21 @@ import (
 	"piko.sh/asmgen"
 )
 
-// upvalueHandlers returns the tier-0 upvalue handler family: pure-ASM GET_UPVALUE for
-// direct scalar cells (int, float, uint, bool). The op's tier-2 shim is still emitted
-// (install-suppressed) as the fallback target for indirect cells and non-scalar kinds.
+// upvalueHandlers returns the tier-0 upvalue handler family, which is pure-ASM
+// GET_CAPTURED_VARIABLE for direct scalar cells (int, float, uint, bool). The op's tier-2
+// shim is still emitted (install-suppressed) as the fallback target for indirect cells
+// and non-scalar kinds.
 //
 // Returns the slice of handler definitions in jump-table order.
 func upvalueHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 		{
-			Name:      "handlerGetUpvalueScalar",
-			Comment:   "handlerGetUpvalueScalar sets bank(C)[A] = upvalues[B].scalarField(C) for direct scalar cells; other shapes fall back to handlerPathBShimGetUpvalue.",
+			Name:      "handlerGetCapturedVariable",
+			Comment:   "handlerGetCapturedVariable sets bank(C)[A] = upvalues[B].scalarField(C) for direct scalar cells. Other shapes fall back to handlerPathBShimGetCapturedVariable.",
 			FrameSize: frameSizeZero,
 			Flags:     flagsNoSplitNoFrame,
 			Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-				architecture.EmitGetUpvalueScalar(emitter, "handlerPathBShimGetUpvalue")
+				architecture.EmitGetCapturedVariableScalar(emitter, "handlerPathBShimGetCapturedVariable")
 			},
 		},
 	}

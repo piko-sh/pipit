@@ -18,7 +18,18 @@
 
 package engine
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
+
+// maxCallbackPanicStackBytes bounds the callback frames an uncaught panic report carries
+// across callback boundaries. Each boundary would otherwise copy every frame below it
+// again.
+const maxCallbackPanicStackBytes = 64 << 10
+
+// callbackFramesElidedMarker ends a report whose outer callback frames were elided.
+const callbackFramesElidedMarker = "--- further frames elided: the panic crossed more callback boundaries than the report keeps ---"
 
 // callbackBoundaryMarker separates a callback VM's frames from the parent frames that
 // invoked the native code the callback came back through.
@@ -81,18 +92,31 @@ func unwrapCallbackPanic(recovered any) (any, string) {
 // runtime.PanicNilError by the callers that need it.
 func (vm *VM) recordRecoveredPanic(recovered any) {
 	value, callbackStack := unwrapCallbackPanic(recovered)
-	vm.panicValue = MaterialiseAnyForArena(vm.Arena, value)
+	if storeCensusBuilt {
+		state, was := censusEnterBoundary(vm.Arena)
+		vm.panicValue = MaterialiseAnyForArena(vm.Arena, value)
+		censusLeaveBoundary(state, was)
+	} else {
+		vm.panicValue = MaterialiseAnyForArena(vm.Arena, value)
+	}
 	vm.callbackPanicStack = callbackStack
 }
 
 // panicStackWithCallback renders the current panic's frames, preceded by the frames of
-// the callback VM the panic came from when it crossed a callback boundary.
+// the callback VM the panic came from when it crossed a callback boundary. Once the
+// callback frames reach maxCallbackPanicStackBytes the outer frames are elided, so a
+// panic unwinding through thousands of nested callbacks costs linear time, not quadratic.
 //
 // Returns string which is the combined stack, innermost frames first.
 func (vm *VM) panicStackWithCallback() string {
-	stack := vm.panicStack()
 	if vm.callbackPanicStack == "" {
-		return stack
+		return vm.panicStack()
 	}
-	return vm.callbackPanicStack + "\n" + callbackBoundaryMarker + "\n" + stack
+	if len(vm.callbackPanicStack) >= maxCallbackPanicStackBytes {
+		if strings.HasSuffix(vm.callbackPanicStack, callbackFramesElidedMarker) {
+			return vm.callbackPanicStack
+		}
+		return vm.callbackPanicStack + "\n" + callbackFramesElidedMarker
+	}
+	return vm.callbackPanicStack + "\n" + callbackBoundaryMarker + "\n" + vm.panicStack()
 }

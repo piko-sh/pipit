@@ -164,7 +164,7 @@ func TestOutputFileName(t *testing.T) {
 func TestExtractRealPackage(t *testing.T) {
 	t.Parallel()
 
-	packages, err := Extract([]string{"errors"}, nil)
+	packages, err := Extract(t.Context(), []string{"errors"}, nil)
 	require.NoError(t, err)
 	require.Len(t, packages, 1)
 

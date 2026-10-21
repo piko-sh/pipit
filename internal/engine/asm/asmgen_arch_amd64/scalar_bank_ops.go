@@ -81,10 +81,8 @@ func (*BytecodeAMD64Arch) BitwiseNotInPlace(e *asmgen.Emitter, register string) 
 	inst(e, asmamd64.OperationBitwiseNot64Bits, register)
 }
 
-// LogicalSetNonZero implements BytecodeArchPort.
-//
-// Writes 1 to the destination register if the source is non-zero, 0 otherwise. Mirrors
-// handleIntToBool's Go-tier semantics.
+// LogicalSetNonZero writes 1 to the destination register if the source is non-zero, 0
+// otherwise.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 // Takes destinationRegister (string) which receives 0 or 1.

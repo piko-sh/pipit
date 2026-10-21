@@ -25,14 +25,14 @@ import (
 )
 
 var directExitRegistrations = []asm.DirectExitHandlerSpec{
-	{Name: "handlerMapIndexExit", ExitReason: exitMapIndex},
+	{Name: "handlerGetMapExit", ExitReason: exitGetMap},
 	{Name: "handlerAppendExit", ExitReason: exitAppend},
-	{Name: "handlerAppendByteFastExit", ExitReason: exitAppendByteFast},
+	{Name: "handlerAppendByteExit", ExitReason: exitAppendByte},
 	{Name: "handlerGetFieldExit", ExitReason: exitGetField},
 	{Name: "handlerSetFieldExit", ExitReason: exitSetField},
-	{Name: "handlerAppendStructFastExit", ExitReason: exitAppendStructFast},
-	{Name: "handlerAppendIntFastExit", ExitReason: exitAppendIntFast},
-	{Name: "handlerAppendFloatFastExit", ExitReason: exitAppendFloatFast},
-	{Name: "handlerAppendStringFastExit", ExitReason: exitAppendStringFast},
-	{Name: "handlerSubOpSliceSetStringDirectExit", ExitReason: exitSliceSetStringDirect},
+	{Name: "handlerAppendStructExit", ExitReason: exitAppendStruct},
+	{Name: "handlerAppendInt64Exit", ExitReason: exitAppendInt64},
+	{Name: "handlerAppendFloat64Exit", ExitReason: exitAppendFloat64},
+	{Name: "handlerAppendStringExit", ExitReason: exitAppendString},
+	{Name: "handlerSetSliceStringElementExit", ExitReason: exitSetSliceStringElement},
 }

@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64) && !race
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64) && !race
 
 package sandboxlinux
 
@@ -56,22 +56,22 @@ func persistOriginalFilesystemRecovery(t *testing.T, storage FilesystemRecoveryS
 	t.Helper()
 	root := os.Getenv("PIPIT_TEST_RECOVERY_FILESYSTEM_ROOT")
 	grants := []sandboxbroker.LinuxRootGrant{{Name: "data", Path: root, Rights: sandboxbroker.Read | sandboxbroker.Write}}
-	owner, err := OpenCheckpointedFilesystemBrokerInGroup(context.Background(), config,
+	owner, err := OpenCheckpointedFilesystemBrokerInGroup(t.Context(), config,
 		grants, sandboxbroker.FilesystemLimits{}, storage, group)
 	if err != nil {
 		if owner != nil {
-			_ = owner.Close()
+			_ = owner.Close(t.Context())
 		}
 		t.Fatal(err)
 	}
-	result, err := owner.Execute(context.Background(), []byte(`{"operation":"fs.write","root":"data","path":"file","data":"bmV3"}`))
+	result, err := owner.Execute(t.Context(), []byte(`{"operation":"fs.write","root":"data","path":"file","data":"bmV3"}`))
 	if err != nil || result.Written != 3 {
-		_ = owner.Close()
+		_ = owner.Close(t.Context())
 		t.Fatal("original journalled write failed:", err)
 	}
 	records, err := owner.recovery.journal.Records()
 	if err != nil || len(records) != 1 {
-		_ = owner.Close()
+		_ = owner.Close(t.Context())
 		t.Fatal("missing original recovery intent:", err)
 	}
 	name, err := sandboxbroker.StagingName(records[0].Namespace, records[0].Operation)
@@ -194,12 +194,12 @@ func exerciseCompletedServiceRelease(t *testing.T, ctx context.Context, claim *S
 	if err := snapshot.Close(); err != nil {
 		t.Fatal(err)
 	}
-	replacement, err := newServiceGroup(parent, Limits{}, testTenant)
+	replacement, err := newServiceGroup(t.Context(), parent, Limits{}, testTenant)
 	if err != nil {
 		t.Fatal("original reservation remains:", err)
 	}
 	defer func() {
-		if err := replacement.closeGroup(context.Background()); err != nil {
+		if err := replacement.closeGroup(t.Context()); err != nil {
 			t.Error(err)
 		}
 	}()

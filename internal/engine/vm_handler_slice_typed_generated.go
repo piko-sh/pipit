@@ -29,7 +29,7 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-func handleSubOpMakeSliceInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMakeSliceInt64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	length := registers.Ints[instruction.C]
@@ -38,27 +38,25 @@ func handleSubOpMakeSliceInt(vm *VM, frame *CallFrame, registers *Registers, ins
 		return result
 	}
 	if vm.Limits.MaxAllocSize > 0 && int(capacity) > vm.Limits.MaxAllocSize {
-		vm.evalError = fmt.Errorf(errMakeSliceLimitFmt,
-			fault.ErrAllocationLimit, capacity, vm.Limits.MaxAllocSize)
+		vm.evalError = fmt.Errorf(errMakeSliceLimitFmt, fault.ErrAllocationLimit, capacity, vm.Limits.MaxAllocSize)
 		return opPanicError
 	}
 	backing := vm.Arena.AllocIntBacking(int(capacity))
-	clear(backing)
 	registers.SlicesInt[instruction.B] = backing[:length:capacity]
 	return opContinue
 }
 
-func handleSubOpLenSliceIntDirect(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLengthSliceInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.B] = int64(len(registers.SlicesInt[instruction.C]))
 	return opContinue
 }
 
-func handleSubOpCapSliceIntDirect(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleCapacitySliceInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.B] = int64(cap(registers.SlicesInt[instruction.C]))
 	return opContinue
 }
 
-func handleSubOpSliceSliceIntDirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSliceSliceInt64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	ext1 := readExtensionWord(frame)
 	frame.ProgramCounter++
 	flags := ext1.A
@@ -78,29 +76,27 @@ func handleSubOpSliceSliceIntDirect(vm *VM, frame *CallFrame, registers *Registe
 		capacity = registers.Ints[ext2.A]
 	}
 	if low < 0 || high < low || capacity < high || capacity > int64(cap(source)) {
-		vm.evalError = fmt.Errorf(sliceBoundsOutOfRangeFormat,
-			low, high, capacity, cap(source))
+		vm.evalError = fmt.Errorf(sliceBoundsOutOfRangeFormat, low, high, capacity, cap(source))
 		return opPanicError
 	}
 	registers.SlicesInt[instruction.B] = source[low:high:capacity]
 	return opContinue
 }
 
-func handleSubOpAppendSliceIntDirect(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+func handleAppendSliceInt64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	source := registers.SlicesInt[instr.C]
 	element := registers.Ints[extensionWord.A]
 	if vm.Limits.MaxAllocSize > 0 && len(source)+1 > vm.Limits.MaxAllocSize {
-		vm.evalError = fmt.Errorf(appendLimitExceededFormat,
-			fault.ErrAllocationLimit, len(source)+1, vm.Limits.MaxAllocSize)
+		vm.evalError = fmt.Errorf(appendLimitExceededFormat, fault.ErrAllocationLimit, len(source)+1, vm.Limits.MaxAllocSize)
 		return opPanicError
 	}
 	registers.SlicesInt[instr.B] = append(source, element)
 	return opContinue
 }
 
-func handleRangeNextSliceInt(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleRangeNextSliceInt64(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	slice := registers.SlicesInt[instruction.B]
 	index := registers.Ints[instruction.A] + 1
 	registers.Ints[instruction.A] = index
@@ -116,7 +112,7 @@ func handleRangeNextSliceInt(_ *VM, frame *CallFrame, registers *Registers, inst
 	return opContinue
 }
 
-func handleSubOpMakeSliceFloat(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMakeSliceFloat64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	length := registers.Ints[instruction.C]
@@ -125,17 +121,15 @@ func handleSubOpMakeSliceFloat(vm *VM, frame *CallFrame, registers *Registers, i
 		return result
 	}
 	if vm.Limits.MaxAllocSize > 0 && int(capacity) > vm.Limits.MaxAllocSize {
-		vm.evalError = fmt.Errorf(errMakeSliceLimitFmt,
-			fault.ErrAllocationLimit, capacity, vm.Limits.MaxAllocSize)
+		vm.evalError = fmt.Errorf(errMakeSliceLimitFmt, fault.ErrAllocationLimit, capacity, vm.Limits.MaxAllocSize)
 		return opPanicError
 	}
 	backing := vm.Arena.AllocFloatBacking(int(capacity))
-	clear(backing)
 	registers.slicesFloat[instruction.B] = backing[:length:capacity]
 	return opContinue
 }
 
-func handleSubOpSliceGetFloatDirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetSliceFloat64Element(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	slice := registers.slicesFloat[instruction.C]
@@ -147,7 +141,7 @@ func handleSubOpSliceGetFloatDirect(vm *VM, frame *CallFrame, registers *Registe
 	return opContinue
 }
 
-func handleSubOpSliceSetFloatDirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetSliceFloat64Element(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	slice := registers.slicesFloat[instruction.B]
@@ -159,17 +153,17 @@ func handleSubOpSliceSetFloatDirect(vm *VM, frame *CallFrame, registers *Registe
 	return opContinue
 }
 
-func handleSubOpLenSliceFloatDirect(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLengthSliceFloat64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.B] = int64(len(registers.slicesFloat[instruction.C]))
 	return opContinue
 }
 
-func handleSubOpCapSliceFloatDirect(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleCapacitySliceFloat64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.B] = int64(cap(registers.slicesFloat[instruction.C]))
 	return opContinue
 }
 
-func handleSubOpSliceSliceFloatDirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSliceSliceFloat64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	ext1 := readExtensionWord(frame)
 	frame.ProgramCounter++
 	flags := ext1.A
@@ -189,29 +183,27 @@ func handleSubOpSliceSliceFloatDirect(vm *VM, frame *CallFrame, registers *Regis
 		capacity = registers.Ints[ext2.A]
 	}
 	if low < 0 || high < low || capacity < high || capacity > int64(cap(source)) {
-		vm.evalError = fmt.Errorf(sliceBoundsOutOfRangeFormat,
-			low, high, capacity, cap(source))
+		vm.evalError = fmt.Errorf(sliceBoundsOutOfRangeFormat, low, high, capacity, cap(source))
 		return opPanicError
 	}
 	registers.slicesFloat[instruction.B] = source[low:high:capacity]
 	return opContinue
 }
 
-func handleSubOpAppendSliceFloatDirect(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+func handleAppendSliceFloat64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	source := registers.slicesFloat[instr.C]
 	element := registers.Floats[extensionWord.A]
 	if vm.Limits.MaxAllocSize > 0 && len(source)+1 > vm.Limits.MaxAllocSize {
-		vm.evalError = fmt.Errorf(appendLimitExceededFormat,
-			fault.ErrAllocationLimit, len(source)+1, vm.Limits.MaxAllocSize)
+		vm.evalError = fmt.Errorf(appendLimitExceededFormat, fault.ErrAllocationLimit, len(source)+1, vm.Limits.MaxAllocSize)
 		return opPanicError
 	}
 	registers.slicesFloat[instr.B] = append(source, element)
 	return opContinue
 }
 
-func handleSubOpMakeSliceString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMakeSliceString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	length := registers.Ints[instruction.C]
@@ -220,17 +212,15 @@ func handleSubOpMakeSliceString(vm *VM, frame *CallFrame, registers *Registers, 
 		return result
 	}
 	if vm.Limits.MaxAllocSize > 0 && int(capacity) > vm.Limits.MaxAllocSize {
-		vm.evalError = fmt.Errorf(errMakeSliceLimitFmt,
-			fault.ErrAllocationLimit, capacity, vm.Limits.MaxAllocSize)
+		vm.evalError = fmt.Errorf(errMakeSliceLimitFmt, fault.ErrAllocationLimit, capacity, vm.Limits.MaxAllocSize)
 		return opPanicError
 	}
 	backing := vm.Arena.AllocStringBacking(int(capacity))
-	clear(backing)
 	registers.slicesString[instruction.B] = backing[:length:capacity]
 	return opContinue
 }
 
-func handleSubOpSliceGetStringDirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetSliceStringElement(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	slice := registers.slicesString[instruction.C]
@@ -242,7 +232,7 @@ func handleSubOpSliceGetStringDirect(vm *VM, frame *CallFrame, registers *Regist
 	return opContinue
 }
 
-func handleSubOpSliceSetStringDirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetSliceStringElement(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	slice := registers.slicesString[instruction.B]
@@ -254,17 +244,17 @@ func handleSubOpSliceSetStringDirect(vm *VM, frame *CallFrame, registers *Regist
 	return opContinue
 }
 
-func handleSubOpLenSliceStringDirect(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLengthSliceString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.B] = int64(len(registers.slicesString[instruction.C]))
 	return opContinue
 }
 
-func handleSubOpCapSliceStringDirect(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleCapacitySliceString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.B] = int64(cap(registers.slicesString[instruction.C]))
 	return opContinue
 }
 
-func handleSubOpSliceSliceStringDirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSliceSliceString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	ext1 := readExtensionWord(frame)
 	frame.ProgramCounter++
 	flags := ext1.A
@@ -284,29 +274,27 @@ func handleSubOpSliceSliceStringDirect(vm *VM, frame *CallFrame, registers *Regi
 		capacity = registers.Ints[ext2.A]
 	}
 	if low < 0 || high < low || capacity < high || capacity > int64(cap(source)) {
-		vm.evalError = fmt.Errorf(sliceBoundsOutOfRangeFormat,
-			low, high, capacity, cap(source))
+		vm.evalError = fmt.Errorf(sliceBoundsOutOfRangeFormat, low, high, capacity, cap(source))
 		return opPanicError
 	}
 	registers.slicesString[instruction.B] = source[low:high:capacity]
 	return opContinue
 }
 
-func handleSubOpAppendSliceStringDirect(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+func handleAppendSliceString(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	source := registers.slicesString[instr.C]
 	element := MaterialiseStringForGoAppend(vm.Arena, source, registers.Strings[extensionWord.A])
 	if vm.Limits.MaxAllocSize > 0 && len(source)+1 > vm.Limits.MaxAllocSize {
-		vm.evalError = fmt.Errorf(appendLimitExceededFormat,
-			fault.ErrAllocationLimit, len(source)+1, vm.Limits.MaxAllocSize)
+		vm.evalError = fmt.Errorf(appendLimitExceededFormat, fault.ErrAllocationLimit, len(source)+1, vm.Limits.MaxAllocSize)
 		return opPanicError
 	}
 	registers.slicesString[instr.B] = append(source, element)
 	return opContinue
 }
 
-func handleSubOpMakeSliceBool(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMakeSliceBool(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	length := registers.Ints[instruction.C]
@@ -315,17 +303,15 @@ func handleSubOpMakeSliceBool(vm *VM, frame *CallFrame, registers *Registers, in
 		return result
 	}
 	if vm.Limits.MaxAllocSize > 0 && int(capacity) > vm.Limits.MaxAllocSize {
-		vm.evalError = fmt.Errorf(errMakeSliceLimitFmt,
-			fault.ErrAllocationLimit, capacity, vm.Limits.MaxAllocSize)
+		vm.evalError = fmt.Errorf(errMakeSliceLimitFmt, fault.ErrAllocationLimit, capacity, vm.Limits.MaxAllocSize)
 		return opPanicError
 	}
 	backing := vm.Arena.AllocBoolBacking(int(capacity))
-	clear(backing)
 	registers.slicesBool[instruction.B] = backing[:length:capacity]
 	return opContinue
 }
 
-func handleSubOpSliceGetBoolDirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetSliceBoolElement(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	slice := registers.slicesBool[instruction.C]
@@ -337,7 +323,7 @@ func handleSubOpSliceGetBoolDirect(vm *VM, frame *CallFrame, registers *Register
 	return opContinue
 }
 
-func handleSubOpSliceSetBoolDirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetSliceBoolElement(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	slice := registers.slicesBool[instruction.B]
@@ -349,17 +335,17 @@ func handleSubOpSliceSetBoolDirect(vm *VM, frame *CallFrame, registers *Register
 	return opContinue
 }
 
-func handleSubOpLenSliceBoolDirect(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLengthSliceBool(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.B] = int64(len(registers.slicesBool[instruction.C]))
 	return opContinue
 }
 
-func handleSubOpCapSliceBoolDirect(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleCapacitySliceBool(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.B] = int64(cap(registers.slicesBool[instruction.C]))
 	return opContinue
 }
 
-func handleSubOpSliceSliceBoolDirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSliceSliceBool(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	ext1 := readExtensionWord(frame)
 	frame.ProgramCounter++
 	flags := ext1.A
@@ -379,29 +365,27 @@ func handleSubOpSliceSliceBoolDirect(vm *VM, frame *CallFrame, registers *Regist
 		capacity = registers.Ints[ext2.A]
 	}
 	if low < 0 || high < low || capacity < high || capacity > int64(cap(source)) {
-		vm.evalError = fmt.Errorf(sliceBoundsOutOfRangeFormat,
-			low, high, capacity, cap(source))
+		vm.evalError = fmt.Errorf(sliceBoundsOutOfRangeFormat, low, high, capacity, cap(source))
 		return opPanicError
 	}
 	registers.slicesBool[instruction.B] = source[low:high:capacity]
 	return opContinue
 }
 
-func handleSubOpAppendSliceBoolDirect(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+func handleAppendSliceBool(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	source := registers.slicesBool[instr.C]
 	element := registers.Bools[extensionWord.A]
 	if vm.Limits.MaxAllocSize > 0 && len(source)+1 > vm.Limits.MaxAllocSize {
-		vm.evalError = fmt.Errorf(appendLimitExceededFormat,
-			fault.ErrAllocationLimit, len(source)+1, vm.Limits.MaxAllocSize)
+		vm.evalError = fmt.Errorf(appendLimitExceededFormat, fault.ErrAllocationLimit, len(source)+1, vm.Limits.MaxAllocSize)
 		return opPanicError
 	}
 	registers.slicesBool[instr.B] = append(source, element)
 	return opContinue
 }
 
-func handleSubOpMakeSliceUint(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMakeSliceUint64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	length := registers.Ints[instruction.C]
@@ -410,17 +394,15 @@ func handleSubOpMakeSliceUint(vm *VM, frame *CallFrame, registers *Registers, in
 		return result
 	}
 	if vm.Limits.MaxAllocSize > 0 && int(capacity) > vm.Limits.MaxAllocSize {
-		vm.evalError = fmt.Errorf(errMakeSliceLimitFmt,
-			fault.ErrAllocationLimit, capacity, vm.Limits.MaxAllocSize)
+		vm.evalError = fmt.Errorf(errMakeSliceLimitFmt, fault.ErrAllocationLimit, capacity, vm.Limits.MaxAllocSize)
 		return opPanicError
 	}
 	backing := vm.Arena.AllocUintBacking(int(capacity))
-	clear(backing)
 	registers.slicesUint[instruction.B] = backing[:length:capacity]
 	return opContinue
 }
 
-func handleSubOpSliceGetUintDirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetSliceUint64Element(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	slice := registers.slicesUint[instruction.C]
@@ -432,7 +414,7 @@ func handleSubOpSliceGetUintDirect(vm *VM, frame *CallFrame, registers *Register
 	return opContinue
 }
 
-func handleSubOpSliceSetUintDirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetSliceUint64Element(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	slice := registers.slicesUint[instruction.B]
@@ -444,17 +426,17 @@ func handleSubOpSliceSetUintDirect(vm *VM, frame *CallFrame, registers *Register
 	return opContinue
 }
 
-func handleSubOpLenSliceUintDirect(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLengthSliceUint64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.B] = int64(len(registers.slicesUint[instruction.C]))
 	return opContinue
 }
 
-func handleSubOpCapSliceUintDirect(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleCapacitySliceUint64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.B] = int64(cap(registers.slicesUint[instruction.C]))
 	return opContinue
 }
 
-func handleSubOpSliceSliceUintDirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSliceSliceUint64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	ext1 := readExtensionWord(frame)
 	frame.ProgramCounter++
 	flags := ext1.A
@@ -474,29 +456,27 @@ func handleSubOpSliceSliceUintDirect(vm *VM, frame *CallFrame, registers *Regist
 		capacity = registers.Ints[ext2.A]
 	}
 	if low < 0 || high < low || capacity < high || capacity > int64(cap(source)) {
-		vm.evalError = fmt.Errorf(sliceBoundsOutOfRangeFormat,
-			low, high, capacity, cap(source))
+		vm.evalError = fmt.Errorf(sliceBoundsOutOfRangeFormat, low, high, capacity, cap(source))
 		return opPanicError
 	}
 	registers.slicesUint[instruction.B] = source[low:high:capacity]
 	return opContinue
 }
 
-func handleSubOpAppendSliceUintDirect(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+func handleAppendSliceUint64(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	source := registers.slicesUint[instr.C]
 	element := registers.Uints[extensionWord.A]
 	if vm.Limits.MaxAllocSize > 0 && len(source)+1 > vm.Limits.MaxAllocSize {
-		vm.evalError = fmt.Errorf(appendLimitExceededFormat,
-			fault.ErrAllocationLimit, len(source)+1, vm.Limits.MaxAllocSize)
+		vm.evalError = fmt.Errorf(appendLimitExceededFormat, fault.ErrAllocationLimit, len(source)+1, vm.Limits.MaxAllocSize)
 		return opPanicError
 	}
 	registers.slicesUint[instr.B] = append(source, element)
 	return opContinue
 }
 
-func handleSliceGetByteDirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetSliceByteElement(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	slice := registers.slicesByte[instruction.C]
@@ -508,29 +488,29 @@ func handleSliceGetByteDirect(vm *VM, frame *CallFrame, registers *Registers, in
 	return opContinue
 }
 
-func handleSliceSetByteDirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetSliceByteElement(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	slice := registers.slicesByte[instruction.B]
-	index := registers.Ints[instruction.C]
+	index := registers.Ints[instruction.C] + int64(extensionWord.B)
 	if uint64(index) >= uint64(len(slice)) {
 		return raiseIndexOutOfRange(vm, int(index), len(slice))
 	}
-	slice[index] = safeconv.Uint64ToUint8(registers.Uints[extensionWord.A])
+	slice[index] = safeconv.Uint64ToByteTruncate(registers.Uints[extensionWord.A])
 	return opContinue
 }
 
-func handleSubOpLenSliceByteDirect(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLengthSliceByte(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.B] = int64(len(registers.slicesByte[instruction.C]))
 	return opContinue
 }
 
-func handleSubOpCapSliceByteDirect(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleCapacitySliceByte(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.B] = int64(cap(registers.slicesByte[instruction.C]))
 	return opContinue
 }
 
-func handleSubOpSliceByteSlice(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSliceSliceByte(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	ext1 := readExtensionWord(frame)
 	frame.ProgramCounter++
 	flags := ext1.A
@@ -550,22 +530,20 @@ func handleSubOpSliceByteSlice(vm *VM, frame *CallFrame, registers *Registers, i
 		capacity = registers.Ints[ext2.A]
 	}
 	if low < 0 || high < low || capacity < high || capacity > int64(cap(source)) {
-		vm.evalError = fmt.Errorf(sliceBoundsOutOfRangeFormat,
-			low, high, capacity, cap(source))
+		vm.evalError = fmt.Errorf(sliceBoundsOutOfRangeFormat, low, high, capacity, cap(source))
 		return opPanicError
 	}
 	registers.slicesByte[instruction.B] = source[low:high:capacity]
 	return opContinue
 }
 
-func handleSubOpAppendSliceByteDirect(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
+func handleAppendSliceByte(vm *VM, frame *CallFrame, registers *Registers, instr isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	source := registers.slicesByte[instr.C]
 	element := safeconv.Uint64ToByteTruncate(registers.Uints[extensionWord.A])
 	if vm.Limits.MaxAllocSize > 0 && len(source)+1 > vm.Limits.MaxAllocSize {
-		vm.evalError = fmt.Errorf(appendLimitExceededFormat,
-			fault.ErrAllocationLimit, len(source)+1, vm.Limits.MaxAllocSize)
+		vm.evalError = fmt.Errorf(appendLimitExceededFormat, fault.ErrAllocationLimit, len(source)+1, vm.Limits.MaxAllocSize)
 		return opPanicError
 	}
 	registers.slicesByte[instr.B] = append(source, element)

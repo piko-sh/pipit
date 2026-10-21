@@ -93,26 +93,40 @@ func (vm *VM) unlockInterpreter() {
 // yieldInterpreterLock briefly releases and re-acquires the interpreter lock so a sibling
 // interpreted goroutine can run.
 //
-// Called at the periodic instruction checkpoint so a CPU-bound safe-mode goroutine cannot
-// starve its siblings. A no-op unless this VM currently holds the lock.
-//
-// Concurrency: unlocks then re-locks the per-family interpreter mutex (the GIL), with a
-// runtime.Gosched between, so a waiting sibling can acquire it.
+// Concurrent access unlocks then re-locks the per-family interpreter mutex (the GIL),
+// with a runtime.Gosched between, so a waiting sibling can acquire it. The export gates
+// the run holds are parked around the wait, so an owner that takes the lock meanwhile is
+// not left blocked by a reader that cannot run.
 func (vm *VM) yieldInterpreterLock() {
 	if !vm.holdsInterpreterLock {
 		return
 	}
+	vm.parkGates()
 	vm.Globals.interpreterLock.Unlock()
 	runtime.Gosched()
 	vm.Globals.interpreterLock.Lock()
+	vm.unparkGates()
 }
 
-// releaseAroundBlock releases the interpreter lock before this VM parks on a blocking
-// operation, so a sibling can run the matching operation that unblocks it.
+// yieldAtCheckpoint lets a sibling interpreted goroutine (yieldInterpreterLock) and an
+// owner waiting for an export gate the VM holds (yieldExportGates) run, at the periodic
+// instruction checkpoint.
+func (vm *VM) yieldAtCheckpoint() {
+	vm.yieldInterpreterLock()
+	if vm.holdsGates {
+		vm.yieldExportGates()
+	}
+}
+
+// releaseAroundBlock releases the interpreter lock, and the export gates a gated run
+// holds (parkGates), before this VM parks on a blocking operation, so a sibling can run
+// the matching operation that unblocks it and an owner section can run meanwhile.
 //
-// Returns bool reporting whether the lock was released and must be re-acquired.
+// Returns bool reporting whether the interpreter lock was released and must be
+// re-acquired.
 func (vm *VM) releaseAroundBlock() bool {
 	vm.debugBlockEnter()
+	vm.parkGates()
 	return vm.releaseInterpreterLockForBlock()
 }
 
@@ -131,12 +145,13 @@ func (vm *VM) releaseInterpreterLockForBlock() bool {
 }
 
 // reacquireAfterBlock re-acquires the interpreter lock after a blocking operation
-// returns.
+// returns, and then the export gates releaseAroundBlock let go.
 //
 // Takes released (bool) which is the value returned by the paired releaseAroundBlock.
 func (vm *VM) reacquireAfterBlock(released bool) {
 	vm.debugBlockLeave()
 	vm.reacquireInterpreterLockAfterBlock(released)
+	vm.unparkGates()
 }
 
 // reacquireInterpreterLockAfterBlock re-locks the interpreter lock when
@@ -146,7 +161,7 @@ func (vm *VM) reacquireAfterBlock(released bool) {
 //
 // Concurrency: re-locks the per-family interpreter mutex (the GIL) when released is true.
 func (vm *VM) reacquireInterpreterLockAfterBlock(released bool) {
-	if !released {
+	if !released || vm.unwindLeaked.Load() {
 		return
 	}
 	vm.Globals.interpreterLock.Lock()

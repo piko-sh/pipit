@@ -60,14 +60,11 @@ func (c *Compiler) compileExpressionInto(ctx context.Context, expression ast.Exp
 // tryCompileArithmeticInto emits a non-constant arithmetic binary expression with dest as
 // the destination register.
 //
-// Handles + - * / % on the scalar banks. Parentheses are transparent. Comparisons,
-// short-circuit operators, constant-folded expressions and every other shape are left to
-// the caller's fallback.
-//
 // Takes expression (ast.Expr) which is the candidate expression.
 // Takes dest (VarLocation) which is the destination register.
 //
-// Returns true when the expression was emitted into dest, and any compilation error.
+// Returns bool which is true when the expression was emitted into dest.
+// Returns error which reports a compilation failure.
 func (c *Compiler) tryCompileArithmeticInto(ctx context.Context, expression ast.Expr, dest program.VarLocation) (bool, error) {
 	if paren, ok := expression.(*ast.ParenExpr); ok {
 		return c.tryCompileArithmeticInto(ctx, paren.X, dest)
@@ -96,7 +93,7 @@ func (c *Compiler) tryCompileArithmeticInto(ctx context.Context, expression ast.
 		c.finishArithmeticResult(ctx, result, dest, expression)
 		return true, nil
 	}
-	if t := c.staticTypeOf(expression); t != nil {
+	if t := c.staticTypeOf(expression); t != nil && !typemap.BinaryResultFitsNarrowType(binary.Op, t) {
 		c.EmitNarrowIntegerTruncation(dest, t)
 	}
 	return true, nil
@@ -192,7 +189,7 @@ func isDirectScalarRegister(location program.VarLocation) bool {
 		return false
 	}
 	switch location.Kind {
-	case isa.RegisterInt, isa.RegisterFloat, isa.RegisterString, isa.RegisterUint, isa.RegisterComplex:
+	case isa.RegisterInt64, isa.RegisterFloat64, isa.RegisterString, isa.RegisterUint64, isa.RegisterComplex128:
 		return true
 	default:
 		return false

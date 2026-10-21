@@ -20,6 +20,8 @@ package engine
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func setArenaBudget(t *testing.T, a *RegisterArena, n uint64) {
@@ -29,9 +31,23 @@ func setArenaBudget(t *testing.T, a *RegisterArena, n uint64) {
 
 func setArenaOwnerVM(t *testing.T, a *RegisterArena, vm *VM) {
 	t.Helper()
-	a.ownerVM = vm
+	a.setOwnerVM(vm)
 }
 
 func arenaTotalAllocatedBytes(a *RegisterArena) uint64 {
 	return a.totalAllocatedBytes
+}
+
+func skipUnderReuseAudit(t *testing.T) {
+	t.Helper()
+	if arenaAuditEnabled {
+		t.Skip("the pipit_reuse_audit build abandons dead chunks instead of recycling them")
+	}
+}
+
+func requireAs[T any](t *testing.T, value any) T {
+	t.Helper()
+	typed, ok := value.(T)
+	require.Truef(t, ok, "want %T, got %T", typed, value)
+	return typed
 }

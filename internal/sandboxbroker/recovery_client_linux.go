@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxbroker
 
@@ -82,16 +82,16 @@ func ExchangeFilesystemRecovery(ctx context.Context, stream supervisedFilesystem
 		return ErrInvalidPolicy
 	}
 	if ctx == nil {
-		return errors.Join(ErrInvalidPolicy, stream.Close())
+		return errors.Join(ErrInvalidPolicy, closeWithoutContext(stream))
 	}
 	finished := make(chan struct{})
 	var cancellation error
 	stop := context.AfterFunc(ctx, func() {
-		cancellation = stream.Close()
+		cancellation = closeForCleanup(ctx, stream)
 		close(finished)
 	})
 	defer func() {
-		result = errors.Join(result, stream.Close())
+		result = errors.Join(result, closeForCleanup(ctx, stream))
 		if !stop() {
 			<-finished
 		}

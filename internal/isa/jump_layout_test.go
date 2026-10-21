@@ -34,31 +34,31 @@ func TestJumpLayoutOfClassifiesEveryLayout(t *testing.T) {
 		trailingNops int
 	}{
 		{name: "jump if false", instr: NewInstruction(OpJumpIfFalse, 1, 2, 0), layout: JumpLayoutWord},
-		{name: "test nil jump true", instr: NewInstruction(OpTestNilJumpTrue, 1, 2, 0), layout: JumpLayoutWord},
+		{name: "test nil jump true", instr: NewInstruction(OpJumpIfNil, 1, 2, 0), layout: JumpLayoutWord},
 		{name: "type switch case row", instr: NewInstruction(OpTypeSwitchCase, 1, 2, 0), layout: JumpLayoutWord},
 		{name: "unconditional jump", instr: NewTier1Instruction(SubOpJump, 2, 0), layout: JumpLayoutWord},
-		{name: "add int jump", instr: NewInstruction(OpAddIntJump, 1, 2, 3), layout: JumpLayoutExtension},
-		{name: "lt int jump false", instr: NewTier1Instruction(SubOpLtIntJumpFalse, 1, 2), layout: JumpLayoutExtension},
-		{name: "le int const jump false", instr: NewTier1Instruction(SubOpLeIntConstJumpFalse, 1, 2), layout: JumpLayoutExtension},
-		{name: "eq string const jump false", instr: NewTier1Instruction(SubOpEqStringConstJumpFalse, 1, 2), layout: JumpLayoutExtension},
-		{name: "inc int jump lt", instr: NewTier1Instruction(SubOpIncIntJumpLt, 1, 2), layout: JumpLayoutExtension},
-		{name: "len string lt jump false", instr: NewTier1Instruction(SubOpLenStringLtJumpFalse, 1, 2), layout: JumpLayoutExtension},
-		{name: "eq uint const jump false pads one nop", instr: NewTier1Instruction(SubOpEqUintConstJumpFalse, 1, 2), layout: JumpLayoutExtension, trailingNops: EqUintConstJumpFalseNopCount},
-		{name: "range check uint reads the second extension", instr: NewTier2Instruction(SubOpTier2RangeCheckUintJumpFalse, 1), layout: JumpLayoutSecondExtension, trailingNops: RangeCheckUintFusionNopCount},
-		{name: "range next slice int", instr: NewInstruction(OpRangeNextSliceInt, 1, 2, 3), layout: JumpLayoutExtension24},
+		{name: "add int jump", instr: NewInstruction(OpAddInt64ConstantThenJump, 1, 2, 3), layout: JumpLayoutExtension},
+		{name: "lt int jump false", instr: NewTier1Instruction(SubOpLessThanInt64ThenJumpIfFalse, 1, 2), layout: JumpLayoutExtension},
+		{name: "le int const jump false", instr: NewTier1Instruction(SubOpLessOrEqualInt64ConstantThenJumpIfFalse, 1, 2), layout: JumpLayoutExtension},
+		{name: "eq string const jump false", instr: NewTier1Instruction(SubOpEqualStringConstantThenJumpIfFalse, 1, 2), layout: JumpLayoutExtension},
+		{name: "inc int jump lt", instr: NewTier1Instruction(SubOpIncrementInt64ThenJumpIfLessThan, 1, 2), layout: JumpLayoutExtension},
+		{name: "len string lt jump false", instr: NewTier1Instruction(SubOpLessThanLengthStringThenJumpIfFalse, 1, 2), layout: JumpLayoutExtension},
+		{name: "eq uint const jump false pads one nop", instr: NewTier1Instruction(SubOpEqualUint64ImmediateThenJumpIfFalse, 1, 2), layout: JumpLayoutExtension, trailingNops: EqualUint64ImmediateThenJumpIfFalseNoOperationCount},
+		{name: "range check uint reads the second extension", instr: NewTier2Instruction(SubOpTier2InRangeUint64ThenJumpIfFalse, 1), layout: JumpLayoutSecondExtension, trailingNops: RangeCheckUintFusionNoOperationCount},
+		{name: "range next slice int", instr: NewInstruction(OpRangeNextSliceInt64, 1, 2, 3), layout: JumpLayoutExtension24},
 		{name: "range next slice byte", instr: NewInstruction(OpRangeNextSliceByte, 1, 2, 3), layout: JumpLayoutExtension24},
 		{name: "type switch dispatch", instr: NewTier1Instruction(SubOpTypeSwitchJump, 1, 2), layout: JumpLayoutMultiWay},
-		{name: "map index ok int int branch", instr: NewInstruction(OpMapIndexOkJumpIfFalseIntInt, 1, 2, 3), layout: JumpLayoutExtensionBC},
-		{name: "map index ok string int branch", instr: NewInstruction(OpMapIndexOkJumpIfFalseStringInt, 1, 2, 3), layout: JumpLayoutExtensionBC},
-		{name: "map index ok string string branch", instr: NewInstruction(OpMapIndexOkJumpIfFalseStringString, 1, 2, 3), layout: JumpLayoutExtensionBC},
-		{name: "map index ok int string branch", instr: NewInstruction(OpMapIndexOkJumpIfFalseIntString, 1, 2, 3), layout: JumpLayoutExtensionBC},
-		{name: "map index ok int general branch", instr: NewInstruction(OpMapIndexOkJumpIfFalseIntGeneral, 1, 2, 3), layout: JumpLayoutExtensionBC},
-		{name: "map index ok string general branch", instr: NewInstruction(OpMapIndexOkJumpIfFalseStringGeneral, 1, 2, 3), layout: JumpLayoutExtensionBC},
-		{name: "unfused map index ok is not a branch", instr: NewInstruction(OpMapIndexOkIntInt, 1, 2, 3), layout: JumpLayoutNone},
-		{name: "make slice int carries an extension but no offset", instr: NewTier1Instruction(SubOpMakeSliceInt, 1, 2), layout: JumpLayoutNone},
+		{name: "map index ok int int branch", instr: NewInstruction(OpGetMapInt64Int64OkThenJumpIfFalse, 1, 2, 3), layout: JumpLayoutExtensionBC},
+		{name: "map index ok string int branch", instr: NewInstruction(OpGetMapStringInt64OkThenJumpIfFalse, 1, 2, 3), layout: JumpLayoutExtensionBC},
+		{name: "map index ok string string branch", instr: NewInstruction(OpGetMapStringStringOkThenJumpIfFalse, 1, 2, 3), layout: JumpLayoutExtensionBC},
+		{name: "map index ok int string branch", instr: NewInstruction(OpGetMapInt64StringOkThenJumpIfFalse, 1, 2, 3), layout: JumpLayoutExtensionBC},
+		{name: "map index ok int general branch", instr: NewInstruction(OpGetMapInt64GeneralOkThenJumpIfFalse, 1, 2, 3), layout: JumpLayoutExtensionBC},
+		{name: "map index ok string general branch", instr: NewInstruction(OpGetMapStringGeneralOkThenJumpIfFalse, 1, 2, 3), layout: JumpLayoutExtensionBC},
+		{name: "unfused map index ok is not a branch", instr: NewInstruction(OpGetMapInt64Int64Ok, 1, 2, 3), layout: JumpLayoutNone},
+		{name: "make slice int carries an extension but no offset", instr: NewTier1Instruction(SubOpMakeSliceInt64, 1, 2), layout: JumpLayoutNone},
 		{name: "call method carries an extension but no offset", instr: NewTier1Instruction(SubOpCallMethod, 1, 2), layout: JumpLayoutNone},
 		{name: "tier-2 make map carries an extension but no offset", instr: NewTier2Instruction(SubOpTier2MakeMap, 1), layout: JumpLayoutNone},
-		{name: "extension word", instr: NewInstruction(OpExt, 1, 2, 3), layout: JumpLayoutNone},
+		{name: "extension word", instr: NewInstruction(OpExtension, 1, 2, 3), layout: JumpLayoutNone},
 		{name: "tail call transfers control without an offset", instr: NewTier1Instruction(SubOpTailCall, 1, 2), layout: JumpLayoutNone},
 		{name: "return transfers control without an offset", instr: NewTier2Instruction(SubOpTier2Return, 1), layout: JumpLayoutNone},
 	}
@@ -77,9 +77,9 @@ func TestJumpLayoutAgreesWithSpecAndShape(t *testing.T) {
 	t.Parallel()
 
 	offsetlessControlFlow := map[string]bool{
-		"TAIL_CALL":         true,
-		"TIER2_RETURN":      true,
-		"TIER3_RETURN_VOID": true,
+		"TAIL_CALL":   true,
+		"RETURN":      true,
+		"RETURN_VOID": true,
 	}
 
 	for _, row := range AllSpecs() {
@@ -131,4 +131,48 @@ func TestJumpLayoutWordCount(t *testing.T) {
 	require.Equal(t, 2, JumpLayoutExtension24.WordCount())
 	require.Equal(t, 2, JumpLayoutExtensionBC.WordCount())
 	require.Equal(t, 3, JumpLayoutSecondExtension.WordCount())
+}
+
+func TestJumpLayoutTableAgreesWithTheSpecAndShapes(t *testing.T) {
+	t.Parallel()
+
+	jumps := 0
+	for slot := range FlatDispatchSlots {
+		base := instructionForFlatSlot(slot)
+		if FlatIndexFor(base) != slot {
+			continue
+		}
+		for _, operands := range []uint8{0, 1, 0x7F, 0xFF} {
+			instr := base
+			switch Tier(slot / SlotsPerTier) {
+			case TierMain:
+				instr.A, instr.B, instr.C = operands, operands, operands
+			case TierSub1:
+				instr.B, instr.C = operands, operands
+			case TierSub2:
+				instr.C = operands
+			default:
+			}
+			require.Equal(t, slot, FlatIndexFor(instr), "operand bytes do not change the slot")
+
+			wantLayout, wantNops := deriveJumpLayout(instr)
+			gotLayout, gotNops := JumpLayoutOf(instr)
+			require.Equal(t, wantLayout, gotLayout, "slot %d, operands %#x", slot, operands)
+			require.Equal(t, int(wantNops), gotNops, "slot %d, operands %#x", slot, operands)
+		}
+		if layout, _ := JumpLayoutOf(base); layout != JumpLayoutNone {
+			jumps++
+		}
+	}
+	require.Greater(t, jumps, 20, "the table holds the jump operations")
+}
+
+func TestJumpLayoutTableCoversEveryJumpRow(t *testing.T) {
+	t.Parallel()
+
+	for _, row := range AllSpecs() {
+		instr := instructionForFlatSlot(int(row.Tier)*SlotsPerTier + int(row.Code))
+		layout, _ := JumpLayoutOf(instr)
+		require.Equal(t, row.Has(SpecJump), layout != JumpLayoutNone, "%s", row.Name)
+	}
 }

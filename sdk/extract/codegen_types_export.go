@@ -23,16 +23,23 @@ import (
 	"compress/gzip"
 	"errors"
 	"fmt"
+	"go/ast"
 	"go/format"
+	"go/token"
 	"go/types"
 	"slices"
 	"strconv"
 	"strings"
 
 	"golang.org/x/tools/go/gcexportdata"
+
+	"pipit.sh/pipit/internal/gosource"
 )
 
 const (
+	// stringTypeName is the predeclared string type, as the manifest names it.
+	stringTypeName = "string"
+
 	// TypesExportDirectory is the directory, relative to the generated package, that holds
 	// one gzip-compressed gcexportdata blob per extracted package.
 	TypesExportDirectory = "gen_types_export"
@@ -65,7 +72,6 @@ const (
 	"go/token"
 	"go/types"
 	"io"
-	"log/slog"
 	"sync"
 
 	"golang.org/x/tools/go/gcexportdata"
@@ -123,11 +129,8 @@ func loadTypesPackages() {
 	if len(loader.errs) == 0 {
 		return
 	}
-	typesPackagesLoadError = errors.Join(loader.errs...)
-	slog.Warn("embedded types export data failed to decode; generic type checking is degraded",
-		slog.String("generated_with", typesExportGoVersion),
-		slog.Any("error", typesPackagesLoadError),
-	)
+	typesPackagesLoadError = fmt.Errorf("embedded types export data generated with %s failed to decode: %w",
+		typesExportGoVersion, errors.Join(loader.errs...))
 }
 
 // typesExportLoader carries the shared decode state across the dependency walk.
@@ -216,6 +219,10 @@ var (
 
 	// errTypesExportMissingPackage reports an extracted package with no loaded types.
 	errTypesExportMissingPackage = errors.New("extracted package has no types.Package to export")
+
+	// errTypesExportVariantPackage reports a package that failed to load in a types export
+	// variant's build.
+	errTypesExportVariantPackage = errors.New("types export variant package failed to load")
 )
 
 // TypesExportBlob is one package's serialised go/types data ready to be embedded.
@@ -233,6 +240,51 @@ type TypesExportBlob struct {
 
 	// Data is the gzip-compressed gcexportdata payload.
 	Data []byte
+}
+
+// typesExportVariantManifestFileName is the manifest file of the types export variant
+// built with tag.
+//
+// Takes tag (string) which is the variant's build tag.
+//
+// Returns string which is the file name, for example "gen_types_manifest_safe.go".
+func typesExportVariantManifestFileName(tag string) string {
+	return "gen_types_manifest_" + tag + ".go"
+}
+
+// typesExportVariantBlobFileName maps an import path to its blob path in the types export
+// variant built with tag.
+//
+// Takes tag (string) which is the variant's build tag.
+// Takes importPath (string) which is the Go import path.
+//
+// Returns the relative blob path, for example "gen_types_export/safe/net_http.bin.gz",
+// which the loader's gen_types_export/* embed pattern includes.
+func typesExportVariantBlobFileName(tag, importPath string) string {
+	return TypesExportDirectory + "/" + tag + "/" + strings.ReplaceAll(importPath, "/", "_") + TypesExportBlobSuffix
+}
+
+// typesExportManifestConstraint returns the //go:build line of the manifest describing
+// the build in which tag (or, for "", none of variants) is set. A variant is selected by
+// its own tag and by no earlier variant's, so exactly one manifest compiles in any build.
+//
+// Takes variants ([]string) which are the manifest's types export variants, in order.
+// Takes tag (string) which is the variant, or "" for the default build.
+//
+// Returns string which is the constraint line.
+func typesExportManifestConstraint(variants []string, tag string) string {
+	if len(variants) == 0 {
+		return nativeTypesLoaderBuildTag
+	}
+	terms := []string{"(!js || !wasm)"}
+	for _, variant := range variants {
+		if variant == tag {
+			terms = append(terms, variant)
+			break
+		}
+		terms = append(terms, "!"+variant)
+	}
+	return "//go:build " + strings.Join(terms, " && ")
 }
 
 // TypesExportBlobFileName maps an import path to its blob path relative to the generated
@@ -364,46 +416,99 @@ func GenerateTypesManifestFile(blobs []TypesExportBlob, outputPackage, goVersion
 // Takes goVersion (string) which is the generating runtime.Version().
 //
 // Returns []byte which is the formatted Go source.
-// Returns error when formatting fails.
+// Returns error when rendering fails.
 func (g Generator) GenerateTypesManifestFile(blobs []TypesExportBlob, outputPackage, goVersion string) ([]byte, error) {
-	var source strings.Builder
-	source.WriteString(g.marker() + "\n\n" + nativeTypesLoaderBuildTag + "\n\n")
-	source.WriteString("package " + outputPackage + "\n\n")
-	source.WriteString("// typesExportGoVersion is the toolchain that produced the embedded export data.\n")
-	source.WriteString("const typesExportGoVersion = " + strconv.Quote(goVersion) + "\n\n")
-	source.WriteString("// typesExportEntry describes one embedded gcexportdata blob.\n")
-	source.WriteString("type typesExportEntry struct {\n")
-	source.WriteString("\t// Path is the Go import path the blob describes.\n\tPath string\n\n")
-	source.WriteString("\t// File is the blob's path within the embedded file system.\n\tFile string\n\n")
-	source.WriteString("\t// Dependencies lists the import paths in this set that must be decoded first.\n\tDependencies []string\n")
-	source.WriteString("}\n\n")
-	source.WriteString("// typesExportManifest lists every embedded blob sorted by import path.\n")
-	source.WriteString("var typesExportManifest = []typesExportEntry{\n")
+	return g.generateTypesManifestFileFor(blobs, outputPackage, goVersion, nativeTypesLoaderBuildTag)
+}
+
+// generateTypesManifestFileFor renders a types manifest with a build constraint.
+//
+// Takes blobs ([]TypesExportBlob) which are the blobs to list, in the order to emit them.
+// Takes outputPackage (string) which is the Go package name for the generated file.
+// Takes goVersion (string) which is the generating runtime.Version().
+// Takes constraint (string) which is the file's build expression.
+//
+// Returns []byte which is the formatted Go source.
+// Returns error when rendering fails.
+func (g Generator) generateTypesManifestFileFor(blobs []TypesExportBlob, outputPackage, goVersion, constraint string) ([]byte, error) {
+	entries := gosource.Lines(&ast.CompositeLit{Type: &ast.ArrayType{Elt: ast.NewIdent("typesExportEntry")}})
 	for _, blob := range blobs {
-		writeTypesManifestEntry(&source, blob)
+		fields := []ast.Expr{
+			&ast.KeyValueExpr{Key: ast.NewIdent("Path"), Value: &ast.BasicLit{Kind: token.STRING, Value: strconv.Quote(blob.ImportPath)}},
+			&ast.KeyValueExpr{Key: ast.NewIdent("File"), Value: &ast.BasicLit{Kind: token.STRING, Value: strconv.Quote(blob.FileName)}},
+		}
+		if len(blob.Dependencies) > 0 {
+			dependencies := &ast.CompositeLit{Type: &ast.ArrayType{Elt: ast.NewIdent(stringTypeName)}}
+			for _, dependency := range blob.Dependencies {
+				dependencies.Elts = append(dependencies.Elts, &ast.BasicLit{Kind: token.STRING, Value: strconv.Quote(dependency)})
+			}
+			fields = append(fields, &ast.KeyValueExpr{Key: ast.NewIdent("Dependencies"), Value: dependencies})
+		}
+		entries.Elts = append(entries.Elts, &ast.CompositeLit{Elts: fields})
 	}
-	source.WriteString("}\n")
-	formatted, err := format.Source([]byte(source.String()))
+	file := gosource.File{
+		Header:          g.marker(),
+		BuildConstraint: strings.TrimPrefix(constraint, "//go:build "),
+		Package:         outputPackage,
+		ImportGroups:    nil,
+		Declarations: []gosource.Declaration{
+			{
+				Doc:        []string{"typesExportGoVersion is the toolchain that produced the embedded export data."},
+				Directives: nil,
+				Node: &ast.GenDecl{Tok: token.CONST, Specs: []ast.Spec{&ast.ValueSpec{
+					Names:  []*ast.Ident{ast.NewIdent("typesExportGoVersion")},
+					Values: []ast.Expr{&ast.BasicLit{Kind: token.STRING, Value: strconv.Quote(goVersion)}},
+				}}},
+			},
+			typesExportEntryDeclaration(),
+			{
+				Doc:        []string{"typesExportManifest lists every embedded blob sorted by import path."},
+				Directives: nil,
+				Node: &ast.GenDecl{Tok: token.VAR, Specs: []ast.Spec{&ast.ValueSpec{
+					Names:  []*ast.Ident{ast.NewIdent("typesExportManifest")},
+					Values: []ast.Expr{entries},
+				}}},
+			},
+		},
+		LoneImportUnparenthesised: false,
+	}
+	formatted, err := file.Render()
 	if err != nil {
-		return nil, fmt.Errorf("formatting %s: %w", TypesManifestFileName, err)
+		return nil, fmt.Errorf("rendering %s: %w", TypesManifestFileName, err)
 	}
 	return formatted, nil
 }
 
-// writeTypesManifestEntry appends one manifest literal to the builder.
+// typesExportEntryDeclaration builds the manifest's entry type.
 //
-// Takes source (*strings.Builder) which accumulates the Go source.
-// Takes blob (TypesExportBlob) which is the entry to write.
-func writeTypesManifestEntry(source *strings.Builder, blob TypesExportBlob) {
-	source.WriteString("\t{Path: " + strconv.Quote(blob.ImportPath) + ", File: " + strconv.Quote(blob.FileName))
-	if len(blob.Dependencies) > 0 {
-		quoted := make([]string, len(blob.Dependencies))
-		for i, dependency := range blob.Dependencies {
-			quoted[i] = strconv.Quote(dependency)
-		}
-		source.WriteString(", Dependencies: []string{" + strings.Join(quoted, ", ") + "}")
+// Returns gosource.Declaration which is the documented type declaration.
+func typesExportEntryDeclaration() gosource.Declaration {
+	return gosource.Declaration{
+		Doc:        []string{"typesExportEntry describes one embedded gcexportdata blob."},
+		Directives: nil,
+		Node: &ast.GenDecl{Tok: token.TYPE, Specs: []ast.Spec{&ast.TypeSpec{
+			Name: ast.NewIdent("typesExportEntry"),
+			Type: &ast.StructType{Fields: &ast.FieldList{List: []*ast.Field{
+				{
+					Doc:   &ast.CommentGroup{List: []*ast.Comment{{Text: "// Path is the Go import path the blob describes."}}},
+					Names: []*ast.Ident{ast.NewIdent("Path")},
+					Type:  ast.NewIdent(stringTypeName),
+				},
+				{
+					Doc:   &ast.CommentGroup{List: []*ast.Comment{{Text: "// File is the blob's path within the embedded file system."}}},
+					Names: []*ast.Ident{ast.NewIdent("File")},
+					Type:  ast.NewIdent(stringTypeName),
+				},
+				{
+					Doc: &ast.CommentGroup{List: []*ast.Comment{{
+						Text: "// Dependencies lists the import paths in this set that must be decoded first.",
+					}}},
+					Names: []*ast.Ident{ast.NewIdent("Dependencies")},
+					Type:  &ast.ArrayType{Elt: ast.NewIdent(stringTypeName)},
+				},
+			}}},
+		}}},
 	}
-	source.WriteString("},\n")
 }
 
 // GenerateTypesLoaderFile calls Generator.GenerateTypesLoaderFile with the default tool

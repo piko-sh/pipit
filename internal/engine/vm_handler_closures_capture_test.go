@@ -85,14 +85,14 @@ func TestMakeClosureCapturesEveryBank(t *testing.T) {
 		inspect func(*testing.T, *program.UpvalueCell)
 	}{
 		{
-			name: "the int bank", kind: isa.RegisterInt, load: func(r *Registers) { r.Ints[2] = 5 },
+			name: "the int bank", kind: isa.RegisterInt64, load: func(r *Registers) { r.Ints[2] = 5 },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
 				require.Equal(t, int64(5), c.IntValue)
 			},
 		},
 		{
-			name: "the float bank", kind: isa.RegisterFloat, load: func(r *Registers) { r.Floats[2] = 1.5 },
+			name: "the float bank", kind: isa.RegisterFloat64, load: func(r *Registers) { r.Floats[2] = 1.5 },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
 				require.InDelta(t, 1.5, c.FloatValue, 0)
@@ -113,14 +113,14 @@ func TestMakeClosureCapturesEveryBank(t *testing.T) {
 			},
 		},
 		{
-			name: "the uint bank", kind: isa.RegisterUint, load: func(r *Registers) { r.Uints[2] = 6 },
+			name: "the uint bank", kind: isa.RegisterUint64, load: func(r *Registers) { r.Uints[2] = 6 },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
 				require.Equal(t, uint64(6), c.UintValue)
 			},
 		},
 		{
-			name: "the complex bank", kind: isa.RegisterComplex, load: func(r *Registers) { r.Complex[2] = 2i },
+			name: "the complex bank", kind: isa.RegisterComplex128, load: func(r *Registers) { r.Complex[2] = 2i },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
 				require.Equal(t, 2i, c.ComplexValue)
@@ -135,7 +135,7 @@ func TestMakeClosureCapturesEveryBank(t *testing.T) {
 			},
 		},
 		{
-			name: "the int-slice bank", kind: isa.RegisterSliceInt,
+			name: "the int-slice bank", kind: isa.RegisterSliceInt64,
 			load: func(r *Registers) { r.SlicesInt[2] = []int64{1} },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
@@ -143,7 +143,7 @@ func TestMakeClosureCapturesEveryBank(t *testing.T) {
 			},
 		},
 		{
-			name: "the float-slice bank", kind: isa.RegisterSliceFloat,
+			name: "the float-slice bank", kind: isa.RegisterSliceFloat64,
 			load: func(r *Registers) { r.slicesFloat[2] = []float64{1.5} },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
@@ -167,7 +167,7 @@ func TestMakeClosureCapturesEveryBank(t *testing.T) {
 			},
 		},
 		{
-			name: "the uint-slice bank", kind: isa.RegisterSliceUint,
+			name: "the uint-slice bank", kind: isa.RegisterSliceUint64,
 			load: func(r *Registers) { r.slicesUint[2] = []uint64{2} },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
@@ -208,7 +208,7 @@ func TestMakeClosureSharesOneCellPerCapturedVariable(t *testing.T) {
 	t.Run("two closures over the same register share a cell", func(t *testing.T) {
 		t.Parallel()
 
-		descriptor := program.UpvalueDescriptor{Index: 2, Kind: isa.RegisterInt, IsLocal: true}
+		descriptor := program.UpvalueDescriptor{Index: 2, Kind: isa.RegisterInt64, IsLocal: true}
 		vm, frame, registers := closureHostVM(t, calleeWithUpvalues(t, descriptor), calleeWithUpvalues(t, descriptor))
 		registers.Ints[2] = 5
 
@@ -226,7 +226,7 @@ func TestMakeClosureSharesOneCellPerCapturedVariable(t *testing.T) {
 
 		descriptors := make([]program.UpvalueDescriptor, inlineUpvalueCells+2)
 		for i := range descriptors {
-			descriptors[i] = program.UpvalueDescriptor{Index: uint8(i), Kind: isa.RegisterInt, IsLocal: true}
+			descriptors[i] = program.UpvalueDescriptor{Index: uint8(i), Kind: isa.RegisterInt64, IsLocal: true}
 		}
 		vm, frame, registers := closureHostVM(t, calleeWithUpvalues(t, descriptors...))
 
@@ -239,9 +239,9 @@ func TestMakeClosureSharesOneCellPerCapturedVariable(t *testing.T) {
 	t.Run("a transitive capture reuses the parent frame's own upvalue", func(t *testing.T) {
 		t.Parallel()
 
-		callee := calleeWithUpvalues(t, program.UpvalueDescriptor{Index: 0, Kind: isa.RegisterInt, IsLocal: false})
+		callee := calleeWithUpvalues(t, program.UpvalueDescriptor{Index: 0, Kind: isa.RegisterInt64, IsLocal: false})
 		vm, frame, registers := closureHostVM(t, callee)
-		parentCell := &program.UpvalueCell{IntValue: 9, Kind: isa.RegisterInt}
+		parentCell := &program.UpvalueCell{IntValue: 9, Kind: isa.RegisterInt64}
 		frame.upvalues = []upvalue{{Value: parentCell}}
 
 		require.Equal(t, opContinue, handleMakeClosure(vm, frame, registers, op(0, 0, 0)))
@@ -256,7 +256,7 @@ func TestMakeClosureCapturesAHeapPromotedVariableByPointer(t *testing.T) {
 	t.Parallel()
 
 	callee := calleeWithUpvalues(t, program.UpvalueDescriptor{
-		Index: 2, Kind: isa.RegisterGeneral, IsLocal: true, IsIndirect: true, OriginalKind: isa.RegisterInt,
+		Index: 2, Kind: isa.RegisterGeneral, IsLocal: true, IsIndirect: true, OriginalKind: isa.RegisterInt64,
 	})
 	vm, frame, registers := closureHostVM(t, callee)
 	promoted := int64(7)
@@ -267,7 +267,7 @@ func TestMakeClosureCapturesAHeapPromotedVariableByPointer(t *testing.T) {
 	closure, _ := reflect.TypeAssert[*RuntimeClosure](registers.General[0])
 	cell := closure.upvalues[0]
 	require.True(t, cell.IsIndirect)
-	require.Equal(t, isa.RegisterInt, cell.OriginalKind)
+	require.Equal(t, isa.RegisterInt64, cell.OriginalKind)
 	require.Equal(t, reflect.ValueOf(&promoted).Pointer(), cell.GeneralValue.Pointer())
 }
 
@@ -314,7 +314,7 @@ func TestSameIndirectCellComparesPointees(t *testing.T) {
 	}
 }
 
-func TestSetUpvalueWritesEveryBankIntoTheCell(t *testing.T) {
+func TestSetCapturedVariableWritesEveryBankIntoTheCell(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -324,14 +324,14 @@ func TestSetUpvalueWritesEveryBankIntoTheCell(t *testing.T) {
 		inspect func(*testing.T, *program.UpvalueCell)
 	}{
 		{
-			name: "the int bank", kind: isa.RegisterInt, load: func(r *Registers) { r.Ints[1] = 4 },
+			name: "the int bank", kind: isa.RegisterInt64, load: func(r *Registers) { r.Ints[1] = 4 },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
 				require.Equal(t, int64(4), c.IntValue)
 			},
 		},
 		{
-			name: "the float bank", kind: isa.RegisterFloat, load: func(r *Registers) { r.Floats[1] = 2.5 },
+			name: "the float bank", kind: isa.RegisterFloat64, load: func(r *Registers) { r.Floats[1] = 2.5 },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
 				require.InDelta(t, 2.5, c.FloatValue, 0)
@@ -352,14 +352,14 @@ func TestSetUpvalueWritesEveryBankIntoTheCell(t *testing.T) {
 			},
 		},
 		{
-			name: "the uint bank", kind: isa.RegisterUint, load: func(r *Registers) { r.Uints[1] = 8 },
+			name: "the uint bank", kind: isa.RegisterUint64, load: func(r *Registers) { r.Uints[1] = 8 },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
 				require.Equal(t, uint64(8), c.UintValue)
 			},
 		},
 		{
-			name: "the complex bank", kind: isa.RegisterComplex, load: func(r *Registers) { r.Complex[1] = 3i },
+			name: "the complex bank", kind: isa.RegisterComplex128, load: func(r *Registers) { r.Complex[1] = 3i },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
 				require.Equal(t, 3i, c.ComplexValue)
@@ -374,7 +374,7 @@ func TestSetUpvalueWritesEveryBankIntoTheCell(t *testing.T) {
 			},
 		},
 		{
-			name: "the int-slice bank", kind: isa.RegisterSliceInt,
+			name: "the int-slice bank", kind: isa.RegisterSliceInt64,
 			load: func(r *Registers) { r.SlicesInt[1] = []int64{2} },
 			inspect: func(t *testing.T, c *program.UpvalueCell) {
 				t.Helper()
@@ -400,13 +400,13 @@ func TestSetUpvalueWritesEveryBankIntoTheCell(t *testing.T) {
 			frame.upvalues = []upvalue{{Value: cell}}
 			tt.load(registers)
 
-			require.Equal(t, opContinue, handleSetUpvalue(vm, frame, registers, op(1, 0, uint8(tt.kind))))
+			require.Equal(t, opContinue, handleSetCapturedVariable(vm, frame, registers, op(1, 0, uint8(tt.kind))))
 			tt.inspect(t, cell)
 		})
 	}
 }
 
-func TestSetUpvalueWritesThroughAnIndirectCell(t *testing.T) {
+func TestSetCapturedVariableWritesThroughAnIndirectCell(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -416,7 +416,7 @@ func TestSetUpvalueWritesThroughAnIndirectCell(t *testing.T) {
 		load  func(*Registers)
 	}{
 		{
-			name: "an int pointee", kind: isa.RegisterInt, load: func(r *Registers) { r.Ints[1] = 11 },
+			name: "an int pointee", kind: isa.RegisterInt64, load: func(r *Registers) { r.Ints[1] = 11 },
 			build: func() (reflect.Value, func(*testing.T)) {
 				value := int64(0)
 				return reflect.ValueOf(&value), func(t *testing.T) {
@@ -426,7 +426,7 @@ func TestSetUpvalueWritesThroughAnIndirectCell(t *testing.T) {
 			},
 		},
 		{
-			name: "a float pointee", kind: isa.RegisterFloat, load: func(r *Registers) { r.Floats[1] = 1.25 },
+			name: "a float pointee", kind: isa.RegisterFloat64, load: func(r *Registers) { r.Floats[1] = 1.25 },
 			build: func() (reflect.Value, func(*testing.T)) {
 				value := 0.0
 				return reflect.ValueOf(&value), func(t *testing.T) {
@@ -456,7 +456,7 @@ func TestSetUpvalueWritesThroughAnIndirectCell(t *testing.T) {
 			},
 		},
 		{
-			name: "a uint pointee", kind: isa.RegisterUint, load: func(r *Registers) { r.Uints[1] = 12 },
+			name: "a uint pointee", kind: isa.RegisterUint64, load: func(r *Registers) { r.Uints[1] = 12 },
 			build: func() (reflect.Value, func(*testing.T)) {
 				value := uint64(0)
 				return reflect.ValueOf(&value), func(t *testing.T) {
@@ -466,7 +466,7 @@ func TestSetUpvalueWritesThroughAnIndirectCell(t *testing.T) {
 			},
 		},
 		{
-			name: "a complex pointee", kind: isa.RegisterComplex, load: func(r *Registers) { r.Complex[1] = 4i },
+			name: "a complex pointee", kind: isa.RegisterComplex128, load: func(r *Registers) { r.Complex[1] = 4i },
 			build: func() (reflect.Value, func(*testing.T)) {
 				value := complex128(0)
 				return reflect.ValueOf(&value), func(t *testing.T) {
@@ -487,7 +487,7 @@ func TestSetUpvalueWritesThroughAnIndirectCell(t *testing.T) {
 			},
 		},
 		{
-			name: "an int-slice pointee", kind: isa.RegisterSliceInt,
+			name: "an int-slice pointee", kind: isa.RegisterSliceInt64,
 			load: func(r *Registers) { r.SlicesInt[1] = []int64{5, 6} },
 			build: func() (reflect.Value, func(*testing.T)) {
 				value := []int64(nil)
@@ -509,13 +509,13 @@ func TestSetUpvalueWritesThroughAnIndirectCell(t *testing.T) {
 			frame.upvalues = []upvalue{{Value: cell}}
 			tt.load(registers)
 
-			require.Equal(t, opContinue, handleSetUpvalue(vm, frame, registers, op(1, 0, uint8(tt.kind))))
+			require.Equal(t, opContinue, handleSetCapturedVariable(vm, frame, registers, op(1, 0, uint8(tt.kind))))
 			verify(t)
 		})
 	}
 }
 
-func TestSetUpvalueIgnoresAnIndirectCellWithNoPointer(t *testing.T) {
+func TestSetCapturedVariableIgnoresAnIndirectCellWithNoPointer(t *testing.T) {
 	t.Parallel()
 
 	vm, frame, registers := newStandardVM(t)
@@ -523,12 +523,12 @@ func TestSetUpvalueIgnoresAnIndirectCellWithNoPointer(t *testing.T) {
 	frame.upvalues = []upvalue{{Value: cell}}
 	registers.Ints[1] = 3
 
-	require.Equal(t, opContinue, handleSetUpvalue(vm, frame, registers, op(1, 0, uint8(isa.RegisterInt))),
+	require.Equal(t, opContinue, handleSetCapturedVariable(vm, frame, registers, op(1, 0, uint8(isa.RegisterInt64))),
 		"a cell with nothing to write through is not a fault")
 	require.Zero(t, cell.IntValue)
 }
 
-func TestSyncClosureUpvaluesWritesSharedCellsBack(t *testing.T) {
+func TestSynchroniseClosureCapturedVariablesWritesSharedCellsBack(t *testing.T) {
 	t.Parallel()
 
 	t.Run("a frame that created no shared cell has nothing to sync", func(t *testing.T) {
@@ -537,14 +537,14 @@ func TestSyncClosureUpvaluesWritesSharedCellsBack(t *testing.T) {
 		vm, frame, registers := newStandardVM(t)
 		registers.Ints[2] = 1
 
-		require.Equal(t, opContinue, handleSyncClosureUpvalues(vm, frame, registers, op(0, 0, 0)))
+		require.Equal(t, opContinue, handleSynchroniseClosureCapturedVariables(vm, frame, registers, op(0, 0, 0)))
 		require.Equal(t, int64(1), registers.Ints[2])
 	})
 
 	t.Run("a shared cell the closure wrote lands back in the register", func(t *testing.T) {
 		t.Parallel()
 
-		descriptor := program.UpvalueDescriptor{Index: 2, Kind: isa.RegisterInt, IsLocal: true}
+		descriptor := program.UpvalueDescriptor{Index: 2, Kind: isa.RegisterInt64, IsLocal: true}
 		vm, frame, registers := closureHostVM(t, calleeWithUpvalues(t, descriptor))
 		registers.Ints[2] = 1
 
@@ -552,18 +552,18 @@ func TestSyncClosureUpvaluesWritesSharedCellsBack(t *testing.T) {
 		closure, _ := reflect.TypeAssert[*RuntimeClosure](registers.General[0])
 		closure.upvalues[0].IntValue = 42
 
-		require.Equal(t, opContinue, handleSyncClosureUpvalues(vm, frame, registers, op(0, 0, 0)))
+		require.Equal(t, opContinue, handleSynchroniseClosureCapturedVariables(vm, frame, registers, op(0, 0, 0)))
 		require.Equal(t, int64(42), registers.Ints[2], "the caller must see what the closure wrote")
 	})
 
 	t.Run("a register holding something other than a closure is ignored", func(t *testing.T) {
 		t.Parallel()
 
-		descriptor := program.UpvalueDescriptor{Index: 2, Kind: isa.RegisterInt, IsLocal: true}
+		descriptor := program.UpvalueDescriptor{Index: 2, Kind: isa.RegisterInt64, IsLocal: true}
 		vm, frame, registers := closureHostVM(t, calleeWithUpvalues(t, descriptor))
 		require.Equal(t, opContinue, handleMakeClosure(vm, frame, registers, op(0, 0, 0)))
 		registers.General[1] = reflect.ValueOf("not a closure")
 
-		require.Equal(t, opContinue, handleSyncClosureUpvalues(vm, frame, registers, op(0, 0, 1)))
+		require.Equal(t, opContinue, handleSynchroniseClosureCapturedVariables(vm, frame, registers, op(0, 0, 1)))
 	})
 }

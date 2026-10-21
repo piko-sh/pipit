@@ -160,75 +160,6 @@ func TestEffectiveCapabilityHook(t *testing.T) {
 	require.Same(t, hook, policy.EffectiveCapabilityHook(hook))
 }
 
-func TestWrapNativeFunctionAllows(t *testing.T) {
-	t.Parallel()
-	fn := func(s string) string { return strings.ToUpper(s) }
-	wrapped := policy.WrapNativeFunction(nil, reflect.ValueOf(fn), "test.ToUpper", nil)
-	results := wrapped.Call([]reflect.Value{reflect.ValueOf("hello")})
-	require.Len(t, results, 1)
-	require.Equal(t, "HELLO", results[0].String())
-}
-
-func TestWrapNativeFunctionDeniesWithErrorReturn(t *testing.T) {
-	t.Parallel()
-	fn := func(path string) ([]byte, error) {
-		return []byte("data"), nil
-	}
-	denial := errors.New("denied by policy")
-	gate := func(_ context.Context, _ policy.CapabilityHook, _ string, _ []reflect.Value) error {
-		return denial
-	}
-	hook := &recordingHook{}
-	provider := policy.NewStaticHookProvider(hook, "test/mod")
-	wrapped := policy.WrapNativeFunction(provider, reflect.ValueOf(fn), "os.ReadFile", gate)
-
-	results := wrapped.Call([]reflect.Value{reflect.ValueOf("/etc/passwd")})
-	require.Len(t, results, 2)
-	require.True(t, results[0].IsZero(), "a denied call returns a zero first result")
-	require.Zero(t, results[0].Len())
-	gotErr, ok := reflect.TypeAssert[error](results[1])
-	require.True(t, ok)
-	require.ErrorIs(t, gotErr, denial)
-}
-
-func TestWrapNativeFunctionPanicsWithoutErrorReturn(t *testing.T) {
-	t.Parallel()
-	fn := func(s string) string { return s }
-	denial := errors.New("nope")
-	gate := func(_ context.Context, _ policy.CapabilityHook, _ string, _ []reflect.Value) error {
-		return denial
-	}
-	hook := &recordingHook{}
-	provider := policy.NewStaticHookProvider(hook, "")
-	wrapped := policy.WrapNativeFunction(provider, reflect.ValueOf(fn), "no.errret", gate)
-
-	var recovered any
-	func() {
-		defer func() { recovered = recover() }()
-		wrapped.Call([]reflect.Value{reflect.ValueOf("x")})
-	}()
-	require.NotNil(t, recovered, "a gated function without an error result panics")
-	err, ok := recovered.(error)
-	require.True(t, ok, "the panic value is an error")
-	require.ErrorIs(t, err, denial)
-}
-
-func TestWrapNativeFunctionGenericGateRecordsCall(t *testing.T) {
-	t.Parallel()
-	fn := func(s string) string { return s }
-	hook := &recordingHook{}
-	provider := policy.NewStaticHookProvider(hook, "mod/foo")
-	wrapped := policy.WrapNativeFunction(provider, reflect.ValueOf(fn), "fmt.Sprintln", nil)
-
-	wrapped.Call([]reflect.Value{reflect.ValueOf("x")})
-
-	calls := hook.snapshot()
-	require.Len(t, calls, 1)
-	require.Equal(t, "CheckFunctionCall", calls[0].Method)
-	require.Equal(t, "mod/foo", calls[0].ModulePath)
-	require.Equal(t, "fmt.Sprintln", calls[0].Fields["fnPath"])
-}
-
 func hookTestSymbols() *symtab.SymbolRegistry {
 	return symtab.NewSymbolRegistry(symtab.SymbolExports{
 		"hooktest": {
@@ -291,37 +222,22 @@ func TestCapabilityHookDeniesNativeCall(t *testing.T) {
 	require.Contains(t, err.Error(), "denied by policy", "the error carries the denial message")
 }
 
-func TestWrapNativeFunctionDeniesViaSpecificGate(t *testing.T) {
+func TestTheSealedEnvironmentIsGatedAsTheOsPackage(t *testing.T) {
 	t.Parallel()
-	fn := func(path string) (*os.File, error) { return nil, nil }
-	hook := &recordingHook{
-		denyFn: func(call recordedHookCall) error {
-			if call.Method == "CheckFileOpen" && call.Fields["path"] == "/etc/shadow" {
-				return errors.New("path denied")
-			}
-			return nil
-		},
-	}
-	provider := policy.NewStaticHookProvider(hook, "mod/secret")
-	gate := func(ctx context.Context, h policy.CapabilityHook, modulePath string, args []reflect.Value) error {
-		return h.CheckFileOpen(ctx, modulePath, args[0].String(), os.O_RDONLY, 0)
-	}
-	wrapped := policy.WrapNativeFunction(provider, reflect.ValueOf(fn), "os.Open", gate)
+	hook := &recordingHook{}
+	service := NewService(WithSealedEnv(map[string]string{"A": "b"}), WithCapabilityHook(hook))
+	service.UseSymbols(newOSSymbols())
 
-	results := wrapped.Call([]reflect.Value{reflect.ValueOf("/etc/shadow")})
-	err, ok := reflect.TypeAssert[error](results[1])
-	require.True(t, ok, "a denied path fails the call")
-	require.Error(t, err)
+	result, err := service.Eval(t.Context(), "import \"os\"\nos.Setenv(\"A\", \"c\")\nos.Getenv(\"A\")")
+	require.NoError(t, err)
+	require.Equal(t, "c", result)
 
-	results = wrapped.Call([]reflect.Value{reflect.ValueOf("/tmp/allowed")})
-	if allowedErr, ok := reflect.TypeAssert[error](results[1]); ok {
-		require.NoError(t, allowedErr, "an allowed path passes the gate")
+	methods := make([]string, 0, 2)
+	for _, call := range hook.snapshot() {
+		if call.Method == "CheckGetenv" || call.Method == "CheckSetenv" {
+			methods = append(methods, call.Method)
+		}
 	}
-
-	calls := hook.snapshot()
-	require.Len(t, calls, 2)
-	for _, call := range calls {
-		assert.Equal(t, "CheckFileOpen", call.Method)
-		assert.Equal(t, "mod/secret", call.ModulePath)
-	}
+	require.Equal(t, []string{"CheckSetenv", "CheckGetenv"}, methods,
+		"the sealed view's accessors are gated as os.Setenv and os.Getenv")
 }

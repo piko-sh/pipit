@@ -20,6 +20,10 @@ package engine
 
 import "piko.sh/safeconv"
 
+// handedOnChargesKeptSize is the most records of handed-on charges a pooled arena's table
+// keeps between runs (forgetHandedOnCharges). A larger table is dropped.
+const handedOnChargesKeptSize = 64
+
 // AttachBudgetTracker joins the arena to an execution's shared byte accounting. The
 // arena's current working set is charged immediately because pooled arenas keep their
 // slab capacity across Reset and may already carry bytes when they are handed out.
@@ -82,4 +86,55 @@ func (a *RegisterArena) releaseArenaBytes(released uint64) {
 	}
 	a.totalAllocatedBytes -= released
 	a.mirrorBudgetDelta(-safeconv.Uint64ToInt64(released))
+}
+
+// noteChargeHandedOn records that a retired data slab's budget charge went to the slab
+// that replaced it, which was charged only the difference (ChargeArenaAllocation), so the
+// retired slab carries no charge of its own.
+//
+// Takes key (uintptr) which is the retired slab's slabChargeKey.
+// Takes handedOn (uint64) which is the charge the replacement took over. Zero records
+// nothing.
+func (a *RegisterArena) noteChargeHandedOn(key uintptr, handedOn uint64) {
+	if key == 0 || handedOn == 0 {
+		return
+	}
+	if a.handedOnCharges == nil {
+		a.handedOnCharges = make(map[uintptr]struct{})
+	}
+	a.handedOnCharges[key] = struct{}{}
+}
+
+// forgetHandedOnCharges forgets every record noteChargeHandedOn made, once no retired
+// slab they name is kept. A map that one run grew past handedOnChargesKeptSize is
+// dropped, so a pooled arena keeps no large table.
+func (a *RegisterArena) forgetHandedOnCharges() {
+	if len(a.handedOnCharges) > handedOnChargesKeptSize {
+		a.handedOnCharges = nil
+		return
+	}
+	clear(a.handedOnCharges)
+}
+
+// takeSlabCharge returns the budget charge a retired data slab the arena drops carries,
+// and forgets the record of it.
+//
+// The charge is the slab's whole capacity, unless its charge went to the slab that
+// replaced it (noteChargeHandedOn), when it is nothing.
+//
+// Takes arena (*RegisterArena) which owns the slab and the budget.
+// Takes slab ([]T) which is the dropped slab.
+// Takes elementBytes (uint64) which is the size of one element.
+//
+// Returns uint64 which is the charge the slab carries.
+func takeSlabCharge[T any](arena *RegisterArena, slab []T, elementBytes uint64) uint64 {
+	key := slabChargeKey(slab)
+	if key == 0 {
+		return 0
+	}
+	if _, handedOn := arena.handedOnCharges[key]; handedOn {
+		delete(arena.handedOnCharges, key)
+		return 0
+	}
+	return uint64(cap(slab)) * elementBytes
 }

@@ -58,7 +58,7 @@ func TestPolymorphicCallBoxesLargeIntWithoutAllocating(t *testing.T) {
 	destination := &Registers{General: make([]reflect.Value, 1)}
 
 	allocs := testing.AllocsPerRun(100, func() {
-		copyOneCallArgument(destination, source, isa.RegisterGeneral, isa.RegisterInt, 0, 0, arena)
+		copyOneCallArgument(destination, source, isa.RegisterGeneral, isa.RegisterInt64, 0, 0, arena)
 	})
 	require.Zero(t, allocs)
 	require.EqualValues(t, 1<<40, destination.General[0].Int())
@@ -91,29 +91,29 @@ func TestChannelBufferedSendReceiveAllocs(t *testing.T) {
 	vm, registers := newHandlerTestVM(t)
 	registers.General[0] = reflect.ValueOf(make(chan int, 1))
 	sendFrame := &CallFrame{Function: &program.CompiledFunction{}}
-	receiveFunction := &program.CompiledFunction{Body: []isa.Instruction{isa.NewInstruction(0, 1, uint8(isa.RegisterInt), 0)}}
+	receiveFunction := &program.CompiledFunction{Body: []isa.Instruction{isa.NewInstruction(0, 1, uint8(isa.RegisterInt64), 0)}}
 	receiveFrame := &CallFrame{Function: receiveFunction}
-	send := isa.NewInstruction(isa.OpChannelSend, 0, 2, uint8(isa.RegisterInt))
+	send := isa.NewInstruction(isa.OpSendToChannel, 0, 2, uint8(isa.RegisterInt64))
 	receive := isa.Instruction{A: 0, B: 3}
 
 	registers.Ints[2] = 41
-	require.Equal(t, opContinue, HandleChannelSend(vm, sendFrame, registers, send))
+	require.Equal(t, opContinue, handleSendToChannel(vm, sendFrame, registers, send))
 	receiveFrame.ProgramCounter = 0
-	require.Equal(t, opContinue, handleChannelReceive(vm, receiveFrame, registers, receive))
+	require.Equal(t, opContinue, handleReceiveFromChannelBody(vm, receiveFrame, registers, receive))
 	require.EqualValues(t, 41, registers.Ints[1])
 	require.EqualValues(t, 1, registers.Ints[3])
 
 	allocs := testing.AllocsPerRun(200, func() {
 		registers.Ints[2]++
-		HandleChannelSend(vm, sendFrame, registers, send)
+		handleSendToChannel(vm, sendFrame, registers, send)
 		receiveFrame.ProgramCounter = 0
-		handleChannelReceive(vm, receiveFrame, registers, receive)
+		handleReceiveFromChannelBody(vm, receiveFrame, registers, receive)
 	})
 	require.LessOrEqual(t, allocs, 1.0)
 	require.Equal(t, registers.Ints[2], registers.Ints[1])
 }
 
-func TestChannelReceiveConsumesReadyValueBeforeCancellation(t *testing.T) {
+func TestReceiveFromChannelConsumesReadyValueBeforeCancellation(t *testing.T) {
 	t.Parallel()
 	vm, registers := newHandlerTestVM(t)
 	cancelled, cancel := NewExecutionContext(vm.executionContext())
@@ -122,28 +122,28 @@ func TestChannelReceiveConsumesReadyValueBeforeCancellation(t *testing.T) {
 	channel := make(chan int, 1)
 	channel <- 5
 	registers.General[0] = reflect.ValueOf(channel)
-	receiveFrame := &CallFrame{Function: &program.CompiledFunction{Body: []isa.Instruction{isa.NewInstruction(0, 1, uint8(isa.RegisterInt), 0)}}}
+	receiveFrame := &CallFrame{Function: &program.CompiledFunction{Body: []isa.Instruction{isa.NewInstruction(0, 1, uint8(isa.RegisterInt64), 0)}}}
 
-	require.Equal(t, opContinue, handleChannelReceive(vm, receiveFrame, registers, isa.Instruction{A: 0, B: 3}))
+	require.Equal(t, opContinue, handleReceiveFromChannelBody(vm, receiveFrame, registers, isa.Instruction{A: 0, B: 3}))
 	require.EqualValues(t, 5, registers.Ints[1])
 	require.EqualValues(t, 1, registers.Ints[3])
 }
 
-func TestMapSetStringHitDoesNotAllocate(t *testing.T) {
+func TestSetMapStringHitDoesNotAllocate(t *testing.T) {
 	vm, registers := newHandlerTestVM(t)
 	frame := &CallFrame{Function: &program.CompiledFunction{}}
 	counts := map[string]int{}
 	registers.General[0] = reflect.ValueOf(counts)
-	registers.Strings[1] = ArenaConcatString(vm.Arena, "wo", "rd")
+	registers.Strings[1] = ArenaConcatenateString(vm.Arena, "wo", "rd")
 	require.True(t, vm.Arena.OwnsString(registers.Strings[1]))
 	registers.Ints[2] = 1
-	set := isa.NewInstruction(isa.OpMapSetStringInt, 0, 1, 2)
-	add := isa.NewInstruction(isa.OpMapAddStringInt, 0, 1, 2)
-	require.Equal(t, opContinue, HandleMapSetStringInt(vm, frame, registers, set))
+	set := isa.NewInstruction(isa.OpSetMapStringInt64, 0, 1, 2)
+	add := isa.NewInstruction(isa.OpAddToMapStringInt64, 0, 1, 2)
+	require.Equal(t, opContinue, HandleSetMapStringInt64(vm, frame, registers, set))
 
 	allocs := testing.AllocsPerRun(100, func() {
-		HandleMapSetStringInt(vm, frame, registers, set)
-		HandleMapAddStringInt(vm, frame, registers, add)
+		HandleSetMapStringInt64(vm, frame, registers, set)
+		HandleAddToMapStringInt64(vm, frame, registers, add)
 	})
 	require.Zero(t, allocs)
 	require.Equal(t, 2, counts["word"])
@@ -154,25 +154,25 @@ func TestMapSetStringHitDoesNotAllocate(t *testing.T) {
 	values := map[string]string{}
 	registers.General[0] = reflect.ValueOf(values)
 	registers.Strings[2] = "heap value"
-	setString := isa.NewInstruction(isa.OpMapSetStringString, 0, 1, 2)
-	require.Equal(t, opContinue, HandleMapSetStringString(vm, frame, registers, setString))
+	setString := isa.NewInstruction(isa.OpSetMapStringString, 0, 1, 2)
+	require.Equal(t, opContinue, HandleSetMapStringString(vm, frame, registers, setString))
 	allocs = testing.AllocsPerRun(100, func() {
-		HandleMapSetStringString(vm, frame, registers, setString)
+		HandleSetMapStringString(vm, frame, registers, setString)
 	})
 	require.Zero(t, allocs)
 	require.Equal(t, "heap value", values["word"])
 }
 
-func TestMapSetStringMissClonesArenaKey(t *testing.T) {
+func TestSetMapStringMissClonesArenaKey(t *testing.T) {
 	t.Parallel()
 	vm, registers := newHandlerTestVM(t)
 	frame := &CallFrame{Function: &program.CompiledFunction{}}
 	counts := map[string]int64{}
 	registers.General[0] = reflect.ValueOf(counts)
-	arenaKey := ArenaConcatString(vm.Arena, "ke", "y1")
+	arenaKey := ArenaConcatenateString(vm.Arena, "ke", "y1")
 	registers.Strings[1] = arenaKey
 	registers.Ints[2] = 3
-	require.Equal(t, opContinue, HandleMapSetStringInt(vm, frame, registers, isa.NewInstruction(isa.OpMapSetStringInt, 0, 1, 2)))
+	require.Equal(t, opContinue, HandleSetMapStringInt64(vm, frame, registers, isa.NewInstruction(isa.OpSetMapStringInt64, 0, 1, 2)))
 
 	var storedKey string
 	for key := range counts {
@@ -182,9 +182,9 @@ func TestMapSetStringMissClonesArenaKey(t *testing.T) {
 	require.False(t, vm.Arena.OwnsString(storedKey), "a miss must clone the arena key")
 	require.NotEqual(t, stringDataAddress(arenaKey), stringDataAddress(storedKey))
 
-	registers.Strings[1] = ArenaConcatString(vm.Arena, "key", "1")
+	registers.Strings[1] = ArenaConcatenateString(vm.Arena, "key", "1")
 	registers.Ints[2] = 4
-	require.Equal(t, opContinue, HandleMapSetStringInt(vm, frame, registers, isa.NewInstruction(isa.OpMapSetStringInt, 0, 1, 2)))
+	require.Equal(t, opContinue, HandleSetMapStringInt64(vm, frame, registers, isa.NewInstruction(isa.OpSetMapStringInt64, 0, 1, 2)))
 	for key := range counts {
 		require.Equal(t, stringDataAddress(storedKey), stringDataAddress(key), "a hit must keep the map's own key")
 	}
@@ -195,8 +195,8 @@ func TestMapSetStringMissClonesArenaKey(t *testing.T) {
 	}
 	general := map[string]tagged{}
 	registers.General[0] = reflect.ValueOf(general)
-	registers.General[2] = reflect.ValueOf(tagged{label: ArenaConcatString(vm.Arena, "arena ", "value")})
-	require.Equal(t, opContinue, HandleMapSetStringGeneral(vm, frame, registers, isa.NewInstruction(isa.OpMapSetStringGeneral, 0, 1, 2)))
+	registers.General[2] = reflect.ValueOf(tagged{label: ArenaConcatenateString(vm.Arena, "arena ", "value")})
+	require.Equal(t, opContinue, HandleSetMapStringGeneral(vm, frame, registers, isa.NewInstruction(isa.OpSetMapStringGeneral, 0, 1, 2)))
 	for key, value := range general {
 		require.False(t, vm.Arena.OwnsString(key))
 		require.Equal(t, "arena value", value.label)

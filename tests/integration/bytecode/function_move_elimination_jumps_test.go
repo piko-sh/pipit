@@ -32,13 +32,13 @@ import (
 
 func buildMoveAcrossJumpBody(landingReadsDestination bool) *program.CompiledFunction {
 	bb := newBytecodeBuilder().intRegisters(4).returnInt()
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpMoveInt), 2, 1)
+	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpMoveInt64), 2, 1)
 	bb.EmitJump(isa.OpJumpIfFalse, 0, 1)
-	bb.Emit(isa.OpAddInt, 3, 2, 0)
+	bb.Emit(isa.OpAddInt64, 3, 2, 0)
 	if landingReadsDestination {
-		bb.Emit(isa.OpAddInt, 3, 2, 0)
+		bb.Emit(isa.OpAddInt64, 3, 2, 0)
 	} else {
-		bb.Emit(isa.OpAddInt, 2, 0, 0)
+		bb.Emit(isa.OpAddInt64, 2, 0, 0)
 	}
 	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	return bb.build()
@@ -53,9 +53,9 @@ func TestMoveEliminationCrossesDominatedJump(t *testing.T) {
 
 	passes.EliminateMovesAcrossDominatedJumps(compiledFunction, compiledFunction.Body, dom)
 
-	require.Equal(t, isa.OpNop, compiledFunction.Body[0].Op, "the MOVE must be eliminated across the dominated forward jump")
+	require.Equal(t, isa.OpNoOperation, compiledFunction.Body[0].Op, "the MOVE must be eliminated across the dominated forward jump")
 	require.Equal(t, uint8(1), compiledFunction.Body[2].B, "the unique reader must read the MOVE's source")
-	require.Equal(t, isa.OpAddInt, compiledFunction.Body[3].Op)
+	require.Equal(t, isa.OpAddInt64, compiledFunction.Body[3].Op)
 }
 
 func TestMoveEliminationKeepsMoveWhenOtherEdgeReadsDestination(t *testing.T) {
@@ -74,7 +74,7 @@ func TestMoveEliminationWithoutDominatorsStaysInBlock(t *testing.T) {
 	t.Parallel()
 	compiledFunction := buildMoveAcrossJumpBody(false)
 	jumpTargets := passes.BuildAllJumpTargets(compiledFunction.Body)
-	candidate := passes.MoveCandidate{Kind: isa.RegisterInt, Destination: 2, Source: 1}
+	candidate := passes.MoveCandidate{Kind: isa.RegisterInt64, Destination: 2, Source: 1}
 
 	require.False(t, passes.ScanAndEliminateMove(compiledFunction.Body, 0, len(compiledFunction.Body), jumpTargets, candidate))
 	require.Equal(t, isa.OpDrillTier1, compiledFunction.Body[0].Op)
@@ -83,11 +83,11 @@ func TestMoveEliminationWithoutDominatorsStaysInBlock(t *testing.T) {
 func TestJumpTargetAtDecodesFusedExtensionOffsets(t *testing.T) {
 	t.Parallel()
 	bb := newBytecodeBuilder().intRegisters(2)
-	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpLtIntConstJumpFalse), 0, 0)
+	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpLessThanInt64ConstantThenJumpIfFalse), 0, 0)
 	bb.emitExt(3)
-	bb.Emit(isa.OpNop, 0, 0, 0)
-	bb.Emit(isa.OpNop, 0, 0, 0)
-	bb.Emit(isa.OpNop, 0, 0, 0)
+	bb.Emit(isa.OpNoOperation, 0, 0, 0)
+	bb.Emit(isa.OpNoOperation, 0, 0, 0)
+	bb.Emit(isa.OpNoOperation, 0, 0, 0)
 	bb.Emit(isa.OpDrillTier1, uint8(isa.SubOpJump), 0, 0)
 	body := bb.build().Body
 

@@ -33,13 +33,13 @@ func TestAllocatingFromABankHandsOutConsecutiveRegisters(t *testing.T) {
 		name string
 		kind isa.RegisterKind
 	}{
-		{name: "the integer bank", kind: isa.RegisterInt},
-		{name: "the float bank", kind: isa.RegisterFloat},
+		{name: "the integer bank", kind: isa.RegisterInt64},
+		{name: "the float bank", kind: isa.RegisterFloat64},
 		{name: "the string bank", kind: isa.RegisterString},
 		{name: "the general bank", kind: isa.RegisterGeneral},
 		{name: "the boolean bank", kind: isa.RegisterBool},
-		{name: "the unsigned bank", kind: isa.RegisterUint},
-		{name: "the complex bank", kind: isa.RegisterComplex},
+		{name: "the unsigned bank", kind: isa.RegisterUint64},
+		{name: "the complex bank", kind: isa.RegisterComplex128},
 	}
 
 	for _, tt := range tests {
@@ -60,10 +60,10 @@ func TestAllocatingOneBankLeavesTheOthersUntouched(t *testing.T) {
 
 	allocator := &RegisterAllocator{FunctionName: "run"}
 
-	require.Equal(t, uint8(0), allocator.Alloc(isa.RegisterInt))
-	require.Equal(t, uint8(1), allocator.Alloc(isa.RegisterInt))
+	require.Equal(t, uint8(0), allocator.Alloc(isa.RegisterInt64))
+	require.Equal(t, uint8(1), allocator.Alloc(isa.RegisterInt64))
 
-	require.Equal(t, uint8(0), allocator.Alloc(isa.RegisterFloat),
+	require.Equal(t, uint8(0), allocator.Alloc(isa.RegisterFloat64),
 		"each bank is its own register file, so an integer allocation cannot consume a float slot")
 }
 
@@ -71,16 +71,16 @@ func TestATemporaryReleasedInOrderIsHandedOutAgain(t *testing.T) {
 	t.Parallel()
 
 	allocator := &RegisterAllocator{FunctionName: "run"}
-	allocator.Alloc(isa.RegisterInt)
+	allocator.Alloc(isa.RegisterInt64)
 
-	temporary := allocator.AllocTemp(isa.RegisterInt)
+	temporary := allocator.AllocTemp(isa.RegisterInt64)
 	require.Equal(t, uint8(1), temporary)
 
-	allocator.FreeTemp(isa.RegisterInt, temporary)
+	allocator.FreeTemp(isa.RegisterInt64, temporary)
 
-	require.Equal(t, uint8(1), allocator.AllocTemp(isa.RegisterInt),
+	require.Equal(t, uint8(1), allocator.AllocTemp(isa.RegisterInt64),
 		"a freed temporary is the next register handed out, which is what keeps expression scratch space bounded")
-	require.Equal(t, uint32(2), allocator.Snapshot()[isa.RegisterInt],
+	require.Equal(t, uint32(2), allocator.Snapshot()[isa.RegisterInt64],
 		"the live count follows the frees, or every expression would grow the frame")
 }
 
@@ -89,17 +89,17 @@ func TestTheHighWaterMarkSurvivesEveryRelease(t *testing.T) {
 
 	allocator := &RegisterAllocator{FunctionName: "run"}
 	for range 4 {
-		allocator.AllocTemp(isa.RegisterInt)
+		allocator.AllocTemp(isa.RegisterInt64)
 	}
 	for range 4 {
-		allocator.FreeTemp(isa.RegisterInt, 0)
+		allocator.FreeTemp(isa.RegisterInt64, 0)
 	}
 
-	allocator.EnsureMin(isa.RegisterInt, 1)
+	allocator.EnsureMin(isa.RegisterInt64, 1)
 
-	require.Equal(t, uint32(0), allocator.Snapshot()[isa.RegisterInt],
+	require.Equal(t, uint32(0), allocator.Snapshot()[isa.RegisterInt64],
 		"every temporary was released, so nothing is live")
-	require.Equal(t, uint8(0), allocator.Alloc(isa.RegisterInt),
+	require.Equal(t, uint8(0), allocator.Alloc(isa.RegisterInt64),
 		"the next allocation reuses the space the temporaries gave back")
 }
 
@@ -122,12 +122,12 @@ func TestEnsuringAMinimumOnlyEverRaisesTheFrameSize(t *testing.T) {
 			t.Parallel()
 			allocator := &RegisterAllocator{FunctionName: "run"}
 			for range tt.allocate {
-				allocator.Alloc(isa.RegisterInt)
+				allocator.Alloc(isa.RegisterInt64)
 			}
 
-			allocator.EnsureMin(isa.RegisterInt, tt.ensure)
+			allocator.EnsureMin(isa.RegisterInt64, tt.ensure)
 
-			require.Equal(t, tt.wantAlloc, allocator.Alloc(isa.RegisterInt),
+			require.Equal(t, tt.wantAlloc, allocator.Alloc(isa.RegisterInt64),
 				"the minimum sizes the frame without handing any register out, so the next allocation is unaffected")
 		})
 	}
@@ -153,12 +153,12 @@ func TestReservingLowRegistersPushesTheNextAllocationPastThem(t *testing.T) {
 			t.Parallel()
 			allocator := &RegisterAllocator{FunctionName: "run"}
 			for range tt.allocate {
-				allocator.Alloc(isa.RegisterInt)
+				allocator.Alloc(isa.RegisterInt64)
 			}
 
-			allocator.ReserveLow(isa.RegisterInt, tt.reserve)
+			allocator.ReserveLow(isa.RegisterInt64, tt.reserve)
 
-			require.Equal(t, tt.wantAlloc, allocator.Alloc(isa.RegisterInt),
+			require.Equal(t, tt.wantAlloc, allocator.Alloc(isa.RegisterInt64),
 				"a reserved low register belongs to a call's argument or return slot and must not be handed out as scratch")
 		})
 	}
@@ -169,11 +169,11 @@ func TestARecycledRegisterIsHandedOutBeforeAFreshOne(t *testing.T) {
 
 	stack := NewScopeStack("run")
 	stack.PushScope()
-	first := stack.DeclareVar("a", isa.RegisterInt)
-	second := stack.DeclareVar("b", isa.RegisterInt)
+	first := stack.DeclareVar("a", isa.RegisterInt64)
+	second := stack.DeclareVar("b", isa.RegisterInt64)
 
-	stack.Alloc.RecycleRegister(isa.RegisterInt, first.Register)
-	reused := stack.DeclareVar("c", isa.RegisterInt)
+	stack.Alloc.RecycleRegister(isa.RegisterInt64, first.Register)
+	reused := stack.DeclareVar("c", isa.RegisterInt64)
 
 	require.Equal(t, first.Register, reused.Register,
 		"a variable that is provably dead gives its register back, which is what keeps frames small")
@@ -186,11 +186,11 @@ func TestAnInnerScopeCannotTakeARegisterRecycledByAnOuterOne(t *testing.T) {
 
 	stack := NewScopeStack("run")
 	stack.PushScope()
-	outer := stack.DeclareVar("a", isa.RegisterInt)
-	stack.Alloc.RecycleRegister(isa.RegisterInt, outer.Register)
+	outer := stack.DeclareVar("a", isa.RegisterInt64)
+	stack.Alloc.RecycleRegister(isa.RegisterInt64, outer.Register)
 
 	stack.PushScope()
-	fresh := stack.DeclareVar("c", isa.RegisterInt)
+	fresh := stack.DeclareVar("c", isa.RegisterInt64)
 
 	require.NotEqual(t, outer.Register, fresh.Register,
 		"a register the enclosing scope gave back is not an inner scope's to take, or leaving the inner scope would free it twice")
@@ -200,19 +200,19 @@ func TestASnapshotRestoresEveryBankAtOnce(t *testing.T) {
 	t.Parallel()
 
 	allocator := &RegisterAllocator{FunctionName: "run"}
-	allocator.Alloc(isa.RegisterInt)
-	allocator.Alloc(isa.RegisterFloat)
+	allocator.Alloc(isa.RegisterInt64)
+	allocator.Alloc(isa.RegisterFloat64)
 	saved := allocator.Snapshot()
 
-	allocator.Alloc(isa.RegisterInt)
-	allocator.Alloc(isa.RegisterInt)
+	allocator.Alloc(isa.RegisterInt64)
+	allocator.Alloc(isa.RegisterInt64)
 	allocator.Alloc(isa.RegisterString)
 
 	allocator.Restore(saved)
 
 	require.Equal(t, saved, allocator.Snapshot(),
 		"leaving a scope gives back every register it took, in every bank at once")
-	require.Equal(t, uint8(1), allocator.Alloc(isa.RegisterInt),
+	require.Equal(t, uint8(1), allocator.Alloc(isa.RegisterInt64),
 		"the restored counter is what the next allocation continues from")
 }
 
@@ -220,8 +220,8 @@ func TestRestoringPastTheCurrentAllocationIsRefusedLoudly(t *testing.T) {
 	t.Parallel()
 
 	allocator := &RegisterAllocator{FunctionName: "run"}
-	allocator.Alloc(isa.RegisterInt)
-	allocator.Alloc(isa.RegisterInt)
+	allocator.Alloc(isa.RegisterInt64)
+	allocator.Alloc(isa.RegisterInt64)
 	saved := allocator.Snapshot()
 	allocator.Restore([isa.NumRegisterKinds]uint32{})
 

@@ -396,7 +396,7 @@ func iterCollectReflect(sequenceVal reflect.Value, elementType reflect.Type) any
 	sliceType := reflect.SliceOf(elementType)
 	result := reflect.MakeSlice(sliceType, 0, 0)
 	for v := range sequenceVal.Seq() {
-		result = reflect.Append(result, v)
+		result = reflect.Append(result, valueAs(v, elementType))
 	}
 	return result.Interface()
 }
@@ -416,7 +416,7 @@ func iterCollectSequence2Reflect(sequenceVal reflect.Value, keyType, valType ref
 	mapType := reflect.MapOf(keyType, valType)
 	result := reflect.MakeMap(mapType)
 	for k, v := range sequenceVal.Seq2() {
-		result.SetMapIndex(k, v)
+		result.SetMapIndex(valueAs(k, keyType), valueAs(v, valType))
 	}
 	return result.Interface()
 }

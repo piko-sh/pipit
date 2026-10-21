@@ -122,7 +122,7 @@ func (l *launcher) start(ctx context.Context, s *server) error {
 
 	limits := runner.Limits{
 		Symbols:       s.opts.Symbols,
-		BytecodeStore: nil, Logger: nil, Timeout: 0, MaxAlloc: 0, MaxCallDepth: 0, MaxOutputSize: 0, CostBudget: 0, MaxGoroutines: 0}
+		BytecodeStore: nil, Timeout: 0, MaxAlloc: 0, MaxCallDepth: 0, MaxOutputSize: 0, CostBudget: 0, MaxGoroutines: 0}
 	extras := []pipit.Option{pipit.WithDebugger(debugger), pipit.WithEnv(runner.ScriptEnv(l.args.Program, l.args.Args))}
 	interpreter := runner.New(limits, extras...)
 

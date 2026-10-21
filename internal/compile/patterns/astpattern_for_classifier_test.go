@@ -264,6 +264,23 @@ func TestResolvingAConstantBoundPrefersWhatTheTypeCheckerFolded(t *testing.T) {
 	require.Equal(t, int64(8), value)
 }
 
+func TestResolvingAConstantBoundRefusesAFoldedFloatingPointConstant(t *testing.T) {
+	t.Parallel()
+
+	expression, err := parser.ParseExpr("2")
+	require.NoError(t, err)
+
+	folded := &types.Info{Types: map[ast.Expr]types.TypeAndValue{
+		expression: {Type: types.Typ[types.Float64], Value: constant.MakeFloat64(2)},
+	}}
+
+	require.NotPanics(t, func() {
+		value, ok := resolveIntegerConstant(expression, folded)
+		require.False(t, ok, "the 2 in `f < 2` with a float64 f is folded as a float constant, not an integer bound")
+		require.Zero(t, value)
+	})
+}
+
 func TestResolvingAConstantBoundFallsBackToABareLiteral(t *testing.T) {
 	t.Parallel()
 

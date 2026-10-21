@@ -31,7 +31,7 @@ func returnIntProgram(value int64) *program.CompiledFunction {
 	builder := newBytecodeBuilder()
 	builder.addIntConst(value)
 	builder.intRegisters(2).returnInt()
-	builder.Emit(isa.OpLoadIntConst, 0, 0, 0)
+	builder.Emit(isa.OpLoadInt64Constant, 0, 0, 0)
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	return builder.build()
 }
@@ -53,7 +53,7 @@ func TestExecuteReturnsTheValueTheProgramLeavesInRegisterZero(t *testing.T) {
 				builder := newBytecodeBuilder()
 				builder.addFloatConst(2.5)
 				builder.floatRegisters(2).returnFloat()
-				builder.Emit(isa.OpLoadFloatConst, 0, 0, 0)
+				builder.Emit(isa.OpLoadFloat64Constant, 0, 0, 0)
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return builder.build()
 			},
@@ -65,7 +65,7 @@ func TestExecuteReturnsTheValueTheProgramLeavesInRegisterZero(t *testing.T) {
 				builder := newBytecodeBuilder()
 				builder.addStringConst("pipit")
 				builder.stringRegisters(2).returnString()
-				builder.Emit(isa.OpLoadStringConst, 0, 0, 0)
+				builder.Emit(isa.OpLoadStringConstant, 0, 0, 0)
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return builder.build()
 			},
@@ -78,9 +78,9 @@ func TestExecuteReturnsTheValueTheProgramLeavesInRegisterZero(t *testing.T) {
 				builder.addIntConst(10)
 				builder.addIntConst(32)
 				builder.intRegisters(3).returnInt()
-				builder.Emit(isa.OpLoadIntConst, 1, 0, 0)
-				builder.Emit(isa.OpLoadIntConst, 2, 1, 0)
-				builder.Emit(isa.OpAddInt, 0, 1, 2)
+				builder.Emit(isa.OpLoadInt64Constant, 1, 0, 0)
+				builder.Emit(isa.OpLoadInt64Constant, 2, 1, 0)
+				builder.Emit(isa.OpAddInt64, 0, 1, 2)
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return builder.build()
 			},
@@ -113,9 +113,9 @@ func TestExecuteSurfacesARuntimeFaultAsAnError(t *testing.T) {
 				builder.addIntConst(1)
 				builder.addIntConst(0)
 				builder.intRegisters(3).returnInt()
-				builder.Emit(isa.OpLoadIntConst, 1, 0, 0)
-				builder.Emit(isa.OpLoadIntConst, 2, 1, 0)
-				builder.Emit(isa.OpDivInt, 0, 1, 2)
+				builder.Emit(isa.OpLoadInt64Constant, 1, 0, 0)
+				builder.Emit(isa.OpLoadInt64Constant, 2, 1, 0)
+				builder.Emit(isa.OpDivideInt64, 0, 1, 2)
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return builder.build()
 			},
@@ -127,9 +127,9 @@ func TestExecuteSurfacesARuntimeFaultAsAnError(t *testing.T) {
 				builder.addIntConst(1)
 				builder.addIntConst(0)
 				builder.intRegisters(3).returnInt()
-				builder.Emit(isa.OpLoadIntConst, 1, 0, 0)
-				builder.Emit(isa.OpLoadIntConst, 2, 1, 0)
-				builder.Emit(isa.OpRemInt, 0, 1, 2)
+				builder.Emit(isa.OpLoadInt64Constant, 1, 0, 0)
+				builder.Emit(isa.OpLoadInt64Constant, 2, 1, 0)
+				builder.Emit(isa.OpRemainderInt64, 0, 1, 2)
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return builder.build()
 			},
@@ -139,7 +139,7 @@ func TestExecuteSurfacesARuntimeFaultAsAnError(t *testing.T) {
 			build: func() *program.CompiledFunction {
 				builder := newBytecodeBuilder()
 				builder.intRegisters(2).returnInt()
-				builder.Emit(isa.OpLoadIntConst, 0, 9, 0)
+				builder.Emit(isa.OpLoadInt64Constant, 0, 9, 0)
 				builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				return builder.build()
 			},
@@ -195,9 +195,9 @@ func TestExecuteUnwindsTheFrameStackAfterAFault(t *testing.T) {
 	builder.addIntConst(1)
 	builder.addIntConst(0)
 	builder.intRegisters(3).returnInt()
-	builder.Emit(isa.OpLoadIntConst, 1, 0, 0)
-	builder.Emit(isa.OpLoadIntConst, 2, 1, 0)
-	builder.Emit(isa.OpDivInt, 0, 1, 2)
+	builder.Emit(isa.OpLoadInt64Constant, 1, 0, 0)
+	builder.Emit(isa.OpLoadInt64Constant, 2, 1, 0)
+	builder.Emit(isa.OpDivideInt64, 0, 1, 2)
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 
 	_, err := vm.Execute(builder.build())

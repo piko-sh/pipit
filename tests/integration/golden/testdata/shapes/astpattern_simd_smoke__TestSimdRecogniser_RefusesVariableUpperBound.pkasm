@@ -4,38 +4,38 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun
-;   registers: int=5 float=3 sliceFloat=1
-;   dispatch:  asm=19 shim=1 exit=0 go=0
+;   registers: int64=5 float64=3 sliceFloat64=1
+;   dispatch:  asm=17 shim=1 exit=0 go=0
 ;   params:    (none)
-;   returns:   (float)
+;   returns:   (float64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=5  [1]=0  [2]=1  [3]=3
 ;   floats:  [0]=0
 
-0000 A 1:LOAD_INT_CONST_SMALL      75   0   5    ; ints[0] = 5
-0001 S 1:MAKE_SLICE_FLOAT          18   0   0
-0002   0:EXT                        0   0   0
-0003 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0004 A 1:LEN_SLICE_FLOAT_DIRECT    21   1   0
-0005 A 1:LT_INT_JUMP_FALSE        116   0   1
-0006   0:EXT                        6   0   0
-0007 A 0:ADD_INT_CONST              4   0   2    ; const = 1
-0008 A 1:INT_TO_FLOAT              50   0   4
-0009 A 1:SLICE_SET_FLOAT_DIRECT    20   0   0
-0010   0:EXT                        0   0   0
-0011 A 2:TIER2_INC_INT              0   1   0
-0012 A 1:JUMP                      74 247 255    ; goto -9
-0013 A 1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
-0014 A 0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 0
-0015 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0016 A 1:LT_INT_JUMP_FALSE        116   1   0
-0017   0:EXT                        6   0   0
-0018 A 1:SLICE_GET_FLOAT_DIRECT    19   1   0
-0019   0:EXT                        1   0   0
-0020 A 0:ADD_FLOAT                  2   0   1
-0021 A 1:MOVE_FLOAT                36   0   2
-0022 A 2:TIER2_INC_INT              0   1   1
-0023 A 1:JUMP                      74 248 255    ; goto -8
-0024 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 1:LOAD_INT64_IMMEDIATE                                75   0   5    ; ints[0] = 5
+0001 S 1:MAKE_SLICE_FLOAT64                                  18   0   0
+0002   0:EXTENSION                                            0   0   0
+0003 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0004 A 1:LENGTH_SLICE_FLOAT64                                21   1   0
+0005 A 1:LESS_THAN_INT64_THEN_JUMP_IF_FALSE                 116   0   1
+0006   0:EXTENSION                                            7   0   0
+0007 A 1:LENGTH_SLICE_FLOAT64                                21   3   0    ; LICM hoist of PC 12
+0008 A 0:ADD_INT64_CONSTANT                                   4   0   2    ; const = 1
+0009 A 1:CONVERT_INT64_TO_FLOAT64                            50   0   4
+0010 A 1:SET_SLICE_FLOAT64_ELEMENT                           20   0   0
+0011   0:EXTENSION                                            0   0   0
+0012 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN              77   0   3
+0013   0:EXTENSION                                          250 255   0
+0014 A 1:LOAD_INT64_IMMEDIATE                                75   0   3    ; ints[0] = 3
+0015 A 0:LOAD_FLOAT64_CONSTANT                                0   0   0    ; floats[0] = 0
+0016 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0017 A 1:LESS_THAN_INT64_THEN_JUMP_IF_FALSE                 116   1   0
+0018   0:EXTENSION                                            5   0   0
+0019 A 1:GET_SLICE_FLOAT64_ELEMENT                           19   1   0
+0020   0:EXTENSION                                            1   0   0
+0021 A 0:ADD_FLOAT64                                          0   0   1
+0022 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN              77   1   0
+0023   0:EXTENSION                                          251 255   0
+0024 A 2:RETURN                                               0  10   1    ; 1 values

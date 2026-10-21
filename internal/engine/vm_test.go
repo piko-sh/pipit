@@ -78,17 +78,17 @@ func TestExtractScalarRegisterValueReadsTheNamedBank(t *testing.T) {
 		load func(*Registers)
 		want any
 	}{
-		{name: "the int bank", kind: isa.RegisterInt, load: func(r *Registers) { r.Ints[0] = 4 }, want: 4},
-		{name: "the float bank", kind: isa.RegisterFloat, load: func(r *Registers) { r.Floats[0] = 1.5 }, want: 1.5},
+		{name: "the int bank", kind: isa.RegisterInt64, load: func(r *Registers) { r.Ints[0] = 4 }, want: 4},
+		{name: "the float bank", kind: isa.RegisterFloat64, load: func(r *Registers) { r.Floats[0] = 1.5 }, want: 1.5},
 		{name: "the bool bank", kind: isa.RegisterBool, load: func(r *Registers) { r.Bools[0] = true }, want: true},
-		{name: "the uint bank", kind: isa.RegisterUint, load: func(r *Registers) { r.Uints[0] = 6 }, want: uint64(6)},
-		{name: "the complex bank", kind: isa.RegisterComplex, load: func(r *Registers) { r.Complex[0] = 2i }, want: 2i},
+		{name: "the uint bank", kind: isa.RegisterUint64, load: func(r *Registers) { r.Uints[0] = 6 }, want: uint64(6)},
+		{name: "the complex bank", kind: isa.RegisterComplex128, load: func(r *Registers) { r.Complex[0] = 2i }, want: 2i},
 		{
-			name: "the int-slice bank", kind: isa.RegisterSliceInt,
+			name: "the int-slice bank", kind: isa.RegisterSliceInt64,
 			load: func(r *Registers) { r.SlicesInt[0] = []int64{1} }, want: []int64{1},
 		},
 		{
-			name: "the float-slice bank", kind: isa.RegisterSliceFloat,
+			name: "the float-slice bank", kind: isa.RegisterSliceFloat64,
 			load: func(r *Registers) { r.slicesFloat[0] = []float64{1.5} }, want: []float64{1.5},
 		},
 		{
@@ -100,7 +100,7 @@ func TestExtractScalarRegisterValueReadsTheNamedBank(t *testing.T) {
 			load: func(r *Registers) { r.slicesBool[0] = []bool{true} }, want: []bool{true},
 		},
 		{
-			name: "the uint-slice bank", kind: isa.RegisterSliceUint,
+			name: "the uint-slice bank", kind: isa.RegisterSliceUint64,
 			load: func(r *Registers) { r.slicesUint[0] = []uint64{2} }, want: []uint64{2},
 		},
 		{
@@ -438,4 +438,70 @@ func TestSetExecutionCancelSharesTheCancelWithTheTracker(t *testing.T) {
 	vm.executionCancel(nil)
 	require.True(t, cancelled)
 	require.NotNil(t, vm.Limits.Tracker.executionCancel.Load(), "a spawned goroutine cancels through the tracker")
+}
+
+func TestBaseFrameResultsAreExtractedOnce(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		kinds []isa.RegisterKind
+		want  []any
+	}{
+		{name: "no results", kinds: nil, want: nil},
+		{name: "one string", kinds: []isa.RegisterKind{isa.RegisterString}, want: []any{"s0"}},
+		{name: "a string, an int and a second string", kinds: []isa.RegisterKind{isa.RegisterString, isa.RegisterInt64, isa.RegisterString},
+			want: []any{"s0", 7, "s1"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			vm := &VM{}
+			frame := &CallFrame{Function: &program.CompiledFunction{ResultKinds: tt.kinds}, Registers: makeRegisters()}
+			frame.Registers.Strings[0], frame.Registers.Strings[1] = "s0", "s1"
+			frame.Registers.Ints[0] = 7
+			vm.evalResult = "stale"
+			vm.setBaseFrameResults(frame)
+			want, err := vm.extractResult(frame)
+			require.NoError(t, err)
+			require.Equal(t, want, vm.evalResult, "evalResult is the value extractResult reads")
+			require.Equal(t, len(tt.kinds) == 1, vm.evalSingle, "a single result is held by value")
+			require.Equal(t, len(tt.kinds) == 1, vm.EvalAllResults == nil && len(tt.kinds) > 0,
+				"no result slice is built for a single result")
+			evalResult := vm.evalResult
+			var buffer [1]any
+			all := vm.takeBaseFrameResults(evalResult, true).slice(&buffer)
+			require.Equal(t, tt.want, all)
+			if len(tt.want) > 0 {
+				require.Equal(t, all[0], evalResult)
+			}
+			require.False(t, vm.evalSingle, "taking the results clears the flag")
+			require.Nil(t, vm.EvalAllResults)
+		})
+	}
+}
+
+func TestAReturnIntoTheGeneralBankCarriesTheResultsDeclaredType(t *testing.T) {
+	t.Parallel()
+
+	vm := newTestVM(t)
+	vm.CallStack = make([]CallFrame, 2)
+	vm.FramePointer = 1
+	vm.CallStack[0].Registers = NewRegisters(typedSliceRegisterCounts())
+	vm.CallStack[1].Registers = NewRegisters(typedSliceRegisterCounts())
+	vm.CallStack[1].Function = &program.CompiledFunction{
+		ResultKinds:        []isa.RegisterKind{isa.RegisterSliceInt64, isa.RegisterInt64},
+		ResultReflectTypes: []reflect.Type{reflect.TypeFor[[]int](), reflect.TypeFor[int32]()},
+	}
+	backing := []int64{3, 1, 2}
+	vm.CallStack[1].Registers.SlicesInt[0] = backing
+	vm.CallStack[1].Registers.Ints[0] = 7
+
+	vm.copyReturnValueAt(&vm.CallStack[1], 0, isa.RegisterSliceInt64, 0, program.VarLocation{Register: 1, Kind: isa.RegisterGeneral})
+	vm.copyReturnValueAt(&vm.CallStack[1], 1, isa.RegisterInt64, 0, program.VarLocation{Register: 2, Kind: isa.RegisterGeneral})
+
+	slice, ok := reflect.TypeAssert[[]int](vm.CallStack[0].Registers.General[1])
+	require.True(t, ok, "a []int result reaches the caller as []int, not as the bank's []int64 storage")
+	slice[0] = 9
+	require.Equal(t, int64(9), backing[0], "the caller's value shares the callee's backing array")
+	require.Equal(t, int32(7), vm.CallStack[0].Registers.General[2].Interface())
 }

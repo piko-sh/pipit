@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxlinux
 
@@ -44,11 +44,11 @@ func TestServiceRecoveryIdentityRejectsUnownedGroup(t *testing.T) {
 
 func TestNativeServiceRecoveryIdentity(t *testing.T) {
 	parent := sandboxtest.CgroupParent(t)
-	group, err := newServiceGroup(parent, Limits{}, testTenant)
+	group, err := newServiceGroup(t.Context(), parent, Limits{}, testTenant)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	defer group.closeGroup(ctx)
 	encoded, err := group.RecoveryIdentity()
@@ -68,7 +68,7 @@ func TestNativeServiceRecoveryIdentity(t *testing.T) {
 		t.Fatal("incomplete service identity:", identity)
 	}
 	assertLiveServiceRecoveryHost(t, encoded)
-	child, err := group.newChild(Limits{})
+	child, err := group.newChild(t.Context(), Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,10 +96,10 @@ func assertLiveServiceRecoveryHost(t *testing.T, metadata []byte) {
 		t.Fatal(err)
 	}
 	defer journal.Close()
-	state := &filesystemBrokerRecovery{base: context.Background(), authority: authority, journal: journal}
+	state := &filesystemBrokerRecovery{authority: authority, journal: journal}
 	owner := &FilesystemBroker{recovery: state}
-	defer owner.Close()
-	storage.Binding, err = RecoveryHostBinding(context.Background(), [sha256.Size]byte{1})
+	defer owner.Close(t.Context())
+	storage.Binding, err = RecoveryHostBinding(t.Context(), [sha256.Size]byte{1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,17 +119,17 @@ func assertLiveServiceRecoveryHost(t *testing.T, metadata []byte) {
 	if err != nil || !bytes.Equal(captured, metadata) {
 		t.Fatal("approved checkpoint lost original service context:", err)
 	}
-	if err := verifyServiceRecoveryHost(context.Background(), checkpoint, approved, storage.Binding); !errors.Is(err, ErrServiceBusy) {
+	if err := verifyServiceRecoveryHost(t.Context(), checkpoint, approved, storage.Binding); !errors.Is(err, ErrServiceBusy) {
 		t.Fatal("approved live host accepted for restart recovery:", err)
 	}
 	approved[0] ^= 1
-	if err := verifyServiceRecoveryHost(context.Background(), checkpoint, approved, storage.Binding); !errors.Is(err, sandboxbroker.ErrDenied) {
+	if err := verifyServiceRecoveryHost(t.Context(), checkpoint, approved, storage.Binding); !errors.Is(err, sandboxbroker.ErrDenied) {
 		t.Fatal("host was inspected without independent approval:", err)
 	}
-	if err := owner.Close(); err != nil {
+	if err := owner.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	claim, err := ClaimServiceRecovery(context.Background(), storage)
+	claim, err := ClaimServiceRecovery(t.Context(), storage)
 	if claim != nil {
 		_ = claim.Close()
 	}

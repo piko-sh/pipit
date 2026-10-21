@@ -54,13 +54,13 @@ func TestReflectFuncTypeDropsTheReceiver(t *testing.T) {
 		t.Parallel()
 
 		function := NewNamedFunction("f")
-		function.ParameterKinds = []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt}
+		function.ParameterKinds = []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt64}
 		function.ResultKinds = []isa.RegisterKind{isa.RegisterString}
 
 		got, ok := function.ReflectFuncType()
 		require.True(t, ok)
 		require.Equal(t, 1, got.NumIn())
-		require.Equal(t, KindDefaultReflectType(isa.RegisterInt), got.In(0))
+		require.Equal(t, KindDefaultReflectType(isa.RegisterInt64), got.In(0))
 		require.Equal(t, KindDefaultReflectType(isa.RegisterString), got.Out(0))
 	})
 
@@ -144,20 +144,20 @@ func TestReflectMethodExprTypeKeepsTheReceiver(t *testing.T) {
 		t.Parallel()
 
 		function := NewNamedFunction("f")
-		function.ParameterKinds = []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt}
+		function.ParameterKinds = []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt64}
 
 		got, ok := function.ReflectMethodExprType()
 		require.True(t, ok)
 		require.Equal(t, 2, got.NumIn())
 		require.Equal(t, reflect.TypeFor[any](), got.In(0))
-		require.Equal(t, KindDefaultReflectType(isa.RegisterInt), got.In(1))
+		require.Equal(t, KindDefaultReflectType(isa.RegisterInt64), got.In(1))
 	})
 
 	t.Run("a recorded receiver and signature give the precise type", func(t *testing.T) {
 		t.Parallel()
 
 		function := NewNamedFunction("f")
-		function.ParameterKinds = []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt}
+		function.ParameterKinds = []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt64}
 		function.SignatureReflectType = reflect.TypeFor[func(int) string]()
 		function.MethodReceiverReflectType = reflect.TypeFor[*int]()
 
@@ -331,36 +331,36 @@ func TestIsInlineableShapeRequiresTheExactSiteShape(t *testing.T) {
 		{
 			name: "the candidate shape", want: true,
 			site: &CallSite{
-				Arguments: []VarLocation{{Kind: isa.RegisterGeneral}, {Kind: isa.RegisterSliceUint}},
-				Returns:   []VarLocation{{Kind: isa.RegisterUint}},
+				Arguments: []VarLocation{{Kind: isa.RegisterGeneral}, {Kind: isa.RegisterSliceUint64}},
+				Returns:   []VarLocation{{Kind: isa.RegisterUint64}},
 			},
 		},
 		{
 			name: "too few arguments",
 			site: &CallSite{
 				Arguments: []VarLocation{{Kind: isa.RegisterGeneral}},
-				Returns:   []VarLocation{{Kind: isa.RegisterUint}},
+				Returns:   []VarLocation{{Kind: isa.RegisterUint64}},
 			},
 		},
 		{
 			name: "too many returns",
 			site: &CallSite{
-				Arguments: []VarLocation{{Kind: isa.RegisterGeneral}, {Kind: isa.RegisterSliceUint}},
-				Returns:   []VarLocation{{Kind: isa.RegisterUint}, {Kind: isa.RegisterUint}},
+				Arguments: []VarLocation{{Kind: isa.RegisterGeneral}, {Kind: isa.RegisterSliceUint64}},
+				Returns:   []VarLocation{{Kind: isa.RegisterUint64}, {Kind: isa.RegisterUint64}},
 			},
 		},
 		{
 			name: "a receiver that is not in the general bank",
 			site: &CallSite{
-				Arguments: []VarLocation{{Kind: isa.RegisterInt}, {Kind: isa.RegisterSliceUint}},
-				Returns:   []VarLocation{{Kind: isa.RegisterUint}},
+				Arguments: []VarLocation{{Kind: isa.RegisterInt64}, {Kind: isa.RegisterSliceUint64}},
+				Returns:   []VarLocation{{Kind: isa.RegisterUint64}},
 			},
 		},
 		{
 			name: "a return that is not unsigned",
 			site: &CallSite{
-				Arguments: []VarLocation{{Kind: isa.RegisterGeneral}, {Kind: isa.RegisterSliceUint}},
-				Returns:   []VarLocation{{Kind: isa.RegisterInt}},
+				Arguments: []VarLocation{{Kind: isa.RegisterGeneral}, {Kind: isa.RegisterSliceUint64}},
+				Returns:   []VarLocation{{Kind: isa.RegisterInt64}},
 			},
 		},
 	}

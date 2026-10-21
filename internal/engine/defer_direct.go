@@ -129,7 +129,7 @@ func trivialDeferClosure(target reflect.Value) (*RuntimeClosure, bool) {
 // Returns bool which is true for the scalar, string and general banks.
 func directDeferKind(kind isa.RegisterKind) bool {
 	switch kind {
-	case isa.RegisterInt, isa.RegisterFloat, isa.RegisterString, isa.RegisterGeneral, isa.RegisterBool, isa.RegisterUint, isa.RegisterComplex:
+	case isa.RegisterInt64, isa.RegisterFloat64, isa.RegisterString, isa.RegisterGeneral, isa.RegisterBool, isa.RegisterUint64, isa.RegisterComplex128:
 		return true
 	default:
 		return false

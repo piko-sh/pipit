@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxbroker
 
@@ -132,18 +132,21 @@ func (client *FilesystemClient) receiveFilesystemResult(call *FilesystemCall) (F
 func OpenJournalledFilesystemClient(ctx context.Context, stream supervisedFilesystemTransport,
 	authority *LinuxRecoveryAuthority, journal *LinuxRecoveryJournal,
 ) (*FilesystemClient, error) {
-	if ctx == nil || stream == nil || authority == nil || journal == nil {
-		if stream != nil {
-			return nil, errors.Join(ErrInvalidPolicy, stream.Close())
-		}
+	if stream == nil {
 		return nil, ErrInvalidPolicy
 	}
+	if ctx == nil {
+		return nil, errors.Join(ErrInvalidPolicy, closeWithoutContext(stream))
+	}
+	if authority == nil || journal == nil {
+		return nil, errors.Join(ErrInvalidPolicy, closeForCleanup(ctx, stream))
+	}
 	if err := authority.ValidateJournal(journal); err != nil {
-		return nil, errors.Join(err, stream.Close())
+		return nil, errors.Join(err, closeForCleanup(ctx, stream))
 	}
 	budget, err := authority.journalBudget(journal)
 	if err != nil {
-		return nil, errors.Join(err, stream.Close())
+		return nil, errors.Join(err, closeForCleanup(ctx, stream))
 	}
 	return openFilesystemClient(ctx, stream, budget, authority, journal)
 }

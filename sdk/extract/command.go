@@ -63,8 +63,7 @@ const (
 	// empty.
 	defaultInitDirectory = "symbols"
 
-	// includeProjectFlag includes the project's packages as required imports for one
-	// run.
+	// includeProjectFlag includes the project's packages as required imports for one run.
 	includeProjectFlag = "--include-project"
 )
 

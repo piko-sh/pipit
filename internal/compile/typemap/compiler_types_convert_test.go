@@ -19,7 +19,6 @@
 package typemap
 
 import (
-	"context"
 	"go/types"
 	"reflect"
 	"testing"
@@ -28,11 +27,14 @@ import (
 
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/symtab"
+	"pipit.sh/pipit/internal/symtab/typemodel"
 )
 
 func convertOne(t *testing.T, source types.Type) reflect.Type {
 	t.Helper()
-	return TypeToReflectCached(context.Background(), source, symtab.NewSymbolRegistry(nil), map[types.Type]reflect.Type{}, engine.NewGlobalStore())
+	reflectType, err := TypeToReflectCached(t.Context(), source, symtab.NewSymbolRegistry(nil), NewTypeCache(), engine.NewGlobalStore())
+	require.NoError(t, err)
+	return reflectType
 }
 
 func testPackage() *types.Package {
@@ -371,6 +373,50 @@ func TestConvertingANamedTypeOverANonStructUsesItsUnderlyingShape(t *testing.T) 
 	}
 }
 
+func TestConvertingANamedCompositeTypeGivesItARuntimeTypeOfItsOwn(t *testing.T) {
+	t.Parallel()
+	requireNamedCompositeTypes(t)
+
+	declare := func(name string, underlying types.Type) *types.Named {
+		named := namedStruct(testPackage(), name)
+		named.SetUnderlying(underlying)
+		return named
+	}
+	celsius := convertOne(t, declare("celsius", types.NewSlice(types.Typ[types.Float64])))
+	fahrenheit := convertOne(t, declare("fahrenheit", types.NewSlice(types.Typ[types.Float64])))
+
+	require.NotEqual(t, celsius, fahrenheit, "two named types over one underlying type")
+	require.NotEqual(t, reflect.TypeFor[[]float64](), celsius)
+	require.Equal(t, "main.celsius", celsius.String())
+	require.Equal(t, "example.com/main", celsius.PkgPath())
+	require.Equal(t, reflect.TypeFor[float64](), celsius.Elem())
+	require.True(t, typemodel.IsNamedCompositeType(celsius))
+	require.Equal(t, celsius, convertOne(t, declare("celsius", types.NewSlice(types.Typ[types.Float64]))),
+		"a second compile of the same declaration")
+
+	handler := convertOne(t, declare("handler", types.NewSignatureType(nil, nil, nil, nil, nil, false)))
+	require.Equal(t, "main.handler", handler.String())
+	require.Equal(t, reflect.Func, handler.Kind())
+
+	parameter := types.NewTypeParam(types.NewTypeName(0, testPackage(), "T", nil), types.NewInterfaceType(nil, nil))
+	generic := declare("list", types.NewSlice(parameter))
+	require.False(t, IsNamedCompositeType(generic), "a type over a type parameter keeps the generic paths")
+}
+
+func TestConvertingAHostPackagesNamedCompositeTypeLeavesItToTheHost(t *testing.T) {
+	t.Parallel()
+
+	host := types.NewPackage("iter", "iter")
+	named := types.NewNamed(types.NewTypeName(0, host, "Seq", nil), nil, nil)
+	named.SetUnderlying(types.NewSignatureType(nil, nil, nil, nil, nil, false))
+	symbols := symtab.NewSymbolRegistry(nil)
+	symbols.RegisterPackage("iter", map[string]reflect.Value{"Pull": reflect.ValueOf(func() {})})
+
+	converted, err := TypeToReflectCached(t.Context(), named, symbols, NewTypeCache(), engine.NewGlobalStore())
+	require.NoError(t, err)
+	require.Equal(t, reflect.TypeFor[func()](), converted)
+}
+
 func TestConvertingTheSameNamedStructTwiceReusesTheCachedLayout(t *testing.T) {
 	t.Parallel()
 
@@ -378,12 +424,14 @@ func TestConvertingTheSameNamedStructTwiceReusesTheCachedLayout(t *testing.T) {
 	named := namedStruct(pkg, "cached")
 	named.SetUnderlying(types.NewStruct([]*types.Var{types.NewField(0, pkg, "X", types.Typ[types.Int], false)}, nil))
 
-	cache := map[types.Type]reflect.Type{}
+	cache := NewTypeCache()
 	symbols := symtab.NewSymbolRegistry(nil)
 	globals := engine.NewGlobalStore()
 
-	first := TypeToReflectCached(context.Background(), named, symbols, cache, globals)
-	second := TypeToReflectCached(context.Background(), named, symbols, cache, globals)
+	first, err := TypeToReflectCached(t.Context(), named, symbols, cache, globals)
+	require.NoError(t, err)
+	second, err := TypeToReflectCached(t.Context(), named, symbols, cache, globals)
+	require.NoError(t, err)
 
 	require.Equal(t, first, second,
 		"two conversions of one declaration have to agree, or two values of the same type would not be assignable")

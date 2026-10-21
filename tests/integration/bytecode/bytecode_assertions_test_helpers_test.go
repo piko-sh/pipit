@@ -108,3 +108,19 @@ func findTier1SubOp(compiledFunction *program.CompiledFunction, subOp isa.SubOpc
 	}
 	return -1
 }
+
+func hasBackwardJump(compiledFunction *program.CompiledFunction) bool {
+	for pc := range compiledFunction.Body {
+		if target, ok := program.JumpTargetAt(compiledFunction.Body, pc); ok && target <= pc {
+			return true
+		}
+	}
+	return false
+}
+
+func requireAs[T any](t *testing.T, value any) T {
+	t.Helper()
+	typed, ok := value.(T)
+	require.Truef(t, ok, "want %T, got %T", typed, value)
+	return typed
+}

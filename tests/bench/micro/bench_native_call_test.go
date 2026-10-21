@@ -21,7 +21,6 @@
 package bench
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -202,13 +201,13 @@ func run() int {
 		b.Run(bm.name, func(b *testing.B) {
 			service := app.NewService()
 			service.UseSymbols(symbols)
-			cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": bm.source})
+			cfs, err := service.CompileFileSet(b.Context(), map[string]string{"main.go": bm.source})
 			require.NoError(b, err)
 
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
-				_, err = service.ExecuteEntrypoint(context.Background(), cfs, "run")
+				_, err = service.ExecuteEntrypoint(b.Context(), cfs, "run")
 				if err != nil {
 					require.NoError(b, err)
 				}

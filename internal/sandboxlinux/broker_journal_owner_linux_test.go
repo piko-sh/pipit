@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
@@ -28,24 +28,24 @@ import (
 	"time"
 
 	"pipit.sh/pipit/internal/sandboxbroker"
+	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 func TestJournalledOwnerWaitsForReservations(t *testing.T) {
 	var gate admission
-	release, err := gate.acquire(context.Background())
+	release, err := gate.acquire(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
 	var state filesystemBrokerRecovery
-	state.base = context.Background()
 	state.releaseAdmission = release
 	owner := &FilesystemBroker{process: nil, client: nil, recovery: &state}
 	if !state.beginOperation() {
 		t.Fatal("fresh owner rejected reservation")
 	}
 	done := make(chan error, 1)
-	go func() { done <- owner.Close() }()
+	go func() { done <- owner.Close(t.Context()) }()
 	deadline := time.NewTimer(3 * time.Second)
 	defer deadline.Stop()
 	ticker := time.NewTicker(time.Millisecond)
@@ -85,7 +85,7 @@ func TestJournalledOwnerWaitsForReservations(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if !state.complete || owner.Close() != nil {
+	if !state.complete || owner.Close(t.Context()) != nil {
 		t.Fatal("empty owner did not close idempotently")
 	}
 	gate.mutex.Lock()
@@ -96,19 +96,65 @@ func TestJournalledOwnerWaitsForReservations(t *testing.T) {
 	}
 }
 
+func unreapedRecoveryHelper() (*FilesystemBroker, *filesystemBrokerRecovery, chan struct{}) {
+	var helper WorkerProcess
+	helper.cancel = func() {}
+	helper.done = make(chan struct{})
+	state := &filesystemBrokerRecovery{process: &helper}
+	return &FilesystemBroker{process: nil, client: nil, recovery: state}, state, helper.done
+}
+
+func TestJournalledOwnerCleanupOutlivesCallerCancellation(t *testing.T) {
+	t.Parallel()
+	owner, state, exit := unreapedRecoveryHelper()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	timer := time.AfterFunc(50*time.Millisecond, func() { close(exit) })
+	defer timer.Stop()
+	if err := owner.Close(ctx); err != nil {
+		t.Fatal("cleanup stopped with the caller's context:", err)
+	}
+	if !state.complete || state.process != nil {
+		t.Fatal("helper not reaped after the caller's context ended")
+	}
+}
+
+func TestJournalledOwnerCleanupIsBounded(t *testing.T) {
+	t.Parallel()
+	owner, state, exit := unreapedRecoveryHelper()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	started := time.Now()
+	err := owner.Close(ctx)
+	elapsed := time.Since(started)
+	if !errors.Is(err, sandboxwire.ErrCleanupTimedOut) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("unreaped helper did not end at the cleanup bound:", err)
+	}
+	if elapsed < sandboxwire.CleanupTimeout || elapsed > sandboxwire.CleanupTimeout+2*time.Second {
+		t.Fatal("cleanup bound not kept:", elapsed)
+	}
+	if state.complete || state.process == nil {
+		t.Fatal("timed-out cleanup discarded helper ownership")
+	}
+	close(exit)
+	if err := owner.Close(t.Context()); err != nil || !state.complete {
+		t.Fatal("retry after the helper exits did not complete:", err)
+	}
+}
+
 func TestJournalledOwnerAdmissionPrecedesPreparation(t *testing.T) {
-	release, err := journalledOwnerAdmission.acquire(context.Background())
+	release, err := journalledOwnerAdmission.acquire(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
 		owner, err := OpenJournalledFilesystemBroker(ctx, WorkerConfig{Tenant: testTenant}, nil, sandboxbroker.FilesystemLimits{}, "relative")
 		if owner != nil {
-			err = errors.Join(err, owner.Close())
+			err = errors.Join(err, owner.Close(t.Context()))
 		}
 		done <- err
 	}()
@@ -122,11 +168,11 @@ func TestJournalledOwnerAdmissionPrecedesPreparation(t *testing.T) {
 		t.Fatal("queued owner was not cancelled:", err)
 	}
 	release()
-	owner, err = OpenJournalledFilesystemBroker(context.Background(), WorkerConfig{Tenant: testTenant}, nil, sandboxbroker.FilesystemLimits{}, "relative")
+	owner, err = OpenJournalledFilesystemBroker(t.Context(), WorkerConfig{Tenant: testTenant}, nil, sandboxbroker.FilesystemLimits{}, "relative")
 	if !errors.Is(err, sandboxbroker.ErrInvalidPolicy) || owner == nil {
 		t.Fatal("released slot did not reach preparation:", err)
 	}
-	if err := owner.Close(); err != nil {
+	if err := owner.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	journalledOwnerAdmission.mutex.Lock()
@@ -138,13 +184,13 @@ func TestJournalledOwnerAdmissionPrecedesPreparation(t *testing.T) {
 }
 
 func TestJournalledOwnerAdmissionLifetime(t *testing.T) {
-	release, err := journalledOwnerAdmission.acquire(context.Background())
+	release, err := journalledOwnerAdmission.acquire(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
 	config := WorkerConfig{Tenant: testTenant, Lifetime: 20 * time.Millisecond}
-	owner, err := OpenJournalledFilesystemBroker(context.Background(), config, nil, sandboxbroker.FilesystemLimits{}, "relative")
+	owner, err := OpenJournalledFilesystemBroker(t.Context(), config, nil, sandboxbroker.FilesystemLimits{}, "relative")
 	if owner != nil || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("queue escaped owner lifetime:", err)
 	}
@@ -155,24 +201,24 @@ func TestJournalledOwnerRejectsInvalidStartup(t *testing.T) {
 	if err := os.Chmod(directory, 0755); err != nil {
 		t.Fatal(err)
 	}
-	owner, err := OpenJournalledFilesystemBroker(context.Background(), WorkerConfig{Tenant: testTenant}, nil, sandboxbroker.FilesystemLimits{}, directory)
+	owner, err := OpenJournalledFilesystemBroker(t.Context(), WorkerConfig{Tenant: testTenant}, nil, sandboxbroker.FilesystemLimits{}, directory)
 	if err == nil {
 		t.Fatal("non-private storage accepted")
 	}
 	if owner != nil {
-		if err := owner.Close(); err != nil || !owner.recovery.complete {
+		if err := owner.Close(t.Context()); err != nil || !owner.recovery.complete {
 			t.Fatal("partial startup retained resources:", err)
 		}
 	}
 	if owner, err := OpenJournalledFilesystemBroker(nil, WorkerConfig{Tenant: testTenant}, nil, sandboxbroker.FilesystemLimits{}, directory); err == nil || owner != nil {
 		t.Fatal("missing context accepted")
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if owner, err := OpenJournalledFilesystemBroker(ctx, WorkerConfig{Tenant: testTenant}, nil, sandboxbroker.FilesystemLimits{}, directory); !errors.Is(err, context.Canceled) || owner != nil {
 		t.Fatal("cancelled startup accepted:", err)
 	}
-	if owner, err := openJournalledFilesystemBrokerInGroup(context.Background(), WorkerConfig{Tenant: testTenant}, nil, sandboxbroker.FilesystemLimits{}, directory, nil); !errors.Is(err, ErrInvalidLimits) || owner != nil {
+	if owner, err := openJournalledFilesystemBrokerInGroup(t.Context(), WorkerConfig{Tenant: testTenant}, nil, sandboxbroker.FilesystemLimits{}, directory, nil); !errors.Is(err, ErrInvalidLimits) || owner != nil {
 		t.Fatal("missing aggregate accepted:", err)
 	}
 }
@@ -183,7 +229,7 @@ func TestJournalledOwnerRejectsRootOverlapBeforeLaunch(t *testing.T) {
 		t.Fatal(err)
 	}
 	grants := []sandboxbroker.LinuxRootGrant{{Name: "data", Path: directory, Rights: sandboxbroker.Read}}
-	owner, err := OpenJournalledFilesystemBroker(context.Background(), WorkerConfig{Tenant: testTenant}, grants,
+	owner, err := OpenJournalledFilesystemBroker(t.Context(), WorkerConfig{Tenant: testTenant}, grants,
 		sandboxbroker.FilesystemLimits{}, directory)
 	if !errors.Is(err, sandboxbroker.ErrDenied) || owner == nil {
 		t.Fatal("overlapping journal reached native admission:", err)
@@ -191,7 +237,7 @@ func TestJournalledOwnerRejectsRootOverlapBeforeLaunch(t *testing.T) {
 	if owner.process != nil || !owner.recovery.complete || owner.RecoveryPending() {
 		t.Fatal("rejected policy launched a process or retained recovery")
 	}
-	if err := owner.Close(); err != nil {
+	if err := owner.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 }

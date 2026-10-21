@@ -129,7 +129,7 @@ func (e *evaluator) evaluate(ctx context.Context, vm *engine.VM, frame engine.De
 // Returns error when it could not be evaluated or is not boolean.
 //
 // Concurrency: safe for concurrent use; acquires e.mu.
-func (e *evaluator) condition(thread *engine.DebugThread, breakpoint *engine.DebugBreakpoint) (bool, error) {
+func (e *evaluator) condition(ctx context.Context, thread *engine.DebugThread, breakpoint *engine.DebugBreakpoint) (bool, error) {
 	frame, callFrame, ok := thread.EvaluationFrame()
 	if !ok {
 		return false, fault.ErrVariableUnavailable
@@ -140,7 +140,7 @@ func (e *evaluator) condition(thread *engine.DebugThread, breakpoint *engine.Deb
 	e.mu.Unlock()
 	if !cached {
 		var err error
-		compiled, err = e.compile(context.Background(), frame, callFrame, breakpoint.Condition, true)
+		compiled, err = e.compile(ctx, frame, callFrame, breakpoint.Condition, true)
 		if err != nil {
 			return false, err
 		}
@@ -151,7 +151,7 @@ func (e *evaluator) condition(thread *engine.DebugThread, breakpoint *engine.Deb
 		e.conditions[key] = compiled
 		e.mu.Unlock()
 	}
-	value, err := e.run(context.Background(), thread.VM(), callFrame, compiled, 0)
+	value, err := e.run(ctx, thread.VM(), callFrame, compiled, 0)
 	if err != nil {
 		return false, err
 	}
@@ -236,7 +236,7 @@ func (e *evaluator) run(ctx context.Context, vm *engine.VM, callFrame *engine.Ca
 	if timeout <= 0 {
 		timeout = defaultEvalTimeout
 	}
-	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	runCtx, cancel := context.WithTimeoutCause(ctx, timeout, fault.ErrExecutionCancelled)
 	defer cancel()
 	scratch := engine.NewScratchVM(runCtx, e.binding.Globals, e.binding.Symbols, e.binding.Limits)
 	return scratch.RunCompiledFunction(e.binding.Compiled, compiled.function, arguments)

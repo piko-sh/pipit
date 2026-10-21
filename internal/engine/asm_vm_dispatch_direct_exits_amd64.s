@@ -26,7 +26,7 @@
 #include "asm_dispatch_amd64.h"
 
 // Direct-exit stub - un-advance PC, write CTX_EXIT_REASON=10, RET to Go. Routes through handleDispatchExit by exit reason to a dedicated processExitXxx that calls the specific Go handler without the handlerTable[op] indirect.
-TEXT ·handlerMapIndexExit(SB), NOSPLIT|NOFRAME, $0
+TEXT ·handlerGetMapExit(SB), NOSPLIT|NOFRAME, $0
 	DECQ    R14
 	MOVQ    R14, CTX_PC(R15)
 	MOVQ    $10, CTX_EXIT_REASON(R15)
@@ -42,7 +42,7 @@ TEXT ·handlerAppendExit(SB), NOSPLIT|NOFRAME, $0
 	RET     
 
 // Direct-exit stub - un-advance PC, write CTX_EXIT_REASON=12, RET to Go. Routes through handleDispatchExit by exit reason to a dedicated processExitXxx that calls the specific Go handler without the handlerTable[op] indirect.
-TEXT ·handlerAppendByteFastExit(SB), NOSPLIT|NOFRAME, $0
+TEXT ·handlerAppendByteExit(SB), NOSPLIT|NOFRAME, $0
 	DECQ    R14
 	MOVQ    R14, CTX_PC(R15)
 	MOVQ    $12, CTX_EXIT_REASON(R15)
@@ -66,7 +66,7 @@ TEXT ·handlerSetFieldExit(SB), NOSPLIT|NOFRAME, $0
 	RET     
 
 // Direct-exit stub - un-advance PC, write CTX_EXIT_REASON=31, RET to Go. Routes through handleDispatchExit by exit reason to a dedicated processExitXxx that calls the specific Go handler without the handlerTable[op] indirect.
-TEXT ·handlerAppendStructFastExit(SB), NOSPLIT|NOFRAME, $0
+TEXT ·handlerAppendStructExit(SB), NOSPLIT|NOFRAME, $0
 	DECQ    R14
 	MOVQ    R14, CTX_PC(R15)
 	MOVQ    $31, CTX_EXIT_REASON(R15)
@@ -74,7 +74,7 @@ TEXT ·handlerAppendStructFastExit(SB), NOSPLIT|NOFRAME, $0
 	RET     
 
 // Direct-exit stub - un-advance PC, write CTX_EXIT_REASON=32, RET to Go. Routes through handleDispatchExit by exit reason to a dedicated processExitXxx that calls the specific Go handler without the handlerTable[op] indirect.
-TEXT ·handlerAppendIntFastExit(SB), NOSPLIT|NOFRAME, $0
+TEXT ·handlerAppendInt64Exit(SB), NOSPLIT|NOFRAME, $0
 	DECQ    R14
 	MOVQ    R14, CTX_PC(R15)
 	MOVQ    $32, CTX_EXIT_REASON(R15)
@@ -82,7 +82,7 @@ TEXT ·handlerAppendIntFastExit(SB), NOSPLIT|NOFRAME, $0
 	RET     
 
 // Direct-exit stub - un-advance PC, write CTX_EXIT_REASON=33, RET to Go. Routes through handleDispatchExit by exit reason to a dedicated processExitXxx that calls the specific Go handler without the handlerTable[op] indirect.
-TEXT ·handlerAppendFloatFastExit(SB), NOSPLIT|NOFRAME, $0
+TEXT ·handlerAppendFloat64Exit(SB), NOSPLIT|NOFRAME, $0
 	DECQ    R14
 	MOVQ    R14, CTX_PC(R15)
 	MOVQ    $33, CTX_EXIT_REASON(R15)
@@ -90,7 +90,7 @@ TEXT ·handlerAppendFloatFastExit(SB), NOSPLIT|NOFRAME, $0
 	RET     
 
 // Direct-exit stub - un-advance PC, write CTX_EXIT_REASON=34, RET to Go. Routes through handleDispatchExit by exit reason to a dedicated processExitXxx that calls the specific Go handler without the handlerTable[op] indirect.
-TEXT ·handlerAppendStringFastExit(SB), NOSPLIT|NOFRAME, $0
+TEXT ·handlerAppendStringExit(SB), NOSPLIT|NOFRAME, $0
 	DECQ    R14
 	MOVQ    R14, CTX_PC(R15)
 	MOVQ    $34, CTX_EXIT_REASON(R15)
@@ -98,7 +98,7 @@ TEXT ·handlerAppendStringFastExit(SB), NOSPLIT|NOFRAME, $0
 	RET     
 
 // Direct-exit stub - un-advance PC, write CTX_EXIT_REASON=30, RET to Go. Routes through handleDispatchExit by exit reason to a dedicated processExitXxx that calls the specific Go handler without the handlerTable[op] indirect.
-TEXT ·handlerSubOpSliceSetStringDirectExit(SB), NOSPLIT|NOFRAME, $0
+TEXT ·handlerSetSliceStringElementExit(SB), NOSPLIT|NOFRAME, $0
 	DECQ    R14
 	MOVQ    R14, CTX_PC(R15)
 	MOVQ    $30, CTX_EXIT_REASON(R15)

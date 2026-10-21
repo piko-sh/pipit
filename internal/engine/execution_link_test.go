@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/fault"
+	"pipit.sh/pipit/internal/symtab"
 )
 
 func TestExecutionLinkRelaysCancellationButNotMainReturned(t *testing.T) {
@@ -142,11 +143,12 @@ func TestExecutionLinkRelaysCancellationButNotMainReturned(t *testing.T) {
 
 func TestCallbackSpecDoesNotPinParentVM(t *testing.T) {
 	t.Parallel()
-	vm := newTestVM(t)
+
+	vm := NewVM(context.WithoutCancel(t.Context()), NewGlobalStore(), symtab.NewSymbolRegistry(nil))
 	vm.beginExecution(false)
 	spec := newCallbackVMSpec(vm)
 	parent := weak.Make(vm)
-	vm = nil //nolint:ineffassign,wastedassign // drops the last strong reference
+	vm = nil
 
 	require.Eventually(t, func() bool {
 		runtime.GC()

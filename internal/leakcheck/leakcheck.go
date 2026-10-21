@@ -26,7 +26,7 @@ import (
 
 var (
 	// baseOptions holds the default goroutine leak detection ignore rules shared across all
-	// tests.
+	// tests on every platform. platformOptions() adds the ones a single platform needs.
 	baseOptions = []goleak.Option{
 		goleak.IgnoreTopFunction("internal/poll.runtime_pollWait"),
 	}
@@ -36,9 +36,9 @@ var (
 // simple TestMain() functions that only need leak checking.
 //
 // Takes m (*testing.M) which is the test main instance.
-// Takes extraOpts (...goleak.Option) which provides additional ignore rules.
-func VerifyTestMain(m *testing.M, extraOpts ...goleak.Option) {
-	goleak.VerifyTestMain(m, buildOptions(extraOpts)...)
+// Takes extraOptions (...goleak.Option) which provides additional ignore rules.
+func VerifyTestMain(m *testing.M, extraOptions ...goleak.Option) {
+	goleak.VerifyTestMain(m, buildOptions(extraOptions)...)
 }
 
 // FindLeaks wraps goleak.Find() with Pipit's standard ignore rules.
@@ -46,21 +46,25 @@ func VerifyTestMain(m *testing.M, extraOpts ...goleak.Option) {
 // Use in complex TestMain() functions that need teardown before exit, since
 // VerifyTestMain() calls os.Exit() internally.
 //
-// Takes extraOpts (...goleak.Option) which provides additional ignore rules.
+// Takes extraOptions (...goleak.Option) which provides additional ignore rules.
 //
 // Returns error when goroutine leaks are detected.
-func FindLeaks(extraOpts ...goleak.Option) error {
-	return goleak.Find(buildOptions(extraOpts)...)
+func FindLeaks(extraOptions ...goleak.Option) error {
+	return goleak.Find(buildOptions(extraOptions)...)
 }
 
-// buildOptions combines base options with extra options into a single slice.
+// buildOptions combines the base options, the platform's and the extra ones into a single
+// slice.
 //
-// Takes extraOpts ([]goleak.Option) which provides additional options to append.
+// Takes extraOptions ([]goleak.Option) which provides additional options to append.
 //
-// Returns []goleak.Option which contains baseOptions followed by extraOpts.
-func buildOptions(extraOpts []goleak.Option) []goleak.Option {
-	opts := make([]goleak.Option, 0, len(baseOptions)+len(extraOpts))
-	opts = append(opts, baseOptions...)
-	opts = append(opts, extraOpts...)
-	return opts
+// Returns []goleak.Option which contains baseOptions, then platformOptions(), then
+// extraOptions.
+func buildOptions(extraOptions []goleak.Option) []goleak.Option {
+	platform := platformOptions()
+	options := make([]goleak.Option, 0, len(baseOptions)+len(platform)+len(extraOptions))
+	options = append(options, baseOptions...)
+	options = append(options, platform...)
+	options = append(options, extraOptions...)
+	return options
 }

@@ -57,8 +57,8 @@ func (c *Compiler) syntheticUse(pos token.Pos, object *types.Var) *ast.Ident {
 	return use
 }
 
-// rangeTargetsNeedTemps reports whether any range assignment target is neither blank
-// nor a local held in a register.
+// rangeTargetsNeedTemps reports whether any range assignment target is neither blank nor
+// a local held in a register.
 //
 // Takes statement (*ast.RangeStmt) which is the loop.
 //

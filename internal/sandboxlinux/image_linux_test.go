@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
@@ -26,9 +26,11 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 
@@ -42,7 +44,7 @@ func TestPrepareWorkerImage(t *testing.T) {
 	if err := os.WriteFile(source, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	image, err := PrepareWorkerImage(context.Background(), source, sha256.Sum256(data))
+	image, err := PrepareWorkerImage(t.Context(), source, sha256.Sum256(data))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,15 +92,15 @@ func TestPrepareWorkerImageRejectsUnapprovedInput(t *testing.T) {
 	if err := os.WriteFile(source, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := PrepareWorkerImage(context.Background(), source, sha256.Sum256([]byte("different"))); !errors.Is(err, ErrInvalidWorker) {
+	if _, err := PrepareWorkerImage(t.Context(), source, sha256.Sum256([]byte("different"))); !errors.Is(err, ErrInvalidWorker) {
 		t.Fatalf("approval mismatch accepted: %v", err)
 	}
 	for _, invalid := range []string{"source", filepath.Join(t.TempDir(), "missing")} {
-		if _, err := PrepareWorkerImage(context.Background(), invalid, sha256.Sum256(data)); !errors.Is(err, ErrInvalidWorker) {
+		if _, err := PrepareWorkerImage(t.Context(), invalid, sha256.Sum256(data)); !errors.Is(err, ErrInvalidWorker) {
 			t.Fatalf("invalid source accepted: %v", err)
 		}
 	}
-	if _, err := PrepareWorkerImage(context.Background(), source, [sha256.Size]byte{}); !errors.Is(err, ErrInvalidWorker) {
+	if _, err := PrepareWorkerImage(t.Context(), source, [sha256.Size]byte{}); !errors.Is(err, ErrInvalidWorker) {
 		t.Fatalf("missing approval accepted: %v", err)
 	}
 	if _, err := PrepareWorkerImage(nil, source, sha256.Sum256(data)); !errors.Is(err, ErrInvalidWorker) {
@@ -130,7 +132,7 @@ func TestPrepareWorkerImageRejectsSpecialFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, source := range []string{parent, link, fifo, large, "/dev/null"} {
-		if _, err := PrepareWorkerImage(context.Background(), source, sha256.Sum256([]byte("approved"))); !errors.Is(err, ErrInvalidWorker) {
+		if _, err := PrepareWorkerImage(t.Context(), source, sha256.Sum256([]byte("approved"))); !errors.Is(err, ErrInvalidWorker) {
 			t.Fatalf("unsafe source %q accepted: %v", source, err)
 		}
 	}
@@ -162,7 +164,7 @@ func TestPrepareWorkerImageRejectsUnsupportedELF(t *testing.T) {
 			if err := os.WriteFile(source, data, 0600); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := PrepareWorkerImage(context.Background(), source, sha256.Sum256(data)); !errors.Is(err, ErrInvalidWorker) {
+			if _, err := PrepareWorkerImage(t.Context(), source, sha256.Sum256(data)); !errors.Is(err, ErrInvalidWorker) {
 				t.Fatalf("unsupported approved ELF accepted: %v", err)
 			}
 		})
@@ -171,13 +173,12 @@ func TestPrepareWorkerImageRejectsUnsupportedELF(t *testing.T) {
 
 func TestWorkerImageCancellationAndZeroValue(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if _, err := PrepareWorkerImage(ctx, "/not-opened", sha256.Sum256([]byte("approved"))); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled staging continued: %v", err)
 	}
-	reader := workerImageReader{context: ctx, source: nil}
-	if _, err := reader.Read(make([]byte, 1)); !errors.Is(err, context.Canceled) {
+	if _, err := copyCancellable(ctx, io.Discard, nil, 1); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled copy continued reading: %v", err)
 	}
 	var image WorkerImage
@@ -196,7 +197,7 @@ func TestWorkerImageCleanupRefusesUnexpectedEntries(t *testing.T) {
 	if err := os.WriteFile(source, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	image, err := PrepareWorkerImage(context.Background(), source, sha256.Sum256(data))
+	image, err := PrepareWorkerImage(t.Context(), source, sha256.Sum256(data))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,4 +246,19 @@ func workerELFFixture() []byte {
 	binary.LittleEndian.PutUint64(data[104:112], 128)
 	binary.LittleEndian.PutUint64(data[112:120], 4096)
 	return data
+}
+
+func TestCopyCancellableStopsAtTheLimitAndAtTheEnd(t *testing.T) {
+	t.Parallel()
+	var limited strings.Builder
+	written, err := copyCancellable(t.Context(), &limited, strings.NewReader("approved"), 3)
+	if err != nil || written != 3 || limited.String() != "app" {
+		t.Fatalf("the copy must stop at the limit: wrote %d (%q), error %v", written, limited.String(), err)
+	}
+
+	var whole strings.Builder
+	written, err = copyCancellable(t.Context(), &whole, strings.NewReader("approved"), maximumWorkerImageBytes)
+	if err != nil || written != 8 || whole.String() != "approved" {
+		t.Fatalf("the copy must stop at the end of the source: wrote %d (%q), error %v", written, whole.String(), err)
+	}
 }

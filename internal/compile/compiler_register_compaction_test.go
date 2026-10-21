@@ -70,7 +70,7 @@ func TestRegisterLeaksAreReclaimedPerElement(t *testing.T) {
 			source: "package main\n\nfunc count(values ...int) int { return len(values) }\n\n" +
 				"func run(x int) int {\n\treturn count(" + repeatJoined(leakElements, ", ", func(i int) string { return fmt.Sprintf("x+%d", i) }) + ")\n}\n",
 			function: "run",
-			kind:     isa.RegisterInt,
+			kind:     isa.RegisterInt64,
 		},
 		"multi-value call spread into a variadic call": {
 			source: "package main\n\nfunc count(values ...int) int { return len(values) }\n\n" +
@@ -85,7 +85,7 @@ func TestRegisterLeaksAreReclaimedPerElement(t *testing.T) {
 				repeatJoined(leakElements, ", ", func(i int) string { return fmt.Sprintf("x+%d", i) }) + ")) + min(" +
 				repeatJoined(leakElements, ", ", func(i int) string { return fmt.Sprintf("y+%d", i) }) + ")\n}\n",
 			function: "run",
-			kind:     isa.RegisterInt,
+			kind:     isa.RegisterInt64,
 		},
 		"return inside a range-over-func body": {
 			source: "package main\n\nfunc h(a, b, c, d, e, f, g, i int) int { return a }\n\n" +
@@ -94,7 +94,7 @@ func TestRegisterLeaksAreReclaimedPerElement(t *testing.T) {
 				"\tfor v := range seq {\n\t\treturn " +
 				repeatJoined(30, ", ", func(int) string { return "h(x+v, x+1, x+2, x+3, x+4, x+5, x+6, x+7) + 1" }) +
 				"\n\t}\n\treturn " + repeatJoined(30, ", ", func(int) string { return "0" }) + "\n}\n",
-			kind:  isa.RegisterInt,
+			kind:  isa.RegisterInt64,
 			bound: 2*30 + leakPeakBound,
 		},
 		"struct literal stored into a collection": {
@@ -104,13 +104,13 @@ func TestRegisterLeaksAreReclaimedPerElement(t *testing.T) {
 				"func run(items []big, i, x int) {\n\titems[i] = big{" +
 				repeatJoined(120, ", ", func(i int) string { return fmt.Sprintf("F%d: f(x+%d)", i, i) }) + "}\n}\n",
 			function: "run",
-			kind:     isa.RegisterInt,
+			kind:     isa.RegisterInt64,
 		},
 		"append of many values to an int slice": {
 			source: "package main\n\nfunc run(s []int, x int) []int {\n\treturn append(s, " +
 				repeatJoined(leakElements, ", ", func(i int) string { return fmt.Sprintf("x+%d", i) }) + ")\n}\n",
 			function: "run",
-			kind:     isa.RegisterInt,
+			kind:     isa.RegisterInt64,
 		},
 		"append of many values to a string slice": {
 			source: "package main\n\nfunc run(s []string, x string) []string {\n\treturn append(s, " +
@@ -122,7 +122,7 @@ func TestRegisterLeaksAreReclaimedPerElement(t *testing.T) {
 			source: "package main\n\nfunc f(n int) int { return n }\n\nfunc run(x int) int {\n\treturn " +
 				repeatJoined(leakElements, " + ", func(i int) string { return fmt.Sprintf("f(x+%d)", i) }) + "\n}\n",
 			function: "run",
-			kind:     isa.RegisterInt,
+			kind:     isa.RegisterInt64,
 		},
 		"string concatenation": {
 			source: "package main\n\nfunc s(n int) string { return \"\" }\n\nfunc run(x int) string {\n\treturn " +
@@ -134,13 +134,13 @@ func TestRegisterLeaksAreReclaimedPerElement(t *testing.T) {
 			source: "package main\n\nfunc run(x int) int {\n\treturn " +
 				repeatJoined(leakElements, " | ", func(i int) string { return fmt.Sprintf("(x+%d)<<%d", i, i%60) }) + "\n}\n",
 			function: "run",
-			kind:     isa.RegisterInt,
+			kind:     isa.RegisterInt64,
 		},
 		"right-deep chain": {
 			source: "package main\n\nfunc f(n int) int { return n }\n\nfunc run(x int) int {\n\treturn " +
 				repeatJoined(rightDeepLevels, " + (", func(i int) string { return fmt.Sprintf("f(x+%d)", i) }) + strings.Repeat(")", rightDeepLevels-1) + "\n}\n",
 			function: "run",
-			kind:     isa.RegisterInt,
+			kind:     isa.RegisterInt64,
 			bound:    3*rightDeepLevels + leakPeakBound,
 		},
 		"short-circuit chains": {
@@ -148,14 +148,14 @@ func TestRegisterLeaksAreReclaimedPerElement(t *testing.T) {
 				repeatJoined(leakElements, " && ", func(i int) string { return fmt.Sprintf("f(x+%d)", i) }) + ") || (" +
 				repeatJoined(leakElements, " || ", func(i int) string { return fmt.Sprintf("f(x-%d)", i) }) + ")\n}\n",
 			function: "run",
-			kind:     isa.RegisterInt,
+			kind:     isa.RegisterInt64,
 		},
 		"multi-value return": {
 			source: "package main\n\nfunc f(a, b, c, d int) int { return a }\n\nfunc run(x int) (" +
 				repeatJoined(100, ", ", func(int) string { return "int" }) + ") {\n\treturn " +
 				repeatJoined(100, ", ", func(i int) string { return fmt.Sprintf("f(x+%d, x+1, x+2, x+3)", i) }) + "\n}\n",
 			function: "run",
-			kind:     isa.RegisterInt,
+			kind:     isa.RegisterInt64,
 			bound:    2*100 + leakPeakBound,
 		},
 		"tuple assignment": {
@@ -165,7 +165,7 @@ func TestRegisterLeaksAreReclaimedPerElement(t *testing.T) {
 				repeatJoined(100, ", ", func(i int) string { return fmt.Sprintf("f(x+%d, x+1, x+2, x+3)", i) }) + "\n\treturn " +
 				repeatJoined(100, " + ", func(i int) string { return fmt.Sprintf("t%d", i) }) + "\n}\n",
 			function: "run",
-			kind:     isa.RegisterInt,
+			kind:     isa.RegisterInt64,
 			bound:    2*100 + leakPeakBound,
 		},
 		"expression switch clauses": {
@@ -173,21 +173,21 @@ func TestRegisterLeaksAreReclaimedPerElement(t *testing.T) {
 				repeatJoined(leakElements, "", func(i int) string { return fmt.Sprintf("\tcase f(x+%d):\n\t\ttotal += %d\n", i, i) }) +
 				"\t}\n\treturn total\n}\n",
 			function: "run",
-			kind:     isa.RegisterInt,
+			kind:     isa.RegisterInt64,
 		},
 		"tagless switch clauses": {
 			source: "package main\n\nfunc f(n int) int { return n }\n\nfunc run(x int) int {\n\ttotal := 0\n\tswitch {\n" +
 				repeatJoined(leakElements, "", func(i int) string { return fmt.Sprintf("\tcase x == f(%d)+1:\n\t\ttotal += %d\n", i, i) }) +
 				"\t}\n\treturn total\n}\n",
 			function: "run",
-			kind:     isa.RegisterInt,
+			kind:     isa.RegisterInt64,
 		},
 		"one clause with many values": {
 			source: "package main\n\nfunc run(x int) int {\n\tswitch x {\n\tcase " +
 				repeatJoined(leakElements, ", ", func(i int) string { return fmt.Sprintf("x*%d+1", i+2) }) +
 				":\n\t\treturn 1\n\t}\n\treturn 0\n}\n",
 			function: "run",
-			kind:     isa.RegisterInt,
+			kind:     isa.RegisterInt64,
 		},
 		"type switch chain": {
 			source: "package main\n\n" + repeatJoined(leakElements, "", func(i int) string { return fmt.Sprintf("type t%d struct{ f int }\n", i) }) +
@@ -201,19 +201,19 @@ func TestRegisterLeaksAreReclaimedPerElement(t *testing.T) {
 			source: "package main\n\nfunc f(n int) int { return n }\n\nfunc run(x int) {\n\tswitch {\n\tcase x > 0:\n" +
 				repeatJoined(leakElements, "", func(i int) string { return fmt.Sprintf("\t\t_ = f(x+%d) + f(x+%d)\n", i, i+1) }) + "\t}\n}\n",
 			function: "run",
-			kind:     isa.RegisterInt,
+			kind:     isa.RegisterInt64,
 		},
 		"type switch case and default bodies": {
 			source: "package main\n\nfunc f(n int) int { return n }\n\nfunc run(v any, x int) {\n\tswitch v.(type) {\n\tcase int:\n" +
 				repeatJoined(leakElements, "", func(i int) string { return fmt.Sprintf("\t\t_ = f(x+%d) + f(x+%d)\n", i, i+1) }) + "\tdefault:\n" + repeatJoined(leakElements, "", func(i int) string { return fmt.Sprintf("\t\t_ = f(x+%d) + f(x+%d)\n", i, i+1) }) + "\t}\n}\n",
 			function: "run",
-			kind:     isa.RegisterInt,
+			kind:     isa.RegisterInt64,
 		},
 		"select case body": {
 			source: "package main\n\nfunc f(n int) int { return n }\n\nfunc run(ch chan int, x int) {\n\tselect {\n\tcase <-ch:\n" +
 				repeatJoined(leakElements, "", func(i int) string { return fmt.Sprintf("\t\t_ = f(x+%d) + f(x+%d)\n", i, i+1) }) + "\tdefault:\n" + repeatJoined(leakElements, "", func(i int) string { return fmt.Sprintf("\t\t_ = f(x+%d) + f(x+%d)\n", i, i+1) }) + "\t}\n}\n",
 			function: "run",
-			kind:     isa.RegisterInt,
+			kind:     isa.RegisterInt64,
 		},
 	}
 	for name, tc := range cases {

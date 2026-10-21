@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerSubOpIntToFloat sets floats[B] = float64(ints[C]).
-TEXT ·handlerSubOpIntToFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerConvertInt64ToFloat64 sets floats[B] = float64(ints[C]).
+TEXT ·handlerConvertInt64ToFloat64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -35,8 +35,8 @@ TEXT ·handlerSubOpIntToFloat(SB), NOSPLIT|NOFRAME, $0
 	FMOVD F0, (R24)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpFloatToInt sets ints[B] = int64(floats[C]).
-TEXT ·handlerSubOpFloatToInt(SB), NOSPLIT|NOFRAME, $0
+// handlerConvertFloat64ToInt64 sets ints[B] = int64(floats[C]).
+TEXT ·handlerConvertFloat64ToInt64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -45,8 +45,8 @@ TEXT ·handlerSubOpFloatToInt(SB), NOSPLIT|NOFRAME, $0
 	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpUintToFloat sets floats[B] = float64(uints[C]).
-TEXT ·handlerSubOpUintToFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerConvertUint64ToFloat64 sets floats[B] = float64(uints[C]).
+TEXT ·handlerConvertUint64ToFloat64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -56,8 +56,8 @@ TEXT ·handlerSubOpUintToFloat(SB), NOSPLIT|NOFRAME, $0
 	FMOVD F0, (R24)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpFloatToUint sets uints[B] = uint64(floats[C]).
-TEXT ·handlerSubOpFloatToUint(SB), NOSPLIT|NOFRAME, $0
+// handlerConvertFloat64ToUint64 sets uints[B] = uint64(floats[C]).
+TEXT ·handlerConvertFloat64ToUint64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -65,4 +65,46 @@ TEXT ·handlerSubOpFloatToUint(SB), NOSPLIT|NOFRAME, $0
 	FCVTZUD F0, R5
 	MOVD CTX_UINTS_BASE(R19), R6
 	MOVD R5, (R6)(R3<<3)
+	DISPATCH_NEXT()
+
+// handlerConvertBoolToInt64 sets ints[B] to one when bools[C] is true and zero otherwise.
+TEXT ·handlerConvertBoolToInt64(SB), NOSPLIT|NOFRAME, $0
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	LSR  $24, R0, R4
+	MOVD CTX_BOOLS_BASE(R19), R6
+	MOVBU (R6)(R4), R5
+	MOVD R5, (R23)(R3<<3)
+	DISPATCH_NEXT()
+
+// handlerConvertInt64ToBool sets bools[B] = ints[C] != 0.
+TEXT ·handlerConvertInt64ToBool(SB), NOSPLIT|NOFRAME, $0
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	LSR  $24, R0, R4
+	MOVD (R23)(R4<<3), R6
+	CMP  $0, R6
+	CSET NE, R5
+	MOVD CTX_BOOLS_BASE(R19), R6
+	MOVB R5, (R6)(R3)
+	DISPATCH_NEXT()
+
+// handlerConvertInt64ToUint64 sets uints[B] = uint64(ints[C]).
+TEXT ·handlerConvertInt64ToUint64(SB), NOSPLIT|NOFRAME, $0
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	LSR  $24, R0, R4
+	MOVD (R23)(R4<<3), R5
+	MOVD CTX_UINTS_BASE(R19), R6
+	MOVD R5, (R6)(R3<<3)
+	DISPATCH_NEXT()
+
+// handlerConvertUint64ToInt64 sets ints[B] = int64(uints[C]).
+TEXT ·handlerConvertUint64ToInt64(SB), NOSPLIT|NOFRAME, $0
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	LSR  $24, R0, R4
+	MOVD CTX_UINTS_BASE(R19), R6
+	MOVD (R6)(R4<<3), R5
+	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()

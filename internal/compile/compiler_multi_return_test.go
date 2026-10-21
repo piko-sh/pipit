@@ -118,7 +118,7 @@ func TestReceivingFromAChannelWithACommaOkTargetEmitsTheReceiveWord(t *testing.T
 			t.Parallel()
 			root := compileSnippet(t, "package main\n"+multiReturnTypes+"\n"+tt.source+"\n")
 
-			require.True(t, bodyContainsTier1SubOp(findCompiledFunction(t, root, "f"), isa.SubOpChannelReceive),
+			require.True(t, bodyContainsTier1SubOp(findCompiledFunction(t, root, "f"), isa.SubOpReceiveFromChannel),
 				"the comma-ok form of a receive is the same word as a plain one; only the second result is kept")
 		})
 	}
@@ -135,32 +135,32 @@ func TestLookingUpAMapWithACommaOkTargetUsesTheTypedProbe(t *testing.T) {
 		{
 			name:   "an integer key and integer value",
 			source: "func f(m map[int]int, k int) int { v, ok := m[k]; if !ok { return -1 }; return v }",
-			want:   isa.OpMapIndexOkIntInt,
+			want:   isa.OpGetMapInt64Int64Ok,
 		},
 		{
 			name:   "an integer key and string value",
 			source: "func f(m map[int]string, k int) string { v, ok := m[k]; if !ok { return \"\" }; return v }",
-			want:   isa.OpMapIndexOkIntString,
+			want:   isa.OpGetMapInt64StringOk,
 		},
 		{
 			name:   "a string key and integer value",
 			source: "func f(m map[string]int, k string) int { v, ok := m[k]; if !ok { return -1 }; return v }",
-			want:   isa.OpMapIndexOkStringInt,
+			want:   isa.OpGetMapStringInt64Ok,
 		},
 		{
 			name:   "a string key and string value",
 			source: "func f(m map[string]string, k string) string { v, ok := m[k]; if !ok { return \"\" }; return v }",
-			want:   isa.OpMapIndexOkStringString,
+			want:   isa.OpGetMapStringStringOk,
 		},
 		{
 			name:   "a string key and struct value",
 			source: "func f(m map[string]node, k string) int { v, ok := m[k]; if !ok { return -1 }; return v.N }",
-			want:   isa.OpMapIndexOkStringGeneral,
+			want:   isa.OpGetMapStringGeneralOk,
 		},
 		{
 			name:   "an integer key and struct value",
 			source: "func f(m map[int]node, k int) int { v, ok := m[k]; if !ok { return -1 }; return v.N }",
-			want:   isa.OpMapIndexOkIntGeneral,
+			want:   isa.OpGetMapInt64GeneralOk,
 		},
 	}
 

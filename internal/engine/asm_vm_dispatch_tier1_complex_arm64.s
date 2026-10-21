@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerSubOpRealComplex sets floats[B] = real(complex[C]).
-TEXT ·handlerSubOpRealComplex(SB), NOSPLIT|NOFRAME, $0
+// handlerRealPartComplex128 sets floats[B] = real(complex[C]).
+TEXT ·handlerRealPartComplex128(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -37,8 +37,8 @@ TEXT ·handlerSubOpRealComplex(SB), NOSPLIT|NOFRAME, $0
 	FMOVD F0, (R24)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpImagComplex sets floats[B] = imag(complex[C]).
-TEXT ·handlerSubOpImagComplex(SB), NOSPLIT|NOFRAME, $0
+// handlerImaginaryPartComplex128 sets floats[B] = imag(complex[C]).
+TEXT ·handlerImaginaryPartComplex128(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -49,8 +49,8 @@ TEXT ·handlerSubOpImagComplex(SB), NOSPLIT|NOFRAME, $0
 	FMOVD F0, (R24)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpMoveComplex sets complex[B] = complex[C] (16-byte copy).
-TEXT ·handlerSubOpMoveComplex(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveComplex128 sets complex[B] = complex[C] (16-byte copy).
+TEXT ·handlerMoveComplex128(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSL  $4, R3, R3
@@ -65,8 +65,8 @@ TEXT ·handlerSubOpMoveComplex(SB), NOSPLIT|NOFRAME, $0
 	MOVD R7, 8(R8)
 	DISPATCH_NEXT()
 
-// handlerSubOpNegComplex sets complex[B] = -complex[C] via sign-bit XOR.
-TEXT ·handlerSubOpNegComplex(SB), NOSPLIT|NOFRAME, $0
+// handlerNegateComplex128 sets complex[B] = -complex[C] via sign-bit XOR.
+TEXT ·handlerNegateComplex128(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSL  $4, R3, R3

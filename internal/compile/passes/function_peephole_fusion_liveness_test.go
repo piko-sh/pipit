@@ -31,8 +31,8 @@ import (
 type fuserFunc func(*program.CompiledFunction, []isa.Instruction, int, int, map[int]bool) bool
 
 type droppedWrite struct {
-	kind isa.RegisterKind
-	reg  uint8
+	kind     isa.RegisterKind
+	register uint8
 }
 
 type fusionWindow struct {
@@ -50,37 +50,43 @@ func fusionWindowsThatDropWrites() []fusionWindow {
 		{
 			name:    "concat rune",
 			fuser:   FuseConcatRune,
-			window:  []isa.Instruction{isa.NewTier1Instruction(isa.SubOpRuneToString, 4, 5), mk(isa.OpConcatString, 1, 2, 4)},
-			dropped: []droppedWrite{{kind: isa.RegisterString, reg: 4}},
+			window:  []isa.Instruction{isa.NewTier1Instruction(isa.SubOpConvertRuneToString, 4, 5), mk(isa.OpConcatenateString, 1, 2, 4)},
+			dropped: []droppedWrite{{kind: isa.RegisterString, register: 4}},
 		},
 		{
 			name:    "string index to int",
-			fuser:   FuseStringIndexToInt,
-			window:  []isa.Instruction{mk(isa.OpStringIndex, 4, 2, 3), isa.NewTier1Instruction(isa.SubOpUintToInt, 7, 4)},
-			dropped: []droppedWrite{{kind: isa.RegisterUint, reg: 4}},
+			fuser:   FuseGetStringByteAsInt64,
+			window:  []isa.Instruction{mk(isa.OpGetStringByte, 4, 2, 3), isa.NewTier1Instruction(isa.SubOpConvertUint64ToInt64, 7, 4)},
+			dropped: []droppedWrite{{kind: isa.RegisterUint64, register: 4}},
+		},
+		{
+			name:    "unsigned element to int",
+			fuser:   FuseGetElementUint64AsInt64,
+			window:  []isa.Instruction{mk(isa.OpGetElementUint64, 4, 2, 3), isa.NewTier1Instruction(isa.SubOpConvertUint64ToInt64, 7, 4)},
+			dropped: []droppedWrite{{kind: isa.RegisterUint64, register: 4}},
 		},
 		{
 			name:    "boxed append and move",
 			fuser:   FuseAppendMove,
 			window:  []isa.Instruction{mk(isa.OpAppend, 6, 2, 3), mk(isa.OpMoveGeneral, 2, 6, 0)},
-			dropped: []droppedWrite{{kind: isa.RegisterGeneral, reg: 6}},
+			dropped: []droppedWrite{{kind: isa.RegisterGeneral, register: 6}},
 		},
 		{
 			name:    "typed append and move",
 			fuser:   FuseAppendMove,
-			window:  []isa.Instruction{isa.NewTier1Instruction(isa.SubOpAppendInt, 6, 2), mk(isa.OpExt, 3, 0, 0), mk(isa.OpMoveGeneral, 2, 6, 0)},
-			dropped: []droppedWrite{{kind: isa.RegisterGeneral, reg: 6}},
+			window:  []isa.Instruction{isa.NewTier1Instruction(isa.SubOpAppendInt64Wide, 6, 2), mk(isa.OpExtension, 3, 0, 0), mk(isa.OpMoveGeneral, 2, 6, 0)},
+			dropped: []droppedWrite{{kind: isa.RegisterGeneral, register: 6}},
 		},
 		{
 			name:   "string constant compare and branch",
 			fuser:  FuseThreeInstrPatterns,
 			branch: true,
 			window: []isa.Instruction{
-				mk(isa.OpLoadStringConst, 4, 0, 0),
-				mk(isa.OpEqString, 3, 1, 4),
+				mk(isa.OpLoadStringConstant, 4, 0, 0),
+				mk(isa.OpEqualString, 3, 1, 4),
 				mk(isa.OpJumpIfFalse, 3, 0, 0),
 			},
-			dropped: []droppedWrite{{kind: isa.RegisterString, reg: 4}, {kind: isa.RegisterInt, reg: 3}},
+			dropped: []droppedWrite{{kind: isa.RegisterString, register: 4}, {kind: isa.RegisterInt64, register: 3}},
 		},
 		{
 			name:   "nil test and branch",
@@ -88,61 +94,61 @@ func fusionWindowsThatDropWrites() []fusionWindow {
 			branch: true,
 			window: []isa.Instruction{
 				isa.NewTier2Instruction(isa.SubOpTier2LoadNil, 4),
-				mk(isa.OpEqGeneral, 3, 1, 4),
+				mk(isa.OpEqualGeneral, 3, 1, 4),
 				mk(isa.OpJumpIfTrue, 3, 0, 0),
 			},
-			dropped: []droppedWrite{{kind: isa.RegisterGeneral, reg: 4}, {kind: isa.RegisterInt, reg: 3}},
+			dropped: []droppedWrite{{kind: isa.RegisterGeneral, register: 4}, {kind: isa.RegisterInt64, register: 3}},
 		},
 		{
 			name:   "increment and loop-back compare",
 			fuser:  FuseThreeInstrPatterns,
 			branch: true,
 			window: []isa.Instruction{
-				isa.NewTier2Instruction(isa.SubOpTier2IncInt, 1),
-				mk(isa.OpLtInt, 3, 1, 2),
+				isa.NewTier2Instruction(isa.SubOpTier2IncrementInt64, 1),
+				mk(isa.OpLessThanInt64, 3, 1, 2),
 				mk(isa.OpJumpIfTrue, 3, 0, 0),
 			},
-			dropped: []droppedWrite{{kind: isa.RegisterInt, reg: 3}},
+			dropped: []droppedWrite{{kind: isa.RegisterInt64, register: 3}},
 		},
 		{
 			name:   "string length compare and branch",
 			fuser:  FuseThreeInstrPatterns,
 			branch: true,
 			window: []isa.Instruction{
-				isa.NewTier1Instruction(isa.SubOpLenString, 4, 1),
-				mk(isa.OpLtInt, 3, 2, 4),
+				isa.NewTier1Instruction(isa.SubOpLengthString, 4, 1),
+				mk(isa.OpLessThanInt64, 3, 2, 4),
 				mk(isa.OpJumpIfFalse, 3, 0, 0),
 			},
-			dropped: []droppedWrite{{kind: isa.RegisterInt, reg: 4}, {kind: isa.RegisterInt, reg: 3}},
+			dropped: []droppedWrite{{kind: isa.RegisterInt64, register: 4}, {kind: isa.RegisterInt64, register: 3}},
 		},
 		{
 			name:   "uint constant compare and branch",
 			fuser:  FuseThreeInstrPatterns,
 			branch: true,
 			window: []isa.Instruction{
-				isa.NewTier1Instruction(isa.SubOpLoadUintConstSmall, 4, 7),
-				mk(isa.OpEqUint, 3, 1, 4),
+				isa.NewTier1Instruction(isa.SubOpLoadUint64Immediate, 4, 7),
+				mk(isa.OpEqualUint64, 3, 1, 4),
 				mk(isa.OpJumpIfFalse, 3, 0, 0),
 			},
-			dropped: []droppedWrite{{kind: isa.RegisterUint, reg: 4}, {kind: isa.RegisterInt, reg: 3}},
+			dropped: []droppedWrite{{kind: isa.RegisterUint64, register: 4}, {kind: isa.RegisterInt64, register: 3}},
 		},
 		{
 			name:   "int constant compare and branch",
 			fuser:  FuseThreeInstrPatterns,
 			branch: true,
 			window: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 4, 0, 0),
-				mk(isa.OpLtInt, 3, 1, 4),
+				mk(isa.OpLoadInt64Constant, 4, 0, 0),
+				mk(isa.OpLessThanInt64, 3, 1, 4),
 				mk(isa.OpJumpIfFalse, 3, 0, 0),
 			},
-			dropped: []droppedWrite{{kind: isa.RegisterInt, reg: 4}, {kind: isa.RegisterInt, reg: 3}},
+			dropped: []droppedWrite{{kind: isa.RegisterInt64, register: 4}, {kind: isa.RegisterInt64, register: 3}},
 		},
 		{
 			name:    "uint range check",
 			fuser:   fuseLongPatterns,
 			branch:  true,
 			window:  rangeCheckWindow(1, 4, 6),
-			dropped: []droppedWrite{{kind: isa.RegisterUint, reg: 4}, {kind: isa.RegisterUint, reg: 6}, {kind: isa.RegisterInt, reg: 5}, {kind: isa.RegisterInt, reg: 7}, {kind: isa.RegisterInt, reg: 3}},
+			dropped: []droppedWrite{{kind: isa.RegisterUint64, register: 4}, {kind: isa.RegisterUint64, register: 6}, {kind: isa.RegisterInt64, register: 5}, {kind: isa.RegisterInt64, register: 7}, {kind: isa.RegisterInt64, register: 3}},
 		},
 	}
 }
@@ -150,13 +156,13 @@ func fusionWindowsThatDropWrites() []fusionWindow {
 func rangeCheckWindow(value, lowBound, highBound uint8) []isa.Instruction {
 	chainLo, chainHi := jumpOffset(program.RangeCheckFirstJumpDelta)
 	return []isa.Instruction{
-		isa.NewTier1Instruction(isa.SubOpLoadUintConstSmall, lowBound, 10),
-		mk(isa.OpGeUint, 5, value, lowBound),
-		isa.NewTier1Instruction(isa.SubOpMoveInt, 3, 5),
+		isa.NewTier1Instruction(isa.SubOpLoadUint64Immediate, lowBound, 10),
+		mk(isa.OpGreaterOrEqualUint64, 5, value, lowBound),
+		isa.NewTier1Instruction(isa.SubOpMoveInt64, 3, 5),
 		mk(isa.OpJumpIfFalse, 3, chainLo, chainHi),
-		isa.NewTier1Instruction(isa.SubOpLoadUintConstSmall, highBound, 20),
-		mk(isa.OpLeUint, 7, value, highBound),
-		isa.NewTier1Instruction(isa.SubOpMoveInt, 3, 7),
+		isa.NewTier1Instruction(isa.SubOpLoadUint64Immediate, highBound, 20),
+		mk(isa.OpLessOrEqualUint64, 7, value, highBound),
+		isa.NewTier1Instruction(isa.SubOpMoveInt64, 3, 7),
 		mk(isa.OpJumpIfFalse, 3, 0, 0),
 	}
 }
@@ -175,16 +181,16 @@ func buildFusionBody(w fusionWindow, fallThrough, taken []isa.Instruction) []isa
 	return body
 }
 
-func readOf(kind isa.RegisterKind, reg uint8) isa.Instruction {
+func readOf(kind isa.RegisterKind, register uint8) isa.Instruction {
 	switch kind {
-	case isa.RegisterInt:
-		return mk(isa.OpAddInt, unrelatedRegister, reg, reg)
-	case isa.RegisterUint:
-		return mk(isa.OpAddUint, unrelatedRegister, reg, reg)
+	case isa.RegisterInt64:
+		return mk(isa.OpAddInt64, unrelatedRegister, register, register)
+	case isa.RegisterUint64:
+		return mk(isa.OpAddUint64, unrelatedRegister, register, register)
 	case isa.RegisterString:
-		return mk(isa.OpConcatString, unrelatedRegister, reg, reg)
+		return mk(isa.OpConcatenateString, unrelatedRegister, register, register)
 	case isa.RegisterGeneral:
-		return mk(isa.OpMoveGeneral, unrelatedRegister, reg, 0)
+		return mk(isa.OpMoveGeneral, unrelatedRegister, register, 0)
 	default:
 		panic(fmt.Sprintf("no reader for register kind %d", kind))
 	}
@@ -218,18 +224,18 @@ func TestFusersRefuseWhenDroppedRegisterIsRead(t *testing.T) {
 	t.Parallel()
 	for _, w := range fusionWindowsThatDropWrites() {
 		for _, write := range w.dropped {
-			t.Run(fmt.Sprintf("%s/read after the window/kind %d reg %d", w.name, write.kind, write.reg), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s/read after the window/kind %d register %d", w.name, write.kind, write.register), func(t *testing.T) {
 				t.Parallel()
-				body := buildFusionBody(w, []isa.Instruction{readOf(write.kind, write.reg), returnVoid()}, []isa.Instruction{returnVoid()})
+				body := buildFusionBody(w, []isa.Instruction{readOf(write.kind, write.register), returnVoid()}, []isa.Instruction{returnVoid()})
 
 				require.False(t, runFusion(t, w, &program.CompiledFunction{Body: body}))
 			})
 			if !w.branch {
 				continue
 			}
-			t.Run(fmt.Sprintf("%s/read on the taken edge/kind %d reg %d", w.name, write.kind, write.reg), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s/read on the taken edge/kind %d register %d", w.name, write.kind, write.register), func(t *testing.T) {
 				t.Parallel()
-				body := buildFusionBody(w, []isa.Instruction{returnVoid()}, []isa.Instruction{readOf(write.kind, write.reg), returnVoid()})
+				body := buildFusionBody(w, []isa.Instruction{returnVoid()}, []isa.Instruction{readOf(write.kind, write.register), returnVoid()})
 
 				require.False(t, runFusion(t, w, &program.CompiledFunction{Body: body}))
 			})
@@ -241,9 +247,9 @@ func TestFusersRefuseWhenDroppedRegisterIsAResultSlot(t *testing.T) {
 	t.Parallel()
 	for _, w := range fusionWindowsThatDropWrites() {
 		for _, write := range w.dropped {
-			t.Run(fmt.Sprintf("%s/kind %d reg %d", w.name, write.kind, write.reg), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s/kind %d register %d", w.name, write.kind, write.register), func(t *testing.T) {
 				t.Parallel()
-				resultKinds := make([]isa.RegisterKind, int(write.reg)+1)
+				resultKinds := make([]isa.RegisterKind, int(write.register)+1)
 				for index := range resultKinds {
 					resultKinds[index] = write.kind
 				}
@@ -260,10 +266,10 @@ func TestFusersRefuseWhenDroppedRegisterIsPassedToACall(t *testing.T) {
 	t.Parallel()
 	for _, w := range fusionWindowsThatDropWrites() {
 		for _, write := range w.dropped {
-			t.Run(fmt.Sprintf("%s/kind %d reg %d", w.name, write.kind, write.reg), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s/kind %d register %d", w.name, write.kind, write.register), func(t *testing.T) {
 				t.Parallel()
 				call := isa.NewTier1Instruction(isa.SubOpCall, 0, 0)
-				site := program.CallSite{Arguments: []program.VarLocation{{Register: write.reg, Kind: write.kind}}}
+				site := program.CallSite{Arguments: []program.VarLocation{{Register: write.register, Kind: write.kind}}}
 				body := buildFusionBody(w, []isa.Instruction{call, returnVoid()}, []isa.Instruction{returnVoid()})
 
 				require.False(t, runFusion(t, w, &program.CompiledFunction{Body: body, CallSites: []program.CallSite{site}}))
@@ -290,37 +296,37 @@ func TestFusersRefuseOperandsAliasingADroppedRegister(t *testing.T) {
 		{
 			name:  "a rune concatenated onto itself",
 			fuser: FuseConcatRune,
-			body:  []isa.Instruction{isa.NewTier1Instruction(isa.SubOpRuneToString, 4, 5), mk(isa.OpConcatString, 1, 4, 4), returnVoid()},
+			body:  []isa.Instruction{isa.NewTier1Instruction(isa.SubOpConvertRuneToString, 4, 5), mk(isa.OpConcatenateString, 1, 4, 4), returnVoid()},
 		},
 		{
 			name:  "a string constant compared with itself",
 			fuser: FuseThreeInstrPatterns,
-			body:  branchTail([]isa.Instruction{mk(isa.OpLoadStringConst, 4, 0, 0), mk(isa.OpEqString, 3, 4, 4), mk(isa.OpJumpIfFalse, 3, 0, 0)}),
+			body:  branchTail([]isa.Instruction{mk(isa.OpLoadStringConstant, 4, 0, 0), mk(isa.OpEqualString, 3, 4, 4), mk(isa.OpJumpIfFalse, 3, 0, 0)}),
 		},
 		{
 			name:  "nil compared with itself",
 			fuser: FuseThreeInstrPatterns,
-			body:  branchTail([]isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2LoadNil, 4), mk(isa.OpEqGeneral, 3, 4, 4), mk(isa.OpJumpIfTrue, 3, 0, 0)}),
+			body:  branchTail([]isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2LoadNil, 4), mk(isa.OpEqualGeneral, 3, 4, 4), mk(isa.OpJumpIfTrue, 3, 0, 0)}),
 		},
 		{
 			name:  "a uint constant compared with itself",
 			fuser: FuseThreeInstrPatterns,
-			body:  branchTail([]isa.Instruction{isa.NewTier1Instruction(isa.SubOpLoadUintConstSmall, 4, 7), mk(isa.OpEqUint, 3, 4, 4), mk(isa.OpJumpIfFalse, 3, 0, 0)}),
+			body:  branchTail([]isa.Instruction{isa.NewTier1Instruction(isa.SubOpLoadUint64Immediate, 4, 7), mk(isa.OpEqualUint64, 3, 4, 4), mk(isa.OpJumpIfFalse, 3, 0, 0)}),
 		},
 		{
 			name:  "an int constant compared with itself",
 			fuser: FuseThreeInstrPatterns,
-			body:  branchTail([]isa.Instruction{mk(isa.OpLoadIntConst, 4, 0, 0), mk(isa.OpLtInt, 3, 4, 4), mk(isa.OpJumpIfFalse, 3, 0, 0)}),
+			body:  branchTail([]isa.Instruction{mk(isa.OpLoadInt64Constant, 4, 0, 0), mk(isa.OpLessThanInt64, 3, 4, 4), mk(isa.OpJumpIfFalse, 3, 0, 0)}),
 		},
 		{
 			name:  "a string length compared with itself",
 			fuser: FuseThreeInstrPatterns,
-			body:  branchTail([]isa.Instruction{isa.NewTier1Instruction(isa.SubOpLenString, 4, 1), mk(isa.OpLtInt, 3, 4, 4), mk(isa.OpJumpIfFalse, 3, 0, 0)}),
+			body:  branchTail([]isa.Instruction{isa.NewTier1Instruction(isa.SubOpLengthString, 4, 1), mk(isa.OpLessThanInt64, 3, 4, 4), mk(isa.OpJumpIfFalse, 3, 0, 0)}),
 		},
 		{
 			name:  "a compare that overwrites the incremented counter",
 			fuser: FuseThreeInstrPatterns,
-			body:  branchTail([]isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2IncInt, 1), mk(isa.OpLtInt, 1, 1, 2), mk(isa.OpJumpIfTrue, 1, 0, 0)}),
+			body:  branchTail([]isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2IncrementInt64, 1), mk(isa.OpLessThanInt64, 1, 1, 2), mk(isa.OpJumpIfTrue, 1, 0, 0)}),
 		},
 		{
 			name:  "a range check whose value is its own lower bound",
@@ -346,7 +352,7 @@ func TestFuseConcatRuneRegressions(t *testing.T) {
 		runeRegister = 5
 		target       = 1
 	)
-	convert := isa.NewTier1Instruction(isa.SubOpRuneToString, temporary, runeRegister)
+	convert := isa.NewTier1Instruction(isa.SubOpConvertRuneToString, temporary, runeRegister)
 	backLo, backHi := jumpOffset(-3)
 	cases := []struct {
 		name  string
@@ -356,22 +362,22 @@ func TestFuseConcatRuneRegressions(t *testing.T) {
 		{
 
 			name:  "the temporary is read again after the concatenation",
-			body:  []isa.Instruction{convert, mk(isa.OpConcatString, target, target, temporary), mk(isa.OpConcatString, 2, target, temporary), returnVoid()},
+			body:  []isa.Instruction{convert, mk(isa.OpConcatenateString, target, target, temporary), mk(isa.OpConcatenateString, 2, target, temporary), returnVoid()},
 			fused: false,
 		},
 		{
 			name:  "the concatenation overwrites the temporary itself",
-			body:  []isa.Instruction{convert, mk(isa.OpConcatString, temporary, target, temporary), readOf(isa.RegisterString, temporary), returnVoid()},
+			body:  []isa.Instruction{convert, mk(isa.OpConcatenateString, temporary, target, temporary), readOf(isa.RegisterString, temporary), returnVoid()},
 			fused: true,
 		},
 		{
 			name:  "a loop reconverts the rune before the temporary is read again",
-			body:  []isa.Instruction{convert, mk(isa.OpConcatString, target, target, temporary), isa.NewTier1Instruction(isa.SubOpJump, backLo, backHi), returnVoid()},
+			body:  []isa.Instruction{convert, mk(isa.OpConcatenateString, target, target, temporary), isa.NewTier1Instruction(isa.SubOpJump, backLo, backHi), returnVoid()},
 			fused: true,
 		},
 		{
 			name:  "the temporary is overwritten before it is read again",
-			body:  []isa.Instruction{convert, mk(isa.OpConcatString, target, target, temporary), isa.NewTier1Instruction(isa.SubOpMoveString, temporary, 2), readOf(isa.RegisterString, temporary), returnVoid()},
+			body:  []isa.Instruction{convert, mk(isa.OpConcatenateString, target, target, temporary), isa.NewTier1Instruction(isa.SubOpMoveString, temporary, 2), readOf(isa.RegisterString, temporary), returnVoid()},
 			fused: true,
 		},
 	}
@@ -395,7 +401,7 @@ func TestFuseAppendMoveWhenTheTemporaryIsTheSlice(t *testing.T) {
 
 func TestNonIntWalkSkipsExtensionsThatNameOnlyIntRegisters(t *testing.T) {
 	t.Parallel()
-	const reg = 3
+	const register = 3
 	cases := []struct {
 		name string
 		kind isa.RegisterKind
@@ -406,74 +412,74 @@ func TestNonIntWalkSkipsExtensionsThatNameOnlyIntRegisters(t *testing.T) {
 
 			name: "an array field read whose index register shares the number",
 			kind: isa.RegisterGeneral,
-			tail: []isa.Instruction{mk(isa.OpGetStructFieldIndexGeneral, 2, 1, 0), mk(isa.OpExt, 16, 0, reg), mk(isa.OpExt, 16, 0, 20), returnVoid()},
+			tail: []isa.Instruction{mk(isa.OpGetStructFieldElementGeneral, 2, 1, 0), mk(isa.OpExtension, 16, 0, register), mk(isa.OpExtension, 16, 0, 20), returnVoid()},
 			dead: true,
 		},
 		{
 			name: "a map construction whose size hint shares the number",
 			kind: isa.RegisterGeneral,
-			tail: []isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2MakeMap, 5), mk(isa.OpExt, 0, 0, reg), returnVoid()},
+			tail: []isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2MakeMap, 5), mk(isa.OpExtension, 0, 0, register), returnVoid()},
 			dead: true,
 		},
 		{
 			name: "a struct literal whose type index shares the number",
 			kind: isa.RegisterGeneral,
-			tail: []isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2AllocStructLiteral, 5), mk(isa.OpExt, reg, 0, 0), returnVoid()},
+			tail: []isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2AllocateStructLiteral, 5), mk(isa.OpExtension, register, 0, 0), returnVoid()},
 			dead: true,
 		},
 		{
 
 			name: "a typed slice read whose int index shares the number",
-			kind: isa.RegisterUint,
-			tail: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSliceGetByteDirect, 5, 1), mk(isa.OpExt, reg, 0, 0), returnVoid()},
+			kind: isa.RegisterUint64,
+			tail: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpGetSliceByteElement, 5, 1), mk(isa.OpExtension, register, 0, 0), returnVoid()},
 			dead: true,
 		},
 		{
 			name: "a slice expression whose bound flags share the number",
-			kind: isa.RegisterUint,
-			tail: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSliceOp, 2, 1), mk(isa.OpExt, reg, 0, 0), returnVoid()},
+			kind: isa.RegisterUint64,
+			tail: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSliceGeneral, 2, 1), mk(isa.OpExtension, register, 0, 0), returnVoid()},
 			dead: true,
 		},
 		{
 			name: "a struct fast append whose type index shares the number",
-			kind: isa.RegisterUint,
-			tail: []isa.Instruction{mk(isa.OpAppendStructFast, 5, 6, 7), mk(isa.OpExt, reg, 0, 0), returnVoid()},
+			kind: isa.RegisterUint64,
+			tail: []isa.Instruction{mk(isa.OpAppendStruct, 5, 6, 7), mk(isa.OpExtension, register, 0, 0), returnVoid()},
 			dead: true,
 		},
 		{
 			name: "a struct slice field read whose layout index shares the number",
-			kind: isa.RegisterUint,
-			tail: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpGetStructFieldSliceString, 5, 1), mk(isa.OpExt, reg, 0, 0), returnVoid()},
+			kind: isa.RegisterUint64,
+			tail: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpGetStructFieldSliceString, 5, 1), mk(isa.OpExtension, register, 0, 0), returnVoid()},
 			dead: true,
 		},
 		{
 			name: "a struct field write whose layout index shares the number",
 			kind: isa.RegisterString,
-			tail: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSetStructFieldString, 1, 5), mk(isa.OpExt, reg, 0, 0), returnVoid()},
+			tail: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSetStructFieldStringWide, 1, 5), mk(isa.OpExtension, register, 0, 0), returnVoid()},
 			dead: true,
 		},
 		{
 			name: "a typed string slice store reads the string its extension names",
 			kind: isa.RegisterString,
-			tail: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSliceSetStringDirect, 5, 1), mk(isa.OpExt, reg, 0, 0), returnVoid()},
+			tail: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSetSliceStringElement, 5, 1), mk(isa.OpExtension, register, 0, 0), returnVoid()},
 			dead: false,
 		},
 		{
 			name: "a typed float store cannot read a general register",
 			kind: isa.RegisterGeneral,
-			tail: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSliceSetFloatDirect, 5, 1), mk(isa.OpExt, reg, 0, 0), returnVoid()},
+			tail: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSetSliceFloat64Element, 5, 1), mk(isa.OpExtension, register, 0, 0), returnVoid()},
 			dead: true,
 		},
 		{
 			name: "a typed float store reads its float source",
-			kind: isa.RegisterFloat,
-			tail: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSliceSetFloatDirect, 5, 1), mk(isa.OpExt, reg, 0, 0), returnVoid()},
+			kind: isa.RegisterFloat64,
+			tail: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSetSliceFloat64Element, 5, 1), mk(isa.OpExtension, register, 0, 0), returnVoid()},
 			dead: false,
 		},
 		{
 			name: "a deferred call can pass the general register",
 			kind: isa.RegisterGeneral,
-			tail: []isa.Instruction{mk(isa.OpDefer, 5, 1, 0), mk(isa.OpExt, 0, reg, uint8(isa.RegisterGeneral)), returnVoid()},
+			tail: []isa.Instruction{mk(isa.OpDefer, 5, 1, 0), mk(isa.OpExtension, 0, register, uint8(isa.RegisterGeneral)), returnVoid()},
 			dead: false,
 		},
 	}
@@ -482,7 +488,7 @@ func TestNonIntWalkSkipsExtensionsThatNameOnlyIntRegisters(t *testing.T) {
 			t.Parallel()
 			compiledFunction := &program.CompiledFunction{Body: testCase.tail}
 
-			require.Equal(t, testCase.dead, registerDeadFrom(compiledFunction, testCase.tail, 0, testCase.kind, reg))
+			require.Equal(t, testCase.dead, registerDeadFrom(compiledFunction, testCase.tail, 0, testCase.kind, register))
 		})
 	}
 }
@@ -509,36 +515,52 @@ func TestFuseAppendMoveRefusesWhenTheTemporaryIsAppendedAsAnElement(t *testing.T
 	require.False(t, runFusion(t, fusionWindow{fuser: FuseAppendMove}, &program.CompiledFunction{Body: body}))
 }
 
-func TestWalkFollowsTheTakenEdgeOfAMapIndexOkBranch(t *testing.T) {
+func TestWalkFollowsTheTakenEdgeOfAGetMapOkBranch(t *testing.T) {
 	t.Parallel()
 	const (
-		reg        = 5
+		register   = 5
 		okRegister = 13
 	)
 	lo, hi := jumpOffset(2)
 	body := []isa.Instruction{
-		mk(isa.OpMapIndexOkJumpIfFalseIntInt, 10, 11, 12),
-		mk(isa.OpExt, okRegister, lo, hi),
-		mk(isa.OpNop, 0, 0, 0),
+		mk(isa.OpGetMapInt64Int64OkThenJumpIfFalse, 10, 11, 12),
+		mk(isa.OpExtension, okRegister, lo, hi),
+		mk(isa.OpNoOperation, 0, 0, 0),
 		returnVoid(),
-		readOf(isa.RegisterInt, reg),
+		readOf(isa.RegisterInt64, register),
 		returnVoid(),
 	}
 
-	require.False(t, registerDeadFrom(&program.CompiledFunction{Body: body}, body, 0, isa.RegisterInt, reg),
+	require.False(t, registerDeadFrom(&program.CompiledFunction{Body: body}, body, 0, isa.RegisterInt64, register),
 		"a missing key jumps to the read")
 }
 
 func TestWalkTreatsANegativeBranchTargetAsLive(t *testing.T) {
 	t.Parallel()
-	const reg = 5
+	const register = 5
 	lo, hi := jumpOffset(-4)
 	body := []isa.Instruction{
-		mk(isa.OpNop, 0, 0, 0),
+		mk(isa.OpNoOperation, 0, 0, 0),
 		mk(isa.OpJumpIfTrue, 9, lo, hi),
 		returnVoid(),
 	}
 
-	require.False(t, registerDeadFrom(&program.CompiledFunction{Body: body}, body, 0, isa.RegisterInt, reg),
+	require.False(t, registerDeadFrom(&program.CompiledFunction{Body: body}, body, 0, isa.RegisterInt64, register),
 		"a jump before the start of the body proves nothing, and must not index outside it")
+}
+
+func TestWalkSeesAnExtensionWordReadOfTheRegisterItsInstructionWrites(t *testing.T) {
+	t.Parallel()
+	const register = 5
+	body := []isa.Instruction{
+		mk(isa.OpGetStructFieldElementField, register, 2, 0),
+		mk(isa.OpExtension, 0, 0, register),
+		returnVoid(),
+	}
+	require.False(t, registerDeadFrom(&program.CompiledFunction{Body: body}, body, 0, isa.RegisterInt64, register),
+		"the element read indexes with the register before it overwrites it")
+
+	body[1] = mk(isa.OpExtension, 0, 0, register+1)
+	require.True(t, registerDeadFrom(&program.CompiledFunction{Body: body}, body, 0, isa.RegisterInt64, register),
+		"with another index the write is the first thing that happens to the register")
 }

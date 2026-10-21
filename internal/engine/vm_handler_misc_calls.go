@@ -75,6 +75,10 @@ const (
 	GoModeBuiltin uint8 = 1
 )
 
+// uncaughtPanicPrefix is the message prefix of a panic no frame of a run recovered, which
+// tells it from a sibling goroutine's panic (newGoroutinePanicError).
+const uncaughtPanicPrefix = "panic: "
+
 var (
 	// reflectTypeReflectType caches the reflect.Type for the reflect.Type interface itself,
 	// used to detect when pipit code is calling a method on a `reflect.Type` value so the
@@ -91,6 +95,64 @@ var (
 type runtimePanicError struct {
 	// message is the preformatted runtime panic text.
 	message string
+}
+
+// invariantError is the panic value an opcode handler raises when it finds state the
+// compiler promised could not occur. handleRecoveredHandlerPanic surfaces it as the run's
+// error without consulting the defer stack, so interpreted recover() never observes an
+// interpreter defect as if it were a program panic.
+type invariantError struct {
+	// message is the human-readable invariant violation text.
+	message string
+}
+
+// uncaughtPanicError is the error an execution returns when a panic unwinds every frame
+// without being recovered. Its text keeps the "panic: value" (or "goroutine panicked:
+// value") shape callers match on, errors.Is(err, fault.ErrUncaughtPanic) identifies the
+// class, and an error-valued panic stays reachable through errors.Is and errors.As.
+type uncaughtPanicError struct {
+	// value is the panic value as the program raised it.
+	value any
+
+	// prefix is the text before the value in the error message.
+	prefix string
+
+	// stack is the rendered interpreted frames when the panic started, or "" when no stack
+	// was recorded.
+	stack string
+}
+
+// goroutineSpawn captures the parent VM state a new goroutine needs, before the parent
+// continues or serves another callback.
+type goroutineSpawn struct {
+	// link is the execution the goroutine belongs to.
+	link *executionLink
+
+	// globals is the shared global store; it also receives a goroutine's panic.
+	globals *GlobalStore
+
+	// symbols is the shared symbol registry.
+	symbols *symtab.SymbolRegistry
+
+	// rootFunction is the root a closure without its own root executes under.
+	rootFunction *program.CompiledFunction
+
+	// functions is the function table a closure without its own root dispatches against.
+	functions []*program.CompiledFunction
+
+	// runGates are the spawning VM's export gates (VM.runGates), which the child holds while
+	// it runs, since it writes what the spawning run's guest code reaches.
+	runGates exportGateSet
+
+	// spawnGates are the gates of the non-reentrant VMs that started the child, directly or
+	// through other goroutines (VM.spawnGates).
+	spawnGates exportGateSet
+
+	// limits carries the goroutine limit, tracker and resource caps.
+	limits VMLimits
+
+	// usesTypedSliceBanks is the spawning VM's flag, inherited by the child.
+	usesTypedSliceBanks bool
 }
 
 // newRuntimePanicError formats a runtime-panic message and wraps it in a
@@ -139,15 +201,6 @@ func (e *runtimePanicError) Is(target error) bool {
 	return false
 }
 
-// invariantError is the panic value an opcode handler raises when it finds state the
-// compiler promised could not occur. handleRecoveredHandlerPanic surfaces it as the run's
-// error without consulting the defer stack, so interpreted recover() never observes an
-// interpreter defect as if it were a program panic.
-type invariantError struct {
-	// message is the human-readable invariant violation text.
-	message string
-}
-
 // newInvariantError builds the panic value for a broken interpreter invariant.
 //
 // Takes format (string) which is the message format string.
@@ -172,22 +225,6 @@ func (*invariantError) Unwrap() error {
 	return fault.ErrInterpreterInvariant
 }
 
-// uncaughtPanicError is the error an execution returns when a panic unwinds every frame
-// without being recovered. Its text keeps the "panic: value" (or "goroutine panicked:
-// value") shape callers match on, errors.Is(err, fault.ErrUncaughtPanic) identifies the
-// class, and an error-valued panic stays reachable through errors.Is and errors.As.
-type uncaughtPanicError struct {
-	// value is the panic value as the program raised it.
-	value any
-
-	// prefix is the text before the value in the error message.
-	prefix string
-
-	// stack is the rendered interpreted frames when the panic started, or "" when no stack
-	// was recorded.
-	stack string
-}
-
 // newuncaughtPanicError wraps the value of a panic that reached the top of the main
 // goroutine.
 //
@@ -195,7 +232,7 @@ type uncaughtPanicError struct {
 //
 // Returns *uncaughtPanicError whose text reads "panic: value".
 func newuncaughtPanicError(value any) *uncaughtPanicError {
-	return &uncaughtPanicError{value: value, prefix: "panic: ", stack: ""}
+	return &uncaughtPanicError{value: value, prefix: uncaughtPanicPrefix, stack: ""}
 }
 
 // newGoroutinePanicError wraps the value of a panic that killed a spawned goroutine.
@@ -293,7 +330,7 @@ func UncaughtPanicStack(err error) string {
 // Returns string which is the source-level type name; empty when unresolved so the slow
 // path falls through to the native reflect method-set check.
 func resolveReceiverTypeName(vm *VM, site *program.CallSite, receiverType reflect.Type) string {
-	if info, ok := typemodel.LookupNamedScalarPoolInfo(receiverType); ok {
+	if info, ok := typemodel.LookupNamedTypeInfo(receiverType); ok {
 		return info.BareName
 	}
 	name := receiverType.Name()
@@ -466,9 +503,9 @@ func readBuiltinArguments(arguments []any, frame *CallFrame, registers *Register
 // Returns any which holds the value, or nil for unrecognised kinds.
 func readOneBuiltinArg(registers *Registers, extensionWord isa.Instruction) any {
 	switch isa.RegisterKind(extensionWord.B) {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return registers.Ints[extensionWord.A]
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return registers.Floats[extensionWord.A]
 	case isa.RegisterString:
 		return registers.Strings[extensionWord.A]
@@ -479,9 +516,9 @@ func readOneBuiltinArg(registers *Registers, extensionWord isa.Instruction) any 
 		return nil
 	case isa.RegisterBool:
 		return registers.Bools[extensionWord.A]
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return registers.Uints[extensionWord.A]
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return registers.Complex[extensionWord.A]
 	default:
 		return nil
@@ -596,6 +633,7 @@ func handleDefer(vm *VM, frame *CallFrame, registers *Registers, instruction isa
 		vm.evalError = errors.New("defer target is not callable")
 		return opPanicError
 	}
+	noteDeferredNativeArguments(vm.Arena, arguments)
 	vm.deferStack = append(vm.deferStack, deferredCall{nativeFunction: target, arguments: arguments, frameIndex: vm.FramePointer,
 		Function: nil, direct: nil, started: false, builtin: 0, spread: spread})
 	return opContinue
@@ -720,6 +758,7 @@ func registerTrivialDefer(vm *VM, frame *CallFrame, registers *Registers, target
 		}
 		record.target = nil
 		record.nativeFunction = target
+		noteDeferredNativeArguments(vm.Arena, record.arguments)
 	}
 	record.active = true
 	return opContinue
@@ -767,7 +806,7 @@ func materialiseReflectDeferArgs(arena *RegisterArena, arguments []reflect.Value
 	}
 }
 
-// handlePanic initiates a panic in the VM by setting the panic value from the source
+// handlePanicBody initiates a panic in the VM by setting the panic value from the source
 // register and unwinding the call stack to find a recover point.
 //
 // Takes vm (*VM) which is the executing VM.
@@ -775,7 +814,7 @@ func materialiseReflectDeferArgs(arena *RegisterArena, arguments []reflect.Value
 // Takes instruction (instruction) which encodes the source register index.
 //
 // Returns OpResult indicating frame change or panic error.
-func handlePanic(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handlePanicBody(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	v := registers.General[instruction.A]
 	var newPanicValue any
 	if v.IsValid() {
@@ -815,15 +854,18 @@ func handlePanic(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Ins
 }
 
 // raiseNativePanicAsInterpreted converts a recovered Go panic from a native operation
-// into an interpreter-level panic that interpreted defer/recover can observe. Used by
-// handlers that call into reflect operations which may themselves panic (channel
-// send/recv on closed/nil channels, sync.* misuse, reflect.Select with no cases, etc.).
+// into an interpreter-level panic that interpreted defer/recover can observe.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes recovered (any) which is the value returned by Go's recover().
 //
 // Returns OpResult after attempting unwind to a recover handler.
+//
+// Panics with recovered when it is an arena-budget abort.
 func raiseNativePanicAsInterpreted(vm *VM, recovered any) OpResult {
+	if value, _ := unwrapCallbackPanic(recovered); isUnwindingAbort(value) {
+		panic(value)
+	}
 	if recovered == nil {
 		vm.panicValue = new(runtime.PanicNilError)
 		vm.callbackPanicStack = ""
@@ -848,15 +890,15 @@ func raiseNativePanicAsInterpreted(vm *VM, recovered any) OpResult {
 	return opPanicError
 }
 
-// handleRecover attempts to recover from an active panic, storing the panic value in the
-// destination register or an invalid value if not panicking.
+// handleRecoverBody attempts to recover from an active panic, storing the panic value in
+// the destination register or an invalid value if not panicking.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes registers (*Registers) which holds the destination register bank.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleRecover(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleRecoverBody(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	if vm.panicking && vm.FramePointer == vm.recoverEligibleFrame {
 		vm.panicking = false
 		if vm.panicValue != nil {
@@ -884,75 +926,121 @@ func handleRecover(vm *VM, _ *CallFrame, registers *Registers, instruction isa.I
 // Returns OpResult indicating the next execution step.
 func handleGo(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	if instruction.C == GoModeBuiltin {
-		arguments := unpackReflectArgs(frame, registers, int(instruction.B))
-		materialiseReflectStringArgs(vm.Arena, arguments)
-		materialiseReflectDeferArgs(vm.Arena, arguments)
-		vm.executeBuiltinDeferredCall(deferredCall{Function: nil, direct: nil, nativeFunction: reflect.Value{},
-			arguments: arguments, frameIndex: vm.FramePointer, started: false, builtin: instruction.A, spread: false})
-		if vm.panicking {
-			return raiseNativePanicAsInterpreted(vm, vm.panicValue)
-		}
-		return opContinue
+		return handleGoBuiltin(vm, frame, registers, instruction)
 	}
-	goroutineLimit := vm.ensureGoroutineLimit()
-	if vm.Limits.Tracker.GoroutineCount.Add(1) > goroutineLimit {
-		vm.Limits.Tracker.GoroutineCount.Add(-1)
-		vm.evalError = fmt.Errorf("%w: limit %d", fault.ErrGoroutineLimit, goroutineLimit)
+	if vm.abortUnwinding {
+		vm.evalError = fmt.Errorf("%w: go statement in a defer of an aborted VM", fault.ErrGoroutineLimit)
 		return opPanicError
 	}
-	vm.Limits.Tracker.RegisterGoroutine()
+	goroutineLimit := vm.ensureGoroutineLimit()
+	shared := vm.Arena.countsHandOffs() && vm.Arena.licenceShared(0)
+	if vm.Limits.Tracker.GoroutineCount.Load() >= goroutineLimit {
+		return goroutineLimitError(vm, goroutineLimit)
+	}
+	if vm.reentrantInterpreterVM || vm.topLevelRun {
+		vm.callbackSpawned = true
+	}
 	if !vm.hasGoroutines {
-		vm.hasGoroutines = true
-		vm.syncHasGoroutinesFlag()
-		vm.Globals.markShared()
-		materialiseGlobalStrings(vm.Globals, vm.Arena)
+		vm.markFirstGoroutine()
 	}
 	closure := registers.General[instruction.A]
 	arguments := unpackReflectArgs(frame, registers, int(instruction.B))
 	materialiseReflectStringArgs(vm.Arena, arguments)
 	materialiseReflectStructArgs(vm.Arena, arguments)
-	if hook := vm.Limits.CapabilityHook; hook != nil {
-		fnPath := resolveNativeFunctionPath(closure)
-		if err := hook.CheckFunctionCall(capabilityHookContext(vm), vm.modulePath, "go "+fnPath, arguments); err != nil {
-			vm.Limits.Tracker.AbandonGoroutine()
-			vm.evalError = err
-			return opPanicError
-		}
+	if vm.Arena.countsHandOffs() {
+		noteGoroutineSpawn(vm.Arena, closure, arguments, shared)
+	}
+	if err := consultCapabilityHookForGoStatement(vm, closure, arguments); err != nil {
+		vm.evalError = err
+		return opPanicError
 	}
 	if closure.Type() == reflect.TypeFor[*RuntimeClosure]() {
+		if !reserveGoroutine(vm, goroutineLimit) {
+			return goroutineLimitError(vm, goroutineLimit)
+		}
 		return launchCompiledGoroutine(vm, closure, arguments)
 	}
-	coerceNativeGoroutineArgs(vm, closure, arguments)
-	launchNativeGoroutine(newGoroutineSpawn(vm), closure, arguments)
+	return startNativeGoroutine(vm, closure, arguments, goroutineLimit)
+}
+
+// startNativeGoroutine coerces a go statement's arguments for a native callee, reserves a
+// goroutine and launches it.
+//
+// Takes vm (*VM) which runs the go statement.
+// Takes closure (reflect.Value) which is the native function.
+// Takes arguments ([]reflect.Value) which are its arguments, coerced in place.
+// Takes goroutineLimit (int32) which is the configured goroutine limit.
+//
+// Returns OpResult which is opPanicError when the arguments are refused or the limit is
+// reached.
+func startNativeGoroutine(vm *VM, closure reflect.Value, arguments []reflect.Value, goroutineLimit int32) OpResult {
+	if err := coerceNativeGoroutineArgs(vm, closure, arguments); err != nil {
+		vm.evalError = err
+		return opPanicError
+	}
+	if !reserveGoroutine(vm, goroutineLimit) {
+		return goroutineLimitError(vm, goroutineLimit)
+	}
+	launchNativeGoroutine(vm.spawnCtx, newGoroutineSpawn(vm), closure, arguments)
 	return opContinue
 }
 
-// goroutineSpawn captures the parent VM state a new goroutine needs, before the parent
-// continues or serves another callback.
-type goroutineSpawn struct {
-	// ctx is the context the goroutine's VM follows (VM.spawnCtx).
-	ctx context.Context
+// handleGoBuiltin runs a go statement whose callee is a builtin, which runs at once on
+// the calling goroutine.
+//
+// Takes vm (*VM) which runs the go statement.
+// Takes frame (*CallFrame) which is the current call frame.
+// Takes registers (*Registers) which hold the arguments.
+// Takes instruction (isa.Instruction) which encodes the builtin and argument count.
+//
+// Returns OpResult which is opContinue, or the builtin's panic as an interpreted one.
+func handleGoBuiltin(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	arguments := unpackReflectArgs(frame, registers, int(instruction.B))
+	materialiseReflectStringArgs(vm.Arena, arguments)
+	materialiseReflectDeferArgs(vm.Arena, arguments)
+	vm.executeBuiltinDeferredCall(deferredCall{Function: nil, direct: nil, nativeFunction: reflect.Value{},
+		arguments: arguments, frameIndex: vm.FramePointer, started: false, builtin: instruction.A, spread: false})
+	if vm.panicking {
+		return raiseNativePanicAsInterpreted(vm, vm.panicValue)
+	}
+	return opContinue
+}
 
-	// link is the execution the goroutine belongs to.
-	link *executionLink
+// markFirstGoroutine records that the VM is about to start its first goroutine: its
+// globals become shared and their arena strings are moved to the heap.
+func (vm *VM) markFirstGoroutine() {
+	vm.hasGoroutines = true
+	vm.spawnedGoroutines = true
+	vm.syncHasGoroutinesFlag()
+	vm.Globals.markShared()
+	materialiseGlobalStrings(vm.Globals, vm.Arena)
+}
 
-	// globals is the shared global store; it also receives a goroutine's panic.
-	globals *GlobalStore
+// reserveGoroutine counts a goroutine the go statement is about to launch against the
+// tracker's limit.
+//
+// Takes vm (*VM) which runs the go statement.
+// Takes limit (int32) which is the concurrent-goroutine cap.
+//
+// Returns bool which is false, with nothing counted, when the cap is reached.
+func reserveGoroutine(vm *VM, limit int32) bool {
+	if vm.Limits.Tracker.GoroutineCount.Add(1) > limit {
+		vm.Limits.Tracker.GoroutineCount.Add(-1)
+		return false
+	}
+	vm.Limits.Tracker.RegisterGoroutine()
+	return true
+}
 
-	// symbols is the shared symbol registry.
-	symbols *symtab.SymbolRegistry
-
-	// functions is the function table a closure without its own root dispatches against.
-	functions []*program.CompiledFunction
-
-	// rootFunction is the root a closure without its own root executes under.
-	rootFunction *program.CompiledFunction
-
-	// limits carries the goroutine limit, tracker and resource caps.
-	limits VMLimits
-
-	// usesTypedSliceBanks is the spawning VM's flag, inherited by the child.
-	usesTypedSliceBanks bool
+// goroutineLimitError reports a go statement refused at the concurrent-goroutine cap.
+//
+// Takes vm (*VM) which runs the go statement.
+// Takes limit (int32) which is the cap.
+//
+// Returns OpResult which is opPanicError.
+func goroutineLimitError(vm *VM, limit int32) OpResult {
+	vm.evalError = fmt.Errorf("%w: limit %d", fault.ErrGoroutineLimit, limit)
+	return opPanicError
 }
 
 // newGoroutineSpawn captures vm for a goroutine it is about to start. It must run on the
@@ -960,16 +1048,17 @@ type goroutineSpawn struct {
 //
 // Takes vm (*VM) which runs the go statement.
 //
-// Returns the captured spawn.
-func newGoroutineSpawn(vm *VM) goroutineSpawn {
-	return goroutineSpawn{
-		ctx:                 vm.spawnCtx,
+// Returns *goroutineSpawn which is the captured spawn, owned by the new goroutine.
+func newGoroutineSpawn(vm *VM) *goroutineSpawn {
+	return &goroutineSpawn{
 		link:                vm.currentLink(),
 		globals:             vm.Globals,
 		symbols:             vm.symbols,
 		functions:           vm.functions,
 		rootFunction:        vm.rootFunction,
 		limits:              vm.Limits,
+		runGates:            vm.runGates,
+		spawnGates:          vm.gatesForChildGoroutines(),
 		usesTypedSliceBanks: vm.usesTypedSliceBanks,
 	}
 }
@@ -988,17 +1077,17 @@ func launchCompiledGoroutine(vm *VM, closure reflect.Value, arguments []reflect.
 		vm.Limits.Tracker.AbandonGoroutine()
 		return opContinue
 	}
-	go runCompiledGoroutine(newGoroutineSpawn(vm), closureValue, arguments)
+	go runCompiledGoroutine(vm.spawnCtx, newGoroutineSpawn(vm), closureValue, arguments)
 	return opContinue
 }
 
 // runCompiledGoroutine is the goroutine body for a compiled closure. It sets up a child
 // VM, copies arguments into the initial frame, and runs to completion.
 //
-// Takes spawn (goroutineSpawn) which is what the spawning VM handed on.
+// Takes spawn (*goroutineSpawn) which is what the spawning VM handed on.
 // Takes closure (*RuntimeClosure) which is the compiled closure to execute.
 // Takes arguments ([]reflect.Value) which holds arguments for the initial frame.
-func runCompiledGoroutine(spawn goroutineSpawn, closure *RuntimeClosure, arguments []reflect.Value) {
+func runCompiledGoroutine(ctx context.Context, spawn *goroutineSpawn, closure *RuntimeClosure, arguments []reflect.Value) {
 	limits := spawn.limits
 	if limits.Tracker != nil {
 		limits.Tracker.MarkGoroutineStarted()
@@ -1006,20 +1095,35 @@ func runCompiledGoroutine(spawn goroutineSpawn, closure *RuntimeClosure, argumen
 	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			recordGoroutinePanicValue(spawn, recovered)
+			recordGoroutinePanicValue(ctx, spawn, recovered)
 		}
 	}()
-	childArena := GetRegisterArena()
-	childArena.MaxArenaBytes = limits.MaxArenaBytes
+	childArena := acquireRegisterArena(limits.abandonsArenas())
+	childArena.setRunBudget(limits.MaxArenaBytes)
 	childArena.MaxAllocSize = limits.MaxAllocSize
 	childArena.AttachBudgetTracker(limits.Tracker)
+	childArena.attachLicencePolicy(&limits)
+	childArena.licenceAlwaysShared = childArena.licensed
+	if arenaAuditEnabled {
+		childArena.auditAcquired("goroutine")
+	}
 	defer func() {
-		PutRegisterArena(childArena)
+		releaseRegisterArena(limits.abandonsArenas(), childArena, false)
 	}()
-	childVM := buildChildGoroutineVM(spawn, closure, childArena)
-	defer childVM.ReturnUnspentCostChunk()
+	childVM := buildChildGoroutineVM(ctx, spawn, closure, childArena)
+	if childArena.licensed {
+		childArena.setLicenceVM(childVM)
+	}
+	defer func() {
+		if !childVM.unwindLeaked.Load() {
+			childVM.ReturnUnspentCostChunk()
+		}
+	}()
 	defer childVM.FinishWatcher()
 	defer func() {
+		if childVM.unwindLeaked.Load() {
+			return
+		}
 		childVM.drainCallbackVMs()
 		childVM.CallStack = nil
 		childVM.AsmCallInfoTables = nil
@@ -1034,18 +1138,18 @@ func runCompiledGoroutine(spawn goroutineSpawn, closure *RuntimeClosure, argumen
 	}
 	placeReflectArgs(&childFrame.Registers, arguments, closure.Function.ParameterKinds, childArena)
 	if _, err := childVM.RunDispatchedGuarded(0); err != nil {
-		surfaceGoroutineRunError(spawn, childVM, err)
+		surfaceGoroutineRunError(ctx, spawn, childVM, err)
 	}
 }
 
 // recordGoroutinePanicValue logs a recovered panic from a goroutine and stores it on the
 // shared globals so the host can re-raise it deterministically.
 //
-// Takes spawn (goroutineSpawn) which owns the goroutinePanic slot.
+// Takes spawn (*goroutineSpawn) which owns the goroutinePanic slot.
 // Takes recovered (any) which is the non-nil recover() result.
-func recordGoroutinePanicValue(spawn goroutineSpawn, recovered any) {
+func recordGoroutinePanicValue(ctx context.Context, spawn *goroutineSpawn, recovered any) {
 	stack := string(debug.Stack())
-	goroutineLogger := logging.LoggerFrom(spawn.ctx)
+	_, goroutineLogger := logging.From(ctx)
 	goroutineLogger.Debug("Compiled goroutine panicked",
 		slog.String("panic", fmt.Sprintf("%v", recovered)),
 		slog.String("stack", stack))
@@ -1055,20 +1159,22 @@ func recordGoroutinePanicValue(spawn goroutineSpawn, recovered any) {
 // buildChildGoroutineVM initialises a child VM for a compiled closure, including its
 // arena and dispatch state.
 //
-// Takes spawn (goroutineSpawn) which provides the shared state and context.
+// Takes spawn (*goroutineSpawn) which provides the shared state.
 // Takes closure (*RuntimeClosure) which is the entry closure.
 // Takes childArena (*RegisterArena) which is the freshly-acquired arena pinned to the
 // child VM's lifetime.
 //
 // Returns the fully initialised child VM.
-func buildChildGoroutineVM(spawn goroutineSpawn, closure *RuntimeClosure, childArena *RegisterArena) *VM {
-	childVM := NewVM(spawn.ctx, spawn.globals, spawn.symbols)
+func buildChildGoroutineVM(ctx context.Context, spawn *goroutineSpawn, closure *RuntimeClosure, childArena *RegisterArena) *VM {
+	childVM := NewVM(ctx, spawn.globals, spawn.symbols)
 	childVM.link = spawn.link
 	childVM.debugKind = debugThreadGoroutine
 	childVM.goroutineID = spawn.globals.nextGoroutineID.Add(1) + rootGoroutineID
 	childVM.Limits = spawn.limits
 
 	childVM.hasGoroutines = true
+	childVM.runGates = spawn.runGates
+	childVM.spawnGates = spawn.spawnGates
 	if closure.RootFunction != nil {
 		childVM.functions = closure.RootFunction.Functions
 		childVM.rootFunction = closure.RootFunction
@@ -1092,22 +1198,34 @@ func buildChildGoroutineVM(spawn goroutineSpawn, closure *RuntimeClosure, childA
 }
 
 // surfaceGoroutineRunError reports dispatch failures through the shared goroutinePanic
-// slot. errGoexit terminates the goroutine without reporting a failure.
+// slot.
 //
-// Takes spawn (goroutineSpawn) which receives the panic record.
+// errGoexit terminates the goroutine without reporting a failure, and so does the
+// execution's cancellation once its main function returned, after which the goroutine has
+// run its pending defers. Only the unwind report of an unwinding left blocked in native
+// code is recorded then. The main-return test reads ctx, which the VM ran under, rather
+// than the VM's own context, which such an unwinding leaves replaced.
+//
+// Takes spawn (*goroutineSpawn) which receives the panic record.
 // Takes childVM (*VM) which holds the panicValue captured during dispatch.
 // Takes err (error) which is the dispatch error to surface.
-func surfaceGoroutineRunError(spawn goroutineSpawn, childVM *VM, err error) {
-	if errors.Is(err, fault.ErrGoexit) || errors.Is(err, fault.ErrDebuggerStop) || stoppedBecauseMainReturned(childVM.ctx, err) {
+func surfaceGoroutineRunError(ctx context.Context, spawn *goroutineSpawn, childVM *VM, err error) {
+	if errors.Is(err, fault.ErrGoexit) || errors.Is(err, fault.ErrDebuggerStop) {
 		return
 	}
-	goroutineLogger := logging.LoggerFrom(spawn.ctx)
-	goroutineLogger.Debug("Compiled goroutine returned error",
-		logging.ErrAttr(err))
 	panicValue := any(err)
-	if childVM.panicValue != nil {
+	if stoppedBecauseMainReturned(ctx, err) {
+		blocked, isBlocked := errors.AsType[*unwindBlockedError](err)
+		if !isBlocked {
+			return
+		}
+		panicValue = blocked
+	} else if childVM.panicValue != nil {
 		panicValue = childVM.panicValue
 	}
+	_, goroutineLogger := logging.From(ctx)
+	goroutineLogger.Debug("Compiled goroutine returned error",
+		logging.ErrAttr(err))
 	spawn.globals.recordGoroutinePanic(panicValue, "")
 }
 
@@ -1155,9 +1273,9 @@ func placeReflectArgs(regs *Registers, arguments []reflect.Value, parameterKinds
 // widening; may be nil for test/library entry without an active VM.
 func placeOneReflectArgument(regs *Registers, argument reflect.Value, kind isa.RegisterKind, dest int, arena *RegisterArena) {
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		regs.Ints[dest] = argument.Int()
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		regs.Floats[dest] = argument.Float()
 	case isa.RegisterString:
 		regs.Strings[dest] = argument.String()
@@ -1165,28 +1283,28 @@ func placeOneReflectArgument(regs *Registers, argument reflect.Value, kind isa.R
 		regs.General[dest] = argument
 	case isa.RegisterBool:
 		regs.Bools[dest] = argument.Bool()
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		regs.Uints[dest] = argument.Uint()
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		regs.Complex[dest] = argument.Complex()
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		regs.SlicesInt[dest] = unboxToTypedIntSlice(argument, arena)
-	case isa.RegisterSliceFloat:
-		if slice, ok := reflect.TypeAssert[[]float64](argument); ok {
+	case isa.RegisterSliceFloat64:
+		if slice, ok := typedSliceOf[float64](argument); ok {
 			regs.slicesFloat[dest] = slice
 		}
 	case isa.RegisterSliceString:
-		if slice, ok := reflect.TypeAssert[[]string](argument); ok {
+		if slice, ok := typedSliceOf[string](argument); ok {
 			regs.slicesString[dest] = slice
 		}
 	case isa.RegisterSliceBool:
-		if slice, ok := reflect.TypeAssert[[]bool](argument); ok {
+		if slice, ok := typedSliceOf[bool](argument); ok {
 			regs.slicesBool[dest] = slice
 		}
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		regs.slicesUint[dest] = unboxToTypedUintSlice(argument, arena)
 	case isa.RegisterSliceByte:
-		if slice, ok := reflect.TypeAssert[[]byte](argument); ok {
+		if slice, ok := typedSliceOf[byte](argument); ok {
 			regs.slicesByte[dest] = slice
 		}
 	default:
@@ -1194,27 +1312,40 @@ func placeOneReflectArgument(regs *Registers, argument reflect.Value, kind isa.R
 }
 
 // coerceNativeGoroutineArgs adjusts arguments to match the native function's parameter
-// types, mirroring the coercion done by buildReflectArgs for regular native calls.
+// types, mirroring the coercion done by buildReflectArgs for regular native calls, and
+// prepares them for the native's sink.
 //
 // Takes vm (*VM) which provides context for closure coercion.
 // Takes closure (reflect.Value) which is the native function to inspect.
 // Takes arguments ([]reflect.Value) which are the arguments to coerce in place.
-func coerceNativeGoroutineArgs(vm *VM, closure reflect.Value, arguments []reflect.Value) {
+//
+// Returns error which wraps fault.ErrUnsupportedFunctionArgument when a function value's
+// signature cannot be bridged to its parameter's, or
+// fault.ErrUnsupportedInterfaceArgument when an encoder or decoder would reach a script
+// method no adapter carries.
+func coerceNativeGoroutineArgs(vm *VM, closure reflect.Value, arguments []reflect.Value) error {
 	functionType := closure.Type()
 	for i := range arguments {
 		if i < functionType.NumIn() {
 			arguments[i] = coerceReflectArgument(vm, arguments[i], functionType.In(i), argumentTypeContext{staticTypeName: "", staticTypeString: "", skipInterfaceAdapter: false, keepClosures: false})
 		}
 	}
+	sink, callee := vm.calleeAnySink(closure)
+	prepareLooseNativeArguments(vm, sink, functionType, arguments, false)
+	if err := checkNativeFunctionArguments(closure, arguments, false); err != nil {
+		return err
+	}
+	return checkAnySinkArguments(vm, sink, closure, callee, arguments, false)
 }
 
 // launchNativeGoroutine spawns a goroutine that calls a native function via reflect. A
 // panic is recorded on the shared goroutinePanic slot.
 //
-// Takes spawn (goroutineSpawn) which carries the goroutine limit, tracker and panic slot.
+// Takes spawn (*goroutineSpawn) which carries the goroutine limit, tracker and panic
+// slot.
 // Takes reflectedFunction (reflect.Value) which is the native function to call.
 // Takes arguments ([]reflect.Value) which holds the arguments to pass.
-func launchNativeGoroutine(spawn goroutineSpawn, reflectedFunction reflect.Value, arguments []reflect.Value) {
+func launchNativeGoroutine(ctx context.Context, spawn *goroutineSpawn, reflectedFunction reflect.Value, arguments []reflect.Value) {
 	go func() {
 		if spawn.limits.Tracker != nil {
 			spawn.limits.Tracker.MarkGoroutineStarted()
@@ -1222,7 +1353,7 @@ func launchNativeGoroutine(spawn goroutineSpawn, reflectedFunction reflect.Value
 		}
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				recordGoroutinePanicValue(spawn, recovered)
+				recordGoroutinePanicValue(ctx, spawn, recovered)
 			}
 		}()
 		reflectedFunction.Call(arguments)

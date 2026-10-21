@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64) && !race
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64) && !race
 
 package sandboxlinux
 
@@ -50,7 +50,7 @@ func TestNativeServiceRecoveryQuiesce(t *testing.T) {
 func exerciseNativeServiceRecovery(t *testing.T, releaseStage string) {
 	t.Helper()
 	parent := sandboxtest.CgroupParent(t)
-	aggregate, err := newGroup(parent, Limits{})
+	aggregate, err := newGroup(t.Context(), parent, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func exerciseNativeServiceRecovery(t *testing.T, releaseStage string) {
 		t.Fatal(err)
 	}
 	storage := checkpointedOwnerStorage(t)
-	storage.Binding, err = RecoveryHostBinding(context.Background(), [sha256.Size]byte{1})
+	storage.Binding, err = RecoveryHostBinding(t.Context(), [sha256.Size]byte{1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func exerciseNativeServiceRecovery(t *testing.T, releaseStage string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestNativeServiceRecoveryQuiesceChild$")
 	filesystemRoot := t.TempDir()
@@ -109,7 +109,7 @@ func exerciseNativeServiceRecovery(t *testing.T, releaseStage string) {
 		t.Fatal(err)
 	}
 	defer func() {
-		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
+		cleanup, stop := context.WithTimeout(t.Context(), 5*time.Second)
 		defer stop()
 		if claim.pending {
 			_ = claim.Quiesce(cleanup, root)
@@ -323,18 +323,18 @@ func TestNativeServiceRecoveryQuiesceChild(t *testing.T) {
 	if err := json.Unmarshal([]byte(os.Getenv("PIPIT_TEST_RECOVERY_SERVICE_STORAGE")), &storage); err != nil {
 		t.Fatal(err)
 	}
-	group, err := newServiceGroup(parent, Limits{}, testTenant)
+	group, err := newServiceGroup(t.Context(), parent, Limits{}, testTenant)
 	if err != nil {
 		t.Fatal(err)
 	}
-	storage.Binding, err = RecoveryHostBinding(context.Background(), [sha256.Size]byte{1})
+	storage.Binding, err = RecoveryHostBinding(t.Context(), [sha256.Size]byte{1})
 	if err != nil {
 		t.Fatal(err)
 	}
 	config := originalRecoveryFixtureConfig(t, &storage, group, parent)
 	owner := persistOriginalFilesystemRecovery(t, storage, group, config)
-	defer owner.Close()
-	child, err := group.newChild(Limits{})
+	defer owner.Close(t.Context())
+	child, err := group.newChild(t.Context(), Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -145,8 +145,8 @@ func (c *Compiler) recycleDeadDeclarations(
 // Dead spilled locals must be dropped without recycling because their Register field is
 // zero and does not identify their storage.
 //
-// Takes declaration (activeDeclaration) which is the declaration whose retention is
-// being decided.
+// Takes declaration (activeDeclaration) which is the declaration whose retention is being
+// decided.
 // Takes lastUseIndices (map[string]int) which maps each name to the index of its last
 // use.
 // Takes currentIndex (int) which is the index of the statement just compiled.

@@ -33,7 +33,7 @@ import (
 func TestCanInlineSelfRecursiveRefusesAlreadyUnrolled(t *testing.T) {
 	t.Parallel()
 	callee := &program.CompiledFunction{
-		Body: []isa.Instruction{mk(isa.OpAddInt, 0, 0, 0)},
+		Body: []isa.Instruction{mk(isa.OpAddInt64, 0, 0, 0)},
 	}
 	site := &program.CallSite{RecursionUnrolled: true}
 	require.Equal(t, program.InlineRefusalAlreadyUnrolled,
@@ -43,7 +43,7 @@ func TestCanInlineSelfRecursiveRefusesAlreadyUnrolled(t *testing.T) {
 func TestCanInlineSelfRecursiveRefusesInLoop(t *testing.T) {
 	t.Parallel()
 	callee := &program.CompiledFunction{
-		Body: []isa.Instruction{mk(isa.OpAddInt, 0, 0, 0)},
+		Body: []isa.Instruction{mk(isa.OpAddInt64, 0, 0, 0)},
 	}
 	site := &program.CallSite{}
 	require.Equal(t, program.InlineRefusalSelfInLoop,
@@ -54,7 +54,7 @@ func TestCanInlineSelfRecursiveRefusesHairyCallee(t *testing.T) {
 	t.Parallel()
 	body := make([]isa.Instruction, inline.SelfUnrollBudget+5)
 	for i := range body {
-		body[i] = mk(isa.OpAddInt, 0, 0, 0)
+		body[i] = mk(isa.OpAddInt64, 0, 0, 0)
 	}
 	callee := &program.CompiledFunction{Body: body}
 	site := &program.CallSite{}
@@ -66,7 +66,7 @@ func TestCanInlineSelfRecursiveRefusesTailCallInCallee(t *testing.T) {
 	t.Parallel()
 	callee := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			mk(isa.OpAddInt, 0, 0, 0),
+			mk(isa.OpAddInt64, 0, 0, 0),
 			isa.NewTier1Instruction(isa.SubOpTailCall, 0, 0),
 		},
 	}
@@ -80,8 +80,8 @@ func TestCanInlineSelfRecursiveAcceptsEligibleCallee(t *testing.T) {
 	t.Parallel()
 	callee := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			mk(isa.OpAddInt, 0, 0, 0),
-			mk(isa.OpMulInt, 1, 0, 0),
+			mk(isa.OpAddInt64, 0, 0, 0),
+			mk(isa.OpMultiplyInt64, 1, 0, 0),
 		},
 	}
 	site := &program.CallSite{}

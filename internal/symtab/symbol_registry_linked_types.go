@@ -19,12 +19,14 @@
 package symtab
 
 import (
+	"context"
 	"go/types"
 	"log/slog"
 	"reflect"
 	"strconv"
 
 	"pipit.sh/pipit/internal/link"
+	"pipit.sh/pipit/internal/logging"
 )
 
 const (
@@ -127,10 +129,12 @@ func (r *SymbolRegistry) NativeBackedReflectType(packagePath, typeName string) (
 // Takes converter (*reflectTypeConverter) which converts the erased method signatures'
 // non-parametric types.
 func (*SymbolRegistry) registerNativeBackedGenericTypes(
+	ctx context.Context,
 	pkg *types.Package,
 	exports map[string]reflect.Value,
 	converter *reflectTypeConverter,
 ) {
+	_, logger := logging.From(ctx)
 	scope := pkg.Scope()
 	for name, value := range exports {
 		if value.Type() != nativeBackedGenericTypeReflectType {
@@ -139,7 +143,7 @@ func (*SymbolRegistry) registerNativeBackedGenericTypes(
 		native, ok := reflect.TypeAssert[link.NativeBackedGenericType](value)
 		if !ok || native.TypeArgCount <= 0 || native.TypeArgCount > MaxLinkedTypeArgCount ||
 			native.ErasedType == nil || len(native.ErasureArgs) != native.TypeArgCount {
-			slog.Default().Warn("Skipping malformed NativeBackedGenericType sentinel",
+			logger.Warn("Skipping malformed NativeBackedGenericType sentinel",
 				slog.String(logFieldPackage, pkg.Path()),
 				slog.String(logFieldName, name),
 				slog.Int("type_arg_count", native.TypeArgCount),
@@ -147,13 +151,13 @@ func (*SymbolRegistry) registerNativeBackedGenericTypes(
 			continue
 		}
 		if native.ErasedType.Kind() != reflect.Struct {
-			slog.Default().Warn("Skipping NativeBackedGenericType sentinel with non-struct erased type",
+			logger.Warn("Skipping NativeBackedGenericType sentinel with non-struct erased type",
 				slog.String(logFieldPackage, pkg.Path()),
 				slog.String(logFieldName, name))
 			continue
 		}
 		if scope.Lookup(name) != nil {
-			slog.Default().Warn("Skipping already-registered name",
+			logger.Warn("Skipping already-registered name",
 				slog.String(logFieldPackage, pkg.Path()),
 				slog.String(logFieldName, name))
 			continue
@@ -178,9 +182,11 @@ func (*SymbolRegistry) registerNativeBackedGenericTypes(
 // Takes pkg (*types.Package) which is the synthesised package.
 // Takes exports (map[string]reflect.Value) which is the export table being synthesised.
 func (r *SymbolRegistry) registerLinkedGenericTypes(
+	ctx context.Context,
 	pkg *types.Package,
 	exports map[string]reflect.Value,
 ) {
+	_, logger := logging.From(ctx)
 	scope := pkg.Scope()
 	for name, value := range exports {
 		if value.Type() != linkedGenericTypeReflectType {
@@ -188,14 +194,14 @@ func (r *SymbolRegistry) registerLinkedGenericTypes(
 		}
 		linked, ok := reflect.TypeAssert[link.LinkedGenericType](value)
 		if !ok || linked.TypeArgCount <= 0 {
-			slog.Default().Warn("Skipping malformed LinkedGenericType sentinel",
+			logger.Warn("Skipping malformed LinkedGenericType sentinel",
 				slog.String(logFieldPackage, pkg.Path()),
 				slog.String(logFieldName, name),
 				slog.Int("type_arg_count", linked.TypeArgCount))
 			continue
 		}
 		if linked.TypeArgCount > MaxLinkedTypeArgCount {
-			slog.Default().Warn("Skipping generic with too many type parameters",
+			logger.Warn("Skipping generic with too many type parameters",
 				slog.String(logFieldPackage, pkg.Path()),
 				slog.String(logFieldName, name),
 				slog.Int("type_arg_count", linked.TypeArgCount),
@@ -203,7 +209,7 @@ func (r *SymbolRegistry) registerLinkedGenericTypes(
 			continue
 		}
 		if scope.Lookup(name) != nil {
-			slog.Default().Warn("Skipping already-registered name",
+			logger.Warn("Skipping already-registered name",
 				slog.String(logFieldPackage, pkg.Path()),
 				slog.String(logFieldName, name))
 			continue

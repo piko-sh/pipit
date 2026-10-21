@@ -21,6 +21,7 @@ package passes
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
@@ -95,14 +96,71 @@ type fieldClassMemoKey struct {
 	parentClass program.AliasClass
 }
 
-// RunPointerAliasAnalysis populates compiledFunction.AliasInfo with the per-PC alias
-// environment computed by a worklist forward dataflow analysis. Sound by construction:
-// every transfer function over-approximates the runtime behaviour, and merge-points
-// conservatively widen to wild when predecessors disagree.
+// controlFlowEdge is one way control passes from a word to another.
+type controlFlowEdge struct {
+	// from is the word control leaves.
+	from int
+
+	// to is the word control reaches.
+	to int
+}
+
+// controlFlowEdges holds a body's fall-through edges, ascending, and then its jump edges,
+// ascending by source.
+type controlFlowEdges struct {
+	// falls holds the fall-through edges.
+	falls []controlFlowEdge
+
+	// jumps holds the jump edges.
+	jumps []controlFlowEdge
+}
+
+// controlFlowLists holds a body's control flow as adjacency lists in both directions.
+type controlFlowLists struct {
+	// successors lists, per word, the words control can reach in one step.
+	successors [][]int
+
+	// predecessors lists, per word, the words control can arrive from in one step.
+	predecessors [][]int
+}
+
+// lists groups the edges into one list per word.
 //
-// Skipped on empty bodies. Skipped silently when the body is too large to analyse
-// efficiently (cap at 2000 instructions; very long functions are rare and the analysis
-// cost grows superlinearly).
+// Takes words (int) which is the number of words in the body.
+// Takes ends (func(controlFlowEdge) (int, int)) which names the word an edge is listed
+// under and the word listed there.
+//
+// Returns [][]int which holds, per word, its fall-through edge and then its jump edges,
+// and nil for a word with neither.
+func (edges controlFlowEdges) lists(words int, ends func(controlFlowEdge) (int, int)) [][]int {
+	counts := make([]int, words)
+	for _, group := range [][]controlFlowEdge{edges.falls, edges.jumps} {
+		for _, edge := range group {
+			under, _ := ends(edge)
+			counts[under]++
+		}
+	}
+	backing := make([]int, len(edges.falls)+len(edges.jumps))
+	lists := make([][]int, words)
+	offset := 0
+	for word, count := range counts {
+		if count != 0 {
+			lists[word] = backing[offset : offset : offset+count]
+			offset += count
+		}
+	}
+	for _, group := range [][]controlFlowEdge{edges.falls, edges.jumps} {
+		for _, edge := range group {
+			under, listed := ends(edge)
+			lists[under] = append(lists[under], listed)
+		}
+	}
+	return lists
+}
+
+// RunPointerAliasAnalysis computes the per-PC alias environment.
+//
+// Bodies longer than 2000 instructions are skipped.
 //
 // Takes compiledFunction (*CompiledFunction) whose body and parameter registers the
 // analysis inspects.
@@ -120,8 +178,11 @@ func RunPointerAliasAnalysis(ctx context.Context, compiledFunction *program.Comp
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("runPointerAliasAnalysis cancelled: %w", err)
 	}
-	info := &program.PointerAliasInfo{
-		PerPCEnv: make([]program.AliasEnvironment, len(body)),
+	width := aliasTrackedWidth(compiledFunction)
+	info := program.NewPointerAliasInfo(len(body), width)
+	if width == 0 {
+		compiledFunction.AliasInfo = info
+		return nil
 	}
 	minter := aliasClassMinter{next: 0}
 	memo := newFieldClassMemo()
@@ -147,14 +208,40 @@ func RunPointerAliasAnalysis(ctx context.Context, compiledFunction *program.Comp
 		worklist = worklist[:len(worklist)-1]
 		enqueued[pc] = false
 		newEnv := applyAliasTransfer(compiledFunction, pc, new(mergeIncomingAliasEnvs(info, predecessors[pc], &entryEnv, pc == 0)), &minter, memo)
-		if aliasEnvironmentEqual(&info.PerPCEnv[pc], &newEnv) {
+		stored := info.ClassesAt(pc)
+		if slices.Equal(stored, newEnv.Class[:len(stored)]) {
 			continue
 		}
-		info.PerPCEnv[pc] = newEnv
+		copy(stored, newEnv.Class[:])
 		worklist = enqueueAliasSuccessors(successors[pc], len(body), enqueued, worklist)
 	}
 	compiledFunction.AliasInfo = info
 	return nil
+}
+
+// aliasTrackedWidth returns how many general-bank registers, counted from register zero,
+// the analysis can give a class other than wild.
+//
+// Those are the registers the entry environment seeds and the ones some instruction
+// writes. A register past them is wild at every PC, so an environment that stops there
+// answers every query as one as wide as the bank would.
+//
+// Takes compiledFunction (*program.CompiledFunction) whose parameters and body are read.
+//
+// Returns int which is the number of registers worth tracking.
+func aliasTrackedWidth(compiledFunction *program.CompiledFunction) int {
+	width := 0
+	for index, kind := range compiledFunction.ParameterKinds {
+		if kind == isa.RegisterGeneral && index < program.GeneralAliasBankSize {
+			width = index + 1
+		}
+	}
+	for _, inst := range compiledFunction.Body {
+		if destination, ok := aliasGeneralDestRegister(inst); ok {
+			width = max(width, int(destination)+1)
+		}
+	}
+	return width
 }
 
 // releaseAliasInfo drops the per-PC alias environment once its last consumer has run.
@@ -219,52 +306,44 @@ func seedEntryEnvironment(compiledFunction *program.CompiledFunction, minter *al
 // buildAliasPredecessors returns, per PC, the list of PCs whose execution can immediately
 // precede this PC.
 //
-// Predecessors include the linear fall-through (PC-1 when that instruction is not an
-// unconditional terminator) plus any in-body branch source whose target equals this PC.
-//
 // Takes body ([]instruction) which is the function body whose control-flow predecessors
 // are being computed.
 //
 // Returns a per-PC slice of predecessor PCs.
 func buildAliasPredecessors(body []isa.Instruction) [][]int {
-	predecessors := make([][]int, len(body))
-	for pc := 1; pc < len(body); pc++ {
-		if isLinearFallThroughFrom(body[pc-1]) {
-			predecessors[pc] = append(predecessors[pc], pc-1)
+	edges := controlFlowEdgesOf(body)
+	return edges.lists(len(body), func(edge controlFlowEdge) (int, int) { return edge.to, edge.from })
+}
+
+// controlFlowEdgesOf decodes every edge of body once.
+//
+// Takes body ([]isa.Instruction) which is the instruction stream.
+//
+// Returns controlFlowEdges which holds the edges whose target lies in the body.
+func controlFlowEdgesOf(body []isa.Instruction) controlFlowEdges {
+	edges := controlFlowEdges{falls: make([]controlFlowEdge, 0, len(body)), jumps: nil}
+	for pc, inst := range body {
+		if pc+1 < len(body) && isLinearFallThroughFrom(inst) {
+			edges.falls = append(edges.falls, controlFlowEdge{from: pc, to: pc + 1})
 		}
-	}
-	for pc := range body {
 		target, isJump := program.JumpTargetAt(body, pc)
-		if !isJump || target < 0 || target >= len(body) {
-			continue
+		if isJump && target >= 0 && target < len(body) {
+			edges.jumps = append(edges.jumps, controlFlowEdge{from: pc, to: target})
 		}
-		predecessors[target] = append(predecessors[target], pc)
 	}
-	return predecessors
+	return edges
 }
 
 // buildAliasSuccessors returns, per PC, the list of PCs whose execution can immediately
 // follow this PC.
-//
-// Mirrors buildAliasPredecessors and is used by the worklist to propagate updates.
 //
 // Takes body ([]instruction) which is the function body whose control-flow successors are
 // being computed.
 //
 // Returns a per-PC slice of successor PCs.
 func buildAliasSuccessors(body []isa.Instruction) [][]int {
-	successors := make([][]int, len(body))
-	for pc, inst := range body {
-		if isLinearFallThroughFrom(inst) && pc+1 < len(body) {
-			successors[pc] = append(successors[pc], pc+1)
-		}
-		target, isJump := program.JumpTargetAt(body, pc)
-		if !isJump || target < 0 || target >= len(body) {
-			continue
-		}
-		successors[pc] = append(successors[pc], target)
-	}
-	return successors
+	edges := controlFlowEdgesOf(body)
+	return edges.lists(len(body), func(edge controlFlowEdge) (int, int) { return edge.from, edge.to })
 }
 
 // mergeIncomingAliasEnvs combines predecessor post-environments into the pre-environment
@@ -290,49 +369,32 @@ func mergeIncomingAliasEnvs(info *program.PointerAliasInfo, preds []int, entry *
 		first = false
 	}
 	for _, pred := range preds {
-		if pred < 0 || pred >= len(info.PerPCEnv) {
+		classes := info.ClassesAt(pred)
+		if classes == nil {
 			continue
 		}
-		predEnv := &info.PerPCEnv[pred]
 		if first {
-			merged = *predEnv
+			copy(merged.Class[:], classes)
 			first = false
 			continue
 		}
-		mergeAliasEnvironmentInto(&merged, predEnv)
+		mergeAliasClassesInto(&merged, classes)
 	}
 	return merged
 }
 
-// mergeAliasEnvironmentInto widens destination to the least-upper-bound of destination
-// and source.
-//
-// For each register: if classes match, keep; otherwise widen to wild.
+// mergeAliasClassesInto widens destination to the least-upper-bound of destination and
+// source.
 //
 // Takes destination (*AliasEnvironment) which is the environment widened in place.
-// Takes source (*AliasEnvironment) which is the environment merged into destination.
-func mergeAliasEnvironmentInto(destination *program.AliasEnvironment, source *program.AliasEnvironment) {
-	for index := range destination.Class {
-		if destination.Class[index] != source.Class[index] {
+// Takes source ([]AliasClass) which holds the classes of the tracked registers merged
+// into destination.
+func mergeAliasClassesInto(destination *program.AliasEnvironment, source []program.AliasClass) {
+	for index, class := range source {
+		if destination.Class[index] != class {
 			destination.Class[index] = program.AliasClassWild
 		}
 	}
-}
-
-// aliasEnvironmentEqual reports whether two environments hold identical classes in every
-// register slot.
-//
-// Takes a (*AliasEnvironment) which is the first environment.
-// Takes b (*AliasEnvironment) which is the second environment.
-//
-// Returns true when every register slot agrees; false otherwise.
-func aliasEnvironmentEqual(a, b *program.AliasEnvironment) bool {
-	for index := range a.Class {
-		if a.Class[index] != b.Class[index] {
-			return false
-		}
-	}
-	return true
 }
 
 // applyAliasTransfer computes the post-environment for body[pc] given the merged
@@ -404,18 +466,18 @@ func clearAllGeneralAliasClasses(env *program.AliasEnvironment) {
 // general register; (0, false) otherwise.
 func aliasGeneralDestRegister(inst isa.Instruction) (uint8, bool) {
 	switch inst.Op {
-	case isa.OpAllocIndirect, isa.OpAddr, isa.OpLoadGeneralConst,
-		isa.OpGetStructFieldGeneral, isa.OpGetStructFieldRawPointerT0,
-		isa.OpGetField, isa.OpMoveGeneral, isa.OpIndex, isa.OpMakeSlice,
-		isa.OpGetStructFieldIndexGeneral,
-		isa.OpMakeClosure, isa.OpPackInterface, isa.OpUnpackInterface:
+	case isa.OpAllocateIndirect, isa.OpAddress, isa.OpLoadGeneralConstant,
+		isa.OpGetStructFieldGeneral, isa.OpGetStructFieldRawPointer,
+		isa.OpGetField, isa.OpMoveGeneral, isa.OpGetElement, isa.OpMakeSlice,
+		isa.OpGetStructFieldElementGeneral,
+		isa.OpMakeClosure, isa.OpBoxAsInterface, isa.OpUnboxFromInterface:
 		return inst.A, true
 	default:
 	}
 	if inst.Op == isa.OpDrillTier1 {
 		switch isa.SubOpcode(inst.A) {
-		case isa.SubOpMoveIntToGeneral, isa.SubOpMoveFloatToGeneral,
-			isa.SubOpMoveStringToGeneral:
+		case isa.SubOpBoxInt64, isa.SubOpBoxFloat64,
+			isa.SubOpBoxString:
 			return inst.B, true
 		default:
 		}
@@ -441,11 +503,11 @@ func aliasGeneralDestRegister(inst isa.Instruction) (uint8, bool) {
 // Returns the class assigned to inst's destination after the write.
 func computeAliasClassForWrite(env *program.AliasEnvironment, pc int, inst isa.Instruction, minter *aliasClassMinter, memo *fieldClassMemo) program.AliasClass {
 	switch inst.Op {
-	case isa.OpAllocIndirect, isa.OpAddr, isa.OpLoadGeneralConst, isa.OpGetField:
+	case isa.OpAllocateIndirect, isa.OpAddress, isa.OpLoadGeneralConstant, isa.OpGetField:
 		return memo.freshForPC(pc, minter)
 	case isa.OpMoveGeneral:
 		return env.Class[inst.B]
-	case isa.OpGetStructFieldGeneral, isa.OpGetStructFieldRawPointerT0:
+	case isa.OpGetStructFieldGeneral, isa.OpGetStructFieldRawPointer:
 		return deriveFieldAliasClass(env.Class[inst.B], pc, minter, memo)
 	default:
 	}

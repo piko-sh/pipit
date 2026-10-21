@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerSubIntConst sets ints[A] = ints[B] - intConstants[C].
-TEXT ·handlerSubIntConst(SB), NOSPLIT|NOFRAME, $0
+// handlerSubtractInt64Constant sets ints[A] = ints[B] - intConstants[C].
+TEXT ·handlerSubtractInt64Constant(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -38,8 +38,8 @@ TEXT ·handlerSubIntConst(SB), NOSPLIT|NOFRAME, $0
 	MOVD R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerAddIntConst sets ints[A] = ints[B] + intConstants[C].
-TEXT ·handlerAddIntConst(SB), NOSPLIT|NOFRAME, $0
+// handlerAddInt64Constant sets ints[A] = ints[B] + intConstants[C].
+TEXT ·handlerAddInt64Constant(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -51,8 +51,8 @@ TEXT ·handlerAddIntConst(SB), NOSPLIT|NOFRAME, $0
 	MOVD R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerMulIntConst sets ints[A] = ints[B] * intConstants[C].
-TEXT ·handlerMulIntConst(SB), NOSPLIT|NOFRAME, $0
+// handlerMultiplyInt64Constant sets ints[A] = ints[B] * intConstants[C].
+TEXT ·handlerMultiplyInt64Constant(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -64,8 +64,8 @@ TEXT ·handlerMulIntConst(SB), NOSPLIT|NOFRAME, $0
 	MOVD R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerAddIntJump sets ints[A] = ints[B] + intConstants[C] and unconditionally jumps.
-TEXT ·handlerAddIntJump(SB), NOSPLIT|NOFRAME, $0
+// handlerAddInt64ConstantThenJump sets ints[A] = ints[B] + intConstants[C] and unconditionally jumps.
+TEXT ·handlerAddInt64ConstantThenJump(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -95,8 +95,27 @@ TEXT ·handlerAddIntJump(SB), NOSPLIT|NOFRAME, $0
 poll_ok:
 	DISPATCH_NEXT()
 
-// handlerIncIntJumpLt increments ints[B] and jumps if ints[B] < ints[C] in tier-1 form (subOpIncIntJumpLt).
-TEXT ·handlerIncIntJumpLt(SB), NOSPLIT|NOFRAME, $0
+// handlerMultiplyInt64ConstantThenAdd sets ints[A] = ints[extension.A] + ints[B] * intConstants[C].
+TEXT ·handlerMultiplyInt64ConstantThenAdd(SB), NOSPLIT|NOFRAME, $0
+	LSR  $8, R0, R3
+	AND  $0xFF, R3, R3
+	LSR  $16, R0, R4
+	AND  $0xFF, R4, R4
+	LSR  $24, R0, R5
+	MOVD (R23)(R4<<3), R6
+	MOVD (R26)(R5<<3), R7
+	MUL  R7, R6, R6
+	MOVWU (R22)(R20<<2), R4
+	ADD  $1, R20, R20
+	LSR  $8, R4, R4
+	AND  $0xFF, R4, R4
+	MOVD (R23)(R4<<3), R7
+	ADD  R7, R6, R6
+	MOVD R6, (R23)(R3<<3)
+	DISPATCH_NEXT()
+
+// handlerIncrementInt64ThenJumpIfLessThan increments ints[B] and jumps if ints[B] < ints[C] in tier-1 form (subOpIncrementInt64ThenJumpIfLessThan).
+TEXT ·handlerIncrementInt64ThenJumpIfLessThan(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -106,6 +125,82 @@ TEXT ·handlerIncIntJumpLt(SB), NOSPLIT|NOFRAME, $0
 	MOVD (R23)(R3<<3), R6
 	MOVD (R23)(R4<<3), R7
 	CMP  R7, R6
+	BLT  jump
+	ADD  $1, R20, R20
+	B    dispatch
+
+jump:
+	MOVWU (R22)(R20<<2), R0
+	ADD   $1, R20, R20
+	LSR   $8, R0, R3
+	AND   $0xFFFF, R3, R3
+	LSL   $48, R3, R3
+	ASR   $48, R3, R3
+	ADD  R3, R20, R20
+	MOVD CTX_POLL_BUDGET(R19), R0
+	SUB  $1, R0, R0
+	MOVD R0, CTX_POLL_BUDGET(R19)
+	CMP  $0, R0
+	BGT  poll_ok
+	MOVD R20, CTX_PC(R19)
+	MOVD $EXIT_POLL, R0
+	MOVD R0, CTX_EXIT_REASON(R19)
+	MOVD R20, CTX_EXIT_PC(R19)
+	RET  
+poll_ok:
+
+dispatch:
+	DISPATCH_NEXT()
+
+// handlerIncrementInt64ThenJumpIfLessOrEqual increments ints[B] and jumps if ints[B] <= ints[C].
+TEXT ·handlerIncrementInt64ThenJumpIfLessOrEqual(SB), NOSPLIT|NOFRAME, $0
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	LSR  $24, R0, R4
+	MOVD (R23)(R3<<3), R5
+	ADD  $1, R5, R5
+	MOVD R5, (R23)(R3<<3)
+	MOVD (R23)(R3<<3), R6
+	MOVD (R23)(R4<<3), R7
+	CMP  R7, R6
+	BLE  jump
+	ADD  $1, R20, R20
+	B    dispatch
+
+jump:
+	MOVWU (R22)(R20<<2), R0
+	ADD   $1, R20, R20
+	LSR   $8, R0, R3
+	AND   $0xFFFF, R3, R3
+	LSL   $48, R3, R3
+	ASR   $48, R3, R3
+	ADD  R3, R20, R20
+	MOVD CTX_POLL_BUDGET(R19), R0
+	SUB  $1, R0, R0
+	MOVD R0, CTX_POLL_BUDGET(R19)
+	CMP  $0, R0
+	BGT  poll_ok
+	MOVD R20, CTX_PC(R19)
+	MOVD $EXIT_POLL, R0
+	MOVD R0, CTX_EXIT_REASON(R19)
+	MOVD R20, CTX_EXIT_PC(R19)
+	RET  
+poll_ok:
+
+dispatch:
+	DISPATCH_NEXT()
+
+// handlerIncrementInt64ThenJumpIfLessThanConstant increments ints[B] and jumps if ints[B] < intConstants[C] in tier-1 form (subOpIncrementInt64ThenJumpIfLessThanConstant).
+TEXT ·handlerIncrementInt64ThenJumpIfLessThanConstant(SB), NOSPLIT|NOFRAME, $0
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	LSR  $24, R0, R4
+	MOVD (R23)(R3<<3), R5
+	ADD  $1, R5, R5
+	MOVD R5, (R23)(R3<<3)
+	MOVD (R23)(R3<<3), R5
+	MOVD (R26)(R4<<3), R6
+	CMP  R6, R5
 	BLT  jump
 	ADD  $1, R20, R20
 	B    dispatch

@@ -69,8 +69,8 @@ func TestGenericMultiReturnCallsSpecialise(t *testing.T) {
 		wantResult    isa.RegisterKind
 		unwantedNames []string
 	}{
-		{name: "define", caller: "main", wantCallee: "pick[spec:int]", wantResult: isa.RegisterInt, unwantedNames: []string{"pick", "forward"}},
-		{name: "forwarding return", caller: "forward[spec:int64]", wantCallee: "pick[spec:int64]", wantResult: isa.RegisterInt, unwantedNames: []string{"pick"}},
+		{name: "define", caller: "main", wantCallee: "pick[spec:int]", wantResult: isa.RegisterInt64, unwantedNames: []string{"pick", "forward"}},
+		{name: "forwarding return", caller: "forward[spec:int64]", wantCallee: "pick[spec:int64]", wantResult: isa.RegisterInt64, unwantedNames: []string{"pick"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

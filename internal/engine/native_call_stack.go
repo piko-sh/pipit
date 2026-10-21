@@ -116,6 +116,51 @@ type pipitFunc struct {
 	entry uintptr
 }
 
+// pipitFrames stands in for *runtime.Frames: the iterator runtime.CallersFrames returns.
+type pipitFrames struct {
+	// frames is the decoded frame list.
+	frames []runtime.Frame
+
+	// index is the next frame Next hands out.
+	index int
+}
+
+// callStackRegistry hands out stable synthesised program counters: every compiled
+// function seen on a stack gets one registry index for the life of the program, so a
+// counter taken by runtime.Caller decodes again in runtime.FuncForPC or
+// runtime.CallersFrames.
+type callStackRegistry struct {
+	// byFunction finds a compiled function's entry.
+	byFunction map[*program.CompiledFunction]*pipitFunc
+
+	// byName finds a runtime pseudo frame's entry.
+	byName map[string]*pipitFunc
+
+	// byHandle finds the entry behind a *runtime.Func handle a script holds.
+	byHandle map[uintptr]*pipitFunc
+
+	// functions is indexed by registry index.
+	functions []*pipitFunc
+
+	// mu guards the maps and slice: goroutine VMs share one registry.
+	mu sync.Mutex
+}
+
+// stackFrame is one interpreted frame as the inspection intrinsics report it.
+type stackFrame struct {
+	// function is the frame's registry entry.
+	function *pipitFunc
+
+	// file is the source file of the executing instruction, empty when unknown.
+	file string
+
+	// pc is the index of the executing instruction.
+	pc int
+
+	// line is the source line of the executing instruction, 0 when unknown.
+	line int
+}
+
 // Name returns the qualified function name, or "" for a nil receiver as runtime.Func
 // does.
 //
@@ -160,15 +205,6 @@ func (f *pipitFunc) pc(offset int) uintptr {
 	return f.entry | uintptr(offset)&callStackPCMask
 }
 
-// pipitFrames stands in for *runtime.Frames: the iterator runtime.CallersFrames returns.
-type pipitFrames struct {
-	// frames is the decoded frame list.
-	frames []runtime.Frame
-
-	// index is the next frame Next hands out.
-	index int
-}
-
 // Next returns the next frame and whether more follow, as runtime.Frames.Next does.
 //
 // Returns runtime.Frame which is the frame, zero when exhausted.
@@ -180,27 +216,6 @@ func (f *pipitFrames) Next() (runtime.Frame, bool) {
 	frame := f.frames[f.index]
 	f.index++
 	return frame, f.index < len(f.frames)
-}
-
-// callStackRegistry hands out stable synthesised program counters: every compiled
-// function seen on a stack gets one registry index for the life of the program, so a
-// counter taken by runtime.Caller decodes again in runtime.FuncForPC or
-// runtime.CallersFrames.
-type callStackRegistry struct {
-	// byFunction finds a compiled function's entry.
-	byFunction map[*program.CompiledFunction]*pipitFunc
-
-	// byName finds a runtime pseudo frame's entry.
-	byName map[string]*pipitFunc
-
-	// byHandle finds the entry behind a *runtime.Func handle a script holds.
-	byHandle map[uintptr]*pipitFunc
-
-	// functions is indexed by registry index.
-	functions []*pipitFunc
-
-	// mu guards the maps and slice: goroutine VMs share one registry.
-	mu sync.Mutex
 }
 
 // newCallStackRegistry constructs an empty registry.
@@ -284,7 +299,7 @@ func (registry *callStackRegistry) register(function *program.CompiledFunction, 
 //
 // Safe for concurrent use; acquires registry.mu.
 func (registry *callStackRegistry) fromHandle(value reflect.Value) *pipitFunc {
-	key := handleAddress(value)
+	key := funcHandleAddress(value)
 	if key == 0 {
 		return nil
 	}
@@ -317,21 +332,6 @@ func (registry *callStackRegistry) lookup(pc uintptr) *pipitFunc {
 	return entry
 }
 
-// stackFrame is one interpreted frame as the inspection intrinsics report it.
-type stackFrame struct {
-	// function is the frame's registry entry.
-	function *pipitFunc
-
-	// file is the source file of the executing instruction, empty when unknown.
-	file string
-
-	// pc is the index of the executing instruction.
-	pc int
-
-	// line is the source line of the executing instruction, 0 when unknown.
-	line int
-}
-
 // panicStack renders the frames recorded when the current panic started, Go-style.
 //
 // Returns string which is empty when no panic is active.
@@ -357,7 +357,7 @@ func (vm *VM) interpretedFrames() []stackFrame {
 		if record, ok := vm.panicDeferRecord(index); ok {
 			frames = append(frames, stackFrame{function: vm.Globals.callStack.pseudo(pseudoFrameGopanic), file: "", pc: 0, line: 0})
 			for _, unwound := range record.unwound {
-				frames = append(frames, vm.stackFrameFor(unwound.function, unwound.pc))
+				frames = append(frames, vm.stackFrameFor(unwound.function, unwound.programCounter))
 			}
 		}
 	}

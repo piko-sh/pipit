@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxhost_test
 
@@ -43,7 +43,7 @@ func testIsolatedFilesystemRecoveryNative(t *testing.T, worker sandboxhost.Isola
 	config := publicRecoveryConfig(t, worker)
 	root := config.Roots[0].HostPath
 	before := filesystemNativeGroups(t, worker.LinuxCgroupParent)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	crashPublicFilesystemHost(t, ctx, config)
 	records := launchRecords(t, config.Worker.StateDirectory)
@@ -172,13 +172,13 @@ func TestPublicFilesystemRecoveryHostChild(t *testing.T) {
 	}
 	var config sandboxhost.IsolatedFilesystemConfig
 	require.NoError(t, json.Unmarshal([]byte(encoded), &config))
-	worker, err := sandboxhost.NewIsolatedFilesystemWorker(context.Background(), config)
+	worker, err := sandboxhost.NewIsolatedFilesystemWorker(t.Context(), config)
 	if err != nil && worker != nil {
-		_ = worker.Close()
+		_ = worker.Close(t.Context())
 	}
 	require.NoError(t, err)
-	defer worker.Close()
+	defer worker.Close(t.Context())
 	fmt.Println("ready")
-	_, err = worker.EvalFile("package main\nimport \"pipit/fs\"\nfunc main() { fs.Write(\"data\", \"file\", []byte(\"new\")); for {} }", "main")
+	_, err = worker.EvalFile(t.Context(), "package main\nimport \"pipit/fs\"\nfunc main() { fs.Write(\"data\", \"file\", []byte(\"new\")); for {} }", "main")
 	require.FailNow(t, "the original host is killed before it returns", "%v", err)
 }

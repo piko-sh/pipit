@@ -20,6 +20,8 @@ package engine
 
 import (
 	"reflect"
+
+	"pipit.sh/pipit/internal/symtab/typemodel"
 )
 
 const (
@@ -61,7 +63,7 @@ const (
 // Panics with the same diagnostic strings stdlib errors.As emits when target is nil, not
 // a pointer, or its element type cannot hold an error.
 func pipitErrorsAs(vm *VM, err, target reflect.Value) bool {
-	target = peelInterface(target, "errors: target cannot be nil")
+	target = unwrapAdapterUnderlying(peelInterface(target, "errors: target cannot be nil"))
 	if !target.IsValid() || target.Kind() != reflect.Pointer || target.IsNil() {
 		panic("errors: target must be a non-nil pointer")
 	}
@@ -135,7 +137,7 @@ func walkErrorsAsChain(vm *VM, err, target reflect.Value, targetType reflect.Typ
 // (with target written in either case).
 func errorsAsTryDirectMatch(vm *VM, original, concrete, target reflect.Value, targetType reflect.Type) bool {
 	assignment := chooseErrorsAsAssignmentValue(original, concrete, targetType)
-	if assignment.IsValid() && pipitErrorsAsAssignTarget(target, assignment, targetType) {
+	if assignment.IsValid() && pipitErrorsAsAssignTarget(vm, target, assignment, targetType) {
 		return true
 	}
 	return invokeAsMethodIfPresent(vm, concrete, target)
@@ -470,20 +472,35 @@ func unwrapErrorInterfaceValue(value reflect.Value) reflect.Value {
 // element type) and, on success, performs the assignment. Used by pipitErrorsAs to
 // satisfy the "type assertion succeeds" branch without going through reflect.Implements.
 //
+// A named composite type matches only itself, as in a type assertion, and a closure
+// converted to a named func type matches that type and is stored as a function value of
+// it.
+//
+// Takes vm (*VM) which runs a stored closure when it is called.
 // Takes target (reflect.Value) which is the **T pointer pre-validated by the caller.
 // Takes concrete (reflect.Value) which is the current chain value.
 // Takes targetType (reflect.Type) which is target.Elem().Type().
 //
 // Returns true when concrete was assigned to target.
-func pipitErrorsAsAssignTarget(target, concrete reflect.Value, targetType reflect.Type) bool {
+func pipitErrorsAsAssignTarget(vm *VM, target, concrete reflect.Value, targetType reflect.Type) bool {
 	if !concrete.IsValid() {
 		return false
 	}
-	if concrete.Type() == targetType || concrete.Type().AssignableTo(targetType) {
-		target.Elem().Set(concrete)
-		return true
+	if closure := closureFromValue(concrete); closure != nil && closure.namedType != 0 {
+		if closureDynamicType(concrete) != targetType {
+			return false
+		}
+		concrete = closureCallableValue(vm, concrete)
 	}
-	return false
+	switch {
+	case concrete.Type() == targetType:
+	case typemodel.IsNamedCompositeType(concrete.Type()), typemodel.IsNamedCompositeType(targetType):
+		return false
+	case !concrete.Type().AssignableTo(targetType):
+		return false
+	}
+	target.Elem().Set(concrete)
+	return true
 }
 
 // invokeAsMethodIfPresent dispatches a pipit-side As method on concrete.

@@ -63,9 +63,12 @@ func EvaluateRestrictedPhased(
 		return RestrictedResult{}, fmt.Errorf("%w: source", ErrRestrictedLimit)
 	}
 	output := &restrictedOutput{buffer: bytes.Buffer{}, remaining: config.MaxOutputBytes, truncated: false}
-	service := interpreter.newService(output)
+	service, err := interpreter.newService(ctx, output)
+	if err != nil {
+		return RestrictedResult{}, err
+	}
 	service.config.maxExecutionTime = restrictedCompilationTimeout
-	compileContext, cancelCompile := context.WithTimeout(ctx, restrictedCompilationTimeout)
+	compileContext, cancelCompile := context.WithTimeoutCause(ctx, restrictedCompilationTimeout, fault.ErrExecutionCancelled)
 	execute, compileErr := compileRestrictedPhase(compileContext, service, source, entrypoint, file)
 	compileErr = errors.Join(compileErr, compileContext.Err())
 	cancelCompile()
@@ -76,7 +79,7 @@ func EvaluateRestrictedPhased(
 		return RestrictedResult{}, errors.Join(err, ctx.Err())
 	}
 	service.config.maxExecutionTime = config.Timeout
-	executionContext, cancelExecution := context.WithTimeout(ctx, config.Timeout)
+	executionContext, cancelExecution := context.WithTimeoutCause(ctx, config.Timeout, fault.ErrExecutionCancelled)
 	defer cancelExecution()
 	value, err := execute(executionContext)
 	if interpreter.filesystem != nil {

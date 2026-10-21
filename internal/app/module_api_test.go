@@ -19,6 +19,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -26,17 +27,18 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/engine/program"
+	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/module"
 	"pipit.sh/pipit/internal/symtab"
 	"pipit.sh/pipit/internal/verify"
 )
 
-func stubPacker(_ *program.CompiledFileSet) ([]byte, error) {
+func stubPacker(_ context.Context, _ *program.CompiledFileSet) ([]byte, error) {
 	return []byte("stub-packed-bytecode"), nil
 }
 
-func stubUnpacker(_ []byte, _ *symtab.SymbolRegistry) (*program.CompiledFileSet, error) {
+func stubUnpacker(_ context.Context, _ []byte, _ *symtab.SymbolRegistry) (*program.CompiledFileSet, error) {
 	return &program.CompiledFileSet{}, nil
 }
 
@@ -81,7 +83,7 @@ func TestPackageModuleReportsAPackerFailure(t *testing.T) {
 		module.Descriptor{SchemaVersion: module.DescriptorVersion, Ref: module.Ref{Path: "example.com/lib", Version: "v0.0.0"}},
 		"example.com/lib",
 		map[string]map[string]string{"": {"lib.go": "package lib\n\nfunc Add(a, b int) int { return a + b }\n"}},
-		func(*program.CompiledFileSet) ([]byte, error) { return nil, packFailure },
+		func(context.Context, *program.CompiledFileSet) ([]byte, error) { return nil, packFailure },
 	)
 	require.ErrorIs(t, err, packFailure)
 	require.Nil(t, bundle, "no bundle is built from bytecode that failed to pack")
@@ -171,7 +173,7 @@ func TestLoadModuleRunsBytecodeVerifier(t *testing.T) {
 	}{
 		{
 			name:       "a register operand past the frame",
-			body:       []isa.Instruction{{Op: isa.OpAddInt, A: 0, B: 1, C: 7}},
+			body:       []isa.Instruction{{Op: isa.OpAddInt64, A: 0, B: 1, C: 7}},
 			wantErr:    verify.ErrRegisterOperandOutOfRange,
 			wantDetail: "slot=7",
 		},
@@ -189,9 +191,9 @@ func TestLoadModuleRunsBytecodeVerifier(t *testing.T) {
 
 			service := NewService(WithBytecodeVerification(false))
 			bundle := stubBundle()
-			tamperedUnpacker := func(_ []byte, _ *symtab.SymbolRegistry) (*program.CompiledFileSet, error) {
+			tamperedUnpacker := func(_ context.Context, _ []byte, _ *symtab.SymbolRegistry) (*program.CompiledFileSet, error) {
 				root := &program.CompiledFunction{Name: "tampered", Body: tt.body}
-				root.NumRegisters[isa.RegisterInt] = 2
+				root.NumRegisters[isa.RegisterInt64] = 2
 				return program.NewCompiledFileSet(root, nil, nil, nil), nil
 			}
 			_, err := service.LoadModule(t.Context(), bundle, pinnedRefFor(t, bundle), nil, tamperedUnpacker)
@@ -226,8 +228,8 @@ func main() {
 `},
 	})
 	require.NoError(t, err)
-	require.NoError(t, verify.VerifyOperandBounds(cfs.Root()))
-	require.NoError(t, verify.VerifyOperandBounds(cfs.VariableInitFunction()))
+	require.NoError(t, verify.VerifyOperandBounds(t.Context(), cfs.Root()))
+	require.NoError(t, verify.VerifyOperandBounds(t.Context(), cfs.VariableInitFunction()))
 }
 
 func TestLoadModuleConsultsCapabilityHook(t *testing.T) {
@@ -292,4 +294,45 @@ func TestLoadModuleRequiresUnpacker(t *testing.T) {
 		nil,
 	)
 	require.Error(t, err, "a nil unpacker is refused")
+}
+
+func TestLoadModuleChecksTheSlotsItReserves(t *testing.T) {
+	t.Parallel()
+
+	compiler := NewService()
+	compiled, err := compiler.CompileFileSet(t.Context(), map[string]string{"main.go": `package main
+
+var a, b, c = 1, 2, 3
+
+func EntrypointRun() int { return a + b + c }
+`})
+	require.NoError(t, err)
+	unpackerWith := func(allocation program.SlotAllocation) func(context.Context, []byte, *symtab.SymbolRegistry) (*program.CompiledFileSet, error) {
+		return func(context.Context, []byte, *symtab.SymbolRegistry) (*program.CompiledFileSet, error) {
+			cfs := program.NewCompiledFileSet(compiled.Root(), compiled.Entrypoints(), nil, nil)
+			cfs.SetSlotAllocation(allocation)
+			return cfs, nil
+		}
+	}
+	var short, large program.SlotAllocation
+	short[isa.RegisterInt64] = 1
+	large[isa.RegisterInt64] = 40000
+
+	t.Run("a claim smaller than the code", func(t *testing.T) {
+		t.Parallel()
+		service := NewService()
+		bundle := stubBundle()
+		_, err := service.LoadModule(t.Context(), bundle, pinnedRefFor(t, bundle), nil, unpackerWith(short))
+		require.ErrorIs(t, err, fault.ErrBytecodeVerification)
+	})
+	t.Run("a claim past the bank limit", func(t *testing.T) {
+		t.Parallel()
+		service := NewService()
+		bundle := stubBundle()
+		_, err := service.LoadModule(t.Context(), bundle, pinnedRefFor(t, bundle), nil, unpackerWith(large))
+		require.NoError(t, err)
+		_, err = service.LoadModule(t.Context(), bundle, pinnedRefFor(t, bundle), nil, unpackerWith(large))
+		require.ErrorIs(t, err, fault.ErrGlobalSlotsExhausted, "a second module that does not fit is refused, not a panic")
+		require.Equal(t, uint16(40000), service.globals.Lengths()[isa.RegisterInt64])
+	})
 }

@@ -4,41 +4,39 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=7 general=2 bool=2
-;   dispatch:  asm=14 shim=0 exit=0 go=10
+;   registers: int64=7 general=2 bool=2
+;   dispatch:  asm=15 shim=1 exit=0 go=4
 ;   params:    (none)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=5  [1]=1  [2]=0
 
-0000 A 1:LOAD_INT_CONST_SMALL      75   0   5    ; ints[0] = 5
-0001 G 1:MAKE_CHANNEL              80   0   0
-0002   0:EXT                        0   0   0
-0003 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0004 A 1:LE_INT_CONST_JUMP_FALSE  122   0   0
-0005   0:EXT                        3   0   0
-0006 G 0:CHAN_SEND                  0   0   0
-0007 A 2:TIER2_INC_INT              0   1   0
-0008 A 1:JUMP                      74 251 255    ; goto -5
-0009 G 2:TIER2_CHANNEL_CLOSE        0   8   0
-0010 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0011 G 1:SELECT                   137   1   2
-0012   0:EXT                        0   0   1
-0013   0:EXT                        1   3   1
-0014 A 1:EQ_INT_CONST_JUMP_TRUE   125   2   2
-0015   0:EXT                        1   0   0
-0016 A 1:JUMP                      74 250 255    ; goto -6
-0017 G 1:INT_TO_BOOL               54   0   1
-0018 G 1:BOOL_TO_INT               53   5   0
-0019 G 1:NOT                       52   5   5
-0020 G 1:INT_TO_BOOL               54   1   5
-0021 G 1:BOOL_TO_INT               53   5   1
-0022 A 0:JUMP_IF_FALSE              5   1   0    ; if ints[5] == 0 goto +1
-0023 A 1:JUMP                      74   4   0    ; goto 4
-0024 G 1:MOVE_GENERAL_TO_INT       41   6   1
-0025 A 0:ADD_INT                    5   0   6
-0026 A 1:MOVE_INT                  35   0   5
-0027 A 1:JUMP                      74 239 255    ; goto -17
-0028 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 1:LOAD_INT64_IMMEDIATE                                75   0   5    ; ints[0] = 5
+0001 G 1:MAKE_CHANNEL                                        80   0   0
+0002   0:EXTENSION                                            0   0   0
+0003 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0004 A 1:LESS_OR_EQUAL_INT64_CONSTANT_THEN_JUMP_IF_FALSE    122   0   0
+0005   0:EXTENSION                                            4   0   0
+0006 G 0:SEND_TO_CHANNEL                                      0   0   0
+0007 A 2:INCREMENT_INT64                                      0   1   0
+0008 A 1:GREATER_THAN_INT64_CONSTANT_THEN_JUMP_IF_FALSE     127   0   0
+0009   0:EXTENSION                                          252 255   0
+0010 G 2:CLOSE_CHANNEL                                        0   8   0
+0011 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0012 G 1:SELECT                                             137   1   2
+0013   0:EXTENSION                                            0   0   1
+0014   0:EXTENSION                                            1   3   1
+0015 A 1:EQUAL_INT64_CONSTANT_THEN_JUMP_IF_FALSE            124   2   2
+0016   0:EXTENSION                                          251 255   0
+0017 A 1:CONVERT_INT64_TO_BOOL                               54   0   1
+0018 A 1:CONVERT_BOOL_TO_INT64                               53   5   0
+0019 A 1:NOT_INT64                                           52   5   5
+0020 A 1:CONVERT_INT64_TO_BOOL                               54   1   5
+0021 A 2:JUMP_IF_TRUE_BOOL                                    0  21   1
+0022   0:EXTENSION                                            3   0   0
+0023 S 1:UNBOX_INT64                                         41   6   1
+0024 A 0:ADD_INT64                                            0   0   6
+0025 A 1:JUMP                                                74 242 255    ; goto -14
+0026 A 2:RETURN                                               0  10   1    ; 1 values

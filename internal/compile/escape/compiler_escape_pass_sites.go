@@ -26,6 +26,74 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
+// siteScan holds the jump targets and jumps shared by escape walks over one body.
+type siteScan struct {
+	// compiledFunction is the function whose sites are annotated.
+	compiledFunction *program.CompiledFunction
+
+	// jumpTargets is program.JumpTargetsOf of the body.
+	jumpTargets map[int]bool
+
+	// jumps holds every jump of the body in program-counter order.
+	jumps []siteScanJump
+}
+
+// siteScanJump is one jump of a body.
+type siteScanJump struct {
+	// from is the jump's program counter.
+	from int
+
+	// target is the program counter it jumps to.
+	target int
+}
+
+// outputEscapesFromSite reports whether the value produced at sitePC can escape the
+// frame.
+//
+// When the site sits in a loop, a second walk from the loop header to the site is seeded
+// with every register the first walk saw the value copied to, because the previous
+// iteration's value may still be live.
+//
+// Takes slot (uint8) which is the site's output general register.
+// Takes sitePC (int) which is the PC of the allocation site.
+// Takes afterSite (int) which is the first PC after the site and its extension words.
+//
+// Returns true when any use of the value may escape.
+func (scan *siteScan) outputEscapesFromSite(slot uint8, sitePC, afterSite int) bool {
+	compiledFunction := scan.compiledFunction
+	seed := [isa.GeneralRegisterBankSize]bool{}
+	seed[slot] = true
+	escapes, ever := analyseGeneralRegisterEscapeWithTargets(compiledFunction, scan.jumpTargets, &seed, afterSite, len(compiledFunction.Body))
+	if escapes {
+		return true
+	}
+	head, inLoop := scan.enclosingLoopHead(sitePC)
+	if !inLoop {
+		return false
+	}
+	escapes, _ = analyseGeneralRegisterEscapeWithTargets(compiledFunction, scan.jumpTargets, &ever, head, sitePC)
+	return escapes
+}
+
+// enclosingLoopHead finds the lowest target of any backward jump that spans sitePC.
+//
+// Takes sitePC (int) which is the PC being classified.
+//
+// Returns int which is the loop head PC.
+// Returns bool which is true when sitePC lies inside a loop.
+func (scan *siteScan) enclosingLoopHead(sitePC int) (int, bool) {
+	head := -1
+	for _, jump := range scan.jumps {
+		if jump.from < sitePC || jump.target > sitePC {
+			continue
+		}
+		if head < 0 || jump.target < head {
+			head = jump.target
+		}
+	}
+	return head, head >= 0
+}
+
 // arenaCandidateSiteAt classifies the instruction at pc as an arena allocation site and
 // names the general register it writes: the pointer-producing tier-0 sites
 // isArenaCandidateSite() recognises (output A), and the tier-2 struct-literal sites
@@ -61,11 +129,11 @@ func isStructLiteralSiteAt(compiledFunction *program.CompiledFunction, pc int) b
 		return false
 	}
 	switch isa.SubOpcodeTier2(inst.B) {
-	case isa.SubOpTier2AllocStructLiteral, isa.SubOpTier2MakeMap:
+	case isa.SubOpTier2AllocateStructLiteral, isa.SubOpTier2MakeMap:
 	default:
 		return false
 	}
-	if pc+1 >= len(body) || body[pc+1].Op != isa.OpExt {
+	if pc+1 >= len(body) || body[pc+1].Op != isa.OpExtension {
 		return false
 	}
 	extension := body[pc+1]
@@ -85,61 +153,30 @@ func isStructLiteralSiteAt(compiledFunction *program.CompiledFunction, pc int) b
 // Returns true for the pointer-producing allocation opcodes.
 func isArenaCandidateSite(inst isa.Instruction) bool {
 	switch inst.Op {
-	case isa.OpAllocIndirect, isa.OpLoadGeneralConst:
+	case isa.OpAllocateIndirect, isa.OpLoadGeneralConstant:
 		return true
-	case isa.OpAddr:
+	case isa.OpAddress:
 		return inst.C != engine.AddrSourceStable
 	default:
 		return false
 	}
 }
 
-// outputEscapesFromSite reports whether the value produced at sitePC can escape the
-// frame.
+// newSiteScan computes the jump targets and jumps of compiledFunction's body.
 //
-// When the site sits in a loop, a second walk from the loop header to the site is seeded
-// with every register the first walk saw the value copied to, because the previous
-// iteration's value may still be live.
+// Takes compiledFunction (*CompiledFunction) whose body is scanned.
 //
-// Takes compiledFunction (*CompiledFunction) whose body is walked.
-// Takes slot (uint8) which is the site's output general register.
-// Takes sitePC (int) which is the PC of the allocation site.
-// Takes afterSite (int) which is the first PC after the site and its extension words.
-//
-// Returns true when any use of the value may escape.
-func outputEscapesFromSite(compiledFunction *program.CompiledFunction, slot uint8, sitePC, afterSite int) bool {
-	seed := [isa.GeneralRegisterBankSize]bool{}
-	seed[slot] = true
-	escapes, ever := analyseGeneralRegisterEscapeSeeded(compiledFunction, &seed, afterSite, len(compiledFunction.Body))
-	if escapes {
-		return true
-	}
-	head, inLoop := enclosingLoopHead(compiledFunction.Body, sitePC)
-	if !inLoop {
-		return false
-	}
-	escapes, _ = analyseGeneralRegisterEscapeSeeded(compiledFunction, &ever, head, sitePC)
-	return escapes
-}
-
-// enclosingLoopHead finds the lowest target of any backward jump that spans sitePC.
-//
-// Takes body ([]instruction) which is the function body.
-// Takes sitePC (int) which is the PC being classified.
-//
-// Returns the loop head PC and true when sitePC lies inside a loop.
-func enclosingLoopHead(body []isa.Instruction, sitePC int) (int, bool) {
-	head := -1
-	for pc := sitePC; pc < len(body); pc++ {
-		target, ok := program.JumpTargetAt(body, pc)
-		if !ok || target > sitePC {
-			continue
-		}
-		if head < 0 || target < head {
-			head = target
+// Returns *siteScan which serves every site of the body.
+func newSiteScan(compiledFunction *program.CompiledFunction) *siteScan {
+	body := compiledFunction.Body
+	scan := &siteScan{compiledFunction: compiledFunction, jumpTargets: make(map[int]bool, len(body)/4), jumps: nil}
+	for pc := range body {
+		if target, ok := program.JumpTargetAt(body, pc); ok {
+			scan.jumpTargets[target] = true
+			scan.jumps = append(scan.jumps, siteScanJump{from: pc, target: target})
 		}
 	}
-	return head, head >= 0
+	return scan
 }
 
 // structFieldOpEscapes classifies the tier-0 struct-field opcode family for escape
@@ -148,19 +185,20 @@ func enclosingLoopHead(body []isa.Instruction, sitePC int) (int, bool) {
 // Takes inst (instruction) which is the instruction to classify.
 // Takes tainted (*[isa.GeneralRegisterBankSize]bool) which holds the alias closure.
 //
-// Returns the escape verdict and true when inst belongs to the family; false, false for
-// every other opcode.
+// Returns escapes (bool) which is true when the field operation may escape the value.
+// Returns classified (bool) which is true when inst belongs to the field opcode family.
 func structFieldOpEscapes(inst isa.Instruction, tainted *[isa.GeneralRegisterBankSize]bool) (escapes, classified bool) {
 	switch inst.Op {
-	case isa.OpGetStructFieldIntT0, isa.OpGetStructFieldUint, isa.OpGetStructFieldFloat, isa.OpGetStructFieldBool,
-		isa.OpGetStructFieldGeneral, isa.OpGetStructFieldRawPointerT0, isa.OpGetStructFieldIndexGeneral,
-		isa.OpGetStructFieldSliceLen, isa.OpGetStructFieldSliceIndexScalar,
-		isa.OpSliceIndexStructFieldInt, isa.OpSliceIndexStructFieldUint, isa.OpSliceIndexStructFieldFloat,
-		isa.OpSliceIndexStructFieldBool, isa.OpSliceIndexStructFieldString,
-		isa.OpSetStructFieldIntT0, isa.OpSetStructFieldUint, isa.OpSetStructFieldFloat, isa.OpSetStructFieldBool,
-		isa.OpCopyStructFieldGeneralT0, isa.OpSwapStructFieldsGeneralT0:
+	case isa.OpGetStructFieldInt64, isa.OpGetStructFieldUint64, isa.OpGetStructFieldFloat64, isa.OpGetStructFieldBool,
+		isa.OpGetStructFieldGeneral, isa.OpGetStructFieldRawPointer, isa.OpGetStructFieldElementGeneral,
+		isa.OpLengthStructField, isa.OpGetStructFieldElementField,
+		isa.OpGetElementFieldInt64, isa.OpGetElementFieldUint64, isa.OpGetElementFieldFloat64,
+		isa.OpGetElementFieldBool, isa.OpGetElementFieldString,
+		isa.OpSetElementFieldInt64, isa.OpSetElementFieldFloat64,
+		isa.OpSetStructFieldInt64, isa.OpSetStructFieldUint64, isa.OpSetStructFieldFloat64, isa.OpSetStructFieldBool,
+		isa.OpCopyStructFieldGeneral, isa.OpSwapStructFieldsGeneral:
 		return false, true
-	case isa.OpSetStructFieldGeneral, isa.OpSetStructFieldIndexGeneral:
+	case isa.OpSetStructFieldGeneral, isa.OpSetStructFieldElementGeneral:
 		return tainted[inst.B], true
 	default:
 		return false, false

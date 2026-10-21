@@ -41,14 +41,18 @@ const (
 	// SessionDeclConst is a const declaration.
 	SessionDeclConst = app.SessionDeclConst
 
-	// PackageNameSymbol is the reserved symbol-table key for a declared package name
-	// that differs from the name inferred from its import path. The entry holds a
-	// string reflect.Value.
+	// PackageNameSymbol is the reserved symbol-table key for a declared package name that
+	// differs from the name inferred from its import path. The entry holds a string
+	// reflect.Value.
 	PackageNameSymbol = symtab.PackageNameSymbol
 
 	// bytecodeStoreDirPerm is the permission bits for a bytecode store directory pipit
 	// creates.
 	bytecodeStoreDirPerm = 0o755
+
+	// bytecodeStagingSuffixBytes is how many random bytes name a staged bytecode artefact,
+	// enough that two concurrent saves or loads in one directory never share a name.
+	bytecodeStagingSuffixBytes = 8
 
 	// bytecodeStoreFilePerm is the permission bits for a bytecode artefact pipit stages.
 	bytecodeStoreFilePerm = 0o600

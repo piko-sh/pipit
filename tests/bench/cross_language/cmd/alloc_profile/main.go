@@ -159,6 +159,7 @@ func main() {
 		os.Exit(2)
 	}
 
+	ctx := context.Background()
 	results := make([]allocResult, 0, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -172,7 +173,7 @@ func main() {
 			continue
 		}
 		dir := filepath.Join(benchmarksDir, name)
-		result := profileBenchmark(name, dir)
+		result := profileBenchmark(ctx, name, dir)
 		results = append(results, result)
 		printRow(result)
 	}
@@ -205,7 +206,7 @@ func main() {
 	}
 }
 
-func profileBenchmark(name, dir string) allocResult {
+func profileBenchmark(ctx context.Context, name, dir string) allocResult {
 	spec, sourceBytes, loadErr := loadBenchmarkSources(name, dir)
 	if loadErr != nil {
 		return *loadErr
@@ -218,7 +219,6 @@ func EntrypointRun() (string, int64) {
 }
 `, spec.KInner)
 
-	ctx := context.Background()
 	if spec.TimeoutSeconds > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeoutCause(ctx, time.Duration(spec.TimeoutSeconds)*time.Second,
@@ -284,7 +284,6 @@ func loadBenchmarkSources(name, dir string) (benchSpec, []byte, *allocResult) {
 // Returns the populated allocResult including failure details when the measured execution
 // itself errors.
 func measureExecute(ctx context.Context, name string, service *pipit.Interpreter, compiled *pipit.CompiledFileSet) allocResult {
-
 	runtime.GC() //nolint:revive // settle the heap before measuring
 	runtime.GC() //nolint:revive // settle the heap before measuring
 	var before, after runtime.MemStats

@@ -35,7 +35,7 @@ func TestExchangeWithSourceWorker(t *testing.T) {
 	defer host.Close()
 	defer worker.Close()
 	done := make(chan error, 1)
-	go func() { done <- Serve(worker) }()
+	go func() { done <- Serve(t.Context(), worker) }()
 	response, err := Exchange(&accountingFixture{transport: host, charged: 0, err: nil},
 		Configuration{Profile: Profile, Imports: []string{"math"}},
 		Request{Kind: "expression", Source: "import \"math\"\nmath.Sqrt(49)", Entrypoint: ""},

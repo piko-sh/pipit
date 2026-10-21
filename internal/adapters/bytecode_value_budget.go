@@ -19,6 +19,7 @@
 package adapters
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 
@@ -45,14 +46,14 @@ type bytecodeValueBudget struct {
 //
 // Returns reflect.Value which is the reconstructed value.
 // Returns error when the constant kind is unknown or the budget is exceeded.
-func (budget *bytecodeValueBudget) reconstruct(data codec.GeneralConstantDescriptorData, registry *symtab.SymbolRegistry) (reflect.Value, error) {
+func (budget *bytecodeValueBudget) reconstruct(ctx context.Context, data codec.GeneralConstantDescriptorData, registry *symtab.SymbolRegistry) (reflect.Value, error) {
 	switch descriptor.GeneralConstantKind(data.Kind) {
 	case descriptor.GeneralConstantPackageSymbol, descriptor.GeneralConstantPackageSymbolAddress:
-		return codec.ReconstructGeneralConstant(data, registry)
+		return codec.ReconstructGeneralConstant(ctx, data, registry)
 	case descriptor.GeneralConstantNamedTypeZero:
 		return budget.namedZero(data.PackagePath, data.SymbolName, registry)
 	case descriptor.GeneralConstantCompositeZero:
-		resolved, err := codec.DescriptorToReflectType(data.TypeDescriptor, registry)
+		resolved, err := codec.DescriptorToReflectType(ctx, data.TypeDescriptor, registry)
 		if err != nil {
 			return reflect.Value{}, err
 		}
@@ -81,8 +82,8 @@ func (budget *bytecodeValueBudget) namedZero(packagePath, name string, registry 
 // zero reserves complete storage before symtab.ZeroConstant allocates it. Zero-size
 // values consume one unit, and reservations are never refunded.
 //
-// Takes resolved (reflect.Type) which is the type to allocate, including
-// host-registered named types.
+// Takes resolved (reflect.Type) which is the type to allocate, including host-registered
+// named types.
 //
 // Returns reflect.Value which is the zero constant.
 // Returns error when the budget is exhausted.

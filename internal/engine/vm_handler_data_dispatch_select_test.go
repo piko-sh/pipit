@@ -38,11 +38,11 @@ func TestBuildSelectSendValueReadsTheNamedBank(t *testing.T) {
 		want        any
 	}{
 		{
-			name: "the int bank", kind: isa.RegisterInt, load: func(r *Registers) { r.Ints[1] = 4 },
+			name: "the int bank", kind: isa.RegisterInt64, load: func(r *Registers) { r.Ints[1] = 4 },
 			elementType: reflect.TypeFor[int](), want: 4,
 		},
 		{
-			name: "the float bank", kind: isa.RegisterFloat, load: func(r *Registers) { r.Floats[1] = 1.5 },
+			name: "the float bank", kind: isa.RegisterFloat64, load: func(r *Registers) { r.Floats[1] = 1.5 },
 			elementType: reflect.TypeFor[float64](), want: 1.5,
 		},
 		{
@@ -54,19 +54,19 @@ func TestBuildSelectSendValueReadsTheNamedBank(t *testing.T) {
 			elementType: reflect.TypeFor[bool](), want: true,
 		},
 		{
-			name: "the uint bank", kind: isa.RegisterUint, load: func(r *Registers) { r.Uints[1] = 6 },
+			name: "the uint bank", kind: isa.RegisterUint64, load: func(r *Registers) { r.Uints[1] = 6 },
 			elementType: reflect.TypeFor[uint32](), want: uint32(6),
 		},
 		{
-			name: "the complex bank", kind: isa.RegisterComplex, load: func(r *Registers) { r.Complex[1] = 3i },
+			name: "the complex bank", kind: isa.RegisterComplex128, load: func(r *Registers) { r.Complex[1] = 3i },
 			elementType: reflect.TypeFor[complex128](), want: 3i,
 		},
 		{
-			name: "the int-slice bank", kind: isa.RegisterSliceInt, load: func(r *Registers) { r.SlicesInt[1] = []int64{1} },
+			name: "the int-slice bank", kind: isa.RegisterSliceInt64, load: func(r *Registers) { r.SlicesInt[1] = []int64{1} },
 			elementType: reflect.TypeFor[[]int64](), want: []int64{1},
 		},
 		{
-			name: "the float-slice bank", kind: isa.RegisterSliceFloat,
+			name: "the float-slice bank", kind: isa.RegisterSliceFloat64,
 			load:        func(r *Registers) { r.slicesFloat[1] = []float64{1.5} },
 			elementType: reflect.TypeFor[[]float64](), want: []float64{1.5},
 		},
@@ -81,7 +81,7 @@ func TestBuildSelectSendValueReadsTheNamedBank(t *testing.T) {
 			elementType: reflect.TypeFor[[]bool](), want: []bool{true},
 		},
 		{
-			name: "the uint-slice bank", kind: isa.RegisterSliceUint,
+			name: "the uint-slice bank", kind: isa.RegisterSliceUint64,
 			load:        func(r *Registers) { r.slicesUint[1] = []uint64{2} },
 			elementType: reflect.TypeFor[[]uint64](), want: []uint64{2},
 		},
@@ -129,14 +129,14 @@ func TestWriteRegisterValueWritesTheNamedBank(t *testing.T) {
 		inspect func(*testing.T, *Registers)
 	}{
 		{
-			name: "the int bank", kind: isa.RegisterInt, value: int64(4),
+			name: "the int bank", kind: isa.RegisterInt64, value: int64(4),
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, int64(4), r.Ints[2])
 			},
 		},
 		{
-			name: "the float bank", kind: isa.RegisterFloat, value: 1.5,
+			name: "the float bank", kind: isa.RegisterFloat64, value: 1.5,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.InDelta(t, 1.5, r.Floats[2], 0)
@@ -157,14 +157,14 @@ func TestWriteRegisterValueWritesTheNamedBank(t *testing.T) {
 			},
 		},
 		{
-			name: "the uint bank", kind: isa.RegisterUint, value: uint64(7),
+			name: "the uint bank", kind: isa.RegisterUint64, value: uint64(7),
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, uint64(7), r.Uints[2])
 			},
 		},
 		{
-			name: "the complex bank", kind: isa.RegisterComplex, value: 2i,
+			name: "the complex bank", kind: isa.RegisterComplex128, value: 2i,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, 2i, r.Complex[2])
@@ -178,14 +178,14 @@ func TestWriteRegisterValueWritesTheNamedBank(t *testing.T) {
 			},
 		},
 		{
-			name: "the int-slice bank", kind: isa.RegisterSliceInt, value: []int64{1, 2},
+			name: "the int-slice bank", kind: isa.RegisterSliceInt64, value: []int64{1, 2},
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, []int64{1, 2}, r.SlicesInt[2])
 			},
 		},
 		{
-			name: "the float-slice bank", kind: isa.RegisterSliceFloat, value: []float64{1.5},
+			name: "the float-slice bank", kind: isa.RegisterSliceFloat64, value: []float64{1.5},
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, []float64{1.5}, r.slicesFloat[2])
@@ -206,7 +206,7 @@ func TestWriteRegisterValueWritesTheNamedBank(t *testing.T) {
 			},
 		},
 		{
-			name: "the uint-slice bank", kind: isa.RegisterSliceUint, value: []uint64{9},
+			name: "the uint-slice bank", kind: isa.RegisterSliceUint64, value: []uint64{9},
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, []uint64{9}, r.slicesUint[2])
@@ -277,7 +277,7 @@ func TestSelectPicksTheReadyArm(t *testing.T) {
 
 		vm, frame, registers := newExtWordFrame(t,
 			op(isa.SelectDirectionReceive, 1, 1),
-			op(3, uint8(isa.RegisterInt), 5),
+			op(3, uint8(isa.RegisterInt64), 5),
 		)
 		registers.General[1] = reflect.ValueOf(channel)
 
@@ -296,7 +296,7 @@ func TestSelectPicksTheReadyArm(t *testing.T) {
 
 		vm, frame, registers := newExtWordFrame(t,
 			op(isa.SelectDirectionReceive, 1, 1),
-			op(3, uint8(isa.RegisterInt), 5),
+			op(3, uint8(isa.RegisterInt64), 5),
 		)
 		registers.General[1] = reflect.ValueOf(channel)
 
@@ -328,7 +328,7 @@ func TestSelectPicksTheReadyArm(t *testing.T) {
 
 		vm, frame, registers := newExtWordFrame(t,
 			op(isa.SelectDirectionReceive, 1, 0),
-			op(3, uint8(isa.RegisterInt), 0),
+			op(3, uint8(isa.RegisterInt64), 0),
 			op(isa.SelectDirectionDefault, 0, 0),
 		)
 		registers.General[1] = reflect.ValueOf(make(chan int))
@@ -348,7 +348,7 @@ func TestSelectPicksTheReadyArm(t *testing.T) {
 		builder.Emit(isa.OpDrillTier1, 0, 0, 0)
 		builder.body = append(builder.body,
 			op(isa.SelectDirectionReceive, 1, 0),
-			op(3, uint8(isa.RegisterInt), 0),
+			op(3, uint8(isa.RegisterInt64), 0),
 		)
 		builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
 		compiledFunction := builder.build()
@@ -413,7 +413,7 @@ func TestApplySelectReceiveResultWritesOnlyWhatTheArmDeclares(t *testing.T) {
 	}{
 		{
 			name:     "a value arm writes the value alone",
-			info:     selectCaseInfo{destinationRegister: 2, destinationKind: isa.RegisterInt, hasOk: false, okRegister: 3},
+			info:     selectCaseInfo{destinationRegister: 2, destinationKind: isa.RegisterInt64, hasOk: false, okRegister: 3},
 			receiver: reflect.ValueOf(int64(4)),
 			ok:       true,
 			inspect: func(t *testing.T, r *Registers) {
@@ -424,7 +424,7 @@ func TestApplySelectReceiveResultWritesOnlyWhatTheArmDeclares(t *testing.T) {
 		},
 		{
 			name:     "a comma-ok arm writes both",
-			info:     selectCaseInfo{destinationRegister: 2, destinationKind: isa.RegisterInt, hasOk: true, okRegister: 3},
+			info:     selectCaseInfo{destinationRegister: 2, destinationKind: isa.RegisterInt64, hasOk: true, okRegister: 3},
 			receiver: reflect.ValueOf(int64(4)),
 			ok:       true,
 			inspect: func(t *testing.T, r *Registers) {
@@ -435,7 +435,7 @@ func TestApplySelectReceiveResultWritesOnlyWhatTheArmDeclares(t *testing.T) {
 		},
 		{
 			name:     "a closed channel clears the flag",
-			info:     selectCaseInfo{destinationRegister: 2, destinationKind: isa.RegisterInt, hasOk: true, okRegister: 3},
+			info:     selectCaseInfo{destinationRegister: 2, destinationKind: isa.RegisterInt64, hasOk: true, okRegister: 3},
 			receiver: reflect.ValueOf(int64(0)),
 			ok:       false,
 			inspect: func(t *testing.T, r *Registers) {
@@ -445,7 +445,7 @@ func TestApplySelectReceiveResultWritesOnlyWhatTheArmDeclares(t *testing.T) {
 		},
 		{
 			name:     "an invalid receiver writes no value",
-			info:     selectCaseInfo{destinationRegister: 2, destinationKind: isa.RegisterInt, hasOk: true, okRegister: 3},
+			info:     selectCaseInfo{destinationRegister: 2, destinationKind: isa.RegisterInt64, hasOk: true, okRegister: 3},
 			receiver: reflect.Value{},
 			ok:       false,
 			inspect: func(t *testing.T, r *Registers) {

@@ -19,9 +19,13 @@
 package engine
 
 import (
+	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/symtab/typemodel"
 )
 
 func TestSkipVerbFlagChars(t *testing.T) {
@@ -160,4 +164,30 @@ func TestWrapPipitSynthesisedFmtArg_IdentityForNonSynth(t *testing.T) {
 	require.Equal(t, "hello", wrapPipitSynthesisedFmtArg(nil, "hello", ""))
 	require.Equal(t, 42, wrapPipitSynthesisedFmtArg(nil, 42, ""))
 	require.Nil(t, wrapPipitSynthesisedFmtArg(nil, nil, ""))
+}
+
+func TestGoSyntaxRendersContainersOfScriptStructsAsGoDoes(t *testing.T) {
+	t.Parallel()
+
+	slice := pipitFmtValue{underlying: reflect.ValueOf([]identityTrailing{{A: 1}, {A: 2}}), vm: nil, typeName: ""}
+	require.Equal(t, "[]engine.at{engine.at{A:1}, engine.at{A:2}}", fmt.Sprintf("%#v", slice))
+	keyed := pipitFmtValue{underlying: reflect.ValueOf(map[string]identityTrailing{"b": {A: 2}, "a": {A: 1}}), vm: nil, typeName: ""}
+	require.Equal(t, `map[string]engine.at{"a":engine.at{A:1}, "b":engine.at{A:2}}`, fmt.Sprintf("%#v", keyed))
+	empty := pipitFmtValue{underlying: reflect.ValueOf([]identityTrailing(nil)), vm: nil, typeName: ""}
+	require.Equal(t, "[]engine.at(nil)", fmt.Sprintf("%#v", empty))
+}
+
+func TestPointersToNamedTypesAreNamedForPercentT(t *testing.T) {
+	t.Parallel()
+	if !typemodel.NamedCompositeTypesSupported() {
+		t.Skip("this build gives named composite types their underlying runtime type")
+	}
+
+	named, err := typemodel.NamedCompositeTypeFor(typemodel.NamedCompositeIdentity{PkgPath: "example.com/fmtprobe", PkgName: "fmtprobe", Name: "Names", BareName: "Names"}, reflect.TypeFor[[]string]())
+	require.NoError(t, err)
+	require.Equal(t, "*fmtprobe.Names", scriptTypeString(reflect.PointerTo(named)))
+	require.Equal(t, "fmtprobe.Names", scriptTypeString(named))
+	typeName, ok := fmtAdapterTypeName(nil, reflect.New(named), "")
+	require.True(t, ok)
+	require.Equal(t, "Names", typeName, "a pointer to a named type finds the type's methods")
 }

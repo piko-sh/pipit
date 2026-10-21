@@ -26,6 +26,7 @@ import (
 
 	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
+	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -239,8 +240,8 @@ func (c *Compiler) signatureForCall(expression *ast.CallExpr) (*types.Signature,
 // packing.
 // Takes signature (*types.Signature) which is the callee's signature.
 //
-// Returns []VarLocation aligned 1:1 with the signature's parameters, and any
-// compilation error from sub-expressions.
+// Returns []VarLocation aligned 1:1 with the signature's parameters, and any compilation
+// error from sub-expressions.
 func (c *Compiler) compileVariadicPackedArgs(ctx context.Context, expression *ast.CallExpr, signature *types.Signature) ([]program.VarLocation, error) {
 	fixedCount := signature.Params().Len() - 1
 	if locations, ok, err := c.tryCompileVariadicFromMultiReturn(ctx, expression, signature); ok {
@@ -266,18 +267,18 @@ func (c *Compiler) compileVariadicPackedArgs(ctx context.Context, expression *as
 	}
 
 	variadicCount := max(len(expression.Args)-fixedCount, 0)
-	lengthRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
+	lengthRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
 	lengthIndex, err := program.AddIntConstant(c.Function, int64(variadicCount))
 	if err != nil {
 		return nil, err
 	}
-	program.EmitWide(c.Function, isa.OpLoadIntConst, lengthRegister, lengthIndex)
+	program.EmitWide(c.Function, isa.OpLoadInt64Constant, lengthRegister, lengthIndex)
 
 	sliceDestination := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
 	program.Emit(c.Function, isa.OpMakeSlice, sliceDestination, lengthRegister, lengthRegister)
 	program.EmitExtension(c.Function, typeIndex, 0)
 
-	c.Scopes.Alloc.FreeTemp(isa.RegisterInt, lengthRegister)
+	c.Scopes.Alloc.FreeTemp(isa.RegisterInt64, lengthRegister)
 
 	for i := fixedCount; i < len(expression.Args); i++ {
 		watermark := c.Scopes.Alloc.Snapshot()
@@ -287,14 +288,14 @@ func (c *Compiler) compileVariadicPackedArgs(ctx context.Context, expression *as
 		}
 		location = c.coerceEvalBoolResult(ctx, c.Info, expression.Args[i], location)
 		c.boxToGeneralTemp(ctx, &location)
-		indexRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
+		indexRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
 		idxConst, idxErr := program.AddIntConstant(c.Function, int64(i-fixedCount))
 		if idxErr != nil {
 			return nil, idxErr
 		}
-		program.EmitWide(c.Function, isa.OpLoadIntConst, indexRegister, idxConst)
-		program.Emit(c.Function, isa.OpIndexSet, sliceDestination, indexRegister, location.Register)
-		c.Scopes.Alloc.FreeTemp(isa.RegisterInt, indexRegister)
+		program.EmitWide(c.Function, isa.OpLoadInt64Constant, indexRegister, idxConst)
+		program.Emit(c.Function, isa.OpSetElement, sliceDestination, indexRegister, location.Register)
+		c.Scopes.Alloc.FreeTemp(isa.RegisterInt64, indexRegister)
 		c.Scopes.RestoreWatermark(watermark)
 	}
 
@@ -380,37 +381,36 @@ func (c *Compiler) packLocationsIntoVariadicSlice(ctx context.Context, sliceType
 	if err != nil {
 		return 0, err
 	}
-	lengthRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
+	lengthRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
 	lengthIndex, err := program.AddIntConstant(c.Function, int64(len(locations)))
 	if err != nil {
 		return 0, err
 	}
-	program.EmitWide(c.Function, isa.OpLoadIntConst, lengthRegister, lengthIndex)
+	program.EmitWide(c.Function, isa.OpLoadInt64Constant, lengthRegister, lengthIndex)
 	sliceDestination := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
 	program.Emit(c.Function, isa.OpMakeSlice, sliceDestination, lengthRegister, lengthRegister)
 	program.EmitExtension(c.Function, typeIndex, 0)
-	c.Scopes.Alloc.FreeTemp(isa.RegisterInt, lengthRegister)
+	c.Scopes.Alloc.FreeTemp(isa.RegisterInt64, lengthRegister)
 	for i, location := range locations {
 		watermark := c.Scopes.Alloc.Snapshot()
 		valueLocation := location
 		c.boxToGeneralTemp(ctx, &valueLocation)
-		indexRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
+		indexRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
 		idxConst, idxErr := program.AddIntConstant(c.Function, int64(i))
 		if idxErr != nil {
 			return 0, idxErr
 		}
-		program.EmitWide(c.Function, isa.OpLoadIntConst, indexRegister, idxConst)
-		program.Emit(c.Function, isa.OpIndexSet, sliceDestination, indexRegister, valueLocation.Register)
-		c.Scopes.Alloc.FreeTemp(isa.RegisterInt, indexRegister)
+		program.EmitWide(c.Function, isa.OpLoadInt64Constant, indexRegister, idxConst)
+		program.Emit(c.Function, isa.OpSetElement, sliceDestination, indexRegister, valueLocation.Register)
+		c.Scopes.Alloc.FreeTemp(isa.RegisterInt64, indexRegister)
 		c.Scopes.RestoreWatermark(watermark)
 	}
 	return sliceDestination, nil
 }
 
-// tryCompileNativeCallFromMultiReturn handles native variadic calls where the single
-// argument is a multi-return call and every result must spread across the destination's
-// parameters. Fires when the outer call's signature is variadic, has no fixed parameters,
-// and the only argument is a multi-return call.
+// tryCompileNativeCallFromMultiReturn handles native calls whose single argument is a
+// multi-return call, every result of which spreads across the callee's parameters (Go's
+// f(g()) form).
 //
 // Takes expression (*ast.CallExpr) which is the outer native call.
 //
@@ -447,7 +447,7 @@ func (c *Compiler) tryCompileNativeCallFromMultiReturn(ctx context.Context, expr
 	if !ok {
 		return nil, false, nil
 	}
-	if !outerSig.Variadic() || outerSig.Params().Len() != 1 {
+	if !multiReturnFillsParameters(outerSig, resultCount) {
 		return nil, false, nil
 	}
 	resultKinds := make([]isa.RegisterKind, resultCount)
@@ -463,6 +463,21 @@ func (c *Compiler) tryCompileNativeCallFromMultiReturn(ctx context.Context, expr
 		return nil, true, err
 	}
 	return returnLocations, true, nil
+}
+
+// multiReturnFillsParameters reports whether resultCount values, the results of one call,
+// can be a native callee's whole argument list.
+//
+// Takes signature (*types.Signature) which is the callee's signature.
+// Takes resultCount (int) which is the number of values.
+//
+// Returns bool which is true when the values fill the parameters.
+func multiReturnFillsParameters(signature *types.Signature, resultCount int) bool {
+	parameters := signature.Params().Len()
+	if signature.Variadic() {
+		return resultCount >= parameters-1
+	}
+	return resultCount == parameters
 }
 
 // nativeCallSignature resolves the *types.Signature of a native call expression, or nil
@@ -560,8 +575,12 @@ func (c *Compiler) compileNativeArguments(ctx context.Context, expression *ast.C
 		return spreadLocations, nil
 	}
 	nativeSignature := c.nativeCallSignature(expression)
+	byteViews := c.takeByteViewCandidates(expression, nativeSignature)
 	argumentLocations := make([]program.VarLocation, len(expression.Args))
 	for i, argument := range expression.Args {
+		if byteViews&(1<<i) != 0 {
+			continue
+		}
 		mark := c.Scopes.Alloc.Snapshot()
 		location, err := c.compileExpression(ctx, argument)
 		if err != nil {
@@ -570,6 +589,11 @@ func (c *Compiler) compileNativeArguments(ctx context.Context, expression *ast.C
 		location = c.coerceEvalBoolResult(ctx, c.Info, argument, location)
 		location = c.preboxNativeInterfaceArgument(ctx, nativeSignature, i, location)
 		argumentLocations[i] = c.compactArgument(ctx, mark, location, c.staticTypeOf(argument))
+	}
+	if byteViews != 0 {
+		if err := c.compileByteViewArguments(ctx, expression, byteViews, argumentLocations); err != nil {
+			return nil, err
+		}
 	}
 	return argumentLocations, nil
 }
@@ -631,7 +655,10 @@ func (c *Compiler) nativeCallBlocksHostGoroutine(expression *ast.CallExpr) bool 
 //
 // Returns VarLocation holding the call result and any compilation error.
 func (c *Compiler) compileNativeCallFromLocation(ctx context.Context, expression *ast.CallExpr, functionLocation program.VarLocation, methodReceiverRegister ...uint8) (program.VarLocation, error) {
+	c.byteViewCall = expression
 	argumentLocations, err := c.compileNativeArguments(ctx, expression)
+	byteViews := c.byteViewMarked
+	c.byteViewCall, c.byteViewMarked = nil, 0
 	if err != nil {
 		return program.VarLocation{}, err
 	}
@@ -639,6 +666,7 @@ func (c *Compiler) compileNativeCallFromLocation(ctx context.Context, expression
 	returnLocations, resultLocation := c.allocateNativeReturns(c.nativeCallSignature(expression))
 
 	site := c.nativeCallSite(ctx, expression, functionLocation, argumentLocations, returnLocations)
+	site.ByteViewArguments = byteViews
 	if len(methodReceiverRegister) > 0 {
 		site.IsMethod = true
 		site.MethodReceiverRegister = methodReceiverRegister[0]
@@ -649,12 +677,87 @@ func (c *Compiler) compileNativeCallFromLocation(ctx context.Context, expression
 	}
 	c.markCallPosition()
 	program.EmitTier1Wide(c.Function, isa.SubOpCallNative, siteIndex)
+	if err := c.retypeErasedPointerResults(ctx, expression, returnLocations); err != nil {
+		return program.VarLocation{}, err
+	}
 
 	return resultLocation, nil
 }
 
-// nativeCallSite builds the packing, interface and blocking metadata for a call through
-// a function value.
+// retypeErasedPointerResults gives the pointer results of a method of a native-backed
+// generic type (sync/atomic.Pointer) the type the program instantiated it at.
+//
+// Every instantiation of such a type runs on one erased instantiation (atomic.Pointer
+// over struct{}), which stores the pointer it is given unchanged. A pointer it returns
+// carries the erased element type and is retyped here, keeping its address, so it
+// compares equal to the pointer stored and reads the value it points at.
+//
+// Takes expression (*ast.CallExpr) which is the call.
+// Takes returnLocations ([]VarLocation) which hold the results.
+//
+// Returns any error adding the type to the type table.
+func (c *Compiler) retypeErasedPointerResults(ctx context.Context, expression *ast.CallExpr, returnLocations []program.VarLocation) error {
+	signature, ok := c.erasedGenericMethodSignature(expression)
+	if !ok {
+		return nil
+	}
+	for index, location := range returnLocations {
+		if index >= signature.Results().Len() || location.Kind != isa.RegisterGeneral {
+			continue
+		}
+		resultType := signature.Results().At(index).Type()
+		if _, isPointer := resultType.Underlying().(*types.Pointer); !isPointer {
+			continue
+		}
+		reflectType := c.TypeToReflect(ctx, resultType)
+		if reflectType == nil {
+			return fmt.Errorf("%w: result %d of %s", fault.ErrCompileNamedTypeIdentity, index, signature)
+		}
+		typeIndex, err := program.AddTypeRef(c.Function, reflectType)
+		if err != nil {
+			return err
+		}
+		program.Emit(c.Function, isa.OpConvertGeneral, location.Register, location.Register, 0)
+		program.EmitExtension(c.Function, typeIndex, 0)
+	}
+	return nil
+}
+
+// erasedGenericMethodSignature returns the signature of the method a call names when its
+// receiver is an instantiation of a native-backed generic type.
+//
+// Takes expression (*ast.CallExpr) which is the call.
+//
+// Returns the method's instantiated signature and true, or false for any other call.
+func (c *Compiler) erasedGenericMethodSignature(expression *ast.CallExpr) (*types.Signature, bool) {
+	if c.symbols == nil || c.Info == nil {
+		return nil, false
+	}
+	selector, ok := ast.Unparen(expression.Fun).(*ast.SelectorExpr)
+	if !ok {
+		return nil, false
+	}
+	selection, ok := c.Info.Selections[selector]
+	if !ok || selection.Kind() != types.MethodVal {
+		return nil, false
+	}
+	receiver := types.Unalias(selection.Recv())
+	if pointer, isPointer := receiver.(*types.Pointer); isPointer {
+		receiver = types.Unalias(pointer.Elem())
+	}
+	named, ok := receiver.(*types.Named)
+	if !ok || named.TypeArgs().Len() == 0 || named.Obj().Pkg() == nil {
+		return nil, false
+	}
+	if _, erased := c.symbols.NativeBackedReflectType(named.Obj().Pkg().Path(), named.Obj().Name()); !erased {
+		return nil, false
+	}
+	signature, ok := selection.Type().(*types.Signature)
+	return signature, ok
+}
+
+// nativeCallSite builds the packing, interface and blocking metadata for a call through a
+// function value.
 //
 // Takes expression (*ast.CallExpr) which is the call.
 // Takes functionLocation (VarLocation) which holds the callee value.

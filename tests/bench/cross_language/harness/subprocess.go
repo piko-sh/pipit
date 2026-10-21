@@ -43,30 +43,30 @@ const (
 // SubprocessRequest captures everything a runner needs to know to execute a child process
 // and capture its outputs.
 type SubprocessRequest struct {
-	Name       string
+	Name string
 
 	WorkingDir string
 
-	Args       []string
+	Args []string
 
-	Env        []string
+	Env []string
 
-	Timeout    time.Duration
+	Timeout time.Duration
 }
 
 // SubprocessResponse bundles the outputs and timing captured during a child process run.
 type SubprocessResponse struct {
-	Err       error
+	Err error
 
-	Stdout    []byte
+	Stdout []byte
 
-	Stderr    []byte
+	Stderr []byte
 
 	WallNanos int64
 
 	PeakRSSKB int64
 
-	ExitCode  int
+	ExitCode int
 }
 
 // RunSubprocess executes the request and returns the captured outputs. The Err field on

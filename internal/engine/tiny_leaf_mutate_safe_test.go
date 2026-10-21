@@ -1,5 +1,3 @@
-//go:build safe || (js && wasm)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build safe
 
 package engine
 
@@ -62,7 +62,7 @@ func TestTinyLeafSettableFieldNeedsAnAddressableReceiver(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, ok := tinyLeafSettableField(tt.receiver(), leafLayout(0, reflect.Int64, isa.RegisterInt))
+			_, ok := tinyLeafSettableField(tt.receiver(), leafLayout(0, reflect.Int64, isa.RegisterInt64))
 
 			require.Equal(t, tt.want, ok,
 				"the pure-Go lane decides settability through reflect")

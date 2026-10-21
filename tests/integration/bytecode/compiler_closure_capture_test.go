@@ -34,7 +34,7 @@ func countHeapPlacedSliceMakes(dump string) int {
 			continue
 		}
 		fields := strings.Fields(lines[i+1])
-		if len(fields) > 0 && strings.HasSuffix(fields[1], ":EXT") && fields[len(fields)-1] == "1" {
+		if len(fields) > 0 && strings.HasSuffix(fields[1], ":EXTENSION") && fields[len(fields)-1] == "1" {
 			count++
 		}
 	}

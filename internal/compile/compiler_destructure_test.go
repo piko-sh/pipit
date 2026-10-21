@@ -44,12 +44,12 @@ type holder struct {
 `
 
 var fusedDestructureOpcodes = []isa.Opcode{
-	isa.OpSliceIndexStructFieldInt,
-	isa.OpSliceIndexStructFieldUint,
-	isa.OpSliceIndexStructFieldFloat,
-	isa.OpSliceIndexStructFieldBool,
-	isa.OpSliceIndexStructFieldString,
-	isa.OpGetStructFieldSliceIndexScalar,
+	isa.OpGetElementFieldInt64,
+	isa.OpGetElementFieldUint64,
+	isa.OpGetElementFieldFloat64,
+	isa.OpGetElementFieldBool,
+	isa.OpGetElementFieldString,
+	isa.OpGetStructFieldElementField,
 }
 
 func requireNoFusedDestructure(t *testing.T, compiled *program.CompiledFunction) {
@@ -71,51 +71,51 @@ func TestSliceElementDeclarationDestructuresItsReadFields(t *testing.T) {
 		{
 			name:   "a single integer field read",
 			source: "func f(s []point, i int) int { p := s[i]; return p.X }",
-			want:   []isa.Opcode{isa.OpSliceIndexStructFieldInt},
+			want:   []isa.Opcode{isa.OpGetElementFieldInt64},
 		},
 		{
 			name:   "two integer fields read",
 			source: "func f(s []point, i int) int { p := s[i]; return p.X + p.Y }",
-			want:   []isa.Opcode{isa.OpSliceIndexStructFieldInt},
+			want:   []isa.Opcode{isa.OpGetElementFieldInt64},
 		},
 		{
 			name:   "an unsigned field read",
 			source: "func f(s []point, i int) uint64 { p := s[i]; return p.W }",
-			want:   []isa.Opcode{isa.OpSliceIndexStructFieldUint},
+			want:   []isa.Opcode{isa.OpGetElementFieldUint64},
 		},
 		{
 			name:   "a floating-point field read",
 			source: "func f(s []point, i int) float64 { p := s[i]; return p.F }",
-			want:   []isa.Opcode{isa.OpSliceIndexStructFieldFloat},
+			want:   []isa.Opcode{isa.OpGetElementFieldFloat64},
 		},
 		{
 			name:   "a boolean field read",
 			source: "func f(s []point, i int) bool { p := s[i]; return p.B }",
-			want:   []isa.Opcode{isa.OpSliceIndexStructFieldBool},
+			want:   []isa.Opcode{isa.OpGetElementFieldBool},
 		},
 		{
 			name:   "fields of three different banks read together",
 			source: "func f(s []point, i int) (int, float64, bool) { p := s[i]; return p.X, p.F, p.B }",
 			want: []isa.Opcode{
-				isa.OpSliceIndexStructFieldInt,
-				isa.OpSliceIndexStructFieldFloat,
-				isa.OpSliceIndexStructFieldBool,
+				isa.OpGetElementFieldInt64,
+				isa.OpGetElementFieldFloat64,
+				isa.OpGetElementFieldBool,
 			},
 		},
 		{
 			name:   "a field read inside a loop body",
 			source: "func f(s []point, i int) int { p := s[i]; n := 0; for k := 0; k < 3; k++ { n += p.X }; return n }",
-			want:   []isa.Opcode{isa.OpSliceIndexStructFieldInt},
+			want:   []isa.Opcode{isa.OpGetElementFieldInt64},
 		},
 		{
 			name:   "a slice field indexed through a pointer receiver",
 			source: "func f(h *holder, i int) int { p := h.items[i]; return p.X }",
-			want:   []isa.Opcode{isa.OpGetStructFieldSliceIndexScalar},
+			want:   []isa.Opcode{isa.OpGetStructFieldElementField},
 		},
 		{
 			name:   "two fields read through a pointer receiver",
 			source: "func f(h *holder, i int) (int, bool) { p := h.items[i]; return p.X, p.B }",
-			want:   []isa.Opcode{isa.OpGetStructFieldSliceIndexScalar},
+			want:   []isa.Opcode{isa.OpGetStructFieldElementField},
 		},
 	}
 

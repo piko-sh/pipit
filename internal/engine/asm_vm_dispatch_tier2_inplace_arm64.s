@@ -25,24 +25,24 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerSubOpTier2IncInt increments ints[C] by one (tier-2 in-place sub-op).
-TEXT ·handlerSubOpTier2IncInt(SB), NOSPLIT|NOFRAME, $0
+// handlerIncrementInt64 increments ints[C] by one (tier-2 in-place sub-op).
+TEXT ·handlerIncrementInt64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $24, R0, R3
 	MOVD (R23)(R3<<3), R5
 	ADD  $1, R5, R5
 	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpTier2DecInt decrements ints[C] by one (tier-2 in-place sub-op).
-TEXT ·handlerSubOpTier2DecInt(SB), NOSPLIT|NOFRAME, $0
+// handlerDecrementInt64 decrements ints[C] by one (tier-2 in-place sub-op).
+TEXT ·handlerDecrementInt64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $24, R0, R3
 	MOVD (R23)(R3<<3), R5
 	SUB  $1, R5, R5
 	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpTier2IncUint increments uints[C] by one (tier-2 in-place sub-op).
-TEXT ·handlerSubOpTier2IncUint(SB), NOSPLIT|NOFRAME, $0
+// handlerIncrementUint64 increments uints[C] by one (tier-2 in-place sub-op).
+TEXT ·handlerIncrementUint64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $24, R0, R3
 	MOVD CTX_UINTS_BASE(R19), R4
 	MOVD (R4)(R3<<3), R5
@@ -50,8 +50,8 @@ TEXT ·handlerSubOpTier2IncUint(SB), NOSPLIT|NOFRAME, $0
 	MOVD R5, (R4)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpTier2DecUint decrements uints[C] by one (tier-2 in-place sub-op).
-TEXT ·handlerSubOpTier2DecUint(SB), NOSPLIT|NOFRAME, $0
+// handlerDecrementUint64 decrements uints[C] by one (tier-2 in-place sub-op).
+TEXT ·handlerDecrementUint64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $24, R0, R3
 	MOVD CTX_UINTS_BASE(R19), R4
 	MOVD (R4)(R3<<3), R5
@@ -59,8 +59,8 @@ TEXT ·handlerSubOpTier2DecUint(SB), NOSPLIT|NOFRAME, $0
 	MOVD R5, (R4)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpTier2IncInt32 increments ints[C] by one with int32 wrap-around.
-TEXT ·handlerSubOpTier2IncInt32(SB), NOSPLIT|NOFRAME, $0
+// handlerIncrementInt32 increments ints[C] by one with int32 wrap-around.
+TEXT ·handlerIncrementInt32(SB), NOSPLIT|NOFRAME, $0
 	LSR  $24, R0, R3
 	MOVD (R23)(R3<<3), R5
 	ADD  $1, R5, R5
@@ -70,8 +70,8 @@ TEXT ·handlerSubOpTier2IncInt32(SB), NOSPLIT|NOFRAME, $0
 	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpTier2DecInt32 decrements ints[C] by one with int32 wrap-around.
-TEXT ·handlerSubOpTier2DecInt32(SB), NOSPLIT|NOFRAME, $0
+// handlerDecrementInt32 decrements ints[C] by one with int32 wrap-around.
+TEXT ·handlerDecrementInt32(SB), NOSPLIT|NOFRAME, $0
 	LSR  $24, R0, R3
 	MOVD (R23)(R3<<3), R5
 	SUB  $1, R5, R5

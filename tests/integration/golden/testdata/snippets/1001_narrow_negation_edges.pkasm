@@ -1,0 +1,65 @@
+; pkasm - pipit bytecode assembly
+; dispatch: A assembly, S in-loop shim call to Go, X dedicated exit to Go, G generic exit to Go
+
+
+; ═════════════════════════════════════════════════════════════
+; function run
+;   registers: int64=8 string=2 general=9 uint64=6
+;   dispatch:  asm=30 shim=1 exit=0 go=9
+;   params:    (none)
+;   returns:   (string)
+; ═════════════════════════════════════════════════════════════
+
+; constants:
+;   ints:    [0]=-128  [1]=-32768  [2]=-2147483648  [3]=5
+;   strings: [0]="%d %d %d %d %d %d %d %d %d"
+;   uints:   [0]=1
+
+0000 A 0:LOAD_INT64_CONSTANT                                  0   0   0    ; ints[0] = -128
+0001 A 0:LOAD_INT64_CONSTANT                                  1   1   0    ; ints[1] = -32768
+0002 A 0:LOAD_INT64_CONSTANT                                  2   2   0    ; ints[2] = -2147483648
+0003 A 1:NEGATE_INT64                                        46   3   0
+0004 A 0:TRUNCATE_TO_WIDTH                                    3   8   0
+0005 A 1:NEGATE_INT64                                        46   4   1
+0006 A 0:TRUNCATE_TO_WIDTH                                    4  16   0
+0007 A 1:NEGATE_INT64                                        46   1   2
+0008 A 0:TRUNCATE_TO_WIDTH                                    1  32   0
+0009 A 1:LOAD_INT64_IMMEDIATE                                75   2   5    ; ints[2] = 5
+0010 A 1:NEGATE_INT64                                        46   5   2
+0011 A 0:TRUNCATE_TO_WIDTH                                    5   8   0
+0012 A 1:LOAD_UINT64_IMMEDIATE                               99   0   1    ; uints[0] = 1
+0013 A 1:LOAD_UINT64_IMMEDIATE                               99   1   1    ; uints[1] = 1
+0014 A 1:LOAD_UINT64_IMMEDIATE                               99   2   1    ; uints[2] = 1
+0015 A 1:LOAD_ZERO                                           79   4   5
+0016 A 0:SUBTRACT_UINT64                                      3   4   0
+0017 A 0:TRUNCATE_TO_WIDTH                                    3   8   5
+0018 A 1:LOAD_ZERO                                           79   5   5
+0019 A 0:SUBTRACT_UINT64                                      0   5   1
+0020 A 0:TRUNCATE_TO_WIDTH                                    0  16   5
+0021 A 1:LOAD_ZERO                                           79   5   5
+0022 A 0:SUBTRACT_UINT32                                      1   5   2
+0023 A 1:LOAD_INT64_IMMEDIATE                                75   2   5    ; ints[2] = 5
+0024 A 1:NEGATE_INT64                                        46   6   2
+0025 S 0:LOAD_GENERAL_CONSTANT                                0   0   0
+0026 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "%d %d %d %d %d %d %d %d %d"
+0027 G 0:BOX_AS_TYPE                                          1   3   0
+0028   0:EXTENSION                                            0   0   0
+0029 G 0:BOX_AS_TYPE                                          2   4   0
+0030   0:EXTENSION                                            1   0   0
+0031 G 0:BOX_AS_TYPE                                          3   1   0
+0032   0:EXTENSION                                            2   0   0
+0033 G 0:BOX_AS_TYPE                                          4   5   0
+0034   0:EXTENSION                                            0   0   0
+0035 G 0:BOX_AS_TYPE                                          5   3   5
+0036   0:EXTENSION                                            3   0   0
+0037 G 0:BOX_AS_TYPE                                          6   0   5
+0038   0:EXTENSION                                            4   0   0
+0039 G 0:BOX_AS_TYPE                                          7   1   5
+0040   0:EXTENSION                                            5   0   0
+0041 A 0:ADD_INT64                                            7   3   0
+0042 A 0:TRUNCATE_TO_WIDTH                                    7   8   0
+0043 G 0:BOX_AS_TYPE                                          8   7   0
+0044   0:EXTENSION                                            0   0   0
+0045 G 1:CALL_NATIVE                                        130   0   0    ; call native general[0] (site 0)
+0046 A 1:MOVE_STRING                                         37   0   1
+0047 A 2:RETURN                                               0  10   1    ; 1 values

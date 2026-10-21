@@ -19,7 +19,6 @@
 package passes
 
 import (
-	"context"
 	"slices"
 	"testing"
 
@@ -29,12 +28,12 @@ import (
 )
 
 func smallIntConst(dest, value uint8) isa.Instruction {
-	return mk(isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), dest, value)
+	return mk(isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), dest, value)
 }
 
 func exitTestedConstLoop(load, use isa.Instruction, exitBlock ...isa.Instruction) []isa.Instruction {
 	return slices.Concat([]isa.Instruction{
-		mk(isa.OpLoadIntConst, 9, 0, 0),
+		mk(isa.OpLoadInt64Constant, 9, 0, 0),
 		condJump(isa.OpJumpIfFalse, 3, 3),
 		load,
 		use,
@@ -51,17 +50,17 @@ func TestConstantLoadDestination(t *testing.T) {
 		wantReg  uint8
 		wantOK   bool
 	}{
-		{name: "int const", inst: mk(isa.OpLoadIntConst, 4, 1, 0), wantKind: isa.RegisterInt, wantReg: 4, wantOK: true},
-		{name: "float const", inst: mk(isa.OpLoadFloatConst, 2, 0, 0), wantKind: isa.RegisterFloat, wantReg: 2, wantOK: true},
-		{name: "string const", inst: mk(isa.OpLoadStringConst, 0, 0, 0), wantKind: isa.RegisterString, wantReg: 0, wantOK: true},
-		{name: "uint const", inst: mk(isa.OpLoadUintConst, 7, 0, 0), wantKind: isa.RegisterUint, wantReg: 7, wantOK: true},
-		{name: "small int const", inst: smallIntConst(5, 1), wantKind: isa.RegisterInt, wantReg: 5, wantOK: true},
-		{name: "small uint const", inst: mk(isa.OpDrillTier1, uint8(isa.SubOpLoadUintConstSmall), 6, 1), wantKind: isa.RegisterUint, wantReg: 6, wantOK: true},
-		{name: "general const must stay fresh", inst: mk(isa.OpLoadGeneralConst, 1, 0, 0), wantOK: false},
-		{name: "composite zero reuse must stay fresh", inst: mk(isa.OpLoadCompositeZeroReuse, 1, 0, 0), wantOK: false},
-		{name: "complex const is not in the family", inst: mk(isa.OpLoadComplexConst, 1, 0, 0), wantOK: false},
-		{name: "bool load is not in the family", inst: mk(isa.OpDrillTier1, uint8(isa.SubOpLoadBool), 1, 1), wantOK: false},
-		{name: "field read is not a constant", inst: mk(isa.OpGetStructFieldIntT0, 1, 4, 0), wantOK: false},
+		{name: "int const", inst: mk(isa.OpLoadInt64Constant, 4, 1, 0), wantKind: isa.RegisterInt64, wantReg: 4, wantOK: true},
+		{name: "float const", inst: mk(isa.OpLoadFloat64Constant, 2, 0, 0), wantKind: isa.RegisterFloat64, wantReg: 2, wantOK: true},
+		{name: "string const", inst: mk(isa.OpLoadStringConstant, 0, 0, 0), wantKind: isa.RegisterString, wantReg: 0, wantOK: true},
+		{name: "uint const", inst: mk(isa.OpLoadUint64Constant, 7, 0, 0), wantKind: isa.RegisterUint64, wantReg: 7, wantOK: true},
+		{name: "small int const", inst: smallIntConst(5, 1), wantKind: isa.RegisterInt64, wantReg: 5, wantOK: true},
+		{name: "small uint const", inst: mk(isa.OpDrillTier1, uint8(isa.SubOpLoadUint64Immediate), 6, 1), wantKind: isa.RegisterUint64, wantReg: 6, wantOK: true},
+		{name: "general const must stay fresh", inst: mk(isa.OpLoadGeneralConstant, 1, 0, 0), wantOK: false},
+		{name: "composite zero reuse must stay fresh", inst: mk(isa.OpLoadCompositeZeroInPlace, 1, 0, 0), wantOK: false},
+		{name: "complex const is not in the family", inst: mk(isa.OpLoadComplex128Constant, 1, 0, 0), wantOK: false},
+		{name: "bool load is not in the family", inst: mk(isa.OpDrillTier1, uint8(isa.SubOpLoadBoolImmediateAsInt64), 1, 1), wantOK: false},
+		{name: "field read is not a constant", inst: mk(isa.OpGetStructFieldInt64, 1, 4, 0), wantOK: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -79,10 +78,10 @@ func TestConstantLoadDestination(t *testing.T) {
 
 func TestHoistLoopInvariantConstantLoads(t *testing.T) {
 	t.Parallel()
-	stringLoad := mk(isa.OpLoadStringConst, 0, 0, 0)
-	stringIndex := mk(isa.OpStringIndex, 1, 0, 2)
-	deadOnExit := mk(isa.OpLoadStringConst, 0, 1, 0)
-	liveOnExit := mk(isa.OpStringIndex, 5, 0, 2)
+	stringLoad := mk(isa.OpLoadStringConstant, 0, 0, 0)
+	stringIndex := mk(isa.OpGetStringByte, 1, 0, 2)
+	deadOnExit := mk(isa.OpLoadStringConstant, 0, 1, 0)
+	liveOnExit := mk(isa.OpGetStringByte, 5, 0, 2)
 	tests := []struct {
 		name        string
 		body        []isa.Instruction
@@ -106,39 +105,58 @@ func TestHoistLoopInvariantConstantLoads(t *testing.T) {
 		},
 		{
 			name:      "hoists a small int constant",
-			body:      exitTestedConstLoop(smallIntConst(5, 7), mk(isa.OpAddInt, 6, 6, 5), mk(isa.OpLoadIntConst, 5, 0, 0)),
+			body:      exitTestedConstLoop(smallIntConst(5, 7), mk(isa.OpAddInt64, 6, 6, 5), mk(isa.OpLoadInt64Constant, 5, 0, 0)),
 			wantHoist: true,
 		},
 		{
 			name:      "hoists a uint constant",
-			body:      exitTestedConstLoop(mk(isa.OpLoadUintConst, 5, 0, 0), mk(isa.OpAddUint, 6, 6, 5), mk(isa.OpLoadUintConst, 5, 1, 0)),
+			body:      exitTestedConstLoop(mk(isa.OpLoadUint64Constant, 5, 0, 0), mk(isa.OpAddUint64, 6, 6, 5), mk(isa.OpLoadUint64Constant, 5, 1, 0)),
 			wantHoist: true,
 		},
 		{
-			name:      "refuses when another instruction in the loop writes the destination",
-			body:      exitTestedConstLoop(smallIntConst(5, 7), mk(isa.OpAddInt, 5, 5, 6), mk(isa.OpLoadIntConst, 5, 0, 0)),
+			name:      "hoists through a fresh register when its only use rewrites the destination",
+			body:      exitTestedConstLoop(smallIntConst(5, 7), mk(isa.OpAddInt64, 5, 5, 6), mk(isa.OpLoadInt64Constant, 5, 0, 0)),
+			wantHoist: true,
+		},
+		{
+			name:      "refuses when another instruction in the loop updates the destination in place",
+			body:      exitTestedConstLoop(smallIntConst(5, 7), isa.NewTier2Instruction(isa.SubOpTier2IncrementInt64, 5), mk(isa.OpLoadInt64Constant, 5, 0, 0)),
+			wantHoist: false,
+		},
+		{
+			name: "refuses when a use that rewrites the destination falls into a join that reads it",
+			body: []isa.Instruction{
+				mk(isa.OpLoadInt64Constant, 9, 0, 0),
+				condJump(isa.OpJumpIfFalse, 3, 5),
+				smallIntConst(5, 7),
+				condJump(isa.OpJumpIfFalse, 4, 1),
+				mk(isa.OpAddInt64, 5, 5, 6),
+				mk(isa.OpAddInt64, 7, 7, 5),
+				tier1Jump(-6),
+				mk(isa.OpLoadInt64Constant, 5, 0, 0),
+			},
 			wantHoist: false,
 		},
 		{
 			name:      "refuses when the destination is read before the load",
-			body:      exitTestedConstLoop(mk(isa.OpAddInt, 6, 6, 5), smallIntConst(5, 7), mk(isa.OpLoadIntConst, 5, 0, 0)),
+			body:      exitTestedConstLoop(mk(isa.OpAddInt64, 6, 6, 5), smallIntConst(5, 7), mk(isa.OpLoadInt64Constant, 5, 0, 0)),
 			wantHoist: false,
 		},
 		{
 			name:      "refuses a general constant even when everything else holds",
-			body:      exitTestedConstLoop(mk(isa.OpLoadGeneralConst, 5, 0, 0), mk(isa.OpMoveGeneral, 6, 5, 0), mk(isa.OpLoadGeneralConst, 5, 1, 0)),
+			body:      exitTestedConstLoop(mk(isa.OpLoadGeneralConstant, 5, 0, 0), mk(isa.OpMoveGeneral, 6, 5, 0), mk(isa.OpLoadGeneralConstant, 5, 1, 0)),
 			wantHoist: false,
 		},
 		{
 			name:        "refuses when the destination is a result slot read by the return past the exit",
-			body:        exitTestedConstLoop(mk(isa.OpLoadIntConst, 0, 0, 0), mk(isa.OpAddInt, 6, 6, 0), mk(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)),
-			resultKinds: []isa.RegisterKind{isa.RegisterInt},
+			body:        exitTestedConstLoop(mk(isa.OpLoadInt64Constant, 0, 0, 0), mk(isa.OpAddInt64, 6, 6, 0), mk(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)),
+			resultKinds: []isa.RegisterKind{isa.RegisterInt64},
 			wantHoist:   false,
 		},
 		{
 			name: "hoists a load that runs before the exit test",
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 9, 0, 0),
+				mk(isa.OpLoadInt64Constant, 9, 0, 0),
 				stringLoad,
 				condJump(isa.OpJumpIfFalse, 3, 2),
 				stringIndex,
@@ -146,6 +164,48 @@ func TestHoistLoopInvariantConstantLoads(t *testing.T) {
 				liveOnExit,
 			},
 			wantHoist: true,
+		},
+		{
+			name: "hoists a load on one arm of a branch when the destination is dead at the header",
+			body: []isa.Instruction{
+				mk(isa.OpLoadInt64Constant, 9, 0, 0),
+				condJump(isa.OpJumpIfFalse, 3, 5),
+				condJump(isa.OpJumpIfFalse, 4, 2),
+				smallIntConst(5, 7),
+				mk(isa.OpAddInt64, 6, 6, 5),
+				mk(isa.OpAddInt64, 3, 3, 6),
+				tier1Jump(-6),
+				mk(isa.OpLoadInt64Constant, 5, 0, 0),
+			},
+			wantHoist: true,
+		},
+		{
+			name: "refuses a load on one arm when the other arm's path reads the destination",
+			body: []isa.Instruction{
+				mk(isa.OpLoadInt64Constant, 9, 0, 0),
+				condJump(isa.OpJumpIfFalse, 3, 5),
+				condJump(isa.OpJumpIfFalse, 4, 2),
+				smallIntConst(5, 7),
+				mk(isa.OpAddInt64, 6, 6, 5),
+				mk(isa.OpAddInt64, 3, 3, 5),
+				tier1Jump(-6),
+				mk(isa.OpLoadInt64Constant, 5, 0, 0),
+			},
+			wantHoist: false,
+		},
+		{
+			name: "refuses a load on one arm when the destination is read past the exit",
+			body: []isa.Instruction{
+				mk(isa.OpLoadInt64Constant, 9, 0, 0),
+				condJump(isa.OpJumpIfFalse, 3, 5),
+				condJump(isa.OpJumpIfFalse, 4, 2),
+				smallIntConst(5, 7),
+				mk(isa.OpAddInt64, 6, 6, 5),
+				mk(isa.OpAddInt64, 3, 3, 6),
+				tier1Jump(-6),
+				mk(isa.OpAddInt64, 8, 8, 5),
+			},
+			wantHoist: false,
 		},
 		{
 			name: "refuses when the loop header is entered only by a jump",
@@ -161,9 +221,13 @@ func TestHoistLoopInvariantConstantLoads(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			compiledFunction := &program.CompiledFunction{Body: tt.body, ResultKinds: tt.resultKinds}
+			compiledFunction := &program.CompiledFunction{
+				Body:         tt.body,
+				ResultKinds:  tt.resultKinds,
+				NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 16, isa.RegisterString: 8},
+			}
 			originalLen := len(tt.body)
-			require.NoError(t, hoistLoopInvariantConstantLoads(context.Background(), compiledFunction, nil))
+			require.NoError(t, hoistLoopInvariantConstantLoads(t.Context(), compiledFunction, nil))
 			require.Len(t, compiledFunction.Body, originalLen, "a hoist never changes the body length")
 			require.Equal(t, tt.wantHoist, len(compiledFunction.PeepholeProvenance) > 0, "hoist recorded in the provenance")
 		})
@@ -172,14 +236,14 @@ func TestHoistLoopInvariantConstantLoads(t *testing.T) {
 
 func TestHoistLoopInvariantConstantLoadsPlacesTheLoadAtTheHeader(t *testing.T) {
 	t.Parallel()
-	body := exitTestedConstLoop(mk(isa.OpLoadStringConst, 0, 3, 0), mk(isa.OpStringIndex, 1, 0, 2), mk(isa.OpLoadStringConst, 0, 1, 0))
+	body := exitTestedConstLoop(mk(isa.OpLoadStringConstant, 0, 3, 0), mk(isa.OpGetStringByte, 1, 0, 2), mk(isa.OpLoadStringConstant, 0, 1, 0))
 	compiledFunction := &program.CompiledFunction{Body: body}
-	require.NoError(t, hoistLoopInvariantConstantLoads(context.Background(), compiledFunction, nil))
+	require.NoError(t, hoistLoopInvariantConstantLoads(t.Context(), compiledFunction, nil))
 	require.Len(t, compiledFunction.Body, 6)
-	require.Equal(t, isa.OpLoadStringConst, compiledFunction.Body[1].Op, "load sits at the old header")
+	require.Equal(t, isa.OpLoadStringConstant, compiledFunction.Body[1].Op, "load sits at the old header")
 	require.Equal(t, uint8(3), compiledFunction.Body[1].B, "constant index travels with the load")
 	require.Equal(t, isa.OpJumpIfFalse, compiledFunction.Body[2].Op, "exit test follows the hoisted load")
-	require.Equal(t, isa.OpStringIndex, compiledFunction.Body[3].Op, "the loop body follows with no remnant")
+	require.Equal(t, isa.OpGetStringByte, compiledFunction.Body[3].Op, "the loop body follows with no remnant")
 	target, isJump := program.JumpTargetAt(compiledFunction.Body, 2)
 	require.True(t, isJump)
 	require.Equal(t, 5, target, "exit still lands on the exit block")
@@ -191,7 +255,7 @@ func TestHoistLoopInvariantConstantLoadsPlacesTheLoadAtTheHeader(t *testing.T) {
 
 func TestHoistLoopInvariantConstantLoadsTakeTheHeaderPosition(t *testing.T) {
 	t.Parallel()
-	body := exitTestedConstLoop(mk(isa.OpLoadStringConst, 0, 3, 0), mk(isa.OpStringIndex, 1, 0, 2), mk(isa.OpLoadStringConst, 0, 1, 0))
+	body := exitTestedConstLoop(mk(isa.OpLoadStringConstant, 0, 3, 0), mk(isa.OpGetStringByte, 1, 0, 2), mk(isa.OpLoadStringConstant, 0, 1, 0))
 	position := func(line int32, column int16) program.SourcePosition {
 		return program.SourcePosition{Line: line, Column: column, FileID: 0, Inlined: false}
 	}
@@ -201,8 +265,8 @@ func TestHoistLoopInvariantConstantLoadsTakeTheHeaderPosition(t *testing.T) {
 		Epilogue:  position(9, 1),
 	}
 	compiledFunction := &program.CompiledFunction{Body: body, DebugSourceMap: sourceMap}
-	require.NoError(t, hoistLoopInvariantConstantLoads(context.Background(), compiledFunction, nil))
-	require.Equal(t, isa.OpLoadStringConst, compiledFunction.Body[1].Op, "load was hoisted")
+	require.NoError(t, hoistLoopInvariantConstantLoads(t.Context(), compiledFunction, nil))
+	require.Equal(t, isa.OpLoadStringConstant, compiledFunction.Body[1].Op, "load was hoisted")
 	require.Equal(t, position(5, 2), sourceMap.Positions[1], "hoisted load reports the loop header, not line 6")
 	require.Equal(t, position(5, 2), sourceMap.Positions[2], "header keeps its position")
 	require.Equal(t, position(6, 3), sourceMap.Positions[3], "body keeps its position")
@@ -223,13 +287,13 @@ func TestHoistLoopInvariantConstantLoadsHonoursTheCap(t *testing.T) {
 	t.Parallel()
 	const loads = maxLicmConstHoistsPerFunction + 2
 	body := make([]isa.Instruction, 0, loads+3)
-	body = append(body, mk(isa.OpLoadIntConst, 30, 0, 0))
+	body = append(body, mk(isa.OpLoadInt64Constant, 30, 0, 0))
 	for reg := range uint8(loads) {
-		body = append(body, mk(isa.OpLoadStringConst, reg, 0, 0))
+		body = append(body, mk(isa.OpLoadStringConstant, reg, 0, 0))
 	}
-	body = append(body, mk(isa.OpLoadIntConst, 31, 0, 0), tier1Jump(-int16(loads+2)))
+	body = append(body, mk(isa.OpLoadInt64Constant, 31, 0, 0), tier1Jump(-int16(loads+2)))
 	compiledFunction := &program.CompiledFunction{Body: body}
-	require.NoError(t, hoistLoopInvariantConstantLoads(context.Background(), compiledFunction, nil))
+	require.NoError(t, hoistLoopInvariantConstantLoads(t.Context(), compiledFunction, nil))
 	require.Len(t, compiledFunction.PeepholeProvenance, maxLicmConstHoistsPerFunction, "exactly the cap's worth of hoists")
 	backEdge, isJump := program.JumpTargetAt(compiledFunction.Body, len(body)-1)
 	require.True(t, isJump)
@@ -241,24 +305,21 @@ func TestPostPurityPipelineEnablesConstantLoadHoisting(t *testing.T) {
 	tests := []struct {
 		name     string
 		pipeline []Pass
-		want     bool
+		want     []bool
 	}{
-		{name: "first pass leaves constant loads to the fusers", pipeline: functionPipeline(DefaultOptions()), want: false},
-		{name: "post-purity pass hoists constant loads", pipeline: PostPurityPipeline(DefaultOptions(), nil), want: true},
+		{name: "first pass leaves constant loads to the fusers", pipeline: functionPipeline(DefaultOptions()), want: []bool{false}},
+		{name: "post-purity pass hoists constant loads", pipeline: PostPurityPipeline(DefaultOptions(), ProgramFacts{}, nil), want: []bool{true}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			found := false
+			var constantLoads []bool
 			for _, pass := range tt.pipeline {
-				licm, ok := pass.(licmPass)
-				if !ok {
-					continue
+				if licm, ok := pass.(licmPass); ok {
+					constantLoads = append(constantLoads, licm.constantLoads)
 				}
-				found = true
-				require.Equal(t, tt.want, licm.constantLoads)
 			}
-			require.True(t, found, "pipeline carries a licm pass")
+			require.Equal(t, tt.want, constantLoads)
 		})
 	}
 }
@@ -273,17 +334,17 @@ func TestRegisterDeadFromTreatsResultSlotsPrecisely(t *testing.T) {
 	}{
 		{
 			name: "result slot overwritten before the return is dead",
-			body: []isa.Instruction{mk(isa.OpLoadStringConst, 0, 1, 0), returnOne},
+			body: []isa.Instruction{mk(isa.OpLoadStringConstant, 0, 1, 0), returnOne},
 			want: true,
 		},
 		{
 			name: "result slot read by the return is live",
-			body: []isa.Instruction{mk(isa.OpLoadIntConst, 4, 0, 0), returnOne},
+			body: []isa.Instruction{mk(isa.OpLoadInt64Constant, 4, 0, 0), returnOne},
 			want: false,
 		},
 		{
 			name: "result slot stays live when the function defers a call",
-			body: []isa.Instruction{mk(isa.OpDefer, 3, 0, 0), mk(isa.OpLoadStringConst, 0, 1, 0), returnOne},
+			body: []isa.Instruction{mk(isa.OpDefer, 3, 0, 0), mk(isa.OpLoadStringConstant, 0, 1, 0), returnOne},
 			want: false,
 		},
 		{
@@ -308,42 +369,61 @@ func TestRegisterDeadFromTreatsResultSlotsPrecisely(t *testing.T) {
 func TestConstantHoistRefusesReadsBeforeTheLoadWithoutExits(t *testing.T) {
 	t.Parallel()
 	body := []isa.Instruction{
-		mk(isa.OpLoadIntConst, 0, 0, 0),
-		mk(isa.OpNop, 0, 0, 0),
-		mk(isa.OpAddInt, 12, 10, 0),
-		mk(isa.OpLoadIntConst, 10, 1, 0),
-		mk(isa.OpAddInt, 0, 0, 1),
+		mk(isa.OpLoadInt64Constant, 0, 0, 0),
+		mk(isa.OpNoOperation, 0, 0, 0),
+		mk(isa.OpAddInt64, 12, 10, 0),
+		mk(isa.OpLoadInt64Constant, 10, 1, 0),
+		mk(isa.OpAddInt64, 0, 0, 1),
 		tier1Jump(0),
 		isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
 	}
 	require.True(t, program.SetJumpTarget(body, 5, 1))
 	cf := &program.CompiledFunction{Body: slices.Clone(body), IntConstants: []int64{0, 7}}
-	require.NoError(t, hoistLoopInvariantConstantLoads(context.Background(), cf, nil))
+	require.NoError(t, hoistLoopInvariantConstantLoads(t.Context(), cf, nil))
 	require.Equal(t, body, cf.Body, "the first traversal reads the destination before the load")
 }
 
 func TestConstantHoistRenamesReusedTemporaries(t *testing.T) {
 	t.Parallel()
 	body := []isa.Instruction{
-		mk(isa.OpLoadIntConst, 0, 0, 0),
+		mk(isa.OpLoadInt64Constant, 0, 0, 0),
 		mk(isa.OpJumpIfFalse, 0, 0, 0),
 		smallIntConst(9, 4),
-		mk(isa.OpAddInt, 6, 6, 9),
+		mk(isa.OpAddInt64, 6, 6, 9),
 		smallIntConst(9, 26),
-		mk(isa.OpAddInt, 7, 7, 9),
+		mk(isa.OpAddInt64, 7, 7, 9),
 		tier1Jump(0),
 		isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
 	}
 	require.True(t, program.SetJumpTarget(body, 1, 7))
 	require.True(t, program.SetJumpTarget(body, 6, 1))
-	cf := &program.CompiledFunction{Body: body, NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 10}}
-	require.NoError(t, hoistLoopInvariantConstantLoads(context.Background(), cf, nil))
+	cf := &program.CompiledFunction{Body: body, NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 10}}
+	require.NoError(t, hoistLoopInvariantConstantLoads(t.Context(), cf, nil))
 	hoisted := 0
 	for pc := range 3 {
-		if isa.InstrIsTier1SubOp(cf.Body[pc], isa.SubOpLoadIntConstSmall) {
+		if isa.InstrIsTier1SubOp(cf.Body[pc], isa.SubOpLoadInt64Immediate) {
 			hoisted++
 		}
 	}
 	require.Equal(t, 2, hoisted, "both loads leave the loop once each has its own register")
-	require.Equal(t, uint32(11), cf.NumRegisters[isa.RegisterInt])
+	require.Equal(t, uint32(11), cf.NumRegisters[isa.RegisterInt64])
+}
+
+func TestHoistLoopInvariantConstantLoadsLeavesALoadOnAnArmThatLeavesTheLoop(t *testing.T) {
+	t.Parallel()
+	body := []isa.Instruction{
+		mk(isa.OpLoadInt64Constant, 9, 0, 0),
+		condJump(isa.OpJumpIfFalse, 4, 3),
+		smallIntConst(5, 7),
+		mk(isa.OpAddInt64, 5, 5, 6),
+		returnVoid(),
+		mk(isa.OpAddInt64, 3, 3, 6),
+		condJump(isa.OpJumpIfTrue, 3, -6),
+		returnVoid(),
+	}
+	original := slices.Clone(body)
+	compiledFunction := &program.CompiledFunction{Body: body, NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 16}}
+	require.NoError(t, hoistLoopInvariantConstantLoads(t.Context(), compiledFunction, nil))
+	require.Equal(t, original, compiledFunction.Body,
+		"the arm returns, so it is no loop member, and the write after the load was never weighed against it")
 }

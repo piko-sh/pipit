@@ -92,16 +92,16 @@ func TestJumpTargetDecodersAgree(t *testing.T) {
 				continue
 			}
 			decodedJumps++
-			require.NotEqualf(t, isa.OpExt, body[pc].Op, "%s/%s pc %d: an extension word decoded as a jump", f.shape, f.compiledFunction.Name, pc)
+			require.NotEqualf(t, isa.OpExtension, body[pc].Op, "%s/%s pc %d: an extension word decoded as a jump", f.shape, f.compiledFunction.Name, pc)
 
 			require.Truef(t, target >= 0 && target <= len(body), "%s/%s pc %d: target %d is outside the body", f.shape, f.compiledFunction.Name, pc, target)
 			if target < len(body) {
-				require.NotEqualf(t, isa.OpExt, body[target].Op, "%s/%s pc %d: target %d lands on an extension word", f.shape, f.compiledFunction.Name, pc, target)
+				require.NotEqualf(t, isa.OpExtension, body[target].Op, "%s/%s pc %d: target %d lands on an extension word", f.shape, f.compiledFunction.Name, pc, target)
 			}
 			layout, trailingNops := isa.JumpLayoutOf(body[pc])
 			for pad := 1; pad <= trailingNops; pad++ {
 				padPC := pc + layout.WordCount() + pad - 1
-				require.Truef(t, padPC < len(body) && body[padPC].Op == isa.OpNop,
+				require.Truef(t, padPC < len(body) && body[padPC].Op == isa.OpNoOperation,
 					"%s/%s pc %d: layout promises %d nop(s) after the jump but word %d is %v", f.shape, f.compiledFunction.Name, pc, trailingNops, padPC, body[padPC])
 			}
 		}

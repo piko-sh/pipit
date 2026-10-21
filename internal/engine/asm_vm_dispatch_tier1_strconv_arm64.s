@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerSubOpStrconvFormatBool sets strings[B] = bools[C] ? "true" : "false" by stamping a pre-allocated header.
-TEXT ·handlerSubOpStrconvFormatBool(SB), NOSPLIT|NOFRAME, $0
+// handlerStrconvFormatBool sets strings[B] = bools[C] ? "true" : "false" by stamping a pre-allocated header.
+TEXT ·handlerStrconvFormatBool(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R4
 	MOVBU (R4), R4
 	CBNZ R4, wb_fallback
@@ -50,8 +50,8 @@ TEXT ·handlerSubOpStrconvFormatBool(SB), NOSPLIT|NOFRAME, $0
 wb_fallback:
 	B    ·pathBFallback(SB)
 
-// handlerSubOpStrconvItoa sets strings[B] = strconv.Itoa(int(ints[C])) via asmCallStrconvItoa.
-TEXT ·handlerSubOpStrconvItoa(SB), NOSPLIT, $32-0
+// handlerStrconvItoa sets strings[B] = strconv.Itoa(int(ints[C])) via asmCallStrconvItoa.
+TEXT ·handlerStrconvItoa(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1
@@ -73,8 +73,8 @@ TEXT ·handlerSubOpStrconvItoa(SB), NOSPLIT, $32-0
 	ADD  $48, RSP
 	DISPATCH_NEXT()
 
-// handlerSubOpStrconvFormatInt sets strings[B] = strconv.FormatInt(ints[C], int(ints[ext.A])) via asmCallStrconvFormatInt.
-TEXT ·handlerSubOpStrconvFormatInt(SB), NOSPLIT, $48-0
+// handlerStrconvFormatInt sets strings[B] = strconv.FormatInt(ints[C], int(ints[ext.A])) via asmCallStrconvFormatInt.
+TEXT ·handlerStrconvFormatInt(SB), NOSPLIT, $48-0
 	NO_LOCAL_POINTERS
 	LSR  $16, R0, R1
 	AND  $0xFF, R1, R1

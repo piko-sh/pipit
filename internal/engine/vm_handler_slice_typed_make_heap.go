@@ -20,13 +20,14 @@ package engine
 
 import (
 	"fmt"
+	"reflect"
 	"unsafe"
 
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
 )
 
-// handleSubOpMakeSliceHeap builds a typed-bank slice on the Go heap.
+// handleMakeSliceHeap builds a typed-bank slice on the Go heap.
 //
 // The Compiler selects this for locals that leave the frame, so the store barrier finds a
 // heap-owned backing and never has to copy an arena slab.
@@ -38,7 +39,7 @@ import (
 //
 // Returns opContinue on success, or opPanicError with vm.evalError set when the length or
 // capacity is invalid, the allocation limit is exceeded, or the kind is not a typed bank.
-func handleSubOpMakeSliceHeap(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMakeSliceHeap(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	length := registers.Ints[instruction.C]
@@ -51,7 +52,13 @@ func handleSubOpMakeSliceHeap(vm *VM, frame *CallFrame, registers *Registers, in
 			fault.ErrAllocationLimit, capacity, vm.Limits.MaxAllocSize)
 		return opPanicError
 	}
-	if !storeHeapTypedSlice(registers, isa.RegisterKind(extensionWord.B), instruction.B, int(length), int(capacity)) {
+
+	kind := isa.RegisterKind(extensionWord.B)
+	if kind == isa.RegisterSliceString && optimisticMake(vm.Arena, vm.rootFunction, reflect.String, typedSliceElementSize(kind), int(capacity)) && storeArenaTypedSlice(vm, registers, kind,
+		instruction.B, int(length), int(capacity)) {
+		return opContinue
+	}
+	if !storeHeapTypedSlice(registers, kind, instruction.B, int(length), int(capacity)) {
 		vm.evalError = fmt.Errorf("%w: MAKE_SLICE_HEAP kind %d is not a typed-slice bank", errInvalidOpcode, extensionWord.B)
 		return opPanicError
 	}
@@ -74,15 +81,15 @@ func handleSubOpMakeSliceHeap(vm *VM, frame *CallFrame, registers *Registers, in
 // Returns bool which is false when kind is not a typed-slice bank.
 func storeHeapTypedSlice(registers *Registers, kind isa.RegisterKind, slot uint8, length, capacity int) bool {
 	switch kind {
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		registers.SlicesInt[slot] = make([]int64, length, capacity)
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		registers.slicesFloat[slot] = make([]float64, length, capacity)
 	case isa.RegisterSliceString:
 		registers.slicesString[slot] = make([]string, length, capacity)
 	case isa.RegisterSliceBool:
 		registers.slicesBool[slot] = make([]bool, length, capacity)
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		registers.slicesUint[slot] = make([]uint64, length, capacity)
 	case isa.RegisterSliceByte:
 		registers.slicesByte[slot] = make([]byte, length, capacity)

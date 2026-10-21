@@ -37,8 +37,8 @@ const (
 	labelCIMethodHit = "ci_method_hit"
 )
 
-// EmitCallMethodInline emits the body of handlerCallMethodInline, selecting the call
-// entry by receiver type and sharing every frame-push stage with EmitCallInline.
+// EmitCallMethodInline emits the body of handlerCallMethod, selecting the call entry by
+// receiver type and sharing every frame-push stage with EmitCallInline.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 func (o *amd64InlineCallOps) EmitCallMethodInline(e *asmgen.Emitter) {

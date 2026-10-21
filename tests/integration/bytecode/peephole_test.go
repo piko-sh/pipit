@@ -53,266 +53,266 @@ func TestPeepholeOptimise(t *testing.T) {
 		expectSubOp map[int]isa.SubOpcode
 	}{
 		{
-			name:   "LoadIntConst + SubInt -> SubIntConst",
+			name:   "LoadInt64Constant + SubtractInt64 -> SubtractInt64Constant",
 			consts: []int64{42},
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 3, 0, 0),
-				mk(isa.OpSubInt, 1, 2, 3),
+				mk(isa.OpLoadInt64Constant, 3, 0, 0),
+				mk(isa.OpSubtractInt64, 1, 2, 3),
 			},
-			want: []isa.Opcode{isa.OpSubIntConst, isa.OpNop},
+			want: []isa.Opcode{isa.OpSubtractInt64Constant, isa.OpNoOperation},
 		},
 		{
-			name:   "LoadIntConst + AddInt -> AddIntConst",
+			name:   "LoadInt64Constant + AddInt64 -> AddInt64Constant",
 			consts: []int64{10},
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 3, 0, 0),
-				mk(isa.OpAddInt, 1, 2, 3),
+				mk(isa.OpLoadInt64Constant, 3, 0, 0),
+				mk(isa.OpAddInt64, 1, 2, 3),
 			},
-			want: []isa.Opcode{isa.OpAddIntConst, isa.OpNop},
+			want: []isa.Opcode{isa.OpAddInt64Constant, isa.OpNoOperation},
 		},
 		{
-			name:   "LoadIntConst + MulInt -> MulIntConst",
+			name:   "LoadInt64Constant + MultiplyInt64 -> MultiplyInt64Constant",
 			consts: []int64{7},
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 3, 0, 0),
-				mk(isa.OpMulInt, 1, 2, 3),
+				mk(isa.OpLoadInt64Constant, 3, 0, 0),
+				mk(isa.OpMultiplyInt64, 1, 2, 3),
 			},
-			want: []isa.Opcode{isa.OpMulIntConst, isa.OpNop},
+			want: []isa.Opcode{isa.OpMultiplyInt64Constant, isa.OpNoOperation},
 		},
 		{
-			name:   "LoadIntConst + LeInt + JumpIfFalse -> LeIntConstJumpFalse",
+			name:   "LoadInt64Constant + LessOrEqualInt64 + JumpIfFalse -> LeIntConstJumpFalse",
 			consts: []int64{100},
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 3, 0, 0),
-				mk(isa.OpLeInt, 4, 1, 3),
+				mk(isa.OpLoadInt64Constant, 3, 0, 0),
+				mk(isa.OpLessOrEqualInt64, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
-			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpLeIntConstJumpFalse},
+			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExtension, isa.OpNoOperation},
+			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpLessOrEqualInt64ConstantThenJumpIfFalse},
 		},
 		{
-			name:   "LoadIntConst + LtInt + JumpIfFalse -> LtIntConstJumpFalse",
+			name:   "LoadInt64Constant + LessThanInt64 + JumpIfFalse -> LtIntConstJumpFalse",
 			consts: []int64{50},
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 3, 0, 0),
-				mk(isa.OpLtInt, 4, 1, 3),
+				mk(isa.OpLoadInt64Constant, 3, 0, 0),
+				mk(isa.OpLessThanInt64, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
-			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpLtIntConstJumpFalse},
+			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExtension, isa.OpNoOperation},
+			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpLessThanInt64ConstantThenJumpIfFalse},
 		},
 		{
-			name:   "LoadIntConst + EqInt + JumpIfFalse -> EqIntConstJumpFalse",
+			name:   "LoadInt64Constant + EqualInt64 + JumpIfFalse -> EqIntConstJumpFalse",
 			consts: []int64{3},
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 3, 0, 0),
-				mk(isa.OpEqInt, 4, 1, 3),
+				mk(isa.OpLoadInt64Constant, 3, 0, 0),
+				mk(isa.OpEqualInt64, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
-			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpEqIntConstJumpFalse},
+			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExtension, isa.OpNoOperation},
+			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpEqualInt64ConstantThenJumpIfFalse},
 		},
 		{
-			name:   "LoadIntConst + EqInt + JumpIfTrue -> EqIntConstJumpTrue",
+			name:   "LoadInt64Constant + EqualInt64 + JumpIfTrue -> EqIntConstJumpTrue",
 			consts: []int64{3},
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 3, 0, 0),
-				mk(isa.OpEqInt, 4, 1, 3),
+				mk(isa.OpLoadInt64Constant, 3, 0, 0),
+				mk(isa.OpEqualInt64, 4, 1, 3),
 				mk(isa.OpJumpIfTrue, 4, lo, hi),
 			},
-			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
-			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpEqIntConstJumpTrue},
+			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExtension, isa.OpNoOperation},
+			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpEqualInt64ConstantThenJumpIfTrue},
 		},
 		{
-			name:   "LoadIntConst + GeInt + JumpIfFalse -> GeIntConstJumpFalse",
+			name:   "LoadInt64Constant + GreaterOrEqualInt64 + JumpIfFalse -> GeIntConstJumpFalse",
 			consts: []int64{10},
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 3, 0, 0),
-				mk(isa.OpGeInt, 4, 1, 3),
+				mk(isa.OpLoadInt64Constant, 3, 0, 0),
+				mk(isa.OpGreaterOrEqualInt64, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
-			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpGeIntConstJumpFalse},
+			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExtension, isa.OpNoOperation},
+			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpGreaterOrEqualInt64ConstantThenJumpIfFalse},
 		},
 		{
-			name:   "LoadIntConst + GtInt + JumpIfFalse -> GtIntConstJumpFalse",
+			name:   "LoadInt64Constant + GreaterThanInt64 + JumpIfFalse -> GtIntConstJumpFalse",
 			consts: []int64{10},
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 3, 0, 0),
-				mk(isa.OpGtInt, 4, 1, 3),
+				mk(isa.OpLoadInt64Constant, 3, 0, 0),
+				mk(isa.OpGreaterThanInt64, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
-			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpGtIntConstJumpFalse},
+			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExtension, isa.OpNoOperation},
+			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpGreaterThanInt64ConstantThenJumpIfFalse},
 		},
 		{
-			name:   "AddIntConst + Jump -> AddIntJump",
+			name:   "AddInt64Constant + Jump -> AddIntJump",
 			consts: []int64{1},
 			body: []isa.Instruction{
-				mk(isa.OpAddIntConst, 0, 0, 0),
+				mk(isa.OpAddInt64Constant, 0, 0, 0),
 				mk(isa.OpDrillTier1, uint8(isa.SubOpJump), lo, hi),
 			},
-			want: []isa.Opcode{isa.OpAddIntJump, isa.OpExt},
+			want: []isa.Opcode{isa.OpAddInt64ConstantThenJump, isa.OpExtension},
 		},
 		{
-			name: "IncInt + LtInt + JumpIfTrue -> IncIntJumpLt",
+			name: "IncrementInt64 + LessThanInt64 + JumpIfTrue -> IncIntJumpLt",
 			body: []isa.Instruction{
-				mk(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2IncInt), 0),
-				mk(isa.OpLtInt, 2, 0, 1),
+				mk(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2IncrementInt64), 0),
+				mk(isa.OpLessThanInt64, 2, 0, 1),
 				mk(isa.OpJumpIfTrue, 2, lo, hi),
 			},
-			want: []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
+			want: []isa.Opcode{isa.OpDrillTier1, isa.OpExtension, isa.OpNoOperation},
 		},
 		{
-			name: "RuneToString + ConcatString -> ConcatRuneString",
+			name: "RuneToString + ConcatenateString -> ConcatRuneString",
 			body: []isa.Instruction{
-				mk(isa.OpDrillTier1, uint8(isa.SubOpRuneToString), 3, 1),
-				mk(isa.OpConcatString, 2, 0, 3),
+				mk(isa.OpDrillTier1, uint8(isa.SubOpConvertRuneToString), 3, 1),
+				mk(isa.OpConcatenateString, 2, 0, 3),
 			},
-			want: []isa.Opcode{isa.OpConcatRuneString, isa.OpNop},
+			want: []isa.Opcode{isa.OpConcatenateStringRune, isa.OpNoOperation},
 		},
 		{
-			name:   "LoadIntConst small value -> LoadIntConstSmall",
+			name:   "LoadInt64Constant small value -> LoadIntConstSmall",
 			consts: []int64{42},
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 0, 0, 0),
+				mk(isa.OpLoadInt64Constant, 0, 0, 0),
 			},
 			want: []isa.Opcode{isa.OpDrillTier1},
 		},
 		{
-			name:   "LoadIntConst large value stays unchanged",
+			name:   "LoadInt64Constant large value stays unchanged",
 			consts: []int64{1000},
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 0, 0, 0),
+				mk(isa.OpLoadInt64Constant, 0, 0, 0),
 			},
-			want: []isa.Opcode{isa.OpLoadIntConst},
+			want: []isa.Opcode{isa.OpLoadInt64Constant},
 		},
 		{
-			name:   "LoadIntConst negative value stays unchanged",
+			name:   "LoadInt64Constant negative value stays unchanged",
 			consts: []int64{-1},
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 0, 0, 0),
+				mk(isa.OpLoadInt64Constant, 0, 0, 0),
 			},
-			want: []isa.Opcode{isa.OpLoadIntConst},
+			want: []isa.Opcode{isa.OpLoadInt64Constant},
 		},
 		{
-			name:     "LoadStringConst + EqString + JumpIfFalse -> EqStringConstJumpFalse",
+			name:     "LoadStringConstant + EqualString + JumpIfFalse -> EqStringConstJumpFalse",
 			strConst: []string{"hello"},
 			body: []isa.Instruction{
-				mk(isa.OpLoadStringConst, 3, 0, 0),
-				mk(isa.OpEqString, 4, 1, 3),
+				mk(isa.OpLoadStringConstant, 3, 0, 0),
+				mk(isa.OpEqualString, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
-			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpEqStringConstJumpFalse},
+			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpExtension, isa.OpNoOperation},
+			expectSubOp: map[int]isa.SubOpcode{0: isa.SubOpEqualStringConstantThenJumpIfFalse},
 		},
 		{
-			name: "LoadNil + EqGeneral + JumpIfTrue -> TestNilJumpTrue",
+			name: "LoadNil + EqualGeneral + JumpIfTrue -> TestNilJumpTrue",
 			body: []isa.Instruction{
 				mk(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2LoadNil), 3),
-				mk(isa.OpEqGeneral, 4, 1, 3),
+				mk(isa.OpEqualGeneral, 4, 1, 3),
 				mk(isa.OpJumpIfTrue, 4, lo, hi),
 			},
-			want: []isa.Opcode{isa.OpTestNilJumpTrue, isa.OpNop, isa.OpNop},
+			want: []isa.Opcode{isa.OpJumpIfNil, isa.OpNoOperation, isa.OpNoOperation},
 		},
 		{
-			name: "LoadNil + EqGeneral + JumpIfFalse -> TestNilJumpFalse",
+			name: "LoadNil + EqualGeneral + JumpIfFalse -> TestNilJumpFalse",
 			body: []isa.Instruction{
 				mk(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2LoadNil), 3),
-				mk(isa.OpEqGeneral, 4, 1, 3),
+				mk(isa.OpEqualGeneral, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			want: []isa.Opcode{isa.OpTestNilJumpFalse, isa.OpNop, isa.OpNop},
+			want: []isa.Opcode{isa.OpJumpIfNotNil, isa.OpNoOperation, isa.OpNoOperation},
 		},
 		{
-			name: "LoadNil + NeGeneral + JumpIfTrue -> TestNilJumpFalse",
+			name: "LoadNil + NotEqualGeneral + JumpIfTrue -> TestNilJumpFalse",
 			body: []isa.Instruction{
 				mk(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2LoadNil), 3),
-				mk(isa.OpNeGeneral, 4, 1, 3),
+				mk(isa.OpNotEqualGeneral, 4, 1, 3),
 				mk(isa.OpJumpIfTrue, 4, lo, hi),
 			},
-			want: []isa.Opcode{isa.OpTestNilJumpFalse, isa.OpNop, isa.OpNop},
+			want: []isa.Opcode{isa.OpJumpIfNotNil, isa.OpNoOperation, isa.OpNoOperation},
 		},
 		{
-			name: "LoadNil + NeGeneral + JumpIfFalse -> TestNilJumpTrue",
+			name: "LoadNil + NotEqualGeneral + JumpIfFalse -> TestNilJumpTrue",
 			body: []isa.Instruction{
 				mk(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2LoadNil), 3),
-				mk(isa.OpNeGeneral, 4, 1, 3),
+				mk(isa.OpNotEqualGeneral, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			want: []isa.Opcode{isa.OpTestNilJumpTrue, isa.OpNop, isa.OpNop},
+			want: []isa.Opcode{isa.OpJumpIfNil, isa.OpNoOperation, isa.OpNoOperation},
 		},
 		{
-			name: "LoadNil in B position + EqGeneral + JumpIfTrue -> TestNilJumpTrue",
+			name: "LoadNil in B position + EqualGeneral + JumpIfTrue -> TestNilJumpTrue",
 			body: []isa.Instruction{
 				mk(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2LoadNil), 3),
-				mk(isa.OpEqGeneral, 4, 3, 1),
+				mk(isa.OpEqualGeneral, 4, 3, 1),
 				mk(isa.OpJumpIfTrue, 4, lo, hi),
 			},
-			want: []isa.Opcode{isa.OpTestNilJumpTrue, isa.OpNop, isa.OpNop},
+			want: []isa.Opcode{isa.OpJumpIfNil, isa.OpNoOperation, isa.OpNoOperation},
 		},
 		{
 			name: "fusion still fires when jump targets first of pair",
 			body: []isa.Instruction{
 				mk(isa.OpDrillTier1, uint8(isa.SubOpJump), 0, 0),
-				mk(isa.OpDrillTier1, uint8(isa.SubOpRuneToString), 3, 1),
-				mk(isa.OpConcatString, 2, 0, 3),
+				mk(isa.OpDrillTier1, uint8(isa.SubOpConvertRuneToString), 3, 1),
+				mk(isa.OpConcatenateString, 2, 0, 3),
 			},
-			want: []isa.Opcode{isa.OpDrillTier1, isa.OpConcatRuneString, isa.OpNop},
+			want: []isa.Opcode{isa.OpDrillTier1, isa.OpConcatenateStringRune, isa.OpNoOperation},
 		},
 		{
 			name: "no fusion when jump targets second of pair",
 			body: []isa.Instruction{
 				mk(isa.OpDrillTier1, uint8(isa.SubOpJump), 1, 0),
-				mk(isa.OpDrillTier1, uint8(isa.SubOpRuneToString), 3, 1),
-				mk(isa.OpConcatString, 2, 0, 3),
+				mk(isa.OpDrillTier1, uint8(isa.SubOpConvertRuneToString), 3, 1),
+				mk(isa.OpConcatenateString, 2, 0, 3),
 			},
-			want: []isa.Opcode{isa.OpDrillTier1, isa.OpDrillTier1, isa.OpConcatString},
+			want: []isa.Opcode{isa.OpDrillTier1, isa.OpDrillTier1, isa.OpConcatenateString},
 		},
 		{
 			name:   "no fusion when registers don't match",
 			consts: []int64{10},
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 3, 0, 0),
-				mk(isa.OpAddInt, 1, 2, 5),
+				mk(isa.OpLoadInt64Constant, 3, 0, 0),
+				mk(isa.OpAddInt64, 1, 2, 5),
 			},
-			want: []isa.Opcode{isa.OpDrillTier1, isa.OpAddInt},
+			want: []isa.Opcode{isa.OpDrillTier1, isa.OpAddInt64},
 		},
 		{
 			name: "StringIndex + UintToInt -> StringIndexToInt",
 			body: []isa.Instruction{
-				mk(isa.OpStringIndex, 3, 0, 1),
-				mk(isa.OpDrillTier1, uint8(isa.SubOpUintToInt), 2, 3),
+				mk(isa.OpGetStringByte, 3, 0, 1),
+				mk(isa.OpDrillTier1, uint8(isa.SubOpConvertUint64ToInt64), 2, 3),
 			},
-			want: []isa.Opcode{isa.OpStringIndexToInt, isa.OpNop},
+			want: []isa.Opcode{isa.OpGetStringByteAsInt64, isa.OpNoOperation},
 		},
 		{
 			name: "no StringIndexToInt when registers don't match",
 			body: []isa.Instruction{
-				mk(isa.OpStringIndex, 3, 0, 1),
-				mk(isa.OpDrillTier1, uint8(isa.SubOpUintToInt), 2, 5),
+				mk(isa.OpGetStringByte, 3, 0, 1),
+				mk(isa.OpDrillTier1, uint8(isa.SubOpConvertUint64ToInt64), 2, 5),
 			},
-			want: []isa.Opcode{isa.OpStringIndex, isa.OpDrillTier1},
+			want: []isa.Opcode{isa.OpGetStringByte, isa.OpDrillTier1},
 		},
 		{
-			name: "LenString + LtInt + JumpIfFalse -> LenStringLtJumpFalse",
+			name: "LengthString + LessThanInt64 + JumpIfFalse -> LenStringLtJumpFalse",
 			body: []isa.Instruction{
-				mk(isa.OpDrillTier1, uint8(isa.SubOpLenString), 3, 0),
-				mk(isa.OpLtInt, 4, 1, 3),
+				mk(isa.OpDrillTier1, uint8(isa.SubOpLengthString), 3, 0),
+				mk(isa.OpLessThanInt64, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
-			want: []isa.Opcode{isa.OpDrillTier1, isa.OpExt, isa.OpNop},
+			want: []isa.Opcode{isa.OpDrillTier1, isa.OpExtension, isa.OpNoOperation},
 		},
 		{
 			name: "no LenStringLtJumpFalse when len reg doesn't match",
 			body: []isa.Instruction{
-				mk(isa.OpDrillTier1, uint8(isa.SubOpLenString), 3, 0),
-				mk(isa.OpLtInt, 4, 1, 5),
+				mk(isa.OpDrillTier1, uint8(isa.SubOpLengthString), 3, 0),
+				mk(isa.OpLessThanInt64, 4, 1, 5),
 				mk(isa.OpJumpIfFalse, 4, lo, hi),
 			},
 
-			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpDrillTier1, isa.OpExt},
-			expectSubOp: map[int]isa.SubOpcode{1: isa.SubOpLtIntJumpFalse},
+			want:        []isa.Opcode{isa.OpDrillTier1, isa.OpDrillTier1, isa.OpExtension},
+			expectSubOp: map[int]isa.SubOpcode{1: isa.SubOpLessThanInt64ThenJumpIfFalse},
 		},
 	}
 
@@ -352,22 +352,22 @@ func TestPeepholePreservesSemantics(t *testing.T) {
 		checkC uint8
 	}{
 		{
-			name:   "SubIntConst preserves operand registers",
+			name:   "SubtractInt64Constant preserves operand registers",
 			consts: []int64{42},
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 5, 0, 0),
-				mk(isa.OpSubInt, 1, 2, 5),
+				mk(isa.OpLoadInt64Constant, 5, 0, 0),
+				mk(isa.OpSubtractInt64, 1, 2, 5),
 			},
 			checkA: 1,
 			checkB: 2,
 			checkC: 0,
 		},
 		{
-			name:   "AddIntConst preserves operand registers",
+			name:   "AddInt64Constant preserves operand registers",
 			consts: []int64{10},
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 5, 0, 0),
-				mk(isa.OpAddInt, 3, 4, 5),
+				mk(isa.OpLoadInt64Constant, 5, 0, 0),
+				mk(isa.OpAddInt64, 3, 4, 5),
 			},
 			checkA: 3,
 			checkB: 4,
@@ -376,8 +376,8 @@ func TestPeepholePreservesSemantics(t *testing.T) {
 		{
 			name: "ConcatRuneString preserves operand registers",
 			body: []isa.Instruction{
-				mk(isa.OpDrillTier1, uint8(isa.SubOpRuneToString), 7, 3),
-				mk(isa.OpConcatString, 5, 2, 7),
+				mk(isa.OpDrillTier1, uint8(isa.SubOpConvertRuneToString), 7, 3),
+				mk(isa.OpConcatenateString, 5, 2, 7),
 			},
 			checkA: 5,
 			checkB: 2,
@@ -386,8 +386,8 @@ func TestPeepholePreservesSemantics(t *testing.T) {
 		{
 			name: "StringIndexToInt preserves operand registers",
 			body: []isa.Instruction{
-				mk(isa.OpStringIndex, 7, 3, 2),
-				mk(isa.OpDrillTier1, uint8(isa.SubOpUintToInt), 5, 7),
+				mk(isa.OpGetStringByte, 7, 3, 2),
+				mk(isa.OpDrillTier1, uint8(isa.SubOpConvertUint64ToInt64), 5, 7),
 			},
 			checkA: 5,
 			checkB: 3,
@@ -426,8 +426,8 @@ func TestPeepholeJumpOffsetAdjustment(t *testing.T) {
 			name:   "3-instr fusion adjusts offset by +1",
 			consts: []int64{10},
 			body: []isa.Instruction{
-				mk(isa.OpLoadIntConst, 3, 0, 0),
-				mk(isa.OpLtInt, 4, 1, 3),
+				mk(isa.OpLoadInt64Constant, 3, 0, 0),
+				mk(isa.OpLessThanInt64, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, 5, 0),
 			},
 			fusedOp:      isa.OpDrillTier1,
@@ -436,8 +436,8 @@ func TestPeepholeJumpOffsetAdjustment(t *testing.T) {
 		{
 			name: "IncIntJumpLt adjusts offset by +1",
 			body: []isa.Instruction{
-				mk(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2IncInt), 0),
-				mk(isa.OpLtInt, 2, 0, 1),
+				mk(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2IncrementInt64), 0),
+				mk(isa.OpLessThanInt64, 2, 0, 1),
 				mk(isa.OpJumpIfTrue, 2, 253, 255),
 			},
 			fusedOp:      isa.OpDrillTier1,
@@ -446,8 +446,8 @@ func TestPeepholeJumpOffsetAdjustment(t *testing.T) {
 		{
 			name: "LenStringLtJumpFalse adjusts offset by +1",
 			body: []isa.Instruction{
-				mk(isa.OpDrillTier1, uint8(isa.SubOpLenString), 3, 0),
-				mk(isa.OpLtInt, 4, 1, 3),
+				mk(isa.OpDrillTier1, uint8(isa.SubOpLengthString), 3, 0),
+				mk(isa.OpLessThanInt64, 4, 1, 3),
 				mk(isa.OpJumpIfFalse, 4, 5, 0),
 			},
 			fusedOp:      isa.OpDrillTier1,
@@ -468,7 +468,7 @@ func TestPeepholeJumpOffsetAdjustment(t *testing.T) {
 			assert.Equal(t, tt.fusedOp, compiledFunction.Body[0].Op)
 
 			extensionWord := compiledFunction.Body[1]
-			assert.Equal(t, isa.OpExt, extensionWord.Op)
+			assert.Equal(t, isa.OpExtension, extensionWord.Op)
 			gotOffset := int16(uint16(extensionWord.A) | uint16(extensionWord.B)<<8)
 			assert.Equal(t, tt.expectOffset, gotOffset, "adjusted jump offset")
 		})
@@ -480,13 +480,13 @@ func TestPeepholeNilJumpOffset(t *testing.T) {
 	compiledFunction := &program.CompiledFunction{
 		Body: []isa.Instruction{
 			mk(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2LoadNil), 3),
-			mk(isa.OpEqGeneral, 4, 1, 3),
+			mk(isa.OpEqualGeneral, 4, 1, 3),
 			mk(isa.OpJumpIfTrue, 4, 5, 0),
 		},
 	}
 	_ = passes.Optimise(t.Context(), passes.DefaultOptions(), compiledFunction)
 
-	assert.Equal(t, isa.OpTestNilJumpTrue, compiledFunction.Body[0].Op)
+	assert.Equal(t, isa.OpJumpIfNil, compiledFunction.Body[0].Op)
 	gotOffset := int16(uint16(compiledFunction.Body[0].B) | uint16(compiledFunction.Body[0].C)<<8)
 	assert.Equal(t, int16(7), gotOffset, "nil jump offset adjusts by +2")
 }
@@ -496,16 +496,16 @@ func TestPeepholeRecursive(t *testing.T) {
 	child := &program.CompiledFunction{
 		IntConstants: []int64{1},
 		Body: []isa.Instruction{
-			mk(isa.OpLoadIntConst, 3, 0, 0),
-			mk(isa.OpAddInt, 1, 2, 3),
+			mk(isa.OpLoadInt64Constant, 3, 0, 0),
+			mk(isa.OpAddInt64, 1, 2, 3),
 		},
 	}
 	parent := &program.CompiledFunction{
 		Functions: []*program.CompiledFunction{child},
-		Body:      []isa.Instruction{mk(isa.OpNop, 0, 0, 0)},
+		Body:      []isa.Instruction{mk(isa.OpNoOperation, 0, 0, 0)},
 	}
 	_ = passes.Optimise(t.Context(), passes.DefaultOptions(), parent)
 
-	assert.Equal(t, isa.OpAddIntConst, child.Body[0].Op)
-	assert.Equal(t, isa.OpNop, child.Body[1].Op)
+	assert.Equal(t, isa.OpAddInt64Constant, child.Body[0].Op)
+	assert.Equal(t, isa.OpNoOperation, child.Body[1].Op)
 }

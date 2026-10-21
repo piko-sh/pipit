@@ -37,5 +37,5 @@ func RunDebug(ctx context.Context, args []string, streams output.IO) int {
 		fmt.Fprintln(streams.Stderr, "Usage: pipit debug <file>")
 		return 1
 	}
-	return debug_tui.Run(ctx, args[0], streams, ExtraSymbols(ctx), loggerOptions(ctx)...)
+	return debug_tui.Run(ctx, args[0], streams, ExtraSymbols(ctx))
 }

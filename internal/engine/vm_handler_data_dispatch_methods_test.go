@@ -21,6 +21,7 @@ package engine
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -254,7 +255,7 @@ func TestSetMethodArgsPlacesArgumentsByKind(t *testing.T) {
 		registers := standardRegisters()
 		callee := program.NewNamedFunction("m")
 		callee.ParameterKinds = []isa.RegisterKind{
-			isa.RegisterGeneral, isa.RegisterInt, isa.RegisterString, isa.RegisterInt,
+			isa.RegisterGeneral, isa.RegisterInt64, isa.RegisterString, isa.RegisterInt64,
 		}
 
 		setMethodArgs(&registers, callee, []reflect.Value{
@@ -271,7 +272,7 @@ func TestSetMethodArgsPlacesArgumentsByKind(t *testing.T) {
 
 		registers := standardRegisters()
 		callee := program.NewNamedFunction("m")
-		callee.ParameterKinds = []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt}
+		callee.ParameterKinds = []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt64}
 		callee.ParameterRegisters = []uint8{0, 5}
 
 		setMethodArgs(&registers, callee, []reflect.Value{reflect.ValueOf(int64(9))}, identityArg)
@@ -284,7 +285,7 @@ func TestSetMethodArgsPlacesArgumentsByKind(t *testing.T) {
 
 		registers := standardRegisters()
 		callee := program.NewNamedFunction("m")
-		callee.ParameterKinds = []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt}
+		callee.ParameterKinds = []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterInt64}
 		boxed := reflect.ValueOf(map[string]any{"k": int64(3)}).MapIndex(reflect.ValueOf("k"))
 
 		setMethodArgs(&registers, callee, []reflect.Value{boxed}, elemArg)
@@ -383,4 +384,36 @@ func TestBindableReceiverDetachesTheReceiverStorage(t *testing.T) {
 
 		require.Equal(t, 2, bound.Interface().(*methodCarrier).Count, "a pointer receiver sees writes through the pointer")
 	})
+}
+
+func buildBindMethodByNameOnConst(receiver any, methodName string) *program.CompiledFunction {
+	builder := newBytecodeBuilder()
+	receiverConst := builder.addGeneralConst(reflect.ValueOf(receiver))
+	nameConst := builder.addStringConst(methodName)
+	builder.generalRegisters(2).returnGeneral()
+	builder.Emit(isa.OpLoadGeneralConstant, 1, receiverConst, 0)
+	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpBindMethodByName), 0, 1)
+	builder.emitExt(int32(nameConst))
+	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
+	return builder.build()
+}
+
+func TestBindMethodByName_BindsHostNamedTypeMethod(t *testing.T) {
+	t.Parallel()
+
+	result, err := execSynthetic(t, buildBindMethodByNameOnConst(2*time.Second, "String"))
+	require.NoError(t, err)
+
+	bound, ok := result.(func() string)
+	require.True(t, ok, "expected a bound func() string, got %T", result)
+	require.Equal(t, "2s", bound())
+}
+
+func TestBindMethodByName_MissOnValidReceiverIsInvariantError(t *testing.T) {
+	t.Parallel()
+
+	_, err := execSynthetic(t, buildBindMethodByNameOnConst(int64(2_000_000_000), "String"))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "undefined method: int64.String")
+	require.NotContains(t, err.Error(), nilDereferenceMessage)
 }

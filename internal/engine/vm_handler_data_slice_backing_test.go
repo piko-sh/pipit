@@ -19,7 +19,6 @@
 package engine
 
 import (
-	"context"
 	"errors"
 	"reflect"
 	"testing"
@@ -204,7 +203,7 @@ func TestBuildClosureErrorReturnsFillsTheSignature(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			tt.inspect(t, buildClosureErrorReturns(context.Background(), tt.targetType, failure))
+			tt.inspect(t, buildClosureErrorReturns(t.Context(), tt.targetType, failure))
 		})
 	}
 }

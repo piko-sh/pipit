@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerEqInt sets ints[A] = (ints[B] == ints[C]) ? 1 : 0.
-TEXT ·handlerEqInt(SB), NOSPLIT|NOFRAME, $0
+// handlerEqualInt64 sets ints[A] = (ints[B] == ints[C]) ? 1 : 0.
+TEXT ·handlerEqualInt64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -39,8 +39,8 @@ TEXT ·handlerEqInt(SB), NOSPLIT|NOFRAME, $0
 	MOVD R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerNeInt sets ints[A] = (ints[B] != ints[C]) ? 1 : 0.
-TEXT ·handlerNeInt(SB), NOSPLIT|NOFRAME, $0
+// handlerNotEqualInt64 sets ints[A] = (ints[B] != ints[C]) ? 1 : 0.
+TEXT ·handlerNotEqualInt64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -53,8 +53,8 @@ TEXT ·handlerNeInt(SB), NOSPLIT|NOFRAME, $0
 	MOVD R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerLtInt sets ints[A] = (ints[B] < ints[C]) ? 1 : 0.
-TEXT ·handlerLtInt(SB), NOSPLIT|NOFRAME, $0
+// handlerLessThanInt64 sets ints[A] = (ints[B] < ints[C]) ? 1 : 0.
+TEXT ·handlerLessThanInt64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -67,8 +67,8 @@ TEXT ·handlerLtInt(SB), NOSPLIT|NOFRAME, $0
 	MOVD R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerLeInt sets ints[A] = (ints[B] <= ints[C]) ? 1 : 0.
-TEXT ·handlerLeInt(SB), NOSPLIT|NOFRAME, $0
+// handlerLessOrEqualInt64 sets ints[A] = (ints[B] <= ints[C]) ? 1 : 0.
+TEXT ·handlerLessOrEqualInt64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -81,8 +81,8 @@ TEXT ·handlerLeInt(SB), NOSPLIT|NOFRAME, $0
 	MOVD R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerGtInt sets ints[A] = (ints[B] > ints[C]) ? 1 : 0.
-TEXT ·handlerGtInt(SB), NOSPLIT|NOFRAME, $0
+// handlerGreaterThanInt64 sets ints[A] = (ints[B] > ints[C]) ? 1 : 0.
+TEXT ·handlerGreaterThanInt64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -95,8 +95,8 @@ TEXT ·handlerGtInt(SB), NOSPLIT|NOFRAME, $0
 	MOVD R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerGeInt sets ints[A] = (ints[B] >= ints[C]) ? 1 : 0.
-TEXT ·handlerGeInt(SB), NOSPLIT|NOFRAME, $0
+// handlerGreaterOrEqualInt64 sets ints[A] = (ints[B] >= ints[C]) ? 1 : 0.
+TEXT ·handlerGreaterOrEqualInt64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -109,8 +109,8 @@ TEXT ·handlerGeInt(SB), NOSPLIT|NOFRAME, $0
 	MOVD R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerEqUint sets ints[A] = (uints[B] == uints[C]) ? 1 : 0.
-TEXT ·handlerEqUint(SB), NOSPLIT|NOFRAME, $0
+// handlerEqualUint64 sets ints[A] = (uints[B] == uints[C]) ? 1 : 0.
+TEXT ·handlerEqualUint64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -124,8 +124,8 @@ TEXT ·handlerEqUint(SB), NOSPLIT|NOFRAME, $0
 	MOVD R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerNeUint sets ints[A] = (uints[B] != uints[C]) ? 1 : 0.
-TEXT ·handlerNeUint(SB), NOSPLIT|NOFRAME, $0
+// handlerNotEqualUint64 sets ints[A] = (uints[B] != uints[C]) ? 1 : 0.
+TEXT ·handlerNotEqualUint64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -139,8 +139,8 @@ TEXT ·handlerNeUint(SB), NOSPLIT|NOFRAME, $0
 	MOVD R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerLtUint sets ints[A] = (uints[B] < uints[C]) ? 1 : 0.
-TEXT ·handlerLtUint(SB), NOSPLIT|NOFRAME, $0
+// handlerLessThanUint64 sets ints[A] = (uints[B] < uints[C]) ? 1 : 0.
+TEXT ·handlerLessThanUint64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -154,8 +154,8 @@ TEXT ·handlerLtUint(SB), NOSPLIT|NOFRAME, $0
 	MOVD R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerLeUint sets ints[A] = (uints[B] <= uints[C]) ? 1 : 0.
-TEXT ·handlerLeUint(SB), NOSPLIT|NOFRAME, $0
+// handlerLessOrEqualUint64 sets ints[A] = (uints[B] <= uints[C]) ? 1 : 0.
+TEXT ·handlerLessOrEqualUint64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -169,8 +169,8 @@ TEXT ·handlerLeUint(SB), NOSPLIT|NOFRAME, $0
 	MOVD R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerGtUint sets ints[A] = (uints[B] > uints[C]) ? 1 : 0.
-TEXT ·handlerGtUint(SB), NOSPLIT|NOFRAME, $0
+// handlerGreaterThanUint64 sets ints[A] = (uints[B] > uints[C]) ? 1 : 0.
+TEXT ·handlerGreaterThanUint64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -184,8 +184,8 @@ TEXT ·handlerGtUint(SB), NOSPLIT|NOFRAME, $0
 	MOVD R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerGeUint sets ints[A] = (uints[B] >= uints[C]) ? 1 : 0.
-TEXT ·handlerGeUint(SB), NOSPLIT|NOFRAME, $0
+// handlerGreaterOrEqualUint64 sets ints[A] = (uints[B] >= uints[C]) ? 1 : 0.
+TEXT ·handlerGreaterOrEqualUint64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -199,8 +199,8 @@ TEXT ·handlerGeUint(SB), NOSPLIT|NOFRAME, $0
 	MOVD R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerEqFloat sets ints[A] = (floats[B] == floats[C]) ? 1 : 0.
-TEXT ·handlerEqFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerEqualFloat64 sets ints[A] = (floats[B] == floats[C]) ? 1 : 0.
+TEXT ·handlerEqualFloat64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -213,8 +213,8 @@ TEXT ·handlerEqFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVD  R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerNeFloat sets ints[A] = (floats[B] != floats[C]) ? 1 : 0.
-TEXT ·handlerNeFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerNotEqualFloat64 sets ints[A] = (floats[B] != floats[C]) ? 1 : 0.
+TEXT ·handlerNotEqualFloat64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -227,8 +227,8 @@ TEXT ·handlerNeFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVD  R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerLtFloat sets ints[A] = (floats[B] < floats[C]) ? 1 : 0.
-TEXT ·handlerLtFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerLessThanFloat64 sets ints[A] = (floats[B] < floats[C]) ? 1 : 0.
+TEXT ·handlerLessThanFloat64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -241,8 +241,8 @@ TEXT ·handlerLtFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVD  R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerLeFloat sets ints[A] = (floats[B] <= floats[C]) ? 1 : 0.
-TEXT ·handlerLeFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerLessOrEqualFloat64 sets ints[A] = (floats[B] <= floats[C]) ? 1 : 0.
+TEXT ·handlerLessOrEqualFloat64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -255,8 +255,8 @@ TEXT ·handlerLeFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVD  R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerGtFloat sets ints[A] = (floats[B] > floats[C]) ? 1 : 0.
-TEXT ·handlerGtFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerGreaterThanFloat64 sets ints[A] = (floats[B] > floats[C]) ? 1 : 0.
+TEXT ·handlerGreaterThanFloat64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -269,8 +269,8 @@ TEXT ·handlerGtFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVD  R6, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerGeFloat sets ints[A] = (floats[B] >= floats[C]) ? 1 : 0.
-TEXT ·handlerGeFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerGreaterOrEqualFloat64 sets ints[A] = (floats[B] >= floats[C]) ? 1 : 0.
+TEXT ·handlerGreaterOrEqualFloat64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $16, R0, R4
@@ -350,4 +350,68 @@ TEXT ·handlerJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 poll_ok:
 
 skip:
+	DISPATCH_NEXT()
+
+// handlerJumpIfFalseBool jumps by the extension word's offset if bools[C] is false.
+TEXT ·handlerJumpIfFalseBool(SB), NOSPLIT|NOFRAME, $0
+	LSR  $24, R0, R3
+	MOVD CTX_BOOLS_BASE(R19), R5
+	MOVBU (R5)(R3), R4
+	CBNZ R4, taken
+	MOVWU (R22)(R20<<2), R0
+	ADD   $1, R20, R20
+	LSR   $8, R0, R3
+	AND   $0xFFFF, R3, R3
+	LSL   $48, R3, R3
+	ASR   $48, R3, R3
+	ADD  R3, R20, R20
+	MOVD CTX_POLL_BUDGET(R19), R0
+	SUB  $1, R0, R0
+	MOVD R0, CTX_POLL_BUDGET(R19)
+	CMP  $0, R0
+	BGT  poll_ok
+	MOVD R20, CTX_PC(R19)
+	MOVD $EXIT_POLL, R0
+	MOVD R0, CTX_EXIT_REASON(R19)
+	MOVD R20, CTX_EXIT_PC(R19)
+	RET  
+poll_ok:
+	B    dispatch
+
+taken:
+	ADD  $1, R20, R20
+
+dispatch:
+	DISPATCH_NEXT()
+
+// handlerJumpIfTrueBool jumps by the extension word's offset if bools[C] is true.
+TEXT ·handlerJumpIfTrueBool(SB), NOSPLIT|NOFRAME, $0
+	LSR  $24, R0, R3
+	MOVD CTX_BOOLS_BASE(R19), R5
+	MOVBU (R5)(R3), R4
+	CBZ  R4, taken
+	MOVWU (R22)(R20<<2), R0
+	ADD   $1, R20, R20
+	LSR   $8, R0, R3
+	AND   $0xFFFF, R3, R3
+	LSL   $48, R3, R3
+	ASR   $48, R3, R3
+	ADD  R3, R20, R20
+	MOVD CTX_POLL_BUDGET(R19), R0
+	SUB  $1, R0, R0
+	MOVD R0, CTX_POLL_BUDGET(R19)
+	CMP  $0, R0
+	BGT  poll_ok
+	MOVD R20, CTX_PC(R19)
+	MOVD $EXIT_POLL, R0
+	MOVD R0, CTX_EXIT_REASON(R19)
+	MOVD R20, CTX_EXIT_PC(R19)
+	RET  
+poll_ok:
+	B    dispatch
+
+taken:
+	ADD  $1, R20, R20
+
+dispatch:
 	DISPATCH_NEXT()

@@ -25,7 +25,7 @@ type heapMutationClassification uint8
 
 const (
 	// HeapPureCallee marks a function whose body provably mutates no heap-resident state (no
-	// opSet*, isa.OpMapSet, isa.OpIndexSet, isa.OpAddr, no SET sub-ops) and whose every
+	// opSet*, isa.OpSetMap, isa.OpSetElement, isa.OpAddress, no SET sub-ops) and whose every
 	// transitively-reachable callee is also HeapPureCallee.
 	HeapPureCallee heapMutationClassification = iota + 1
 

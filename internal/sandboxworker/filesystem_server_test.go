@@ -40,6 +40,6 @@ func TestFilesystemWorkerRejectsInvalidConfiguration(t *testing.T) {
 		`{"Profile":"restricted-filesystem-v1","imports":["pipit/fs"],"roots":[],"limits":{}}`,
 	} {
 		stream := sourceFixture(t, sandboxwire.Message{Kind: sandboxwire.Configure, ID: 0, Payload: json.RawMessage(payload)})
-		require.Error(t, Serve(stream), "accepted invalid config: %s", payload)
+		require.Error(t, Serve(t.Context(), stream), "accepted invalid config: %s", payload)
 	}
 }

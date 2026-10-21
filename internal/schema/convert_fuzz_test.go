@@ -34,7 +34,7 @@ func FuzzConvertBytecode(f *testing.F) {
 	service := app.NewService()
 	compiled, err := service.CompileFileSet(f.Context(), map[string]string{"main.go": "package main\n\nfunc helper(n int) int {\n\treturn n + 1\n}\n\nfunc main() {\n\tx := helper(1)\n\t_ = x\n}\n"})
 	require.NoError(f, err, "the seed program compiles")
-	packed, err := adapters.PackCompiledFileSetToBytes(compiled)
+	packed, err := adapters.PackCompiledFileSetToBytes(f.Context(), compiled)
 	require.NoError(f, err, "the seed program packs")
 	seed, err := schema.Unpack(packed)
 	require.NoError(f, err, "the seed payload unpacks")

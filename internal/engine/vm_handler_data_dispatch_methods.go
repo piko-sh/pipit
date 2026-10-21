@@ -21,14 +21,24 @@ package engine
 import (
 	"errors"
 	"reflect"
+	"sync/atomic"
 
 	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 )
 
-// handleGetMethod resolves a method by name on a receiver value and stores the bound
-// method in the destination register, using a per-VM cache.
+// processMethodIndexMax bounds processMethodIndexes.
+const processMethodIndexMax = 4096
+
+// processMethodIndexes caches reflection method indices across VMs in the process.
+var processMethodIndexes typedCache[methodCacheKey, int]
+
+// processMethodIndexCount counts processMethodIndexes' entries.
+var processMethodIndexCount atomic.Int64
+
+// handleBindMethodByNameBody resolves a method by name on a receiver value and stores the
+// bound method in the destination register, using a per-VM cache.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes frame (*CallFrame) which provides the method name extension word.
@@ -36,7 +46,7 @@ import (
 // Takes instruction (instruction) which encodes the receiver register.
 //
 // Returns OpResult indicating the next execution step.
-func handleGetMethod(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleBindMethodByNameBody(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	getMethodPC := safeconv.IntToUint32Truncate(frame.ProgramCounter - 1)
 
 	receiver := registers.General[instruction.B]
@@ -57,76 +67,82 @@ func handleGetMethod(vm *VM, frame *CallFrame, registers *Registers, instruction
 		if tryPipitReflectValueMethodGet(vm, registers, instruction.A, receiver, methodName) {
 			return opContinue
 		}
+	} else if installReflectTypeFieldRouteOverride(registers, instruction.A, receiver, methodName) {
+		return opContinue
 	}
 
 	receiver = addressableMethodReceiver(receiver, registers, instruction.B)
 
 	if cached := lookupCachedMethod(vm, receiver, methodName); cached.IsValid() {
+		vm.noteMethodValueClass(cached, receiver.Type(), methodName)
 		registers.General[instruction.A] = cached
 		return opContinue
 	}
-	bound := resolveGetMethodBinding(vm, frame, receiver, methodName, getMethodPC)
-	if !bound.IsValid() {
-		vm.evalError = newInvariantError("undefined method: %s.%s", receiver.Type(), methodName)
+	bound, err := resolveBindMethodByNameBinding(vm, frame, receiver, methodName, getMethodPC)
+	if err != nil {
+		vm.evalError = err
 		return opPanicError
+	}
+	vm.noteMethodValueClass(bound, receiver.Type(), methodName)
+	if !bound.IsValid() {
+		search := promotionSearch{vm: vm, methodName: methodName, interfaceHops: 0, reachedNil: false}
+		functionIndex, promotedReceiver, ok := search.at(receiver, 0)
+		if !ok || int(functionIndex) >= len(vm.functions) {
+			return promotedMethodFailure(vm, &search, receiver.Type().String()+"."+methodName)
+		}
+		bound, err = pipitBoundMethodCallable(vm, promotedReceiver, vm.functions[functionIndex], nil)
+		if err != nil {
+			vm.evalError = err
+			return opPanicError
+		}
 	}
 	registers.General[instruction.A] = bound
 	return opContinue
 }
 
-// resolveGetMethodBinding resolves a method name on a receiver.
-//
-// Falls back to embedded-method search and then to the cross-package method registry when
-// reflect.Value.MethodByName returns zero. reflect's method-set is empty for
-// pipit-synthesised receivers (reflect.StructOf produces no methods), so cross-batch
-// dispatch needs the registry populated by bridgePackageExports plus a MakeFunc
-// trampoline that invokes the owning rootFunction's bytecode.
+// resolveBindMethodByNameBinding resolves a method name on a receiver.
 //
 // Takes vm (*VM) which provides the external method registry.
 // Takes frame (*CallFrame) which carries the static receiver type-name table.
 // Takes receiver (reflect.Value) which is the value the method binds to.
 // Takes methodName (string) which is the method identifier.
 // Takes getMethodPC (uint32) which is the program counter of the originating
-// isa.SubOpGetMethod, used to look up the static receiver type name.
+// isa.SubOpBindMethodByName, used to look up the static receiver type name.
 //
 // Returns reflect.Value which is the bound method, or an invalid value when no matching
 // method is found.
-func resolveGetMethodBinding(vm *VM, frame *CallFrame, receiver reflect.Value, methodName string, getMethodPC uint32) reflect.Value {
+// Returns error which wraps fault.ErrNoMethodBodyForReceiver when a script method was
+// found but no body was compiled for the receiver's type arguments.
+func resolveBindMethodByNameBinding(vm *VM, frame *CallFrame, receiver reflect.Value, methodName string, getMethodPC uint32) (reflect.Value, error) {
 	if bound, ok := boundRuntimeFuncMethod(vm, receiver, methodName); ok {
-		return bound
+		return bound, nil
 	}
 	bound := receiver.MethodByName(methodName)
 	if !bound.IsValid() {
 		bound = resolveNativeMethodOnEmbeds(receiver, methodName)
 	}
 	if bound.IsValid() {
-		return bound
+		return bound, nil
 	}
-	staticTypeName := frame.Function.GetMethodReceiverTypeNames[getMethodPC]
-	if bound = resolveExternalPipitMethod(vm, receiver, methodName, staticTypeName); bound.IsValid() {
-		return bound
-	}
-	return reflect.Value{}
+	staticTypeName := frame.Function.BindMethodByNameReceiverTypeNames[getMethodPC]
+	return resolveExternalPipitMethod(vm, receiver, methodName, staticTypeName)
 }
 
-// resolveExternalPipitMethod finds a method body in GlobalStore.externalMethods
-// (populated for every cross-package methodTable entry by Service.bridgePackageExports)
-// and returns a reflect.MakeFunc callable that dispatches into the foreign rootFunction.
-//
-// Used by handleGetMethod when the in-VM method set lookup fails: pipit-synthesised types
-// built via reflect.StructOf have no Go-reflect methods, so any method resolved via the
-// isa.SubOpGetMethod path needs this fallback in the cross-batch CompileProgram flow.
+// resolveExternalPipitMethod finds a method body in GlobalStore.externalMethods and
+// returns a reflect.MakeFunc callable that dispatches into the foreign rootFunction.
 //
 // Takes vm (*VM) which provides the type-name registry and external method table.
 // Takes receiver (reflect.Value) which is the value the method is bound to.
 // Takes methodName (string) which is the method identifier without type qualifier.
 // Takes staticTypeName (string) which is the static type name of the receiver.
 //
-// Returns a callable reflect.Value on success, or an invalid value when the type name or
-// method is not registered.
-func resolveExternalPipitMethod(vm *VM, receiver reflect.Value, methodName, staticTypeName string) reflect.Value {
+// Returns reflect.Value which is the callable on success, or an invalid value when the
+// type name or method is not registered.
+// Returns error which wraps fault.ErrNoMethodBodyForReceiver when the method has no body
+// for the receiver's type arguments.
+func resolveExternalPipitMethod(vm *VM, receiver reflect.Value, methodName, staticTypeName string) (reflect.Value, error) {
 	if vm == nil {
-		return reflect.Value{}
+		return reflect.Value{}, nil
 	}
 	typeName, ok := pipitTypeName(vm, receiver)
 	if !ok || typeName == "" {
@@ -140,13 +156,10 @@ func resolveExternalPipitMethod(vm *VM, receiver reflect.Value, methodName, stat
 		typeName = staticTypeName
 	}
 	if typeName == "" {
-		return reflect.Value{}
+		return reflect.Value{}, nil
 	}
-	callable, ok := buildPipitBoundMethodCallable(vm, receiver, typeName, methodName)
-	if !ok {
-		return reflect.Value{}
-	}
-	return callable
+	callable, _, err := buildPipitBoundMethodCallable(vm, receiver, typeName, methodName)
+	return callable, err
 }
 
 // addressableMethodReceiver promotes a method-less struct receiver to a pointer so its
@@ -190,7 +203,7 @@ func lookupCachedMethod(vm *VM, receiver reflect.Value, methodName string) refle
 	if index, ok := vm.methodCache[key]; ok {
 		return receiver.Method(index)
 	}
-	m, ok := receiver.Type().MethodByName(methodName)
+	index, ok := processMethodIndex(key)
 	if !ok {
 		return reflect.Value{}
 	}
@@ -198,9 +211,33 @@ func lookupCachedMethod(vm *VM, receiver reflect.Value, methodName string) refle
 		vm.methodCache = make(map[methodCacheKey]int)
 	}
 	if len(vm.methodCache) < maxMethodCacheEntries {
-		vm.methodCache[key] = m.Index
+		vm.methodCache[key] = index
 	}
-	return receiver.Method(m.Index)
+	return receiver.Method(index)
+}
+
+// processMethodIndex returns the index of key's method, from processMethodIndexes or by
+// MethodByName.
+//
+// Takes key (methodCacheKey) which names the type and method.
+//
+// Returns int which is the index.
+// Returns bool which is false when the type declares no such method.
+func processMethodIndex(key methodCacheKey) (int, bool) {
+	if index, ok := processMethodIndexes.load(key); ok {
+		return index, true
+	}
+
+	method, ok := key.typ.MethodByName(key.Name)
+	if !ok {
+		return 0, false
+	}
+	if processMethodIndexCount.Load() < processMethodIndexMax {
+		if _, loaded := processMethodIndexes.loadOrStore(key, method.Index); !loaded {
+			processMethodIndexCount.Add(1)
+		}
+	}
+	return method.Index, true
 }
 
 // resolveNativeMethodOnEmbeds resolves a promoted method on embeds.
@@ -347,17 +384,39 @@ func handleBindMethod(vm *VM, frame *CallFrame, registers *Registers, instructio
 		return opPanicError
 	}
 
+	vm.exportGuestCode()
 	bound := newBoundMethodVM(vm, callee, nil)
 
-	boundReceiver := bindableReceiver(vm.Arena, receiver)
-	registers.General[instruction.A] = reflect.MakeFunc(signature, func(arguments []reflect.Value) []reflect.Value {
-		return conformReflectResults(bound.invoke(boundReceiver, arguments, identityArg), signature)
-	})
+	registers.General[instruction.A] = makeBoundMethodWrapper(vm, bound, bindableReceiver(vm.Arena, receiver), signature)
 	return opContinue
 }
 
-// bindableReceiver snapshots a method value's receiver so later writes cannot change
-// it. Slice backing remains shared.
+// makeBoundMethodWrapper builds the function value of a method value bound to receiver.
+// It uses a reflect.MakeFunc wrapper, or for go/ast.Inspect's callback type a typed
+// adapter (boundMethodWrapper.typedInspect).
+//
+// Takes vm (*VM) which binds the method and exported it (exportGuestCode).
+// Takes bound (*boundMethodVM) which runs the method.
+// Takes receiver (reflect.Value) which is the bound receiver (bindableReceiver).
+// Takes signature (reflect.Type) which is the method value's function type.
+//
+// Returns reflect.Value which is the function value.
+func makeBoundMethodWrapper(vm *VM, bound *boundMethodVM, receiver reflect.Value, signature reflect.Type) reflect.Value {
+	w := &boundMethodWrapper{bound: bound, held: &wrapperBoundReceiver{receiver: receiver}, signature: signature}
+	var wrapper reflect.Value
+	if signature == astInspectCallbackType {
+		wrapper = w.typedInspect()
+	} else {
+		wrapper = reflect.MakeFunc(signature, w.reflectCall)
+	}
+	if ClosureCaptureWalksCells() {
+		registerBoundMethodWrapper(vm, wrapper, w.held)
+	}
+	return wrapper
+}
+
+// bindableReceiver snapshots a method value's receiver so later writes cannot change it.
+// Slice backing remains shared.
 //
 // Takes arena (*RegisterArena) which owns the VM's register storage; may be nil.
 // Takes receiver (reflect.Value) which is the evaluated receiver.

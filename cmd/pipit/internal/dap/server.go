@@ -207,7 +207,7 @@ func (s *server) dispatch(ctx context.Context, message dap.Message) {
 	case *dap.SetVariableRequest:
 		s.handleSetVariable(typed)
 	case *dap.EvaluateRequest:
-		s.handleEvaluate(typed)
+		s.handleEvaluate(ctx, typed)
 	case *dap.ExceptionInfoRequest:
 		s.handleExceptionInfo(typed)
 	case *dap.ContinueRequest:

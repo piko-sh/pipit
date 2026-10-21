@@ -682,16 +682,7 @@ func disqualifyCallExpr(typeContext *Context, expression *ast.CallExpr, candidat
 
 // copyAcceptedTypedSliceShape reports whether expression is a `copy(destination, source)`
 // call where destination and source name typed-slice candidates on the same bank. When
-// the shape matches, the candidates are NOT disqualified; the compile-Emit picks the
-// matching subOpCopySliceXDirect at copy-emission time so the typed bank flows through
-// correctly.
-//
-// The accepted shape is the builtin `copy` ident with exactly two bare ident arguments
-// naming candidates whose candidateKinds entries sit on the same typed-slice bank.
-// Mismatched-bank copies (one typed, one general, or two typed banks of different kinds)
-// are not accepted because the compile-Emit path cannot fuse a typed-direct copy across
-// banks; the survivor walk demotes the typed operand to general so the existing
-// isa.OpCopy reflect path handles the general/general copy.
+// the shape matches, the candidates are NOT disqualified.
 //
 // Takes expression (*ast.CallExpr) which is the call AST node.
 // Takes candidates (map[string]bool) which is the candidate set.
@@ -816,14 +807,10 @@ func callSlotAcceptsTypedSlice(parameterKinds []isa.RegisterKind, argumentIndex 
 // callIsAllowedTypedSliceConsumer reports whether expression is a call shape safe to pass
 // a typed-slice candidate through without forcing it onto the general bank.
 //
-// Allowed shapes are the allowlisted builtins (see typedSliceLocalsAllowedBuiltins) and
-// single-argument `string(<bytes>)` conversions, which lower to
-// isa.SubOpSliceByteToString reading slicesByte directly.
-//
 // Takes typeContext (*Compiler) which holds type information for the expression.
 // Takes expression (*ast.CallExpr) which is the call AST node under inspection.
 //
-// Returns true when the call matches an allowed shape; false otherwise.
+// Returns true when the call matches an allowed shape.
 func callIsAllowedTypedSliceConsumer(typeContext *Context, expression *ast.CallExpr) bool {
 	identifier, ok := expression.Fun.(*ast.Ident)
 	if !ok {
@@ -880,7 +867,7 @@ func disqualifyAssignStmt(statement *ast.AssignStmt, candidates, disqualified ma
 
 // assignIsContainerWrite reports whether the statement is a single-slot container set
 // (`outer[i] = v` or `m[k] = v`). The Emit path boxes the RHS through
-// isa.OpPackInterface, so the candidate can stay on the typed bank.
+// isa.OpBoxAsInterface, so the candidate can stay on the typed bank.
 //
 // Takes statement (*ast.AssignStmt) which is the assignment being inspected.
 //

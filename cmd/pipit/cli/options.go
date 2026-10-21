@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"pipit.sh/pipit"
+	"pipit.sh/pipit/internal/logging"
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
@@ -133,26 +134,14 @@ func configFromContext(ctx context.Context) *config {
 	return &config{}
 }
 
-// loggerFromContext returns the logger configured for the current invocation.
+// invocationContext attaches config to ctx and binds the invocation's logger into it
+// once, so every library call made under the returned context logs through that logger.
 //
-// Returns *slog.Logger which is the invocation's logger, or nil when none was configured.
-func loggerFromContext(ctx context.Context) *slog.Logger {
-	return configFromContext(ctx).logger
-}
-
-// loggerOptions returns the interpreter options that hand the invocation's logger to the
-// library.
+// Takes config (*config) which carries the caller's resolved options.
 //
-// Use it for the commands that build an interpreter themselves rather than through
-// runner.New, which reads the logger off its Limits instead.
-//
-// Returns []pipit.Option which is nil when the invocation configured no logger.
-func loggerOptions(ctx context.Context) []pipit.Option {
-	logger := loggerFromContext(ctx)
-	if logger == nil {
-		return nil
-	}
-	return []pipit.Option{pipit.WithLogger(logger)}
+// Returns context.Context which carries config and the logger.
+func invocationContext(ctx context.Context, config *config) context.Context {
+	return logging.WithLogger(withConfig(ctx, config), config.logger)
 }
 
 // parseLogLevel maps a -log-level value to its slog level.

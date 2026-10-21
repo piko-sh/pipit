@@ -19,6 +19,7 @@
 package engine
 
 import (
+	"reflect"
 	"unsafe"
 
 	"piko.sh/safeconv"
@@ -56,6 +57,9 @@ var (
 //
 // Returns a byte slice of length n backed by the arena's byte slab.
 func (a *RegisterArena) AllocStringBytes(n int) []byte {
+	if abortInjectBuilt {
+		injectAllocationAbort(a)
+	}
 	if a.byteIndex+n > len(a.byteSlab) {
 		a.GrowByteSlab(n)
 	}
@@ -74,10 +78,16 @@ func (a *RegisterArena) AllocStringBytes(n int) []byte {
 //
 // Returns a []byte of length n and capacity n backed by the arena.
 func (a *RegisterArena) AllocByteBacking(n int) []byte {
+	if abortInjectBuilt {
+		injectAllocationAbort(a)
+	}
 	if n <= 0 {
 		return emptyByteBacking
 	}
 	a.enforceSingleAllocLimit(n)
+	if a.splitsMutableBytes() {
+		return a.allocMutByteBacking(n)
+	}
 	if a.byteIndex+n > len(a.byteSlab) {
 		a.GrowByteSlab(n)
 	}
@@ -92,8 +102,11 @@ func (a *RegisterArena) AllocByteBacking(n int) []byte {
 //
 // Takes n (int) which is the number of int64 elements (the slice's capacity).
 //
-// Returns an []int64 of length n and capacity n backed by the arena.
+// Returns []int64 of n zeroed elements and capacity n backed by the arena.
 func (a *RegisterArena) AllocIntBacking(n int) []int64 {
+	if abortInjectBuilt {
+		injectAllocationAbort(a)
+	}
 	if n <= 0 {
 		return emptyIntBacking
 	}
@@ -113,6 +126,9 @@ func (a *RegisterArena) AllocIntBacking(n int) []int64 {
 //
 // Returns an []float64 of length n and capacity n backed by the arena.
 func (a *RegisterArena) AllocFloatBacking(n int) []float64 {
+	if abortInjectBuilt {
+		injectAllocationAbort(a)
+	}
 	if n <= 0 {
 		return emptyFloatBacking
 	}
@@ -135,6 +151,9 @@ func (a *RegisterArena) AllocFloatBacking(n int) []float64 {
 //
 // Returns an unsafe.Pointer to the start of the allocated region.
 func (a *RegisterArena) AllocBytes(size uintptr, align uintptr) unsafe.Pointer {
+	if abortInjectBuilt {
+		injectAllocationAbort(a)
+	}
 	if size == 0 {
 		return zeroSizeAllocPtr
 	}
@@ -163,6 +182,9 @@ func (a *RegisterArena) AllocBytes(size uintptr, align uintptr) unsafe.Pointer {
 //
 // Returns an []string of length n and capacity n backed by the arena.
 func (a *RegisterArena) AllocStringBacking(n int) []string {
+	if abortInjectBuilt {
+		injectAllocationAbort(a)
+	}
 	if n <= 0 {
 		return emptyStringBacking
 	}
@@ -182,6 +204,9 @@ func (a *RegisterArena) AllocStringBacking(n int) []string {
 //
 // Returns an []bool of length n and capacity n backed by the arena.
 func (a *RegisterArena) AllocBoolBacking(n int) []bool {
+	if abortInjectBuilt {
+		injectAllocationAbort(a)
+	}
 	if n <= 0 {
 		return emptyBoolBacking
 	}
@@ -201,6 +226,9 @@ func (a *RegisterArena) AllocBoolBacking(n int) []bool {
 //
 // Returns an []uint64 of length n and capacity n backed by the arena.
 func (a *RegisterArena) AllocUintBacking(n int) []uint64 {
+	if abortInjectBuilt {
+		injectAllocationAbort(a)
+	}
 	if n <= 0 {
 		return emptyUintBacking
 	}
@@ -222,6 +250,9 @@ func (a *RegisterArena) AllocUintBacking(n int) []uint64 {
 //
 // Returns a pointer to the bump-allocated string slot.
 func (a *RegisterArena) allocStringBox(s string) *string {
+	if abortInjectBuilt {
+		injectAllocationAbort(a)
+	}
 	if a.stringBoxIndex >= len(a.stringBoxSlab) {
 		a.growStringBoxSlab()
 	}
@@ -238,6 +269,9 @@ func (a *RegisterArena) allocStringBox(s string) *string {
 //
 // Returns a pointer to the bump-allocated int64 slot.
 func (a *RegisterArena) allocIntBox(v int64) *int64 {
+	if abortInjectBuilt {
+		injectAllocationAbort(a)
+	}
 	if a.intBoxIndex >= len(a.intBoxSlab) {
 		a.growIntBoxSlab()
 	}
@@ -254,6 +288,9 @@ func (a *RegisterArena) allocIntBox(v int64) *int64 {
 //
 // Returns a pointer to the bump-allocated float64 slot.
 func (a *RegisterArena) allocFloatBox(v float64) *float64 {
+	if abortInjectBuilt {
+		injectAllocationAbort(a)
+	}
 	if a.floatBoxIndex >= len(a.floatBoxSlab) {
 		a.growFloatBoxSlab()
 	}
@@ -270,6 +307,9 @@ func (a *RegisterArena) allocFloatBox(v float64) *float64 {
 //
 // Returns a pointer to the bump-allocated uint64 slot.
 func (a *RegisterArena) allocUintBox(v uint64) *uint64 {
+	if abortInjectBuilt {
+		injectAllocationAbort(a)
+	}
 	if a.uintBoxIndex >= len(a.uintBoxSlab) {
 		a.growUintBoxSlab()
 	}
@@ -288,6 +328,9 @@ func (a *RegisterArena) allocUintBox(v uint64) *uint64 {
 //
 // Returns a pointer to the bump-allocated complex128 slot.
 func (a *RegisterArena) allocComplexBox(v complex128) *complex128 {
+	if abortInjectBuilt {
+		injectAllocationAbort(a)
+	}
 	if a.complexBoxIndex >= len(a.complexBoxSlab) {
 		a.growComplexBoxSlab()
 	}
@@ -298,12 +341,23 @@ func (a *RegisterArena) allocComplexBox(v complex128) *complex128 {
 	return slot
 }
 
-// allocSliceHeader bump-allocates one zeroed slice-header slot.
+// allocSliceHeader bump-allocates one zeroed slice-header slot, or allocates the header
+// on the Go heap for a VM whose program calls runtime.SetFinalizer (heapSliceHeaders). A
+// heap header is recorded as a whole allocation, so the program may set a finaliser on a
+// pointer to the slice it holds.
 //
 // Returns a pointer to the bump-allocated arenaSliceHeader slot.
 //
 //revive:disable-next-line:unexported-return // package-internal type stays unexported.
 func (a *RegisterArena) allocSliceHeader() *arenaSliceHeader {
+	if a.heapSliceHeaders {
+		header := new(arenaSliceHeader)
+		finaliserAllocations.record(reflect.ValueOf(header))
+		return header
+	}
+	if abortInjectBuilt {
+		injectAllocationAbort(a)
+	}
 	if a.sliceHeaderIndex >= len(a.sliceHeaderSlab) {
 		a.growSliceHeaderSlab()
 	}

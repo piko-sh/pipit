@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxbroker
 
@@ -174,6 +174,29 @@ type filesystemBootstrapRoot struct {
 	Rights Rights `json:"rights"`
 }
 
+// newLinuxGrantBudget validates host paths and copies immutable authority.
+//
+// Takes grants ([]LinuxRootGrant) which are the host-selected root bindings with absolute
+// paths.
+// Takes limits (FilesystemLimits) which are the finite cumulative quotas before any
+// directory is opened.
+//
+// Returns *FilesystemBudget which is the private reservation budget.
+// Returns error which reports an invalid policy.
+func newLinuxGrantBudget(grants []LinuxRootGrant, limits FilesystemLimits) (*FilesystemBudget, error) {
+	if len(grants) > maximumRoots {
+		return nil, ErrInvalidPolicy
+	}
+	authority := make([]RootGrant, len(grants))
+	for index, grant := range grants {
+		if !filepath.IsAbs(grant.Path) {
+			return nil, ErrInvalidPolicy
+		}
+		authority[index] = RootGrant{Name: grant.Name, Rights: grant.Rights}
+	}
+	return NewFilesystemBudget(authority, limits)
+}
+
 // PrepareLinuxBootstrap seals immutable policy and pins grant roots for exec handoff.
 // Policy contains only opaque names, rights and quotas; host paths are not encoded.
 //
@@ -216,28 +239,6 @@ func PrepareLinuxBootstrap(grants []LinuxRootGrant, limits FilesystemLimits) (*L
 		return nil, errors.Join(err, bootstrap.Close())
 	}
 	return bootstrap, nil
-}
-
-// newLinuxGrantBudget validates host paths and copies immutable authority.
-//
-// Takes grants ([]LinuxRootGrant) which are the host-selected root bindings with absolute
-// paths.
-// Takes limits (FilesystemLimits) which are the finite cumulative quotas before any
-// directory is opened.
-//
-// Returns a private reservation budget or an invalid policy error.
-func newLinuxGrantBudget(grants []LinuxRootGrant, limits FilesystemLimits) (*FilesystemBudget, error) {
-	if len(grants) > maximumRoots {
-		return nil, ErrInvalidPolicy
-	}
-	authority := make([]RootGrant, len(grants))
-	for index, grant := range grants {
-		if !filepath.IsAbs(grant.Path) {
-			return nil, ErrInvalidPolicy
-		}
-		authority[index] = RootGrant{Name: grant.Name, Rights: grant.Rights}
-	}
-	return NewFilesystemBudget(authority, limits)
 }
 
 // sealLinuxBootstrap writes a bounded non-executable memfd and seals every mutation.

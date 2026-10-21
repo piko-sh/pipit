@@ -140,29 +140,29 @@ func (c *Compiler) compileBuiltinLen(ctx context.Context, expression *ast.CallEx
 		return program.VarLocation{}, err
 	}
 
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
+	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
 
 	switch argumentLocation.Kind {
 	case isa.RegisterString:
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLenString), dest, argumentLocation.Register)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLengthString), dest, argumentLocation.Register)
 	case isa.RegisterGeneral:
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLen), dest, argumentLocation.Register)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLengthGeneral), dest, argumentLocation.Register)
 	default:
 		if directLenSubOp, ok := isaselect.TypedSliceDirectLenSubOp(argumentLocation.Kind); ok {
 			program.Emit(c.Function, isa.OpDrillTier1, uint8(directLenSubOp), dest, argumentLocation.Register)
-			return program.VarLocation{Register: dest, Kind: isa.RegisterInt}, nil
+			return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}, nil
 		}
 		return program.VarLocation{}, fmt.Errorf("len not supported for register kind %s", argumentLocation.Kind)
 	}
 
-	return program.VarLocation{Register: dest, Kind: isa.RegisterInt}, nil
+	return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}, nil
 }
 
 // tryCompileStructFieldSliceLen compiles len(recv.sliceField) to the fused
-// isa.OpGetStructFieldSliceLen, which reads the header's length word in place instead of
+// isa.OpLengthStructField, which reads the header's length word in place instead of
 // snapshotting a 24-byte slice header into the register arena and dispatching a separate
-// LEN. All static gates run before any bytecode is emitted so a refusal never leaves
-// partial receiver code behind.
+// LENGTH_GENERAL. All static gates run before any bytecode is emitted so a refusal never
+// leaves partial receiver code behind.
 //
 // Takes argument (ast.Expr) which is the single len() argument.
 //
@@ -205,9 +205,9 @@ func (c *Compiler) tryCompileStructFieldSliceLen(ctx context.Context, argument a
 			c.positionString(selector.Pos()),
 		)
 	}
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-	program.Emit(c.Function, isa.OpGetStructFieldSliceLen, dest, receiverLocation.Register, safeconv.Uint16ToUint8(layoutIdx))
-	return program.VarLocation{Register: dest, Kind: isa.RegisterInt}, true, nil
+	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+	program.Emit(c.Function, isa.OpLengthStructField, dest, receiverLocation.Register, safeconv.Uint16ToUint8(layoutIdx))
+	return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}, true, nil
 }
 
 // compileBuiltinAppend compiles append(slice, elems...).
@@ -271,8 +271,8 @@ type appendChain struct {
 	// hasGeneral reports whether the general-bank pair was allocated.
 	hasGeneral bool
 
-	// overflowed stops per-element reclamation when an append step needs a register
-	// outside the chain.
+	// overflowed stops per-element reclamation when an append step needs a register outside
+	// the chain.
 	overflowed bool
 }
 
@@ -367,15 +367,15 @@ func (*Compiler) pickTypedAppendVariant(sliceType types.Type) (isa.SubOpcode, is
 	}
 	switch basic.Kind() {
 	case types.Int, types.Int64:
-		return isa.SubOpAppendInt, isa.RegisterInt
+		return isa.SubOpAppendInt64Wide, isa.RegisterInt64
 	case types.String:
-		return isa.SubOpAppendString, isa.RegisterString
+		return isa.SubOpAppendStringWide, isa.RegisterString
 	case types.Float64:
-		return isa.SubOpAppendFloat, isa.RegisterFloat
+		return isa.SubOpAppendFloat64Wide, isa.RegisterFloat64
 	case types.Bool:
-		return isa.SubOpAppendBool, isa.RegisterBool
+		return isa.SubOpAppendBoolWide, isa.RegisterBool
 	case types.Uint, types.Uint64, types.Uint8:
-		return isa.SubOpAppendUint, isa.RegisterUint
+		return isa.SubOpAppendUint64Wide, isa.RegisterUint64
 	default:
 	}
 	return 0, 0
@@ -427,7 +427,7 @@ func (c *Compiler) emitAppendStep(
 		return c.emitTypedAppend(sliceLocation, location, typedAppendSubOp)
 	}
 	c.boxElementToGeneralTemp(ctx, &location)
-	if dest, ok := c.tryEmitStructFastAppend(ctx, sliceLocation, location, sliceType); ok {
+	if dest, ok := c.tryEmitAppendStruct(ctx, sliceLocation, location, sliceType); ok {
 		return dest
 	}
 	dest := c.allocAppendDestination(isa.RegisterGeneral, sliceLocation)
@@ -446,27 +446,22 @@ func (c *Compiler) emitAppendStep(
 func (c *Compiler) emitTypedSliceDirectAppend(sliceLocation, location program.VarLocation, directOp isa.SubOpcode) program.VarLocation {
 	dest := c.allocAppendDestination(sliceLocation.Kind, sliceLocation)
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(directOp), dest, sliceLocation.Register)
-	program.Emit(c.Function, isa.OpExt, location.Register, 0, 0)
+	program.Emit(c.Function, isa.OpExtension, location.Register, 0, 0)
 	return program.VarLocation{Register: dest, Kind: sliceLocation.Kind}
 }
 
-// tryEmitByteFastAppend emits isa.OpAppendByteFast when the slice element is statically a
+// tryEmitByteFastAppend emits isa.OpAppendByte when the slice element is statically a
 // byte.
-//
-// Skips the tier-1 sub-op dispatch entirely and emits a single tier-0 opcode that goes
-// through a per-op direct exit (no processExitPathB indirection) AND a hot-path Go
-// handler that omits the reflect.TypeAssert cascade. Serves byte-builder patterns such as
-// `*output = append(*output, '(')`.
 //
 // Takes sliceLocation (VarLocation) which is the destination slice.
 // Takes location (VarLocation) which is the value to append.
-// Takes typedAppendSubOp (isa.SubOpcode) which gates the path on isa.SubOpAppendUint.
+// Takes typedAppendSubOp (isa.SubOpcode) which gates the path on
+// isa.SubOpAppendUint64Wide.
 // Takes sliceType (types.Type) used to confirm the element type is canonically a byte.
 //
-// Returns the new destination location and true on success; the zero value and false
-// otherwise.
+// Returns the new destination location and true on success.
 func (c *Compiler) tryEmitByteFastAppend(sliceLocation, location program.VarLocation, typedAppendSubOp isa.SubOpcode, sliceType types.Type) (program.VarLocation, bool) {
-	if typedAppendSubOp != isa.SubOpAppendUint || sliceType == nil {
+	if typedAppendSubOp != isa.SubOpAppendUint64Wide || sliceType == nil {
 		return program.VarLocation{}, false
 	}
 	sliceValue, ok := sliceType.Underlying().(*types.Slice)
@@ -478,7 +473,7 @@ func (c *Compiler) tryEmitByteFastAppend(sliceLocation, location program.VarLoca
 		return program.VarLocation{}, false
 	}
 	dest := c.allocAppendDestination(isa.RegisterGeneral, sliceLocation)
-	program.Emit(c.Function, isa.OpAppendByteFast, dest, sliceLocation.Register, location.Register)
+	program.Emit(c.Function, isa.OpAppendByte, dest, sliceLocation.Register, location.Register)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, true
 }
 
@@ -497,7 +492,7 @@ func (c *Compiler) tryEmitByteFastAppend(sliceLocation, location program.VarLoca
 func (c *Compiler) emitTypedAppend(sliceLocation, location program.VarLocation, typedAppendSubOp isa.SubOpcode) program.VarLocation {
 	dest := c.allocAppendDestination(isa.RegisterGeneral, sliceLocation)
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(typedAppendSubOp), dest, sliceLocation.Register)
-	program.Emit(c.Function, isa.OpExt, location.Register, 0, 0)
+	program.Emit(c.Function, isa.OpExtension, location.Register, 0, 0)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}
 }
 
@@ -627,13 +622,13 @@ func (c *Compiler) compileMakeChannel(ctx context.Context, expression *ast.CallE
 		}
 		c.ensureIntRegister(ctx, &sizeLocation)
 	} else {
-		sizeLocation.Register = c.Scopes.Alloc.Alloc(isa.RegisterInt)
-		sizeLocation.Kind = isa.RegisterInt
+		sizeLocation.Register = c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+		sizeLocation.Kind = isa.RegisterInt64
 		constIndex, err := program.AddIntConstant(c.Function, 0)
 		if err != nil {
 			return program.VarLocation{}, err
 		}
-		program.EmitWide(c.Function, isa.OpLoadIntConst, sizeLocation.Register, constIndex)
+		program.EmitWide(c.Function, isa.OpLoadInt64Constant, sizeLocation.Register, constIndex)
 	}
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMakeChannel), dest, sizeLocation.Register)
 	program.EmitExtension(c.Function, typeIndex, 0)
@@ -654,7 +649,7 @@ func (c *Compiler) compileBuiltinDelete(ctx context.Context, expression *ast.Cal
 
 	c.boxElementToGeneral(ctx, &keyLocation)
 
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMapDelete), mapLocation.Register, keyLocation.Register)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpDeleteFromMap), mapLocation.Register, keyLocation.Register)
 	return program.VarLocation{}, nil
 }
 
@@ -664,7 +659,7 @@ func (c *Compiler) compileBuiltinDelete(ctx context.Context, expression *ast.Cal
 //
 // Returns VarLocation holding the extracted real component and any compilation error.
 func (c *Compiler) compileBuiltinReal(ctx context.Context, expression *ast.CallExpr) (program.VarLocation, error) {
-	return c.compileComplexExtract(ctx, expression, "real", isa.SubOpRealComplex)
+	return c.compileComplexExtract(ctx, expression, "real", isa.SubOpRealPartComplex128)
 }
 
 // compileBuiltinImag compiles the built-in imag() function call.
@@ -674,7 +669,7 @@ func (c *Compiler) compileBuiltinReal(ctx context.Context, expression *ast.CallE
 // Returns VarLocation holding the extracted imaginary component and any compilation
 // error.
 func (c *Compiler) compileBuiltinImag(ctx context.Context, expression *ast.CallExpr) (program.VarLocation, error) {
-	return c.compileComplexExtract(ctx, expression, "imag", isa.SubOpImagComplex)
+	return c.compileComplexExtract(ctx, expression, "imag", isa.SubOpImaginaryPartComplex128)
 }
 
 // compileComplexExtract compiles a complex number component extraction (real or imag) via
@@ -683,7 +678,7 @@ func (c *Compiler) compileBuiltinImag(ctx context.Context, expression *ast.CallE
 // Takes expression (*ast.CallExpr) which is the AST call expression.
 // Takes name (string) which is the builtin function name for error messages.
 // Takes subOp (isa.SubOpcode) which selects the umbrella sub-handler
-// (isa.SubOpRealComplex or isa.SubOpImagComplex).
+// (isa.SubOpRealPartComplex128 or isa.SubOpImaginaryPartComplex128).
 //
 // Returns VarLocation holding the extracted float component and any compilation error.
 func (c *Compiler) compileComplexExtract(ctx context.Context, expression *ast.CallExpr, name string, subOp isa.SubOpcode) (program.VarLocation, error) {
@@ -697,12 +692,12 @@ func (c *Compiler) compileComplexExtract(ctx context.Context, expression *ast.Ca
 	if argumentLocation, err = c.unboxScalarOperand(ctx, argumentLocation, c.staticTypeOf(expression.Args[0])); err != nil {
 		return program.VarLocation{}, err
 	}
-	if argumentLocation.Kind != isa.RegisterComplex {
+	if argumentLocation.Kind != isa.RegisterComplex128 {
 		return program.VarLocation{}, fmt.Errorf("%s requires a complex argument", name)
 	}
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterFloat)
+	dest := c.Scopes.Alloc.Alloc(isa.RegisterFloat64)
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(subOp), dest, argumentLocation.Register)
-	return program.VarLocation{Register: dest, Kind: isa.RegisterFloat}, nil
+	return program.VarLocation{Register: dest, Kind: isa.RegisterFloat64}, nil
 }
 
 // compileBuiltinComplex compiles the built-in complex() function call.
@@ -716,15 +711,15 @@ func (c *Compiler) compileBuiltinComplex(ctx context.Context, expression *ast.Ca
 		return program.VarLocation{}, err
 	}
 	realLocation, imagLocation := operands[0], operands[1]
-	if realLocation.Kind != isa.RegisterFloat {
+	if realLocation.Kind != isa.RegisterFloat64 {
 		return program.VarLocation{}, fault.ErrCompileBuiltinComplexRequiresFloat
 	}
-	if imagLocation.Kind != isa.RegisterFloat {
+	if imagLocation.Kind != isa.RegisterFloat64 {
 		return program.VarLocation{}, fault.ErrCompileBuiltinComplexRequiresFloat
 	}
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterComplex)
-	program.Emit(c.Function, isa.OpBuildComplex, dest, realLocation.Register, imagLocation.Register)
-	return program.VarLocation{Register: dest, Kind: isa.RegisterComplex}, nil
+	dest := c.Scopes.Alloc.Alloc(isa.RegisterComplex128)
+	program.Emit(c.Function, isa.OpMakeComplex128, dest, realLocation.Register, imagLocation.Register)
+	return program.VarLocation{Register: dest, Kind: isa.RegisterComplex128}, nil
 }
 
 // compileBuiltinCap compiles cap(x).
@@ -742,16 +737,16 @@ func (c *Compiler) compileBuiltinCap(ctx context.Context, expression *ast.CallEx
 		return program.VarLocation{}, err
 	}
 
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
+	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
 
 	if argumentLocation.Kind == isa.RegisterGeneral {
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpCap), dest, argumentLocation.Register)
-		return program.VarLocation{Register: dest, Kind: isa.RegisterInt}, nil
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpCapacityGeneral), dest, argumentLocation.Register)
+		return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}, nil
 	}
 
 	if directCapSubOp, ok := isaselect.TypedSliceDirectCapSubOp(argumentLocation.Kind); ok {
 		program.Emit(c.Function, isa.OpDrillTier1, uint8(directCapSubOp), dest, argumentLocation.Register)
-		return program.VarLocation{Register: dest, Kind: isa.RegisterInt}, nil
+		return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}, nil
 	}
 
 	return program.VarLocation{}, fmt.Errorf("cap not supported for register kind %s", argumentLocation.Kind)
@@ -770,17 +765,17 @@ func (c *Compiler) compileBuiltinCopy(ctx context.Context, expression *ast.CallE
 	dstLocation, sourceLocation := operands[0], operands[1]
 
 	if subOp, ok := isaselect.TypedSliceDirectCopySubOp(dstLocation.Kind); ok && dstLocation.Kind == sourceLocation.Kind {
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
+		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
 		program.Emit(c.Function, isa.OpDrillTier1, uint8(subOp), dstLocation.Register, sourceLocation.Register)
-		program.Emit(c.Function, isa.OpExt, dest, 0, 0)
-		return program.VarLocation{Register: dest, Kind: isa.RegisterInt}, nil
+		program.Emit(c.Function, isa.OpExtension, dest, 0, 0)
+		return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}, nil
 	}
 
 	c.boxToGeneralTemp(ctx, &dstLocation)
 	c.boxToGeneralTemp(ctx, &sourceLocation)
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-	program.Emit(c.Function, isa.OpCopy, dest, dstLocation.Register, sourceLocation.Register)
-	return program.VarLocation{Register: dest, Kind: isa.RegisterInt}, nil
+	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+	program.Emit(c.Function, isa.OpCopyGeneral, dest, dstLocation.Register, sourceLocation.Register)
+	return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}, nil
 }
 
 // compileBuiltinNew compiles new(T) and new(expr) (Go 1.26+).
@@ -812,7 +807,7 @@ func (c *Compiler) compileBuiltinNew(ctx context.Context, expression *ast.CallEx
 	argTV := c.Info.Types[expression.Args[0]]
 	if argTV.IsType() {
 		dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-		program.Emit(c.Function, isa.OpConvert, dest, 0, 1)
+		program.Emit(c.Function, isa.OpConvertGeneral, dest, 0, 1)
 		program.EmitExtension(c.Function, typeIndex, 0)
 		return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, nil
 	}
@@ -822,7 +817,7 @@ func (c *Compiler) compileBuiltinNew(ctx context.Context, expression *ast.CallEx
 		return program.VarLocation{}, err
 	}
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpAllocIndirect, dest, valueLocation.Register, uint8(valueLocation.Kind))
+	program.Emit(c.Function, isa.OpAllocateIndirect, dest, valueLocation.Register, uint8(valueLocation.Kind))
 	program.EmitExtension(c.Function, typeIndex, 0)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, nil
 }
@@ -852,7 +847,7 @@ func (c *Compiler) compileBuiltinRecover(_ context.Context, _ *ast.CallExpr) (pr
 //
 // Returns an empty variable location and any compilation error.
 func (c *Compiler) compileBuiltinClose(ctx context.Context, expression *ast.CallExpr) (program.VarLocation, error) {
-	return c.compileSingleArgGeneralTier2(ctx, expression, isa.SubOpTier2ChannelClose, fault.ErrCompileBuiltinCloseArgCount)
+	return c.compileSingleArgGeneralTier2(ctx, expression, isa.SubOpTier2CloseChannel, fault.ErrCompileBuiltinCloseArgCount)
 }
 
 // compileSingleArgGeneralTier2 compiles a builtin that takes one argument, boxes it to
@@ -961,9 +956,9 @@ func (c *Compiler) emitStructFieldSet(ctx context.Context, dest uint8, fieldPath
 		return
 	}
 	fieldIndex := safeconv.MustIntToUint8(fieldPath[0])
-	if valueLocation.Kind == isa.RegisterInt && !structFieldIsInterface(structType, fieldIndex) {
+	if valueLocation.Kind == isa.RegisterInt64 && !structFieldIsInterface(structType, fieldIndex) {
 		destinationLocation := program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}
-		c.EmitTyped(ctx, isa.OpSetFieldInt, destinationLocation, rawOperand(fieldIndex), valueLocation)
+		c.EmitTyped(ctx, isa.OpSetFieldInt64, destinationLocation, rawOperand(fieldIndex), valueLocation)
 		return
 	}
 	if valueLocation.Kind != isa.RegisterGeneral {
@@ -1039,7 +1034,7 @@ func (c *Compiler) compileTypeAssertExpression(ctx context.Context, expression *
 	}
 
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	okRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt)
+	okRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
 
 	program.Emit(c.Function, isa.OpTypeAssert, dest, sourceLocation.Register, okRegister)
 	program.EmitExtension(c.Function, typeIndex, 1)
@@ -1089,7 +1084,7 @@ func (c *Compiler) compileBuiltinPrint(ctx context.Context, expression *ast.Call
 
 	program.EmitTier1(c.Function, isa.SubOpCallBuiltin, builtinID, safeconv.MustIntToUint8(argumentCount))
 	for _, location := range argumentLocations {
-		program.Emit(c.Function, isa.OpExt, location.Register, uint8(location.Kind), 0)
+		program.Emit(c.Function, isa.OpExtension, location.Register, uint8(location.Kind), 0)
 	}
 
 	return program.VarLocation{}, nil
@@ -1112,7 +1107,7 @@ func (c *Compiler) compileBuiltinClear(ctx context.Context, expression *ast.Call
 	c.boxToGeneral(ctx, &argumentLocation)
 
 	program.EmitTier1(c.Function, isa.SubOpCallBuiltin, isa.BuiltinClear, 1)
-	program.Emit(c.Function, isa.OpExt, argumentLocation.Register, uint8(argumentLocation.Kind), 0)
+	program.Emit(c.Function, isa.OpExtension, argumentLocation.Register, uint8(argumentLocation.Kind), 0)
 
 	return program.VarLocation{}, nil
 }
@@ -1216,7 +1211,7 @@ func (c *Compiler) compileBuiltinTupleArg(ctx context.Context, expression *ast.C
 	for i := range tuple.Len() {
 		resultType := tuple.At(i).Type()
 		kind := c.kindFor(resultType)
-		locations[i] = program.VarLocation{Register: c.Scopes.Alloc.Alloc(kind), Kind: kind, SourceType: c.exactReflectTypeForBoxing(resultType)}
+		locations[i] = program.VarLocation{Register: c.Scopes.Alloc.Alloc(kind), Kind: kind, SourceType: c.exactReflectTypeForBoxing(ctx, resultType)}
 	}
 	if err := c.emitMultiReturnCall(ctx, call, locations); err != nil {
 		return nil, true, err
@@ -1249,18 +1244,11 @@ func mapSizeHintLog2(n int) uint8 {
 
 // structFieldIsInterface reports whether a struct field has interface kind.
 //
-// isa.OpSetFieldInt writes an int64 directly into the field's storage slot via
-// reflect.Value.SetInt, which panics with "reflect.Value.SetInt on interface Value" when
-// the field is declared as an interface (any). Detecting the case at compile time routes
-// such writes through the boxing path (emitBoxToGeneral + isa.OpSetField) so the value is
-// wrapped in reflect.Value before assignment.
-//
 // Takes structType (reflect.Type) which is the struct's reflect.Type (pointer wrappers
 // are peeled by the caller chain).
 // Takes fieldIndex (uint8) which is the zero-based field index.
 //
-// Returns true when the field's reflect.Kind is Interface; false when the kind is
-// concrete or the type/index lookup fails.
+// Returns true when the field's reflect.Kind is Interface.
 func structFieldIsInterface(structType reflect.Type, fieldIndex uint8) bool {
 	if structType == nil {
 		return false

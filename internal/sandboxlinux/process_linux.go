@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
@@ -34,6 +34,7 @@ import (
 
 	"pipit.sh/pipit/internal/logging"
 	"pipit.sh/pipit/internal/sandboxbroker"
+	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 const (
@@ -107,8 +108,12 @@ type WorkerConfig struct {
 // WorkerProcess owns one verified image, resource group, process and private channel.
 // Call Close even after Wait succeeds.
 type WorkerProcess struct {
-	// context holds the lifetime context for the worker.
-	context context.Context
+	// lifetimeDone is closed once the worker's lifetime has ended, through cancel, its
+	// deadline or the context it was launched under (watchLifetime).
+	lifetimeDone <-chan struct{}
+
+	// lifetimeCause reports why the lifetime ended, nil while it lasts.
+	lifetimeCause func() error
 
 	// cancel stops the lifetime context.
 	cancel context.CancelFunc
@@ -208,13 +213,13 @@ func (process *WorkerProcess) Wait() error {
 // unsuccessful cleanup retains the image and cgroup for another Close attempt.
 //
 // Returns error for execution failure or a resource cleanup that still needs retrying.
-func (process *WorkerProcess) Close() error {
+func (process *WorkerProcess) Close(ctx context.Context) error {
 	process.cancel()
 	if process.stream != nil {
 		_ = process.stream.Close()
 	}
 	<-process.done
-	return errors.Join(process.runErr, process.cleanup(), process.output.failure())
+	return errors.Join(process.runErr, process.cleanup(ctx), process.output.failure())
 }
 
 // Output snapshots bounded combined stdout and stderr, including before exit.
@@ -245,6 +250,48 @@ func (process *WorkerProcess) Released() bool {
 	return process.released
 }
 
+// watchLifetime keeps the means to observe when lifetime ends, so the deadline and
+// readiness checks see it without holding the context.
+func (process *WorkerProcess) watchLifetime(lifetime context.Context) {
+	process.lifetimeDone = lifetime.Done()
+	process.lifetimeCause = lifetime.Err
+}
+
+// lifetimeErr reports why the worker's lifetime ended.
+//
+// Returns error which is nil while the lifetime lasts.
+func (process *WorkerProcess) lifetimeErr() error {
+	return process.lifetimeCause()
+}
+
+// onLifetimeEnd calls end once the worker's lifetime ends, unless stop is called first.
+//
+// Takes end (func()) which runs on its own goroutine.
+//
+// Returns func() bool which stops the call and reports whether it stopped it.
+//
+// Safe for concurrent use. The callback runs on its own goroutine. The returned function
+// uses sync.Once to close the stop channel once.
+func (process *WorkerProcess) onLifetimeEnd(end func()) func() bool {
+	stopped := make(chan struct{})
+	var once sync.Once
+	go func() {
+		select {
+		case <-process.lifetimeDone:
+			end()
+		case <-stopped:
+		}
+	}()
+	return func() bool {
+		stoppedFirst := false
+		once.Do(func() {
+			close(stopped)
+			stoppedFirst = process.lifetimeErr() == nil
+		})
+		return stoppedFirst
+	}
+}
+
 // watch reaps the worker and unblocks protocol readers when its lifetime ends.
 //
 // Takes command (*exec.Cmd) which has successfully started
@@ -254,12 +301,12 @@ func (process *WorkerProcess) Released() bool {
 // Runs on its own goroutine; signals completion through done.
 //
 // Not safe for concurrent use. Called exactly once per process.
-func (process *WorkerProcess) watch(command *exec.Cmd) {
-	stopClose := context.AfterFunc(process.context, func() { _ = process.stream.Close() })
+func (process *WorkerProcess) watch(ctx context.Context, command *exec.Cmd) {
+	stopClose := context.AfterFunc(ctx, func() { _ = process.stream.Close() })
 	go func() {
 		err := command.Wait()
 		stopClose()
-		process.finish(err)
+		process.finish(ctx, err)
 	}()
 }
 
@@ -270,27 +317,24 @@ func (process *WorkerProcess) watch(command *exec.Cmd) {
 // Takes parent (*Group) which is the optional aggregate parent.
 // Takes guarded (bool) which selects watchdog protection.
 //
-// Returns *exec.Cmd which has been started inside its resource
-//
-//	group.
-//
+// Returns *exec.Cmd which has been started inside its resource group.
 // Returns error when image, resources or atomic launch fails.
-func (process *WorkerProcess) prepare(config WorkerConfig, inherited []*os.File, parent *Group, guarded bool) (*exec.Cmd, error) {
-	parent, err := process.prepareServiceParent(config, parent)
+func (process *WorkerProcess) prepare(ctx context.Context, config WorkerConfig, inherited []*os.File, parent *Group, guarded bool) (*exec.Cmd, error) {
+	parent, err := process.prepareServiceParent(ctx, config, parent)
 	if err != nil {
 		return nil, err
 	}
 	if guarded {
-		parent, err = process.prepareWatchdog(config, parent)
+		parent, err = process.prepareWatchdog(ctx, config, parent)
 		if err != nil {
 			return nil, err
 		}
 	}
-	process.group, err = parent.newChild(config.Limits)
+	process.group, err = parent.newChild(ctx, config.Limits)
 	if err != nil {
 		return nil, err
 	}
-	process.image, err = prepareWorkerImageCached(process.context, config.Executable, config.Digest, config.ImageStore, config.Cache)
+	process.image, err = prepareWorkerImageCached(ctx, config.Executable, config.Digest, config.ImageStore, config.Cache)
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +353,7 @@ func (process *WorkerProcess) prepare(config WorkerConfig, inherited []*os.File,
 	process.stream = os.NewFile(uintptr(pair[0]), "host-worker-ipc")
 	child := os.NewFile(uintptr(pair[1]), "worker-ipc")
 	defer child.Close()
-	command := exec.CommandContext(process.context, "/worker")
+	command := exec.CommandContext(ctx, "/worker")
 	command.Dir = "/"
 	command.Env = []string{}
 	command.ExtraFiles = []*os.File{child}
@@ -329,7 +373,7 @@ func (process *WorkerProcess) prepare(config WorkerConfig, inherited []*os.File,
 // Takes err (error) which records launch or process-wait failure.
 //
 // Not safe for concurrent use. Called exactly once from the watch goroutine.
-func (process *WorkerProcess) finish(err error) {
+func (process *WorkerProcess) finish(ctx context.Context, err error) {
 	process.phaseMutex.Lock()
 	process.phaseFinished = true
 	if process.phaseTimer != nil {
@@ -338,7 +382,7 @@ func (process *WorkerProcess) finish(err error) {
 	if !process.phaseDeadline.IsZero() && !time.Now().Before(process.phaseDeadline) {
 		process.phaseErr = context.DeadlineExceeded
 	}
-	process.runErr = errors.Join(err, process.context.Err(), process.phaseErr)
+	process.runErr = errors.Join(err, ctx.Err(), process.phaseErr)
 	process.phaseMutex.Unlock()
 	process.output.mutex.Lock()
 	if process.output.exceeded {
@@ -349,9 +393,10 @@ func (process *WorkerProcess) finish(err error) {
 	if process.runErr != nil && process.stream != nil {
 		_ = process.stream.Close()
 	}
-	process.cleanupErr = process.cleanup()
+	process.cleanupErr = process.cleanup(ctx)
 	signalled := process.output.failure() != nil
-	logging.LoggerFrom(process.context).Info("isolated.exit",
+	_, logger := logging.From(ctx)
+	logger.Info("isolated.exit",
 		"failed", process.runErr != nil, "output_exceeded", signalled)
 	close(process.done)
 }
@@ -361,12 +406,12 @@ func (process *WorkerProcess) finish(err error) {
 // Returns error while resource ownership must be retained for retry.
 //
 // Safe for concurrent use by multiple goroutines.
-func (process *WorkerProcess) cleanup() error {
+func (process *WorkerProcess) cleanup(ctx context.Context) error {
 	process.mutex.Lock()
 	defer process.mutex.Unlock()
 	if process.group != nil {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(process.context), workerCleanupTimeout)
-		err := process.group.closeGroup(ctx)
+		closeCtx, cancel := sandboxwire.CleanupContext(ctx)
+		err := process.group.closeGroup(closeCtx)
 		cancel()
 		if err != nil {
 			return err
@@ -377,12 +422,12 @@ func (process *WorkerProcess) cleanup() error {
 			return err
 		}
 	}
-	if err := process.cleanupWatchdog(); err != nil {
+	if err := process.cleanupWatchdog(ctx); err != nil {
 		return err
 	}
 	if process.serviceGroup != nil {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(process.context), workerCleanupTimeout)
-		err := process.serviceGroup.closeGroup(ctx)
+		closeCtx, cancel := sandboxwire.CleanupContext(ctx)
+		err := process.serviceGroup.closeGroup(closeCtx)
 		cancel()
 		if err != nil {
 			return err
@@ -399,7 +444,8 @@ func (process *WorkerProcess) cleanup() error {
 		process.releaseAdmission = nil
 	}
 	process.released = true
-	logging.LoggerFrom(process.context).Info("isolated.cleanup")
+	_, logger := logging.From(ctx)
+	logger.Info("isolated.cleanup")
 	return nil
 }
 
@@ -412,7 +458,7 @@ func (process *WorkerProcess) cleanup() error {
 // Returns *Group which the worker's own group is created under.
 // Returns error when the reservation or the record fails, or when a checkpoint is
 // requested for a launch into an existing group.
-func (process *WorkerProcess) prepareServiceParent(config WorkerConfig, parent *Group) (*Group, error) {
+func (process *WorkerProcess) prepareServiceParent(ctx context.Context, config WorkerConfig, parent *Group) (*Group, error) {
 	if parent != nil {
 		if config.Checkpoint != nil {
 			return nil, ErrInvalidLimits
@@ -420,11 +466,11 @@ func (process *WorkerProcess) prepareServiceParent(config WorkerConfig, parent *
 		return parent, nil
 	}
 	var err error
-	process.serviceGroup, err = newServiceGroup(config.CgroupParent, config.Limits, config.Tenant)
+	process.serviceGroup, err = newServiceGroup(ctx, config.CgroupParent, config.Limits, config.Tenant)
 	if err != nil {
 		return nil, err
 	}
-	if err := process.persistLaunchCheckpoint(config); err != nil {
+	if err := process.persistLaunchCheckpoint(ctx, config); err != nil {
 		return nil, err
 	}
 	return process.serviceGroup, nil
@@ -528,6 +574,7 @@ func launchNativeProcess(ctx context.Context, config WorkerConfig, gate *admissi
 	if ctx == nil {
 		return nil, errors.New("missing worker context")
 	}
+	ctx, logger := logging.From(ctx)
 	if config.Lifetime == 0 {
 		config.Lifetime = defaultWorkerLifetime
 	}
@@ -543,29 +590,29 @@ func launchNativeProcess(ctx context.Context, config WorkerConfig, gate *admissi
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	lifetime, cancel := context.WithTimeout(ctx, config.Lifetime)
+	lifetime, cancel := context.WithTimeoutCause(ctx, config.Lifetime, sandboxwire.ErrLifetimeEnded)
 	releaseAdmission, err := gate.acquire(lifetime, config.Tenant)
 	if err != nil {
 		cancel()
 		return nil, err
 	}
 	var process WorkerProcess
-	process.context = lifetime
+	process.watchLifetime(lifetime)
 	process.cancel = cancel
 	process.releaseAdmission = releaseAdmission
-	logging.LoggerFrom(ctx).Info("isolated.admitted", "tenant", config.Tenant, "guarded", guarded)
+	logger.Info("isolated.admitted", "tenant", config.Tenant, "guarded", guarded)
 	process.done = make(chan struct{})
 	process.output = &workerOutput{
 		cancel: cancel, data: nil, limit: config.OutputBytes, used: 0,
 		mutex: sync.Mutex{}, exceeded: false,
 	}
-	command, err := process.prepare(config, inherited, parent, guarded)
+	command, err := process.prepare(lifetime, config, inherited, parent, guarded)
 	if err != nil {
-		process.finish(err)
+		process.finish(lifetime, err)
 		return &process, errors.Join(process.runErr, process.cleanupErr)
 	}
-	logging.LoggerFrom(ctx).Info("isolated.launch", "tenant", config.Tenant, "guarded", guarded,
+	logger.Info("isolated.launch", "tenant", config.Tenant, "guarded", guarded,
 		"images", config.ImageStore != nil)
-	process.watch(command)
+	process.watch(lifetime, command)
 	return &process, nil
 }

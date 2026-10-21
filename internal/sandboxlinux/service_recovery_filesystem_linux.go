@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
@@ -25,6 +25,7 @@ import (
 	"errors"
 
 	"pipit.sh/pipit/internal/sandboxbroker"
+	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 // RecoverFilesystem runs approved original journal cleanup in a confined helper. Original
@@ -43,7 +44,7 @@ func (owner *ServiceRecoveryClaim) RecoverFilesystem(ctx context.Context, config
 	if ctx == nil {
 		return ErrInvalidLimits
 	}
-	ctx, cancel := context.WithTimeout(ctx, workerCleanupTimeout)
+	ctx, cancel := context.WithTimeoutCause(ctx, workerCleanupTimeout, sandboxwire.ErrCleanupTimedOut)
 	defer cancel()
 	owner.mutex.Lock()
 	defer owner.mutex.Unlock()

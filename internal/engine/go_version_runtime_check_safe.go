@@ -20,11 +20,9 @@
 
 package engine
 
-// verifyUnsafeRuntimeLayout is the safe-build twin of the unsafe layout probes. The safe
-// build never puns reflect.Value or links runtime map symbols, so there is nothing to
-// verify and start-up is gated by the version allowlist alone.
+// verifyUnsafeRuntimeLayout checks the reflect layout used by this build.
 //
-// Returns nil.
+// Returns nil when the layout holds, or an error wrapping errUnsafeRuntimeLayout.
 func verifyUnsafeRuntimeLayout() error {
-	return nil
+	return verifyReflectValueLayout()
 }

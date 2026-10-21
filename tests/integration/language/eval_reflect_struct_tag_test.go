@@ -40,7 +40,7 @@ func reflectingService(t *testing.T) *app.Service {
 			"StructField": reflect.ValueOf((*reflect.StructField)(nil)),
 		},
 	})
-	symbols.SynthesiseAll()
+	symbols.SynthesiseAll(t.Context())
 	service := app.NewService()
 	service.UseSymbols(symbols)
 	return service

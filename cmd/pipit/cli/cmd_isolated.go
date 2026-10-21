@@ -106,7 +106,7 @@ type isolatedEvaluator interface {
 	//
 	// Returns pipit.RestrictedResult which is the evaluation output.
 	// Returns error when execution fails.
-	Eval(source string) (pipit.RestrictedResult, error)
+	Eval(ctx context.Context, source string) (pipit.RestrictedResult, error)
 
 	// EvalFile evaluates file source with a named entrypoint.
 	//
@@ -115,12 +115,12 @@ type isolatedEvaluator interface {
 	//
 	// Returns pipit.RestrictedResult which is the evaluation output.
 	// Returns error when execution fails.
-	EvalFile(source, entrypoint string) (pipit.RestrictedResult, error)
+	EvalFile(ctx context.Context, source, entrypoint string) (pipit.RestrictedResult, error)
 
 	// Close releases the native worker resources.
 	//
 	// Returns error when cleanup fails.
-	Close() error
+	Close(ctx context.Context) error
 }
 
 // isolatedRootGrants collects repeated -root flags of the form name=path:rights.
@@ -320,18 +320,18 @@ func isolatedFlagSet(name string, streams output.IO) (*flag.FlagSet, isolatedOpt
 // Takes streams (output.IO) which provides host output destinations.
 //
 // Returns zero only after execution, output and native cleanup succeed.
-func runIsolatedSource(_ context.Context, launch func() (isolatedEvaluator, error), source string, options isolatedOptions, streams output.IO) (exitCode int) {
+func runIsolatedSource(ctx context.Context, launch func() (isolatedEvaluator, error), source string, options isolatedOptions, streams output.IO) (exitCode int) {
 	worker, err := launch()
 	if worker != nil {
 		defer func() {
-			if closeErr := worker.Close(); closeErr != nil {
+			if closeErr := worker.Close(ctx); closeErr != nil {
 				fmt.Fprintf(streams.Stderr, errorFormat, closeErr)
 				exitCode = 1
 			}
 		}()
 	}
 	if err != nil {
-		if cleanupErr := retryIsolatedCleanup(context.Background(), err); cleanupErr != nil {
+		if cleanupErr := retryIsolatedCleanup(context.WithoutCancel(ctx), err); cleanupErr != nil {
 			fmt.Fprintf(streams.Stderr, errorFormat, cleanupErr)
 		} else {
 			fmt.Fprintf(streams.Stderr, errorFormat, err)
@@ -340,9 +340,9 @@ func runIsolatedSource(_ context.Context, launch func() (isolatedEvaluator, erro
 	}
 	var result pipit.RestrictedResult
 	if *options.entrypoint == "" {
-		result, err = worker.Eval(source)
+		result, err = worker.Eval(ctx, source)
 	} else {
-		result, err = worker.EvalFile(source, *options.entrypoint)
+		result, err = worker.EvalFile(ctx, source, *options.entrypoint)
 	}
 	if *options.check {
 		return writeIsolatedCheck(result, err, streams)

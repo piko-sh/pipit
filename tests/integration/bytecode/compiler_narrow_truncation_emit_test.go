@@ -34,33 +34,33 @@ func TestEmitNarrowIntegerTruncationEmitsForNarrowUint(t *testing.T) {
 	t.Parallel()
 
 	c := newTestCompiler(t)
-	location := program.VarLocation{Register: 5, Kind: isa.RegisterUint}
+	location := program.VarLocation{Register: 5, Kind: isa.RegisterUint64}
 	startLength := len(c.Function.Body)
 	c.EmitNarrowIntegerTruncation(location, types.Typ[types.Uint8])
 
 	require.Len(t, c.Function.Body, startLength+1,
-		"a single opTruncateNarrow instruction should be emitted for narrow uint8")
+		"a single opTruncateToWidth instruction should be emitted for narrow uint8")
 	emitted := c.Function.Body[startLength]
-	require.Equal(t, isa.OpTruncateNarrow, emitted.Op)
+	require.Equal(t, isa.OpTruncateToWidth, emitted.Op)
 	require.Equal(t, uint8(5), emitted.A, "operand A is the register being truncated")
 	require.Equal(t, uint8(8), emitted.B, "operand B is the bit width")
-	require.Equal(t, uint8(isa.RegisterUint), emitted.C, "operand C is the bank kind")
+	require.Equal(t, uint8(isa.RegisterUint64), emitted.C, "operand C is the bank kind")
 }
 
 func TestEmitNarrowIntegerTruncationEmitsForNarrowInt(t *testing.T) {
 	t.Parallel()
 
 	c := newTestCompiler(t)
-	location := program.VarLocation{Register: 3, Kind: isa.RegisterInt}
+	location := program.VarLocation{Register: 3, Kind: isa.RegisterInt64}
 	startLength := len(c.Function.Body)
 	c.EmitNarrowIntegerTruncation(location, types.Typ[types.Int16])
 
 	require.Len(t, c.Function.Body, startLength+1)
 	emitted := c.Function.Body[startLength]
-	require.Equal(t, isa.OpTruncateNarrow, emitted.Op)
+	require.Equal(t, isa.OpTruncateToWidth, emitted.Op)
 	require.Equal(t, uint8(3), emitted.A)
 	require.Equal(t, uint8(16), emitted.B)
-	require.Equal(t, uint8(isa.RegisterInt), emitted.C)
+	require.Equal(t, uint8(isa.RegisterInt64), emitted.C)
 }
 
 func TestEmitNarrowIntegerTruncationSkipsFullWidthTypes(t *testing.T) {
@@ -84,7 +84,7 @@ func TestEmitNarrowIntegerTruncationSkipsFullWidthTypes(t *testing.T) {
 			t.Parallel()
 			c := newTestCompiler(t)
 			startLength := len(c.Function.Body)
-			c.EmitNarrowIntegerTruncation(program.VarLocation{Register: 0, Kind: isa.RegisterInt}, tt.t)
+			c.EmitNarrowIntegerTruncation(program.VarLocation{Register: 0, Kind: isa.RegisterInt64}, tt.t)
 			require.Len(t, c.Function.Body, startLength,
 				"a full-width or non-integer type needs no truncation")
 		})
@@ -106,7 +106,7 @@ func TestEmitNarrowIntegerTruncationSkipsNilType(t *testing.T) {
 
 	c := newTestCompiler(t)
 	startLength := len(c.Function.Body)
-	c.EmitNarrowIntegerTruncation(program.VarLocation{Register: 0, Kind: isa.RegisterInt}, nil)
+	c.EmitNarrowIntegerTruncation(program.VarLocation{Register: 0, Kind: isa.RegisterInt64}, nil)
 	require.Len(t, c.Function.Body, startLength,
 		"nil static type means the call site has no type info; skip the truncation rather than panic")
 }

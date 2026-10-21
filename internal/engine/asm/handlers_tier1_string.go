@@ -22,15 +22,15 @@ import (
 	"piko.sh/asmgen"
 )
 
-// tier1StringHandlers returns the tier-1 ASM string sub-op handlers.
+// tier1StringHandlers returns the string sub-op and general-slice length handlers.
 //
 // Returns []HandlerDefinition[BytecodeArchitecturePort] which is the handler definitions
 // for this group.
 func tier1StringHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 		{
-			Name:      "handlerSubOpLenString",
-			Comment:   "handlerSubOpLenString sets ints[B] = len(strings[C]) for the tier-1 string-length sub-op.",
+			Name:      "handlerLengthString",
+			Comment:   "handlerLengthString sets ints[B] = len(strings[C]) for the tier-1 string-length sub-op.",
 			FrameSize: frameSizeZero,
 			Flags:     flagsNoSplitNoFrame,
 			Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
@@ -39,6 +39,16 @@ func tier1StringHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] 
 				architecture.ExtractC(emitter, scratches[1])
 				architecture.StringLengthRead(emitter, scratches[0], scratches[1])
 				architecture.DispatchNext(emitter)
+			},
+		},
+		{
+			Name: "handlerLengthGeneral",
+			Comment: "handlerLengthGeneral sets ints[B] = len(general[C]) for a slice value. Every other kind, and an invalid " +
+				"value, falls back to handlerPathBShimLengthGeneral.",
+			FrameSize: frameSizeZero,
+			Flags:     flagsNoSplitNoFrame,
+			Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+				architecture.EmitLengthGeneral(emitter)
 			},
 		},
 	}

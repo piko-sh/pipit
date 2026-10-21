@@ -35,6 +35,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 const (
@@ -73,9 +75,6 @@ const (
 
 	// groupDirectoryMode is the permission mode for new cgroup directories.
 	groupDirectoryMode = 0700
-
-	// groupSetupCleanupTimeout is the deadline for cgroup setup rollback.
-	groupSetupCleanupTimeout = 5 * time.Second
 )
 
 var (
@@ -141,8 +140,8 @@ type Group struct {
 //
 // Returns *Group which can start a process inside the prepared cgroup.
 // Returns error when any required control cannot be established.
-func newGroup(parentPath string, limits Limits) (*Group, error) {
-	return newRootGroup(parentPath, limits, "pipit-"+rand.Text())
+func newGroup(ctx context.Context, parentPath string, limits Limits) (*Group, error) {
+	return newRootGroup(ctx, parentPath, limits, "pipit-"+rand.Text())
 }
 
 // newRootGroup creates a named group beneath a verified delegated cgroup parent.
@@ -152,7 +151,7 @@ func newGroup(parentPath string, limits Limits) (*Group, error) {
 // Takes name (string) which is the internal basename for the new group.
 //
 // Returns ownership only for a freshly created group, never an existing directory.
-func newRootGroup(parentPath string, limits Limits, name string) (*Group, error) {
+func newRootGroup(ctx context.Context, parentPath string, limits Limits, name string) (*Group, error) {
 	settings, err := resourceSettings(limits)
 	if err != nil {
 		return nil, err
@@ -166,7 +165,7 @@ func newRootGroup(parentPath string, limits Limits, name string) (*Group, error)
 		_ = parent.Close()
 		return nil, fmt.Errorf("%w: parent is not cgroup v2", ErrUnavailable)
 	}
-	return newNamedGroupUnder(parent, settings, name)
+	return newNamedGroupUnder(ctx, parent, settings, name)
 }
 
 // newGroupUnder creates a group beneath an already pinned cgroup-v2 parent.
@@ -176,8 +175,8 @@ func newRootGroup(parentPath string, limits Limits, name string) (*Group, error)
 // Takes settings (map[string]string) which holds the validated resource settings.
 //
 // Returns a group, retaining cleanup ownership when preparation rollback fails.
-func newGroupUnder(parent *os.File, settings map[string]string) (*Group, error) {
-	return newNamedGroupUnder(parent, settings, "pipit-"+rand.Text())
+func newGroupUnder(ctx context.Context, parent *os.File, settings map[string]string) (*Group, error) {
+	return newNamedGroupUnder(ctx, parent, settings, "pipit-"+rand.Text())
 }
 
 // newNamedGroupUnder atomically reserves a name before configuring resource controls.
@@ -187,13 +186,13 @@ func newGroupUnder(parent *os.File, settings map[string]string) (*Group, error) 
 // Takes name (string) which is the internal basename for the new group.
 //
 // Returns a fresh owner or an error without inspecting or modifying an existing group.
-func newNamedGroupUnder(parent *os.File, settings map[string]string, name string) (*Group, error) {
+func newNamedGroupUnder(ctx context.Context, parent *os.File, settings map[string]string, name string) (*Group, error) {
 	if err := unix.Mkdirat(int(parent.Fd()), name, groupDirectoryMode); err != nil {
 		_ = parent.Close()
 		return nil, fmt.Errorf("%w: creating resource group: %w", ErrUnavailable, err)
 	}
 	group, err := prepareGroup(parent, name, settings)
-	return finishGroupPreparation(group, err)
+	return finishGroupPreparation(ctx, group, err)
 }
 
 // start creates a process directly in this group using CLONE_INTO_CGROUP.
@@ -281,7 +280,7 @@ func (group *Group) waitEmpty(ctx context.Context) error {
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return sandboxwire.ContextErr(ctx)
 		case <-ticker.C:
 		}
 	}

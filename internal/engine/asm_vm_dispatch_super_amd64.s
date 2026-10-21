@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerSubIntConst sets ints[A] = ints[B] - intConstants[C].
-TEXT ·handlerSubIntConst(SB), NOSPLIT|NOFRAME, $0
+// handlerSubtractInt64Constant sets ints[A] = ints[B] - intConstants[C].
+TEXT ·handlerSubtractInt64Constant(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -40,8 +40,8 @@ TEXT ·handlerSubIntConst(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerAddIntConst sets ints[A] = ints[B] + intConstants[C].
-TEXT ·handlerAddIntConst(SB), NOSPLIT|NOFRAME, $0
+// handlerAddInt64Constant sets ints[A] = ints[B] + intConstants[C].
+TEXT ·handlerAddInt64Constant(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -55,8 +55,8 @@ TEXT ·handlerAddIntConst(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerMulIntConst sets ints[A] = ints[B] * intConstants[C].
-TEXT ·handlerMulIntConst(SB), NOSPLIT|NOFRAME, $0
+// handlerMultiplyInt64Constant sets ints[A] = ints[B] * intConstants[C].
+TEXT ·handlerMultiplyInt64Constant(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -70,8 +70,8 @@ TEXT ·handlerMulIntConst(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerAddIntJump sets ints[A] = ints[B] + intConstants[C] and unconditionally jumps.
-TEXT ·handlerAddIntJump(SB), NOSPLIT|NOFRAME, $0
+// handlerAddInt64ConstantThenJump sets ints[A] = ints[B] + intConstants[C] and unconditionally jumps.
+TEXT ·handlerAddInt64ConstantThenJump(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -98,8 +98,28 @@ TEXT ·handlerAddIntJump(SB), NOSPLIT|NOFRAME, $0
 poll_ok:
 	DISPATCH_NEXT()
 
-// handlerIncIntJumpLt increments ints[B] and jumps if ints[B] < ints[C] in tier-1 form (subOpIncIntJumpLt).
-TEXT ·handlerIncIntJumpLt(SB), NOSPLIT|NOFRAME, $0
+// handlerMultiplyInt64ConstantThenAdd sets ints[A] = ints[extension.A] + ints[B] * intConstants[C].
+TEXT ·handlerMultiplyInt64ConstantThenAdd(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $8, AX
+	MOVBLZX AL, AX
+	MOVQ    DX, BX
+	SHRQ    $16, BX
+	MOVBLZX BL, BX
+	MOVQ    DX, CX
+	SHRQ    $24, CX
+	MOVQ    (R8)(BX*8), SI
+	IMULQ   (R11)(CX*8), SI
+	MOVL    (R12)(R14*4), BX
+	INCQ    R14
+	SHRQ    $8, BX
+	MOVBLZX BL, BX
+	ADDQ    (R8)(BX*8), SI
+	MOVQ    SI, (R8)(AX*8)
+	DISPATCH_NEXT()
+
+// handlerIncrementInt64ThenJumpIfLessThan increments ints[B] and jumps if ints[B] < ints[C] in tier-1 form (subOpIncrementInt64ThenJumpIfLessThan).
+TEXT ·handlerIncrementInt64ThenJumpIfLessThan(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -108,6 +128,70 @@ TEXT ·handlerIncIntJumpLt(SB), NOSPLIT|NOFRAME, $0
 	INCQ    (R8)(AX*8)
 	MOVQ    (R8)(AX*8), SI
 	CMPQ    SI, (R8)(BX*8)
+	JLT     jump
+	INCQ    R14
+	JMP     dispatch
+
+jump:
+	MOVL    (R12)(R14*4), DX
+	INCQ    R14
+	SHRQ    $8, DX
+	MOVWLZX DX, AX
+	MOVWQSX AX, AX
+	ADDQ    AX, R14
+	DECQ    CTX_POLL_BUDGET(R15)
+	JG      poll_ok
+	MOVQ    R14, CTX_PC(R15)
+	MOVQ    $EXIT_POLL, CTX_EXIT_REASON(R15)
+	MOVQ    R14, CTX_EXIT_PC(R15)
+	RET     
+poll_ok:
+
+dispatch:
+	DISPATCH_NEXT()
+
+// handlerIncrementInt64ThenJumpIfLessOrEqual increments ints[B] and jumps if ints[B] <= ints[C].
+TEXT ·handlerIncrementInt64ThenJumpIfLessOrEqual(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $16, AX
+	MOVBLZX AL, AX
+	MOVQ    DX, BX
+	SHRQ    $24, BX
+	INCQ    (R8)(AX*8)
+	MOVQ    (R8)(AX*8), SI
+	CMPQ    SI, (R8)(BX*8)
+	JLE     jump
+	INCQ    R14
+	JMP     dispatch
+
+jump:
+	MOVL    (R12)(R14*4), DX
+	INCQ    R14
+	SHRQ    $8, DX
+	MOVWLZX DX, AX
+	MOVWQSX AX, AX
+	ADDQ    AX, R14
+	DECQ    CTX_POLL_BUDGET(R15)
+	JG      poll_ok
+	MOVQ    R14, CTX_PC(R15)
+	MOVQ    $EXIT_POLL, CTX_EXIT_REASON(R15)
+	MOVQ    R14, CTX_EXIT_PC(R15)
+	RET     
+poll_ok:
+
+dispatch:
+	DISPATCH_NEXT()
+
+// handlerIncrementInt64ThenJumpIfLessThanConstant increments ints[B] and jumps if ints[B] < intConstants[C] in tier-1 form (subOpIncrementInt64ThenJumpIfLessThanConstant).
+TEXT ·handlerIncrementInt64ThenJumpIfLessThanConstant(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $16, AX
+	MOVBLZX AL, AX
+	MOVQ    DX, BX
+	SHRQ    $24, BX
+	INCQ    (R8)(AX*8)
+	MOVQ    (R8)(AX*8), SI
+	CMPQ    SI, (R11)(BX*8)
 	JLT     jump
 	INCQ    R14
 	JMP     dispatch

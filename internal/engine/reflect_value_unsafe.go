@@ -25,19 +25,6 @@ import (
 	"unsafe"
 )
 
-const (
-	// flagKindMask masks the low 5 bits where reflect.Kind is stored.
-	flagKindMask uintptr = 1<<5 - 1
-
-	// flagIndir indicates that v.ptr is a *T rather than the value itself.
-	// reflect.NewAt(elem, p).Elem() sets this because p points at the element's storage.
-	flagIndir uintptr = 1 << 7
-
-	// flagAddr indicates that the Value can have its address taken (CanAddr() returns true).
-	// reflect.NewAt(elem, p).Elem() sets this because the storage at p is settable via Elem.
-	flagAddr uintptr = 1 << 8
-)
-
 // reflectValueFlagOffset is the offset of reflect.Value's flag word.
 var reflectValueFlagOffset = func() uintptr {
 	field, ok := reflect.TypeFor[reflect.Value]().FieldByName("flag")
@@ -46,42 +33,6 @@ var reflectValueFlagOffset = func() uintptr {
 	}
 	return field.Offset
 }()
-
-// unsafeReflectValue mirrors the runtime layout of reflect.Value on Go 1.27. Verified by
-// TestReflectValueLayout.
-type unsafeReflectValue struct {
-	// typ points at the *abi.Type for the element type.
-	typ unsafe.Pointer
-
-	// ptr is the settable storage of the element value.
-	ptr unsafe.Pointer
-
-	// flag carries flagAddr | flagIndir | Kind(elem).
-	flag uintptr
-}
-
-// emptyInterface mirrors the runtime layout of an interface header. reflect.Type is an
-// interface whose dynamic type is *abi.Type; the data word IS the *abi.Type pointer.
-type emptyInterface struct {
-	// typ is the dynamic type pointer for the interface header.
-	typ unsafe.Pointer
-
-	// data is the dynamic value word; for reflect.Type it IS the *abi.Type pointer.
-	data unsafe.Pointer
-}
-
-// snapshotSliceHeader mirrors the runtime layout of a Go slice header. The Data field is
-// `unsafe.Pointer` so the garbage collector tracks the backing array as reachable.
-type snapshotSliceHeader struct {
-	// Data points at the slice's element backing array.
-	Data unsafe.Pointer
-
-	// Len is the slice's logical length.
-	Len int
-
-	// Cap is the slice's underlying capacity.
-	Cap int
-}
 
 // ReflectValuePtr extracts the internal .ptr field of a reflect.Value.
 //

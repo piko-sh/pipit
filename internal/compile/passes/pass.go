@@ -20,6 +20,7 @@ package passes
 
 import (
 	"context"
+	"fmt"
 
 	"pipit.sh/pipit/internal/engine/program"
 )
@@ -27,9 +28,9 @@ import (
 // Pass is one step of a per-function pipeline.
 //
 // A Pass rewrites compiledFunction.Body in place under the contract described in the
-// package documentation: the body only changes length through the rewrite helpers, dead
-// slots become isa.OpNop, every jump target is valid on exit, and a second run over its
-// own output is a no-op.
+// package documentation. The body only changes length through the rewrite helpers, dead
+// slots become isa.OpNoOperation, every jump target is valid on exit, and a second run
+// over its own output is a no-op.
 type Pass interface {
 	// Name returns the short stable identifier the pipeline reports in diagnostics.
 	//
@@ -90,7 +91,7 @@ func (pass FunctionPass) Run(ctx context.Context, state *PassContext, compiledFu
 // Takes compiledFunction (*program.CompiledFunction) whose body the passes rewrite.
 //
 // Returns error from the earliest pass that fails, unwrapped so callers see the pass's
-// own message.
+// own message, or the cancellation that stopped the pipeline between two passes.
 func RunPipeline(ctx context.Context, pipeline []Pass, opts Options, compiledFunction *program.CompiledFunction) error {
 	passCtx := new(PassContext{
 		Analysis: nil,
@@ -99,6 +100,9 @@ func RunPipeline(ctx context.Context, pipeline []Pass, opts Options, compiledFun
 	})
 	passCtx.Analysis = &passCtx.analysis
 	for _, pass := range pipeline {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("optimising %s cancelled: %w", compiledFunction.Name, err)
+		}
 		if err := pass.Run(ctx, passCtx, compiledFunction); err != nil {
 			return err
 		}

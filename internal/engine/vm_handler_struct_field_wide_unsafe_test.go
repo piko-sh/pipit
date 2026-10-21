@@ -55,70 +55,70 @@ func TestWideStructFieldUnsafeReadsCoverEveryBank(t *testing.T) {
 		inspect func(*testing.T, *Registers)
 	}{
 		{
-			name: "a signed field", field: 0, handler: handleGetStructFieldUnsafeInt,
+			name: "a signed field", field: 0, handler: handleGetStructFieldInt64Wide,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, int64(42), r.Ints[0])
 			},
 		},
 		{
-			name: "an unsigned field", field: 1, handler: handleGetStructFieldUnsafeUint,
+			name: "an unsigned field", field: 1, handler: handleGetStructFieldUint64Wide,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, uint64(7), r.Uints[0])
 			},
 		},
 		{
-			name: "a bool field", field: 3, handler: handleGetStructFieldUnsafeBool,
+			name: "a bool field", field: 3, handler: handleGetStructFieldBoolWide,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.True(t, r.Bools[0])
 			},
 		},
 		{
-			name: "a string field", field: 4, handler: handleGetStructFieldUnsafeString,
+			name: "a string field", field: 4, handler: handleGetStructFieldStringWide,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, "text", r.Strings[0])
 			},
 		},
 		{
-			name: "an int-slice field", field: 5, handler: handleGetStructFieldUnsafeSliceInt,
+			name: "an int-slice field", field: 5, handler: handleGetStructFieldSliceInt64,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, []int64{1, 2}, r.SlicesInt[0])
 			},
 		},
 		{
-			name: "a float-slice field", field: 6, handler: handleGetStructFieldUnsafeSliceFloat,
+			name: "a float-slice field", field: 6, handler: handleGetStructFieldSliceFloat64,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, []float64{1.5}, r.slicesFloat[0])
 			},
 		},
 		{
-			name: "a uint-slice field", field: 7, handler: handleGetStructFieldUnsafeSliceUint,
+			name: "a uint-slice field", field: 7, handler: handleGetStructFieldSliceUint64,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, []uint64{3}, r.slicesUint[0])
 			},
 		},
 		{
-			name: "a string-slice field", field: 8, handler: handleGetStructFieldUnsafeSliceString,
+			name: "a string-slice field", field: 8, handler: handleGetStructFieldSliceString,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, []string{"a"}, r.slicesString[0])
 			},
 		},
 		{
-			name: "a bool-slice field", field: 9, handler: handleGetStructFieldUnsafeSliceBool,
+			name: "a bool-slice field", field: 9, handler: handleGetStructFieldSliceBool,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, []bool{true}, r.slicesBool[0])
 			},
 		},
 		{
-			name: "a byte-slice field", field: 10, handler: handleGetStructFieldUnsafeSliceByte,
+			name: "a byte-slice field", field: 10, handler: handleGetStructFieldSliceByte,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, []byte{9}, r.slicesByte[0])
@@ -149,7 +149,7 @@ func TestWideStructFieldUnsafeWritesReachTheReceiver(t *testing.T) {
 		vm, frame, registers := newWideFieldFrame(t, 0, receiver)
 		registers.Ints[2] = 11
 
-		require.Equal(t, opContinue, handleSetStructFieldUnsafeInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetStructFieldInt64Wide(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, int64(11), receiver.Signed)
 	})
 
@@ -160,7 +160,7 @@ func TestWideStructFieldUnsafeWritesReachTheReceiver(t *testing.T) {
 		vm, frame, registers := newWideFieldFrame(t, 1, receiver)
 		registers.Uints[2] = 12
 
-		require.Equal(t, opContinue, handleSetStructFieldUnsafeUint(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetStructFieldUint64Wide(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, uint64(12), receiver.Unsigned)
 	})
 }
@@ -175,35 +175,35 @@ func TestWideStructFieldUnsafeReadsWalkANonPointerReceiver(t *testing.T) {
 		inspect func(*testing.T, *Registers)
 	}{
 		{
-			name: "a signed field", field: 0, handler: handleGetStructFieldUnsafeInt,
+			name: "a signed field", field: 0, handler: handleGetStructFieldInt64Wide,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, int64(42), r.Ints[0])
 			},
 		},
 		{
-			name: "an unsigned field", field: 1, handler: handleGetStructFieldUnsafeUint,
+			name: "an unsigned field", field: 1, handler: handleGetStructFieldUint64Wide,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, uint64(7), r.Uints[0])
 			},
 		},
 		{
-			name: "a bool field", field: 3, handler: handleGetStructFieldUnsafeBool,
+			name: "a bool field", field: 3, handler: handleGetStructFieldBoolWide,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.True(t, r.Bools[0])
 			},
 		},
 		{
-			name: "a string field", field: 4, handler: handleGetStructFieldUnsafeString,
+			name: "a string field", field: 4, handler: handleGetStructFieldStringWide,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, "text", r.Strings[0])
 			},
 		},
 		{
-			name: "an int-slice field", field: 5, handler: handleGetStructFieldUnsafeSliceInt,
+			name: "an int-slice field", field: 5, handler: handleGetStructFieldSliceInt64,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, []int64{1, 2}, r.SlicesInt[0])
@@ -268,42 +268,42 @@ func TestSliceIndexStructFieldReadsEveryLeafBank(t *testing.T) {
 		inspect func(*testing.T, *Registers)
 	}{
 		{
-			name: "a signed leaf", field: 0, index: 0, handler: handleSliceIndexStructFieldInt,
+			name: "a signed leaf", field: 0, index: 0, handler: handleGetElementFieldInt64,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, int64(42), r.Ints[0])
 			},
 		},
 		{
-			name: "a signed leaf at the second element", field: 0, index: 1, handler: handleSliceIndexStructFieldInt,
+			name: "a signed leaf at the second element", field: 0, index: 1, handler: handleGetElementFieldInt64,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, int64(99), r.Ints[0])
 			},
 		},
 		{
-			name: "an unsigned leaf", field: 1, index: 0, handler: handleSliceIndexStructFieldUint,
+			name: "an unsigned leaf", field: 1, index: 0, handler: handleGetElementFieldUint64,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, uint64(7), r.Uints[0])
 			},
 		},
 		{
-			name: "a float leaf", field: 2, index: 0, handler: handleSliceIndexStructFieldFloat,
+			name: "a float leaf", field: 2, index: 0, handler: handleGetElementFieldFloat64,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.InDelta(t, 1.5, r.Floats[0], 0)
 			},
 		},
 		{
-			name: "a bool leaf", field: 3, index: 0, handler: handleSliceIndexStructFieldBool,
+			name: "a bool leaf", field: 3, index: 0, handler: handleGetElementFieldBool,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.True(t, r.Bools[0])
 			},
 		},
 		{
-			name: "a string leaf", field: 4, index: 1, handler: handleSliceIndexStructFieldString,
+			name: "a string leaf", field: 4, index: 1, handler: handleGetElementFieldString,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, "second", r.Strings[0])
@@ -338,7 +338,7 @@ func TestSliceIndexStructFieldRefusesBadAccess(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(elements)
 		registers.Ints[2] = 9
 
-		got := handleSliceIndexStructFieldInt(vm, frame, registers, op(0, 1, 2))
+		got := handleGetElementFieldInt64(vm, frame, registers, op(0, 1, 2))
 		require.NotEqual(t, opContinue, got)
 		require.Error(t, vm.evalError)
 	})
@@ -349,7 +349,7 @@ func TestSliceIndexStructFieldRefusesBadAccess(t *testing.T) {
 		vm, frame, registers := newWideFieldFrame(t, 0, &wideFields{})
 		registers.General[1] = reflect.Value{}
 
-		got := handleSliceIndexStructFieldInt(vm, frame, registers, op(0, 1, 2))
+		got := handleGetElementFieldInt64(vm, frame, registers, op(0, 1, 2))
 		require.NotEqual(t, opContinue, got)
 		require.Error(t, vm.evalError)
 	})
@@ -358,10 +358,10 @@ func TestSliceIndexStructFieldRefusesBadAccess(t *testing.T) {
 		t.Parallel()
 
 		vm, frame, registers := newWideFieldFrame(t, 0, &wideFields{})
-		frame.Function.Body[1] = isa.NewInstruction(isa.OpExt, 99, 0, 0)
+		frame.Function.Body[1] = isa.NewInstruction(isa.OpExtension, 99, 0, 0)
 		registers.General[1] = reflect.ValueOf(elements)
 
-		require.Equal(t, opPanicError, handleSliceIndexStructFieldInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opPanicError, handleGetElementFieldInt64(vm, frame, registers, op(0, 1, 2)))
 	})
 }
 
@@ -372,7 +372,7 @@ func TestSliceIndexStructFieldWalksAnInterfaceElement(t *testing.T) {
 	registers.General[1] = reflect.ValueOf([]any{*populatedWideFields()})
 	registers.Ints[2] = 0
 
-	require.Equal(t, opContinue, handleSliceIndexStructFieldInt(vm, frame, registers, op(0, 1, 2)),
+	require.Equal(t, opContinue, handleGetElementFieldInt64(vm, frame, registers, op(0, 1, 2)),
 		"an element stored as an interface still has to reach the leaf, through reflect")
 	require.Equal(t, int64(42), registers.Ints[0])
 }

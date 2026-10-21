@@ -26,14 +26,13 @@ import (
 )
 
 const (
-	// labelRIMulti names the multi-value return copy loop entry of handlerReturnInline.
+	// labelRIMulti names the multi-value return copy loop entry of handlerReturn.
 	labelRIMulti = "ri_multi"
 
-	// labelRIMultiLoop names the multi-value return copy loop of handlerReturnInline.
+	// labelRIMultiLoop names the multi-value return copy loop of handlerReturn.
 	labelRIMultiLoop = "ri_multi_loop"
 
-	// labelRIMultiNext names the multi-value return copy loop advance of
-	// handlerReturnInline.
+	// labelRIMultiNext names the multi-value return copy loop advance of handlerReturn.
 	labelRIMultiNext = "ri_multi_next"
 
 	// returnCursorBytes is the byte span of the CTX_RET_CURSORS entries the multi-value

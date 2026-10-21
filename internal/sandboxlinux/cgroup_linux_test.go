@@ -62,7 +62,7 @@ func TestResourceSettings(t *testing.T) {
 func TestNewGroupRejectsOrdinaryFilesystem(t *testing.T) {
 	t.Parallel()
 	parent := t.TempDir()
-	group, err := newGroup(parent, Limits{})
+	group, err := newGroup(t.Context(), parent, Limits{})
 	if group != nil || !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("group=%v err=%v", group, err)
 	}
@@ -79,7 +79,7 @@ func TestNewGroupRejectsSymlinkParent(t *testing.T) {
 	if err := os.Symlink(parent, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := newGroup(link, Limits{}); !errors.Is(err, ErrUnavailable) {
+	if _, err := newGroup(t.Context(), link, Limits{}); !errors.Is(err, ErrUnavailable) {
 		t.Fatal(err)
 	}
 }
@@ -128,19 +128,19 @@ func TestCgroupNativeLifecycle(t *testing.T) {
 		return
 	}
 	parent := sandboxtest.CgroupParent(t)
-	group, err := newGroup(parent, Limits{})
+	group, err := newGroup(t.Context(), parent, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	cleanup := func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 		defer cancel()
 		if err := group.closeGroup(ctx); err != nil {
 			t.Error(err)
 		}
 	}
 	t.Cleanup(cleanup)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	command := sandboxtest.Command(ctx, "TestCgroupNativeLifecycle", "PIPIT_CGROUP_TEST_CHILD=1")
 	output, err := command.StdoutPipe()
@@ -167,7 +167,7 @@ func TestCgroupNativeLifecycle(t *testing.T) {
 func TestCgroupNativeDescendants(t *testing.T) {
 	if mode := os.Getenv("PIPIT_CGROUP_DESCENDANT_CHILD"); mode != "" {
 		if mode == "leader" {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
 			child := sandboxtest.Command(ctx, "TestCgroupNativeDescendants", "PIPIT_CGROUP_DESCENDANT_CHILD=descendant")
 			if err := child.Start(); err != nil {
@@ -183,19 +183,19 @@ func TestCgroupNativeDescendants(t *testing.T) {
 		return
 	}
 	parent := sandboxtest.CgroupParent(t)
-	group, err := newGroup(parent, Limits{})
+	group, err := newGroup(t.Context(), parent, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	cleanup := func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 		defer cancel()
 		if err := group.closeGroup(ctx); err != nil {
 			t.Error(err)
 		}
 	}
 	t.Cleanup(cleanup)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	command := sandboxtest.Command(ctx, "TestCgroupNativeDescendants", "PIPIT_CGROUP_DESCENDANT_CHILD=leader")
 	output, err := command.StdoutPipe()
@@ -244,7 +244,7 @@ func TestCgroupNativeMemory(t *testing.T) {
 		return
 	}
 	parent := sandboxtest.CgroupParent(t)
-	group, err := newGroup(parent, Limits{MemoryBytes: 32 << 20})
+	group, err := newGroup(t.Context(), parent, Limits{MemoryBytes: 32 << 20})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestCgroupNativeMemory(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	command := sandboxtest.Command(ctx, "TestCgroupNativeMemory", "PIPIT_CGROUP_MEMORY_CHILD=1")
 	if err := group.start(command); err != nil {

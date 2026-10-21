@@ -40,3 +40,18 @@ func TestCompilerRecordStickyError_FirstWriteOnly(t *testing.T) {
 	require.Same(t, first, c.stickyError,
 		"second non-nil write must NOT overwrite the first")
 }
+
+func TestCompilerWithStickyCause_PutsTheStickyErrorFirst(t *testing.T) {
+	t.Parallel()
+	c := &Compiler{programContext: &programContext{}}
+	later := errors.New("unsupported composite literal type")
+	require.Same(t, later, c.withStickyCause(later), "without a sticky error the error is unchanged")
+
+	cause := errors.New("too many named types")
+	c.recordStickyError(cause)
+	joined := c.withStickyCause(later)
+	require.ErrorIs(t, joined, cause)
+	require.ErrorIs(t, joined, later)
+	require.Equal(t, cause.Error()+"\n"+later.Error(), joined.Error(), "the cause reads first")
+	require.Same(t, cause, c.withStickyCause(cause), "the sticky error is not joined to itself")
+}

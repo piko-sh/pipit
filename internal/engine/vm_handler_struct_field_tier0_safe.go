@@ -78,7 +78,7 @@ func panicTier0UnexpectedFieldKind(frame *CallFrame, op string, got reflect.Kind
 	))
 }
 
-// handleGetStructFieldGeneralT0 reads a pointer or interface struct field.
+// handleGetStructFieldGeneral reads a pointer or interface struct field.
 //
 // Safe-build implementation walks via reflect.Field, matching the unsafe-build's
 // reflect-walk fallback semantics. The interface-leaf unwrap is shared via
@@ -90,7 +90,7 @@ func panicTier0UnexpectedFieldKind(frame *CallFrame, op string, got reflect.Kind
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleGetStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	field, ok := structFieldReflectRead(registers, frame, instruction.B, layout)
 	if !ok {
@@ -122,7 +122,7 @@ func handleGetStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Register
 	return opContinue
 }
 
-// handleGetStructFieldRawPointerT0 is the safe-build counterpart that delegates to the
+// handleGetStructFieldRawPointer is the safe-build counterpart that delegates to the
 // general path because the safe build has no access to the eface header.
 //
 // Takes vm (*VM) which is the virtual machine.
@@ -131,8 +131,8 @@ func handleGetStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Register
 // Takes instruction (isa.Instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleGetStructFieldRawPointerT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
-	return handleGetStructFieldGeneralT0(vm, frame, registers, instruction)
+func handleGetStructFieldRawPointer(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	return handleGetStructFieldGeneral(vm, frame, registers, instruction)
 }
 
 // snapshotPointerLeaf detaches a pointer-typed reflect.Value from any live storage
@@ -167,7 +167,7 @@ func snapshotPointerLeaf(field reflect.Value) reflect.Value {
 //
 // Mirrors the cycle-broken interface unwrap branch in handleGetField so subsequent field
 // accesses see the user's pointer/struct directly. Returns the zero Value for a nil-held
-// interface so downstream nil checks in opTestNil keep working.
+// interface so downstream nil checks in isa.OpJumpIfNil keep working.
 //
 // Takes field (reflect.Value) which is the leaf value just read.
 //
@@ -183,11 +183,12 @@ func unwrapInterfaceLeaf(field reflect.Value) reflect.Value {
 	return field
 }
 
-// handleSetStructFieldGeneralT0 writes a pointer or interface struct field.
+// handleSetStructFieldGeneral writes a pointer or interface struct field.
 //
-// Operand A=general structReg, B=general valueReg, C=structLayoutTable index. Safe-build
-// implementation matches the unsafe-build's slow-path semantics (reflect.Field walk) for
-// parity testing.
+// Operand A selects general structReg, B selects general valueReg, and C indexes
+// structLayoutTable. The safe implementation follows the unsafe slow path's reflect.Field
+// walk for parity testing. It applies MaterialiseArenaValue unless escape analysis
+// granted the store's program counter.
 //
 // Takes vm (*VM) which supports coerceValue's closure coercion.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -195,7 +196,7 @@ func unwrapInterfaceLeaf(field reflect.Value) reflect.Value {
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleSetStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	value := registers.General[instruction.B]
 	field, walkOK := structFieldReflectWrite(registers, frame, instruction.A, layout)
@@ -210,6 +211,9 @@ func handleSetStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Register
 		return opContinue
 	}
 	coerced := coerceValue(vm, value, field.Type())
+	if !pcGranted(frame.Function.FieldStoreArenaSafePCs, frame.ProgramCounter-1) {
+		coerced = MaterialiseArenaValue(vm.Arena, coerced)
+	}
 
 	if field.Type().Kind() == reflect.Interface && field.Type().NumMethod() > 0 &&
 		coerced.IsValid() && !coerced.Type().Implements(field.Type()) {
@@ -225,17 +229,17 @@ func handleSetStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Register
 	return opContinue
 }
 
-// handleCopyStructFieldGeneralT0 is the safe-build counterpart of the fused general-bank
+// handleCopyStructFieldGeneral is the safe-build counterpart of the fused general-bank
 // field-to-field copy.
 //
 // The unsafe build does this with one runtime.typedmemmove between the two field
-// pointers; the safe build cannot poke runtime internals, so it walks the source via
+// pointers. The safe build cannot poke runtime internals, so it walks the source via
 // reflect and writes to the destination via the same reflect path the regular SET handler
 // uses. Slower than the unsafe variant but observably identical, keeping the build-tag
 // parity tests happy.
 //
-// Operand A=sourceRecv, B=destinationRecv, C=sourceLayoutIndex. The following isa.OpExt
-// word carries A=destinationLayoutIndex.
+// Operand A=sourceRecv, B=destinationRecv, C=sourceLayoutIndex. The following
+// isa.OpExtension word carries A=destinationLayoutIndex.
 //
 // Takes vm (*VM) which supports coerceValue's closure coercion.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -243,7 +247,7 @@ func handleSetStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Register
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue once the source field is copied into the destination field.
-func handleCopyStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleCopyStructFieldGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	sourceLayout := readTier0StructFieldLayout(frame, instruction.C)
 	extension := readExtensionWord(frame)
 	frame.ProgramCounter++
@@ -274,11 +278,11 @@ func handleCopyStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Registe
 	return opContinue
 }
 
-// handleGetStructFieldIndexGeneral reads one element of an array-typed struct field (safe
-// build): general[A] = receiver[B].field(layout[C]).elem[ints[ext1.C]].
+// handleGetStructFieldElementGeneral reads one element of an array-typed struct field
+// (safe build).
 //
 // Dispatches via structFieldReflectRead instead of unsafe.Pointer arithmetic, then
-// mirrors the INDEX handler's bounds check and non-nil interface unwrap.
+// mirrors the GET_ELEMENT handler's bounds check and non-nil interface unwrap.
 //
 // Takes vm (*VM) which supplies panic plumbing for the bounds check.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -286,7 +290,7 @@ func handleCopyStructFieldGeneralT0(vm *VM, frame *CallFrame, registers *Registe
 // Takes instruction (instruction) which carries A=dest, B=receiver, C=layout index.
 //
 // Returns OpResult indicating the next execution step.
-func handleGetStructFieldIndexGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldElementGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	indexRegister, _, _, _ := readFusedArrayFieldExtensions(frame)
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	field, ok := structFieldReflectRead(registers, frame, instruction.B, layout)
@@ -303,4 +307,20 @@ func handleGetStructFieldIndexGeneral(vm *VM, frame *CallFrame, registers *Regis
 	}
 	registers.General[instruction.A] = launderReadOnlyFieldValue(element)
 	return opContinue
+}
+
+// storePointerInAnySlotWithoutLicence is the unsafe build's reflection-free element
+// store; the safe build always takes storeIndexedElement's reflect route.
+//
+// Returns bool which is always false.
+func storePointerInAnySlotWithoutLicence(_ *RegisterArena, _ reflect.Value, _ reflect.Value) bool {
+	return false
+}
+
+// storePointerInAnySlotRevokedEpoch is the unsafe build's reflection-free element store
+// in a revoked epoch; the safe build always takes storeIndexedElement's reflect route.
+//
+// Returns bool which is always false.
+func storePointerInAnySlotRevokedEpoch(_ *RegisterArena, _ reflect.Value, _ reflect.Value) bool {
+	return false
 }

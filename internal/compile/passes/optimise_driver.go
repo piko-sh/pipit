@@ -118,22 +118,23 @@ func runPeepholeFusions(ctx context.Context, compiledFunction *program.CompiledF
 				return fmt.Errorf("runPeepholeFusions cancelled: %w", err)
 			}
 		}
-		if FuseCopyStructFieldGeneralT0(compiledFunction, body, i, n, jumpTargets) {
+		if FuseCopyStructFieldGeneral(compiledFunction, body, i, n, jumpTargets) {
 			continue
 		}
 		if fuseLongPatterns(compiledFunction, body, i, n, jumpTargets) ||
 			FuseThreeInstrPatterns(compiledFunction, body, i, n, jumpTargets) ||
 			FuseCompareRegJump(compiledFunction, body, i, n, jumpTargets) ||
 			FuseArithConst(compiledFunction, body, i, n, jumpTargets) ||
-			FuseAddIntJump(compiledFunction, body, i, n, jumpTargets) ||
+			FuseAddInt64ConstantThenJump(compiledFunction, body, i, n, jumpTargets) ||
 			FuseConcatRune(compiledFunction, body, i, n, jumpTargets) ||
 			FuseAppendMove(compiledFunction, body, i, n, jumpTargets) ||
 			fuseMoveElimination(compiledFunction, body, i, n, jumpTargets) ||
-			FuseStringIndexToInt(compiledFunction, body, i, n, jumpTargets) {
+			FuseGetStringByteAsInt64(compiledFunction, body, i, n, jumpTargets) ||
+			FuseGetElementUint64AsInt64(compiledFunction, body, i, n, jumpTargets) {
 			continue
 		}
-		OptimiseLoadIntConst(compiledFunction, body, i)
-		OptimiseLoadUintConst(compiledFunction, body, i)
+		OptimiseLoadInt64Constant(compiledFunction, body, i)
+		OptimiseLoadUint64Constant(compiledFunction, body, i)
 	}
 	return nil
 }
@@ -154,22 +155,20 @@ func releaseConstantIndices(compiledFunction *program.CompiledFunction) {
 	compiledFunction.DebugEmitHook = nil
 }
 
-// elideUnusedSyncClosureUpvalues replaces isa.SubOpTier2SyncClosureUpvalues with
-// isa.OpNop when the caller never emits isa.OpMakeClosure.
-//
-// The sync is only meaningful when the caller has a sharedCells map, which requires
-// emitting isa.OpMakeClosure. The tier-3 IIFE writeback is unaffected and always stays.
+// elideUnusedSynchroniseClosureCapturedVariables replaces
+// isa.SubOpTier2SynchroniseClosureCapturedVariables with isa.OpNoOperation when the
+// caller never emits isa.OpMakeClosure.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
 // Takes body ([]instruction) which is the function's instruction stream.
-func elideUnusedSyncClosureUpvalues(compiledFunction *program.CompiledFunction, body []isa.Instruction) {
+func elideUnusedSynchroniseClosureCapturedVariables(compiledFunction *program.CompiledFunction, body []isa.Instruction) {
 	if program.MayCreateSharedCells(compiledFunction) {
 		return
 	}
 	for i := range body {
-		if isa.InstrIsTier2SubOp(body[i], isa.SubOpTier2SyncClosureUpvalues) {
-			body[i] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+		if isa.InstrIsTier2SubOp(body[i], isa.SubOpTier2SynchroniseClosureCapturedVariables) {
+			body[i] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 		}
 	}
 }

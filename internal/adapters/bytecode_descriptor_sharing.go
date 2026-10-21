@@ -19,6 +19,7 @@
 package adapters
 
 import (
+	"context"
 	"reflect"
 	"strconv"
 	"strings"
@@ -31,39 +32,128 @@ import (
 	"pipit.sh/pipit/internal/symtab/descriptor"
 )
 
+// descriptorKeyBase is the base key numbers are spelled in.
+const descriptorKeyBase = 10
+
 // descriptorShareMemos holds one packing memo per in-flight builder, so each identical
 // descriptor subtree is written once and its offset reused by every parent.
 var descriptorShareMemos sync.Map
 
+// descriptorKeyID identifies a structural key within a packing run.
+type descriptorKeyID int
+
+// descriptorShareEntry is what a packing run remembers about one written subtree.
+type descriptorShareEntry struct {
+	// offset is the table or vector offset the subtree was written at.
+	offset flatbuffers.UOffsetT
+
+	// id is the number that stands for the subtree's key in its parents' keys.
+	id descriptorKeyID
+}
+
 // descriptorShareMemo is one build's map from a subtree's structural key to the offset
 // the subtree was written at.
 type descriptorShareMemo struct {
-	// offsets maps a structural key to the already-written table or vector offset.
-	offsets map[string]flatbuffers.UOffsetT
+	// entries maps a structural key to the subtree already written under it.
+	entries map[string]descriptorShareEntry
+
+	// derived caches descriptors derived from a type alone.
+	derived map[reflect.Type]descriptorShareEntry
+
+	// fields maps a struct field's identity to the field table already written for it.
+	fields map[fieldShareKey]descriptorShareEntry
 }
 
-// lookup returns the offset a structural key was already written at.
+// fieldShareKey is the structural key of one struct field.
+type fieldShareKey struct {
+	// name is the field's name.
+	name string
+
+	// tag is the field's struct tag.
+	tag string
+
+	// packagePath is the package path of an unexported field.
+	packagePath string
+
+	// typeKey is the number of the field type's structural key.
+	typeKey descriptorKeyID
+
+	// embedded is true for an embedded field.
+	embedded bool
+}
+
+// lookupField returns the field table a field was already written as.
+//
+// Takes key (fieldShareKey) which is the field's structural key.
+//
+// Returns descriptorShareEntry which is the entry, or the zero entry.
+// Returns bool which is false when the field is new or sharing is off.
+func (m *descriptorShareMemo) lookupField(key fieldShareKey) (descriptorShareEntry, bool) {
+	if m == nil {
+		return descriptorShareEntry{offset: 0, id: 0}, false
+	}
+	entry, ok := m.fields[key]
+	return entry, ok
+}
+
+// rememberField records the offset a field was written at and numbers the field.
+//
+// Takes key (fieldShareKey) which is the field's structural key.
+// Takes offset (flatbuffers.UOffsetT) which is where the field table was written.
+//
+// Returns descriptorKeyID which stands for the field in a vector's key, or zero when
+// sharing is off.
+func (m *descriptorShareMemo) rememberField(key fieldShareKey, offset flatbuffers.UOffsetT) descriptorKeyID {
+	if m == nil {
+		return 0
+	}
+	id := descriptorKeyID(len(m.fields) + 1)
+	m.fields[key] = descriptorShareEntry{offset: offset, id: id}
+	return id
+}
+
+// lookupSpelled is lookup() for a key spelled into a byte buffer.
+//
+// Takes key ([]byte) which is the subtree's structural key.
+//
+// Returns descriptorShareEntry which is the entry, or the zero entry.
+// Returns bool which is false when the subtree is new or sharing is off.
+func (m *descriptorShareMemo) lookupSpelled(key []byte) (descriptorShareEntry, bool) {
+	if m == nil {
+		return descriptorShareEntry{offset: 0, id: 0}, false
+	}
+	entry, ok := m.entries[string(key)]
+	return entry, ok
+}
+
+// lookup returns the subtree a structural key was already written as.
 //
 // Takes key (string) which is the subtree's structural key.
 //
-// Returns the offset and true, or 0 and false when the subtree is new or sharing is off.
-func (m *descriptorShareMemo) lookup(key string) (flatbuffers.UOffsetT, bool) {
+// Returns descriptorShareEntry which is the entry, or the zero entry.
+// Returns bool which is false when the subtree is new or sharing is off.
+func (m *descriptorShareMemo) lookup(key string) (descriptorShareEntry, bool) {
 	if m == nil {
-		return 0, false
+		return descriptorShareEntry{offset: 0, id: 0}, false
 	}
-	offset, ok := m.offsets[key]
-	return offset, ok
+	entry, ok := m.entries[key]
+	return entry, ok
 }
 
-// remember records the offset a structural key was written at.
+// remember records the offset a structural key was written at and numbers the key.
 //
 // Takes key (string) which is the subtree's structural key.
 // Takes offset (flatbuffers.UOffsetT) which is where the subtree was written.
-func (m *descriptorShareMemo) remember(key string, offset flatbuffers.UOffsetT) {
+//
+// Returns descriptorKeyID which stands for the key in its parents' keys, or zero when
+// sharing is off.
+func (m *descriptorShareMemo) remember(key string, offset flatbuffers.UOffsetT) descriptorKeyID {
 	if m == nil {
-		return
+		return 0
 	}
-	m.offsets[key] = offset
+	id := descriptorKeyID(len(m.entries) + 1)
+	m.entries[key] = descriptorShareEntry{offset: offset, id: id}
+	return id
 }
 
 // descriptorDecodeCache holds one load's decoded type descriptors, keyed by table offset,
@@ -76,6 +166,10 @@ type descriptorDecodeCache struct {
 	// reflects maps a TypeDescriptor table's offset to the reflect.Type reconstructed from
 	// it, so a type table that names the same table many times resolves it once.
 	reflects map[flatbuffers.UOffsetT]reflect.Type
+
+	// droppedReceiverEntries counts the receiver-method entries left out because their
+	// receiver type could not be rebuilt, so the load reports them once.
+	droppedReceiverEntries int
 }
 
 // newDescriptorDecodeCache builds an empty cache for one load.
@@ -83,8 +177,9 @@ type descriptorDecodeCache struct {
 // Returns *descriptorDecodeCache which is scoped to a single payload decode.
 func newDescriptorDecodeCache() *descriptorDecodeCache {
 	return &descriptorDecodeCache{
-		data:     make(map[flatbuffers.UOffsetT]*descriptor.TypeDescriptorData),
-		reflects: make(map[flatbuffers.UOffsetT]reflect.Type),
+		data:                   make(map[flatbuffers.UOffsetT]*descriptor.TypeDescriptorData),
+		reflects:               make(map[flatbuffers.UOffsetT]reflect.Type),
+		droppedReceiverEntries: 0,
 	}
 }
 
@@ -118,7 +213,11 @@ func (c *descriptorDecodeCache) rememberDecoded(offset flatbuffers.UOffsetT, dec
 //
 // Returns func() which ends the scope and must be called when the run finishes.
 func beginDescriptorSharing(builder *flatbuffers.Builder) func() {
-	descriptorShareMemos.Store(builder, &descriptorShareMemo{offsets: make(map[string]flatbuffers.UOffsetT)})
+	descriptorShareMemos.Store(builder, &descriptorShareMemo{
+		entries: make(map[string]descriptorShareEntry),
+		derived: make(map[reflect.Type]descriptorShareEntry),
+		fields:  make(map[fieldShareKey]descriptorShareEntry),
+	})
 	return func() { descriptorShareMemos.Delete(builder) }
 }
 
@@ -156,8 +255,53 @@ func appendKeyPart(out *strings.Builder, part string) {
 // Takes out (*strings.Builder) which accumulates the key.
 // Takes value (int64) which is the component to append.
 func appendKeyInt(out *strings.Builder, value int64) {
-	_, _ = out.WriteString(strconv.FormatInt(value, 10))
+	_, _ = out.WriteString(strconv.FormatInt(value, descriptorKeyBase))
 	_, _ = out.WriteString(",")
+}
+
+// lookupDerived returns the descriptor already written for a type whose descriptor is
+// derived from the type alone.
+//
+// Takes reflectType (reflect.Type) which is the type.
+//
+// Returns the entry and true, or the zero entry and false when the type is new or sharing
+// is off.
+func (m *descriptorShareMemo) lookupDerived(reflectType reflect.Type) (descriptorShareEntry, bool) {
+	if m == nil {
+		return descriptorShareEntry{offset: 0, id: 0}, false
+	}
+	entry, ok := m.derived[reflectType]
+	return entry, ok
+}
+
+// rememberDerived records the descriptor written for a type whose descriptor is derived
+// from the type alone.
+//
+// Takes reflectType (reflect.Type) which is the type.
+// Takes entry (descriptorShareEntry) which is the written descriptor.
+func (m *descriptorShareMemo) rememberDerived(reflectType reflect.Type, entry descriptorShareEntry) {
+	if m == nil {
+		return
+	}
+	m.derived[reflectType] = entry
+}
+
+// appendKeyIDBytes appends a child's key number to a structural key in a byte buffer.
+//
+// Takes out ([]byte) which accumulates the key.
+// Takes id (descriptorKeyID) which is the child's key number, zero when absent.
+//
+// Returns []byte which is the extended key.
+func appendKeyIDBytes(out []byte, id descriptorKeyID) []byte {
+	return append(strconv.AppendInt(out, int64(id), descriptorKeyBase), ',')
+}
+
+// appendKeyID appends a child's key number to a structural key.
+//
+// Takes out (*strings.Builder) which accumulates the key.
+// Takes id (descriptorKeyID) which is the child's key number, zero when absent.
+func appendKeyID(out *strings.Builder, id descriptorKeyID) {
+	appendKeyInt(out, int64(id))
 }
 
 // boolKeyValue renders a bool as a structural-key component.
@@ -185,13 +329,13 @@ func boolKeyValue(value bool) int64 {
 //
 // Returns reflect.Type which is the reconstructed type.
 // Returns error when the descriptor cannot be reconstructed.
-func reflectTypeForTable(cache *descriptorDecodeCache, offset flatbuffers.UOffsetT, data descriptor.TypeDescriptorData, registry *symtab.SymbolRegistry) (reflect.Type, error) {
+func reflectTypeForTable(ctx context.Context, cache *descriptorDecodeCache, offset flatbuffers.UOffsetT, data descriptor.TypeDescriptorData, registry *symtab.SymbolRegistry) (reflect.Type, error) {
 	if cache != nil {
 		if resolved, ok := cache.reflects[offset]; ok {
 			return resolved, nil
 		}
 	}
-	resolved, err := codec.DescriptorToReflectType(data, registry)
+	resolved, err := codec.DescriptorToReflectType(ctx, data, registry)
 	if err != nil {
 		return nil, err
 	}

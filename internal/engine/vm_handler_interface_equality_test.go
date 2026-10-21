@@ -81,6 +81,27 @@ func TestReflectInterfaceEqualComparesDynamicTypesBeforeValues(t *testing.T) {
 	}
 }
 
+func TestReflectInterfaceEqualComparesNamedCompositeTypes(t *testing.T) {
+	t.Parallel()
+
+	pair := testNamedCompositeType(t, "Pair", reflect.TypeFor[[2]int]())
+	plain := reflect.ValueOf([2]int{1, 2})
+	named := plain.Convert(pair)
+	equal, uncomparable := ReflectInterfaceEqual(named, plain)
+	require.False(t, uncomparable)
+	require.False(t, equal, "a named array and its underlying array are different dynamic types")
+	equal, _ = ReflectInterfaceEqual(named, plain.Convert(pair))
+	require.True(t, equal)
+
+	first := reflect.ValueOf(&RuntimeClosure{namedType: testNamedFuncTypeID(t, "First")})
+	second := reflect.ValueOf(&RuntimeClosure{namedType: testNamedFuncTypeID(t, "Second")})
+	equal, uncomparable = ReflectInterfaceEqual(first, second)
+	require.False(t, uncomparable, "func values of different types compare unequal without panicking")
+	require.False(t, equal)
+	_, uncomparable = ReflectInterfaceEqual(first, first)
+	require.True(t, uncomparable, "two func values of one type are uncomparable")
+}
+
 func TestReflectInterfaceEqualIsSymmetric(t *testing.T) {
 	t.Parallel()
 
@@ -154,7 +175,7 @@ func TestComparableOperandUnwrapsOneInterfaceLayer(t *testing.T) {
 	})
 }
 
-func TestUnpackInterfaceWritesTheZeroOfTheTargetBank(t *testing.T) {
+func TestUnboxFromInterfaceWritesTheZeroOfTheTargetBank(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -163,13 +184,13 @@ func TestUnpackInterfaceWritesTheZeroOfTheTargetBank(t *testing.T) {
 		name  string
 		kind  isa.RegisterKind
 	}{
-		{name: "the integer bank", kind: isa.RegisterInt,
+		{name: "the integer bank", kind: isa.RegisterInt64,
 			seed: func(registers *Registers) { registers.Ints[0] = 42 },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Equal(t, int64(0), registers.Ints[0])
 			}},
-		{name: "the float bank", kind: isa.RegisterFloat,
+		{name: "the float bank", kind: isa.RegisterFloat64,
 			seed: func(registers *Registers) { registers.Floats[0] = 42 },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -187,13 +208,13 @@ func TestUnpackInterfaceWritesTheZeroOfTheTargetBank(t *testing.T) {
 				t.Helper()
 				require.False(t, registers.Bools[0])
 			}},
-		{name: "the unsigned bank", kind: isa.RegisterUint,
+		{name: "the unsigned bank", kind: isa.RegisterUint64,
 			seed: func(registers *Registers) { registers.Uints[0] = 42 },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Equal(t, uint64(0), registers.Uints[0])
 			}},
-		{name: "the complex bank", kind: isa.RegisterComplex,
+		{name: "the complex bank", kind: isa.RegisterComplex128,
 			seed: func(registers *Registers) { registers.Complex[0] = 1 + 2i },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -214,7 +235,7 @@ func TestUnpackInterfaceWritesTheZeroOfTheTargetBank(t *testing.T) {
 			tt.seed(&registers)
 			registers.General[1] = reflect.Value{}
 
-			got := handleUnpackInterface(nil, nil, &registers, op(0, 1, uint8(tt.kind)))
+			got := handleUnboxFromInterface(nil, nil, &registers, op(0, 1, uint8(tt.kind)))
 
 			require.Equal(t, opContinue, got)
 			tt.check(t, &registers)
@@ -222,7 +243,7 @@ func TestUnpackInterfaceWritesTheZeroOfTheTargetBank(t *testing.T) {
 	}
 }
 
-func TestUnpackInterfaceMovesTheDynamicValueIntoItsBank(t *testing.T) {
+func TestUnboxFromInterfaceMovesTheDynamicValueIntoItsBank(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -231,17 +252,17 @@ func TestUnpackInterfaceMovesTheDynamicValueIntoItsBank(t *testing.T) {
 		name   string
 		kind   isa.RegisterKind
 	}{
-		{name: "a boxed integer lands in the integer bank", kind: isa.RegisterInt, source: reflect.ValueOf(42),
+		{name: "a boxed integer lands in the integer bank", kind: isa.RegisterInt64, source: reflect.ValueOf(42),
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Equal(t, int64(42), registers.Ints[0])
 			}},
-		{name: "a boxed unsigned value reinterprets into the integer bank", kind: isa.RegisterInt, source: reflect.ValueOf(uint8(200)),
+		{name: "a boxed unsigned value reinterprets into the integer bank", kind: isa.RegisterInt64, source: reflect.ValueOf(uint8(200)),
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Equal(t, int64(200), registers.Ints[0])
 			}},
-		{name: "a boxed boolean lands in the integer bank as one", kind: isa.RegisterInt, source: reflect.ValueOf(true),
+		{name: "a boxed boolean lands in the integer bank as one", kind: isa.RegisterInt64, source: reflect.ValueOf(true),
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Equal(t, int64(1), registers.Ints[0])
@@ -251,7 +272,7 @@ func TestUnpackInterfaceMovesTheDynamicValueIntoItsBank(t *testing.T) {
 				t.Helper()
 				require.Equal(t, "pipit", registers.Strings[0])
 			}},
-		{name: "a boxed float lands in the float bank", kind: isa.RegisterFloat, source: reflect.ValueOf(1.5),
+		{name: "a boxed float lands in the float bank", kind: isa.RegisterFloat64, source: reflect.ValueOf(1.5),
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.InDelta(t, 1.5, registers.Floats[0], 0)
@@ -261,7 +282,7 @@ func TestUnpackInterfaceMovesTheDynamicValueIntoItsBank(t *testing.T) {
 				t.Helper()
 				require.True(t, registers.Bools[0])
 			}},
-		{name: "a boxed unsigned value lands in the unsigned bank", kind: isa.RegisterUint, source: reflect.ValueOf(uint64(42)),
+		{name: "a boxed unsigned value lands in the unsigned bank", kind: isa.RegisterUint64, source: reflect.ValueOf(uint64(42)),
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Equal(t, uint64(42), registers.Uints[0])
@@ -274,7 +295,7 @@ func TestUnpackInterfaceMovesTheDynamicValueIntoItsBank(t *testing.T) {
 			registers := standardRegisters()
 			registers.General[1] = tt.source
 
-			got := handleUnpackInterface(nil, nil, &registers, op(0, 1, uint8(tt.kind)))
+			got := handleUnboxFromInterface(nil, nil, &registers, op(0, 1, uint8(tt.kind)))
 
 			require.Equal(t, opContinue, got)
 			tt.check(t, &registers)
@@ -282,7 +303,7 @@ func TestUnpackInterfaceMovesTheDynamicValueIntoItsBank(t *testing.T) {
 	}
 }
 
-func TestUnpackInterfaceIntAcceptsEveryIntegerLikeSource(t *testing.T) {
+func TestUnboxFromInterfaceIntAcceptsEveryIntegerLikeSource(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -305,7 +326,7 @@ func TestUnpackInterfaceIntAcceptsEveryIntegerLikeSource(t *testing.T) {
 			registers := standardRegisters()
 			registers.Ints[0] = -999
 
-			unpackInterfaceInt(&registers, 0, tt.source)
+			unboxFromInterfaceInt64(&registers, 0, tt.source)
 
 			require.Equal(t, tt.want, registers.Ints[0])
 		})
@@ -316,7 +337,7 @@ func TestUnpackInterfaceIntAcceptsEveryIntegerLikeSource(t *testing.T) {
 		registers := standardRegisters()
 		registers.Ints[0] = -999
 
-		unpackInterfaceInt(&registers, 0, reflect.ValueOf("not a number"))
+		unboxFromInterfaceInt64(&registers, 0, reflect.ValueOf("not a number"))
 
 		require.Equal(t, int64(-999), registers.Ints[0], "an unusable source must not corrupt the destination")
 	})

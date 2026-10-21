@@ -29,7 +29,7 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-func TestStructFieldGeneralT0EmittedForMapField(t *testing.T) {
+func TestStructFieldGeneralEmittedForMapField(t *testing.T) {
 	t.Parallel()
 
 	source := `package main
@@ -55,7 +55,7 @@ func main() {
 	requireNoOpcode(t, readFn, isa.OpGetField)
 }
 
-func TestStructFieldGeneralT0EmittedForChanField(t *testing.T) {
+func TestStructFieldGeneralEmittedForChanField(t *testing.T) {
 	t.Parallel()
 
 	source := `package main
@@ -80,7 +80,7 @@ func main() {
 	requireNoOpcode(t, readFn, isa.OpGetField)
 }
 
-func TestStructFieldGeneralT0ResultDetachedFromBackingStorage(t *testing.T) {
+func TestStructFieldGeneralResultDetachedFromBackingStorage(t *testing.T) {
 	t.Parallel()
 
 	source := `package main

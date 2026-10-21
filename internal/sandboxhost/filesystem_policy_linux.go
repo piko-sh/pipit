@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxhost
 
@@ -37,9 +37,9 @@ import (
 // the exclusive service reservation.
 //
 // Returns metadata for durable publication, not replacement-host recovery authority.
-func (process *linuxFilesystemProcess) captureRecoveryStorage(policy [sha256.Size]byte) (sandboxlinux.FilesystemRecoveryStorage, error) {
+func (process *linuxFilesystemProcess) captureRecoveryStorage(ctx context.Context, policy [sha256.Size]byte) (sandboxlinux.FilesystemRecoveryStorage, error) {
 	var empty sandboxlinux.FilesystemRecoveryStorage
-	binding, err := sandboxlinux.RecoveryHostBinding(process.context, policy)
+	binding, err := sandboxlinux.RecoveryHostBinding(ctx, policy)
 	if err != nil {
 		return empty, err
 	}

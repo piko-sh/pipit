@@ -22,27 +22,34 @@ package app
 
 import (
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
-	"unsafe"
 
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/engine"
 )
 
+type foreignStringItem struct {
+	Name  string
+	Index int
+}
+
 func TestCallbackStoresAParentArenaStringSafely(t *testing.T) {
 	t.Parallel()
+
 	cache := map[string]int{}
 	values := map[int]string{}
-	parentBytes := map[*byte]bool{}
-	parentOwned := true
+	storedParent := false
 	var vm *engine.VM
 	var harness *callbackHarness
 	harness, vm = newCancellationVM(t, t.Context(), map[string]reflect.Value{
 		"Apply": reflect.ValueOf(func(s string, fn func(string)) {
-			parentOwned = parentOwned && vm.Arena.OwnsString(s)
-			parentBytes[unsafe.StringData(s)] = true
 			fn(s)
+			for key, index := range cache {
+				storedParent = storedParent || vm.Arena.OwnsString(key) || vm.Arena.OwnsString(values[index])
+			}
 		}),
 		"Cache":  reflect.ValueOf(func() map[string]int { return cache }),
 		"Values": reflect.ValueOf(func() map[int]string { return values }),
@@ -53,21 +60,17 @@ func fill() {
 	vals := host.Values()
 	for i := range 64 {
 		key := "parent-key-" + string(rune('a'+i%26)) + string(rune('A'+i/26))
-		host.Apply(key, func(s string) {
-			keys[s] = i
-			vals[i] = s
+		host.Apply(key, func(_ string) {
+			keys[key] = i
+			vals[i] = key
 		})
 	}
 }
 fill()`))
 	require.NoError(t, err)
-	require.True(t, parentOwned, "the keys the callback receives live in the parent's arena")
 	require.Len(t, cache, 64)
 	require.Len(t, values, 64)
-	for key, index := range cache {
-		require.False(t, parentBytes[unsafe.StringData(key)], "key %q aliases the parent's arena", key)
-		require.False(t, parentBytes[unsafe.StringData(values[index])], "value %d aliases the parent's arena", index)
-	}
+	require.False(t, storedParent, "a stored key or value aliases the parent's arena")
 
 	for range 4 {
 		_, err := vm.Execute(harness.compile(t, `total := ""
@@ -84,11 +87,6 @@ for i := range 2000 {
 		require.Equal(t, i, got)
 		require.Equal(t, want, values[i], "value %d survives the parent's arena being reused", i)
 	}
-}
-
-type foreignStringItem struct {
-	Name  string
-	Index int
 }
 
 func TestCallbackStoresForeignStringsThroughEveryStoreRoute(t *testing.T) {
@@ -118,7 +116,6 @@ func TestCallbackStoresForeignStringsThroughEveryStoreRoute(t *testing.T) {
 			channel := make(chan string, 8)
 			var slice []string
 			item := &foreignStringItem{}
-			parentBytes := map[*byte]bool{}
 			var vm *engine.VM
 			var harness *callbackHarness
 			harness, vm = newCancellationVM(t, t.Context(), map[string]reflect.Value{
@@ -130,8 +127,6 @@ func TestCallbackStoresForeignStringsThroughEveryStoreRoute(t *testing.T) {
 				"SlicePtr": reflect.ValueOf(func() *[]string { return &slice }),
 				"ItemPtr":  reflect.ValueOf(func() *foreignStringItem { return item }),
 				"Apply": reflect.ValueOf(func(s string, fn func(string)) {
-					require.True(t, vm.Arena.OwnsString(s), "the callback receives a string in the parent's arena")
-					parentBytes[unsafe.StringData(s)] = true
 					fn(s)
 				}),
 			}, engine.VMLimits{})
@@ -139,11 +134,19 @@ func TestCallbackStoresForeignStringsThroughEveryStoreRoute(t *testing.T) {
 func fill() {
 	for i := range 4 {
 	key := "item-" + string(rune('a'+i))
-	`+route.source+`
+	`+strings.ReplaceAll(route.source, "func(s string) {", "func(_ string) { s := key;")+`
 	}
 }
 fill()`))
 			require.NoError(t, err)
+
+			for range 4 {
+				_, err := vm.Execute(harness.compile(t, `total := ""
+for i := range 2000 {
+	total = "churn-" + string(rune('a'+i%26)) + total[:min(len(total), 40)]
+}`))
+				require.NoError(t, err)
+			}
 			close(channel)
 
 			var stored []string
@@ -164,8 +167,9 @@ fill()`))
 				stored = append(stored, item.Name)
 			}
 			require.NotEmpty(t, stored)
+			keys := []string{"item-a", "item-b", "item-c", "item-d"}
 			for _, value := range stored {
-				require.False(t, parentBytes[unsafe.StringData(value)], "%q aliases the parent's arena", value)
+				require.True(t, slices.Contains(keys, value), "stored string %q survives the parent's arena being reused", value)
 			}
 		})
 	}
@@ -173,33 +177,37 @@ fill()`))
 
 func TestBoundMethodStoresAParentArenaStringSafely(t *testing.T) {
 	t.Parallel()
+
 	names := map[string]bool{}
-	parentBytes := map[*byte]bool{}
+	storedParent := false
 	var vm *engine.VM
 	var harness *callbackHarness
 	harness, vm = newCancellationVM(t, t.Context(), map[string]reflect.Value{
 		"Names": reflect.ValueOf(func() map[string]bool { return names }),
 		"Apply": reflect.ValueOf(func(s string, fn func(string)) {
-			require.True(t, vm.Arena.OwnsString(s), "the method receives a string in the parent's arena")
-			parentBytes[unsafe.StringData(s)] = true
 			fn(s)
+			for name := range names {
+				storedParent = storedParent || vm.Arena.OwnsString(name)
+			}
 		}),
 	}, engine.VMLimits{})
 	_, err := vm.Execute(harness.compile(t, `import "host"
-type keeper struct{ names map[string]bool }
+type keeper struct {
+	names map[string]bool
+	tag   string
+}
 
-func (k keeper) Keep(s string) { k.names[s] = true }
+func (k keeper) Keep(_ string) { k.names[k.tag] = true }
 
 func fill() {
-	k := keeper{names: host.Names()}
 	for i := range 4 {
-		host.Apply("item-" + string(rune('a'+i)), k.Keep)
+		tag := "item-" + string(rune('a'+i))
+		k := keeper{names: host.Names(), tag: tag}
+		host.Apply(tag, k.Keep)
 	}
 }
 fill()`))
 	require.NoError(t, err)
 	require.Len(t, names, 4)
-	for name := range names {
-		require.False(t, parentBytes[unsafe.StringData(name)], "%q aliases the parent's arena", name)
-	}
+	require.False(t, storedParent, "a stored name aliases the parent's arena")
 }

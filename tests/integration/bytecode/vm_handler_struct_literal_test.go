@@ -42,7 +42,7 @@ func EntrypointRun() int {
 	return p.x + n.id + len(n.name)
 }`)
 
-	require.Equalf(t, 1, strings.Count(dump, "ALLOC_STRUCT_LITERAL"),
+	require.Equalf(t, 1, strings.Count(dump, "ALLOCATE_STRUCT_LITERAL"),
 		"expected exactly the pointer-free literal to use the arena allocation sub-op; disasm:\n%s", dump)
 	require.Equalf(t, 1, strings.Count(dump, "MAKE_MAP"),
 		"expected the literal with a string field to keep the generic path; disasm:\n%s", dump)
@@ -54,7 +54,7 @@ func TestStructLiteralQualifiesForArena(t *testing.T) {
 	require.False(t, engine.StructLiteralQualifiesForArena(reflect.TypeFor[struct{ s string }]()), "strings carry a pointer")
 	require.False(t, engine.StructLiteralQualifiesForArena(reflect.TypeFor[struct{}]()), "zero-sized structs use the shared sentinel")
 	require.False(t, engine.StructLiteralQualifiesForArena(reflect.TypeFor[int]()), "only structs qualify")
-	require.Equal(t, isa.SubOpTier2AllocStructLiteral, engine.StructLiteralAllocationSubOp(reflect.TypeFor[struct{ a int }]()))
+	require.Equal(t, isa.SubOpTier2AllocateStructLiteral, engine.StructLiteralAllocationSubOp(reflect.TypeFor[struct{ a int }]()))
 	require.Equal(t, isa.SubOpTier2MakeMap, engine.StructLiteralAllocationSubOp(reflect.TypeFor[struct{ p *int }]()))
 }
 

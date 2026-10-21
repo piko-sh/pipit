@@ -34,16 +34,16 @@ var (
 
 	// structFieldUnsafeStringABIType caches the *abi.Type pointer of
 	// reflect.TypeFor[string]() so the typed-string-set hot path
-	// (handleSetStructFieldUnsafeString below) skips reflect.NewAt's internal ptrTo()
-	// lookup. Constant for the program's lifetime; initialised at package init.
+	// (handleSetStructFieldStringWide below) skips reflect.NewAt's internal ptrTo() lookup.
+	// Constant for the program's lifetime.
 	structFieldUnsafeStringABIType = reflectValueABIType(structFieldUnsafeStringType)
 )
 
-// handleGetStructFieldUnsafeFloat reads a float-kind struct field.
+// handleGetStructFieldFloat64Wide reads a float-kind struct field.
 //
 // Stores the float64 value into floats[B]. Uses unsafe.Pointer arithmetic via the
-// pre-resolved structLayoutTable entry; falls back to a reflect walk on non-addressable
-// receivers.
+// pre-resolved structLayoutTable entry. It falls back to a reflect walk on
+// non-addressable receivers.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -51,7 +51,7 @@ var (
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleGetStructFieldUnsafeFloat(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldFloat64Wide(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layoutIndex := readExtensionWideIndex(frame)
 	layout := structLayoutAtWide(frame, layoutIndex)
 	base, ok := structFieldUnsafeBase(registers, instruction.C)
@@ -74,10 +74,10 @@ func handleGetStructFieldUnsafeFloat(vm *VM, frame *CallFrame, registers *Regist
 	return opContinue
 }
 
-// handleSetStructFieldUnsafeFloat writes a float-kind struct field.
+// handleSetStructFieldFloat64Wide writes a float-kind struct field.
 //
-// Uses unsafe.Pointer arithmetic via the pre-resolved structLayoutTable entry; falls back
-// to a reflect write on non-addressable receivers.
+// Uses unsafe.Pointer arithmetic via the pre-resolved structLayoutTable entry. It falls
+// back to a reflect write on non-addressable receivers.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -85,7 +85,7 @@ func handleGetStructFieldUnsafeFloat(vm *VM, frame *CallFrame, registers *Regist
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleSetStructFieldUnsafeFloat(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldFloat64Wide(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layoutIndex := readExtensionWideIndex(frame)
 	layout := structLayoutAtWide(frame, layoutIndex)
 	base, ok := structFieldUnsafeBase(registers, instruction.B)
@@ -109,10 +109,10 @@ func handleSetStructFieldUnsafeFloat(vm *VM, frame *CallFrame, registers *Regist
 	return opContinue
 }
 
-// handleSetStructFieldUnsafeBool writes a bool-kind struct field.
+// handleSetStructFieldBoolWide writes a bool-kind struct field.
 //
-// Uses unsafe.Pointer arithmetic via the pre-resolved structLayoutTable entry; falls back
-// to a reflect write on non-addressable receivers.
+// Uses unsafe.Pointer arithmetic via the pre-resolved structLayoutTable entry. It falls
+// back to a reflect write on non-addressable receivers.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -120,7 +120,7 @@ func handleSetStructFieldUnsafeFloat(vm *VM, frame *CallFrame, registers *Regist
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleSetStructFieldUnsafeBool(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldBoolWide(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layoutIndex := readExtensionWideIndex(frame)
 	layout := structLayoutAtWide(frame, layoutIndex)
 	base, ok := structFieldUnsafeBase(registers, instruction.B)
@@ -137,7 +137,7 @@ func handleSetStructFieldUnsafeBool(vm *VM, frame *CallFrame, registers *Registe
 	return opContinue
 }
 
-// handleSetStructFieldUnsafeString writes a string-kind struct field.
+// handleSetStructFieldStringWide writes a string-kind struct field.
 //
 // Goes through reflect.NewAt + SetString so the runtime inserts the GC write barrier for
 // the string header's data pointer. Falls back to a full reflect walk + SetString on
@@ -153,7 +153,7 @@ func handleSetStructFieldUnsafeBool(vm *VM, frame *CallFrame, registers *Registe
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleSetStructFieldUnsafeString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldStringWide(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layoutIndex := readExtensionWideIndex(frame)
 	layout := structLayoutAtWide(frame, layoutIndex)
 	base, ok := structFieldUnsafeBase(registers, instruction.B)

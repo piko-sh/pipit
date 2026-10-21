@@ -50,8 +50,8 @@ func (session *replSessionFixture) Submit(_ context.Context, source string) (pip
 	return session.result, session.err
 }
 
-func (session *replSessionFixture) Done() <-chan struct{} { return session.done }
-func (session *replSessionFixture) Close() error          { return session.closeErr }
+func (session *replSessionFixture) Done() <-chan struct{}       { return session.done }
+func (session *replSessionFixture) Close(context.Context) error { return session.closeErr }
 
 func replFixture() *replSessionFixture {
 	var session replSessionFixture
@@ -80,7 +80,7 @@ func TestIsolatedReplFraming(t *testing.T) {
 			t.Parallel()
 			session := replFixture()
 			streams := output.IO{Stdin: strings.NewReader(tt.input), Stdout: io.Discard, Stderr: io.Discard, ColourMode: output.ColourNever}
-			err := isolatedReplLoop(t.Context(), session, streams, true, false)
+			err := isolatedReplLoop(t.Context(), t.Context().Err, session, streams, true, false)
 			require.Equal(t, tt.wantErr, err != nil, "error: %v", err)
 			require.Equal(t, strings.Join(tt.wantSources, "|"), strings.Join(session.sources, "|"))
 		})
@@ -103,7 +103,7 @@ func TestIsolatedReplInputBounds(t *testing.T) {
 			t.Parallel()
 			session := replFixture()
 			streams := output.IO{Stdin: strings.NewReader(tt.input), Stdout: io.Discard, Stderr: io.Discard, ColourMode: output.ColourNever}
-			require.Error(t, isolatedReplLoop(t.Context(), session, streams, true, false), "oversized input never reaches the worker")
+			require.Error(t, isolatedReplLoop(t.Context(), t.Context().Err, session, streams, true, false), "oversized input never reaches the worker")
 			require.Empty(t, session.sources)
 		})
 	}
@@ -116,7 +116,7 @@ func TestIsolatedReplFailureStopsAndSuppressesResults(t *testing.T) {
 	session.result.Value = []byte("42")
 	var stdout, stderr bytes.Buffer
 	streams := output.IO{Stdin: strings.NewReader("bad\nshouldNotRun\n"), Stdout: &stdout, Stderr: &stderr, ColourMode: output.ColourNever}
-	err := isolatedReplLoop(t.Context(), session, streams, true, false)
+	err := isolatedReplLoop(t.Context(), t.Context().Err, session, streams, true, false)
 	require.Error(t, err)
 	require.Len(t, session.sources, 1, "a failed session stops reading input")
 	require.Empty(t, stdout.String())
@@ -129,7 +129,7 @@ func TestIsolatedReplTerminalOutputEscapesControlSequences(t *testing.T) {
 	session.result.Output = "\x1b]52;c;clipboard\a"
 	var stdout bytes.Buffer
 	streams := output.IO{Stdin: strings.NewReader("42\n"), Stdout: &stdout, Stderr: io.Discard, ColourMode: output.ColourNever}
-	require.NoError(t, isolatedReplLoop(t.Context(), session, streams, true, true))
+	require.NoError(t, isolatedReplLoop(t.Context(), t.Context().Err, session, streams, true, true))
 	require.False(t, strings.ContainsAny(stdout.String(), "\x1b\a"), "terminal control sequences are escaped: %q", stdout.String())
 	require.Contains(t, stdout.String(), "\\x1b")
 }

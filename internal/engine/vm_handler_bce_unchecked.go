@@ -27,8 +27,8 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-// handleSliceGetIntDirectUnchecked is the bounds-elided variant of
-// handleSliceGetIntDirect. Reads ints[A] = slicesInt[B][ints[C]] without the
+// handleGetSliceInt64ElementUnchecked is the bounds-elided variant of
+// handleGetSliceInt64Element. Reads ints[A] = slicesInt[B][ints[C]] without the
 // `uint64(index) >= uint64(len(slice))` check.
 //
 // Takes registers (*Registers) which holds the slicesInt collection and the int index.
@@ -37,13 +37,13 @@ import (
 //
 // Returns opContinue on success. The Go runtime's slice access will panic if the
 // compile-time proof was wrong.
-func handleSliceGetIntDirectUnchecked(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetSliceInt64ElementUnchecked(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = registers.SlicesInt[instruction.B][registers.Ints[instruction.C]]
 	return opContinue
 }
 
-// handleSliceSetIntDirectUnchecked is the bounds-elided variant of
-// handleSliceSetIntDirect. Writes slicesInt[A][ints[B]] = ints[C] without the runtime
+// handleSetSliceInt64ElementUnchecked is the bounds-elided variant of
+// handleSetSliceInt64Element. Writes slicesInt[A][ints[B]] = ints[C] without the runtime
 // bounds check.
 //
 // Takes registers (*Registers) which holds the slicesInt collection, the index, and the
@@ -52,18 +52,18 @@ func handleSliceGetIntDirectUnchecked(_ *VM, _ *CallFrame, registers *Registers,
 // index int register B, and the value int register C.
 //
 // Returns opContinue on success.
-func handleSliceSetIntDirectUnchecked(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetSliceInt64ElementUnchecked(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.SlicesInt[instruction.A][registers.Ints[instruction.B]] = registers.Ints[instruction.C]
 	return opContinue
 }
 
-// handleSliceGetIntUnchecked is the bounds-elided reflect-bank variant of
-// handleSliceGetInt for ints[A] = general[B].Index(ints[C]).Int().
+// handleGetElementInt64Unchecked is the bounds-elided reflect-bank variant of
+// handleGetElementInt64 for ints[A] = general[B].Index(ints[C]).Int().
 //
 // Operates on the reflect (general) register bank without the runtime range check.
 //
-// Soundness: the BCE pass MUST prove the index is in [0, len(general[B])) before emitting
-// this opcode. An out-of-range access lets the underlying reflect.Value.Index call panic
+// The BCE pass MUST prove the index is in [0, len(general[B])) before emitting this
+// opcode. An out-of-range access lets the underlying reflect.Value.Index call panic
 // instead of routing the panic through vm.evalError.
 //
 // Takes vm (*VM) which is the executing VM.
@@ -72,7 +72,7 @@ func handleSliceSetIntDirectUnchecked(_ *VM, _ *CallFrame, registers *Registers,
 //
 // Returns opContinue on success or opPanicError if the collection is not a valid
 // indexable value.
-func handleSliceGetIntUnchecked(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetElementInt64Unchecked(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	collection, indexPanicResult, ok := resolveIndexCollection(vm, registers.General[instruction.B])
 	if !ok {
 		return indexPanicResult
@@ -87,12 +87,12 @@ func handleSliceGetIntUnchecked(vm *VM, _ *CallFrame, registers *Registers, inst
 	return opContinue
 }
 
-// handleSliceSetIntUnchecked is the bounds-elided reflect-bank variant of
-// handleSliceSetInt for general[A].Index(ints[B]).SetInt(ints[C]).
+// handleSetElementInt64Unchecked is the bounds-elided reflect-bank variant of
+// handleSetElementInt64 for general[A].Index(ints[B]).SetInt(ints[C]).
 //
 // Operates on the reflect (general) register bank without the runtime range check.
 //
-// Soundness: same proof obligation as handleSliceGetIntUnchecked.
+// Soundness has the same proof obligation as handleGetElementInt64Unchecked.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes registers (*Registers) which holds the collection, index and value.
@@ -100,7 +100,7 @@ func handleSliceGetIntUnchecked(vm *VM, _ *CallFrame, registers *Registers, inst
 //
 // Returns opContinue on success or opPanicError if the collection is not a valid
 // indexable value.
-func handleSliceSetIntUnchecked(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetElementInt64Unchecked(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	collection, indexPanicResult, ok := resolveIndexCollection(vm, registers.General[instruction.A])
 	if !ok {
 		return indexPanicResult

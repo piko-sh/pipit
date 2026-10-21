@@ -19,8 +19,8 @@
 package engine
 
 import (
+	"piko.sh/stablepool"
 	"pipit.sh/pipit/internal/engine/program"
-	"pipit.sh/pipit/internal/stablepool"
 )
 
 const (
@@ -70,12 +70,13 @@ type sharedCellMap struct {
 
 var (
 	// sharedCellMapPool amortises sharedCellMap allocations across frame churn.
-	sharedCellMapPool, _ = stablepool.New[sharedCellMap](
+	sharedCellMapPool = mustPool(stablepool.New[sharedCellMap](
 		func(m *sharedCellMap) { *m = sharedCellMap{} },
 		nil,
 		128,
 		stablepool.WithGrowth[sharedCellMap](1024),
-	)
+		stablepool.WithOverflow[sharedCellMap](),
+	))
 )
 
 // get returns the UpvalueCell previously stored under key, or nil and false if not

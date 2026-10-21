@@ -87,7 +87,6 @@ func (*YaegiRunner) Run(parent context.Context, spec BenchSpec, mode RunMode, be
 // code sees `--mode/--k`, changes into the benchmark directory, then compiles and runs
 // source with the yaegi library.
 //
-// Takes ctx (context.Context) which bounds the run.
 // Takes source (string) which is the merged program.
 // Takes benchmarkDir (string) which is the run's working directory.
 // Takes mode (RunMode) which selects the program's mode flags.
@@ -107,7 +106,6 @@ func runYaegiSource(ctx context.Context, source, benchmarkDir string, mode RunMo
 
 // compileAndRunYaegi compiles and runs source with yaegi, writing to the capture's pipes.
 //
-// Takes ctx (context.Context) which bounds the run.
 // Takes source (string) which is the merged program.
 // Takes capture (*processCapture) which supplies the output pipes.
 //

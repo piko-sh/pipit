@@ -109,16 +109,11 @@ func LeafRegisterKindAdmitted(leafRegisterKind isa.RegisterKind, leafKind reflec
 // LeafFieldIsCycleBroken reports whether the leaf field carries the cycle-broken marker
 // tag.
 //
-// The marker is stamped by buildStructFields when the declared field type referenced the
-// still-under-construction type. Layouts flagged this way are eligible for the
-// isa.OpGetStructFieldRawPointerT0 fast path because the runtime held value is provably a
-// pointer.
-//
 // Takes reflectStructType (reflect.Type) which is the root struct reflect.Type to walk
 // from.
 // Takes fieldPath ([]int) which is the field-index chain leading to the leaf.
 //
-// Returns true when the leaf carries the cycle-broken marker tag; false otherwise.
+// Returns true when the leaf carries the cycle-broken marker tag.
 func LeafFieldIsCycleBroken(reflectStructType reflect.Type, fieldPath []int) bool {
 	if len(fieldPath) == 0 {
 		return false

@@ -33,7 +33,7 @@ import (
 func makeDoubleCallee() *program.CompiledFunction {
 	return &program.CompiledFunction{
 		Body: []isa.Instruction{
-			isa.NewInstruction(isa.OpAddInt, 0, 0, 0),
+			isa.NewInstruction(isa.OpAddInt64, 0, 0, 0),
 			isa.NewInstruction(
 				isa.OpDrillTier1,
 				byte(isa.SubOpDrillTier2),
@@ -41,9 +41,9 @@ func makeDoubleCallee() *program.CompiledFunction {
 				1,
 			),
 		},
-		ParameterKinds: []isa.RegisterKind{isa.RegisterInt},
-		ResultKinds:    []isa.RegisterKind{isa.RegisterInt},
-		NumRegisters:   [isa.NumRegisterKinds]uint32{isa.RegisterInt: 1},
+		ParameterKinds: []isa.RegisterKind{isa.RegisterInt64},
+		ResultKinds:    []isa.RegisterKind{isa.RegisterInt64},
+		NumRegisters:   [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 1},
 	}
 }
 
@@ -72,7 +72,7 @@ func TestSplice_VoidNoop_ReplacesOpCallWithJump(t *testing.T) {
 	caller := &program.CompiledFunction{
 		Body: []isa.Instruction{
 			makeOpCallSlot(siteIdx),
-			isa.NewInstruction(isa.OpNop, 0, 0, 0),
+			isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
 		},
 		CallSites: []program.CallSite{
 			{
@@ -111,51 +111,46 @@ func TestSplice_DoubleCallee_ValueReturn(t *testing.T) {
 	caller := &program.CompiledFunction{
 		Body: []isa.Instruction{
 			makeOpCallSlot(siteIdx),
-			isa.NewInstruction(isa.OpNop, 0, 0, 0),
+			isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
 		},
 		CallSites: []program.CallSite{
 			{
 				CachedCallee: callee,
-				Arguments:    []program.VarLocation{{Register: 5, Kind: isa.RegisterInt}},
-				Returns:      []program.VarLocation{{Register: 6, Kind: isa.RegisterInt}},
+				Arguments:    []program.VarLocation{{Register: 5, Kind: isa.RegisterInt64}},
+				Returns:      []program.VarLocation{{Register: 6, Kind: isa.RegisterInt64}},
 			},
 		},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 7},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 7},
 	}
 	result := inline.TrySpliceCall(caller, siteIdx)
 	require.True(t, result.Spliced, "the splice succeeds: %v", result.Reason)
 
-	require.Len(t, caller.Body, 8)
-	require.Equal(t, uint32(8), caller.NumRegisters[isa.RegisterInt])
+	require.Len(t, caller.Body, 7, "the result slot is the caller's own register 6, so no move hands the result over")
+	require.Equal(t, uint32(8), caller.NumRegisters[isa.RegisterInt64])
 
 	got := caller.Body[3]
-	require.Equal(t, isa.OpDrillTier1, got.Op, "pc 3 is the pre-copy MOVE_INT: %v", got.A)
-	require.Equal(t, isa.SubOpMoveInt, isa.SubOpcode(got.A))
-	require.Equal(t, uint8(7), got.B, "pc 3, the pre-copy, is 7 <- 5")
+	require.Equal(t, isa.OpDrillTier1, got.Op, "pc 3 is the pre-copy MOVE_INT64: %v", got.A)
+	require.Equal(t, isa.SubOpMoveInt64, isa.SubOpcode(got.A))
+	require.Equal(t, uint8(6), got.B, "pc 3, the pre-copy, seeds the result's register: 6 <- 5")
 	require.Equal(t, uint8(5), got.C)
 
 	got = caller.Body[4]
-	require.Equal(t, isa.OpAddInt, got.Op, "pc 4 is ADD_INT 7,7,7 on a fresh slot")
-	require.Equal(t, uint8(7), got.A)
-	require.Equal(t, uint8(7), got.B)
-	require.Equal(t, uint8(7), got.C)
+	require.Equal(t, isa.OpAddInt64, got.Op, "pc 4 is ADD_INT64 6,6,6, leaving argument register 5 as it was")
+	require.Equal(t, uint8(6), got.A)
+	require.Equal(t, uint8(6), got.B)
+	require.Equal(t, uint8(6), got.C)
 
 	got = caller.Body[6]
-	require.Equal(t, isa.OpDrillTier1, got.Op, "pc 6 is MOVE_INT: %v", got.A)
-	require.Equal(t, isa.SubOpMoveInt, isa.SubOpcode(got.A))
-	require.Equal(t, uint8(6), got.B, "pc 6, the return move, is 6 <- 7")
-	require.Equal(t, uint8(7), got.C)
-	got = caller.Body[7]
-	require.Equal(t, isa.OpDrillTier1, got.Op, "pc 7 is a jump by -7: %v", got.A)
+	require.Equal(t, isa.OpDrillTier1, got.Op, "pc 6 is a jump by -6: %v", got.A)
 	require.Equal(t, isa.SubOpJump, isa.SubOpcode(got.A))
-	require.Equal(t, -7, program.DecodeJumpOffset(got))
+	require.Equal(t, -6, program.DecodeJumpOffset(got))
 }
 
 func TestSplice_RemapsLocalRegisters(t *testing.T) {
 	t.Parallel()
 	callee := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			isa.NewInstruction(isa.OpAddInt, 0, 0, 0),
+			isa.NewInstruction(isa.OpAddInt64, 0, 0, 0),
 			isa.NewInstruction(
 				isa.OpDrillTier1,
 				byte(isa.SubOpDrillTier2),
@@ -163,25 +158,25 @@ func TestSplice_RemapsLocalRegisters(t *testing.T) {
 				byte(isa.SubOpTier3ReturnVoid),
 			),
 		},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 1},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 1},
 	}
 	caller := &program.CompiledFunction{
 		Body: []isa.Instruction{
 			makeOpCallSlot(0),
-			isa.NewInstruction(isa.OpNop, 0, 0, 0),
+			isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
 		},
 		CallSites: []program.CallSite{
 			{CachedCallee: callee},
 		},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 4},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 4},
 	}
 	result := inline.TrySpliceCall(caller, 0)
 	require.True(t, result.Spliced, "the splice succeeds: %v", result.Reason)
 
-	require.Equal(t, uint32(5), caller.NumRegisters[isa.RegisterInt])
+	require.Equal(t, uint32(5), caller.NumRegisters[isa.RegisterInt64])
 
 	got := caller.Body[3]
-	require.Equal(t, isa.OpAddInt, got.Op, "the appended ADD_INT is 4,4,4")
+	require.Equal(t, isa.OpAddInt64, got.Op, "the appended ADD_INT64 is 4,4,4")
 	require.Equal(t, uint8(4), got.A)
 	require.Equal(t, uint8(4), got.B)
 	require.Equal(t, uint8(4), got.C)
@@ -191,7 +186,7 @@ func TestSplice_LoadIntConst_MergesPool(t *testing.T) {
 	t.Parallel()
 	callee := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			isa.NewInstruction(isa.OpLoadIntConst, 0, 0, 0),
+			isa.NewInstruction(isa.OpLoadInt64Constant, 0, 0, 0),
 			isa.NewInstruction(
 				isa.OpDrillTier1,
 				byte(isa.SubOpDrillTier2),
@@ -200,18 +195,18 @@ func TestSplice_LoadIntConst_MergesPool(t *testing.T) {
 			),
 		},
 		IntConstants: []int64{7},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 1},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 1},
 	}
 	caller := &program.CompiledFunction{
 		Body: []isa.Instruction{
 			makeOpCallSlot(0),
-			isa.NewInstruction(isa.OpNop, 0, 0, 0),
+			isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
 		},
 		CallSites: []program.CallSite{
 			{CachedCallee: callee},
 		},
 		IntConstants: []int64{99},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 3},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 3},
 	}
 	result := inline.TrySpliceCall(caller, 0)
 	require.True(t, result.Spliced, "the phase 3 splice with a constant pool succeeds: %v", result.Reason)
@@ -220,7 +215,7 @@ func TestSplice_LoadIntConst_MergesPool(t *testing.T) {
 	require.Equal(t, int64(7), caller.IntConstants[1])
 
 	got := caller.Body[3]
-	require.Equal(t, isa.OpLoadIntConst, got.Op)
+	require.Equal(t, isa.OpLoadInt64Constant, got.Op)
 	require.Equal(t, uint8(3), got.A)
 	index := uint16(got.B) | uint16(got.C)<<8
 	require.Equal(t, uint16(1), index)
@@ -232,7 +227,7 @@ func TestSplice_InternalJumpPreserved(t *testing.T) {
 	callee := &program.CompiledFunction{
 		Body: []isa.Instruction{
 			isa.NewInstruction(isa.OpJumpIfFalse, 0, lo, hi),
-			isa.NewInstruction(isa.OpAddInt, 0, 0, 0),
+			isa.NewInstruction(isa.OpAddInt64, 0, 0, 0),
 			isa.NewInstruction(
 				isa.OpDrillTier1,
 				byte(isa.SubOpDrillTier2),
@@ -240,21 +235,21 @@ func TestSplice_InternalJumpPreserved(t *testing.T) {
 				byte(isa.SubOpTier3ReturnVoid),
 			),
 		},
-		ParameterKinds: []isa.RegisterKind{isa.RegisterInt},
-		NumRegisters:   [isa.NumRegisterKinds]uint32{isa.RegisterInt: 1},
+		ParameterKinds: []isa.RegisterKind{isa.RegisterInt64},
+		NumRegisters:   [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 1},
 	}
 	caller := &program.CompiledFunction{
 		Body: []isa.Instruction{
 			makeOpCallSlot(0),
-			isa.NewInstruction(isa.OpNop, 0, 0, 0),
+			isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
 		},
 		CallSites: []program.CallSite{
 			{
 				CachedCallee: callee,
-				Arguments:    []program.VarLocation{{Register: 3, Kind: isa.RegisterInt}},
+				Arguments:    []program.VarLocation{{Register: 3, Kind: isa.RegisterInt64}},
 			},
 		},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 4},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 4},
 	}
 	result := inline.TrySpliceCall(caller, 0)
 	require.True(t, result.Spliced, "the splice succeeds: %v", result.Reason)
@@ -265,8 +260,8 @@ func TestSplice_InternalJumpPreserved(t *testing.T) {
 	require.Equal(t, 1, program.DecodeJumpOffset(got))
 
 	pre := caller.Body[3]
-	require.Equal(t, isa.OpDrillTier1, pre.Op, "pc 3 is the pre-copy MOVE_INT: %v", pre.A)
-	require.Equal(t, isa.SubOpMoveInt, isa.SubOpcode(pre.A))
+	require.Equal(t, isa.OpDrillTier1, pre.Op, "pc 3 is the pre-copy MOVE_INT64: %v", pre.A)
+	require.Equal(t, isa.SubOpMoveInt64, isa.SubOpcode(pre.A))
 	require.Equal(t, uint8(4), pre.B, "pc 3, the pre-copy, is 4 <- 3")
 	require.Equal(t, uint8(3), pre.C)
 }
@@ -277,35 +272,35 @@ func TestSplice_CalleeWithCallBoolConstAndFusedCompare(t *testing.T) {
 	lo, hi := isa.SplitOffset(1)
 	callee := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			isa.NewTier1Instruction(isa.SubOpLoadBoolConst, 0, 0),
-			isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 0, 1),
-			isa.NewInstruction(isa.OpExt, lo, hi, 0),
+			isa.NewTier1Instruction(isa.SubOpLoadBoolConstant, 0, 0),
+			isa.NewTier1Instruction(isa.SubOpLessThanInt64ThenJumpIfFalse, 0, 1),
+			isa.NewInstruction(isa.OpExtension, lo, hi, 0),
 			makeOpCallSlot(0),
-			isa.NewTier1Instruction(isa.SubOpMoveInt, 0, 2),
+			isa.NewTier1Instruction(isa.SubOpMoveInt64, 0, 2),
 			isa.NewInstruction(isa.OpDrillTier1, byte(isa.SubOpDrillTier2), byte(isa.SubOpTier2Return), 1),
 		},
-		ParameterKinds:     []isa.RegisterKind{isa.RegisterInt, isa.RegisterInt},
+		ParameterKinds:     []isa.RegisterKind{isa.RegisterInt64, isa.RegisterInt64},
 		ParameterRegisters: []uint8{0, 1},
-		ResultKinds:        []isa.RegisterKind{isa.RegisterInt},
-		NumRegisters:       [isa.NumRegisterKinds]uint32{isa.RegisterInt: 3, isa.RegisterBool: 1},
+		ResultKinds:        []isa.RegisterKind{isa.RegisterInt64},
+		NumRegisters:       [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 3, isa.RegisterBool: 1},
 		BoolConstants:      []bool{true},
 		CallSites: []program.CallSite{{
 			CachedCallee: leaf,
-			Arguments:    []program.VarLocation{{Register: 0, Kind: isa.RegisterInt}},
-			Returns:      []program.VarLocation{{Register: 2, Kind: isa.RegisterInt}},
+			Arguments:    []program.VarLocation{{Register: 0, Kind: isa.RegisterInt64}},
+			Returns:      []program.VarLocation{{Register: 2, Kind: isa.RegisterInt64}},
 		}},
 	}
 	caller := &program.CompiledFunction{
 		Body: []isa.Instruction{
 			makeOpCallSlot(0),
-			isa.NewInstruction(isa.OpNop, 0, 0, 0),
+			isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
 		},
 		CallSites: []program.CallSite{{
 			CachedCallee: callee,
-			Arguments:    []program.VarLocation{{Register: 5, Kind: isa.RegisterInt}, {Register: 6, Kind: isa.RegisterInt}},
-			Returns:      []program.VarLocation{{Register: 7, Kind: isa.RegisterInt}},
+			Arguments:    []program.VarLocation{{Register: 5, Kind: isa.RegisterInt64}, {Register: 6, Kind: isa.RegisterInt64}},
+			Returns:      []program.VarLocation{{Register: 7, Kind: isa.RegisterInt64}},
 		}},
-		NumRegisters:  [isa.NumRegisterKinds]uint32{isa.RegisterInt: 8, isa.RegisterBool: 2},
+		NumRegisters:  [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 8, isa.RegisterBool: 2},
 		BoolConstants: []bool{false},
 	}
 
@@ -316,10 +311,10 @@ func TestSplice_CalleeWithCallBoolConstAndFusedCompare(t *testing.T) {
 	var found int
 	for i, instr := range caller.Body {
 		switch {
-		case isa.InstrIsTier1SubOp(instr, isa.SubOpLoadBoolConst):
+		case isa.InstrIsTier1SubOp(instr, isa.SubOpLoadBoolConstant):
 			boolLoad = instr
 			found++
-		case isa.InstrIsTier1SubOp(instr, isa.SubOpLtIntJumpFalse):
+		case isa.InstrIsTier1SubOp(instr, isa.SubOpLessThanInt64ThenJumpIfFalse):
 			fused = instr
 			ext = caller.Body[i+1]
 			found++
@@ -333,9 +328,10 @@ func TestSplice_CalleeWithCallBoolConstAndFusedCompare(t *testing.T) {
 	require.True(t, caller.BoolConstants[1], "constant 1 is true: %v", caller.BoolConstants)
 	require.GreaterOrEqual(t, boolLoad.B, uint8(2), "the bool destination is a fresh caller slot at or above 2")
 
-	require.GreaterOrEqual(t, fused.B, uint8(8), "the fused compare reads a fresh copy of the first parameter and argument register 6")
+	require.Equal(t, uint8(7), fused.B,
+		"the fused compare reads the copy of the first parameter, which is seeded in the result's register, and argument register 6")
 	require.Equal(t, uint8(6), fused.C)
-	require.Equal(t, isa.OpExt, ext.Op, "the offset word is copied verbatim: %v", ext)
+	require.Equal(t, isa.OpExtension, ext.Op, "the offset word is copied verbatim: %v", ext)
 	require.Equal(t, lo, ext.A)
 	require.Equal(t, hi, ext.B)
 	require.Equal(t, 1, int(call.WideIndex()), "the inner call indexes the appended site 1")

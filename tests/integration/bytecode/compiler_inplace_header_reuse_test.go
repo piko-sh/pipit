@@ -129,8 +129,8 @@ func TestAnalyseGeneralRegisterAliasFreeRejectsCopies(t *testing.T) {
 
 	indexed := &program.CompiledFunction{Body: []isa.Instruction{
 		{Op: isa.OpAppendInPlace, A: 1, B: 1, C: 2},
-		{Op: isa.OpIndex, A: 4, B: 1, C: 0},
-		{Op: isa.OpIndexSet, A: 1, B: 0, C: 2},
+		{Op: isa.OpGetElement, A: 4, B: 1, C: 0},
+		{Op: isa.OpSetElement, A: 1, B: 0, C: 2},
 	}}
 	require.True(t, escape.AnalyseGeneralRegisterAliasFree(indexed, 1))
 	require.False(t, escape.AnalyseGeneralRegisterAliasFree(indexed, 2), "storing the slot as an element value shares it")

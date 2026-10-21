@@ -33,12 +33,12 @@ func TestDeclareAndLookupFindVariablesInTheCurrentScope(t *testing.T) {
 	stack := NewScopeStack("f")
 	stack.PushScope()
 
-	declared := stack.DeclareVar("counter", isa.RegisterInt)
+	declared := stack.DeclareVar("counter", isa.RegisterInt64)
 
 	found, ok := stack.LookupVar("counter")
 	require.True(t, ok)
 	require.Equal(t, declared.Register, found.Register)
-	require.Equal(t, isa.RegisterInt, found.Kind)
+	require.Equal(t, isa.RegisterInt64, found.Kind)
 }
 
 func TestLookupFallsThroughToAnEnclosingScope(t *testing.T) {
@@ -46,7 +46,7 @@ func TestLookupFallsThroughToAnEnclosingScope(t *testing.T) {
 
 	stack := NewScopeStack("f")
 	stack.PushScope()
-	outer := stack.DeclareVar("outer", isa.RegisterInt)
+	outer := stack.DeclareVar("outer", isa.RegisterInt64)
 	stack.PushScope()
 
 	found, ok := stack.LookupVar("outer")
@@ -61,7 +61,7 @@ func TestPoppingAScopeHidesItsDeclarations(t *testing.T) {
 	stack := NewScopeStack("f")
 	stack.PushScope()
 	stack.PushScope()
-	stack.DeclareVar("inner", isa.RegisterInt)
+	stack.DeclareVar("inner", isa.RegisterInt64)
 	stack.PopScope()
 
 	_, ok := stack.LookupVar("inner")
@@ -76,9 +76,9 @@ func TestAnInnerDeclarationShadowsTheOuterOne(t *testing.T) {
 		t.Parallel()
 		stack := NewScopeStack("f")
 		stack.PushScope()
-		outer := stack.DeclareVar("name", isa.RegisterInt)
+		outer := stack.DeclareVar("name", isa.RegisterInt64)
 		stack.PushScope()
-		inner := stack.DeclareVar("name", isa.RegisterInt)
+		inner := stack.DeclareVar("name", isa.RegisterInt64)
 
 		require.NotEqual(t, outer.Register, inner.Register,
 			"the shadowing declaration must not alias the register it hides")
@@ -98,7 +98,7 @@ func TestAnInnerDeclarationShadowsTheOuterOne(t *testing.T) {
 		t.Parallel()
 		stack := NewScopeStack("f")
 		stack.PushScope()
-		stack.DeclareVar("name", isa.RegisterInt)
+		stack.DeclareVar("name", isa.RegisterInt64)
 		stack.PushScope()
 		stack.DeclareVar("name", isa.RegisterString)
 
@@ -109,7 +109,7 @@ func TestAnInnerDeclarationShadowsTheOuterOne(t *testing.T) {
 		stack.PopScope()
 		restored, ok := stack.LookupVar("name")
 		require.True(t, ok)
-		require.Equal(t, isa.RegisterInt, restored.Kind,
+		require.Equal(t, isa.RegisterInt64, restored.Kind,
 			"popping the inner scope restores the shadowed name")
 	})
 }
@@ -120,15 +120,15 @@ func TestDeclarationsAdvanceTheRegisterWatermarkPerBank(t *testing.T) {
 	stack := NewScopeStack("f")
 	stack.PushScope()
 
-	stack.DeclareVar("a", isa.RegisterInt)
-	stack.DeclareVar("b", isa.RegisterInt)
+	stack.DeclareVar("a", isa.RegisterInt64)
+	stack.DeclareVar("b", isa.RegisterInt64)
 	stack.DeclareVar("s", isa.RegisterString)
 
 	peak := stack.PeakRegisters()
 
-	require.Equal(t, uint32(2), peak[isa.RegisterInt])
+	require.Equal(t, uint32(2), peak[isa.RegisterInt64])
 	require.Equal(t, uint32(1), peak[isa.RegisterString])
-	require.Equal(t, uint32(0), peak[isa.RegisterFloat], "an untouched bank needs no registers")
+	require.Equal(t, uint32(0), peak[isa.RegisterFloat64], "an untouched bank needs no registers")
 }
 
 func TestLookupOfAnUndeclaredNameFails(t *testing.T) {
@@ -147,7 +147,7 @@ func TestUpdateVarRewritesADeclaredLocation(t *testing.T) {
 
 	stack := NewScopeStack("f")
 	stack.PushScope()
-	declared := stack.DeclareVar("v", isa.RegisterInt)
+	declared := stack.DeclareVar("v", isa.RegisterInt64)
 	declared.IsCaptured = true
 
 	require.True(t, stack.UpdateVar("v", declared))
@@ -172,7 +172,7 @@ func TestMarkCapturedFlagsTheDeclaration(t *testing.T) {
 
 	stack := NewScopeStack("f")
 	stack.PushScope()
-	stack.DeclareVar("v", isa.RegisterInt)
+	stack.DeclareVar("v", isa.RegisterInt64)
 
 	stack.MarkCaptured("v")
 
@@ -186,16 +186,16 @@ func TestRestoreWatermarkRewindsTheAllocator(t *testing.T) {
 
 	stack := NewScopeStack("f")
 	stack.PushScope()
-	stack.DeclareVar("a", isa.RegisterInt)
+	stack.DeclareVar("a", isa.RegisterInt64)
 	saved := stack.PeakRegisters()
 
 	stack.PushScope()
-	stack.DeclareVar("b", isa.RegisterInt)
-	stack.DeclareVar("c", isa.RegisterInt)
+	stack.DeclareVar("b", isa.RegisterInt64)
+	stack.DeclareVar("c", isa.RegisterInt64)
 	stack.PopScope()
 	stack.RestoreWatermark(saved)
 
-	next := stack.DeclareVar("d", isa.RegisterInt)
+	next := stack.DeclareVar("d", isa.RegisterInt64)
 
 	require.Equal(t, uint8(1), next.Register,
 		"restoring the watermark lets a later declaration reuse the registers the inner scope freed")
@@ -213,10 +213,10 @@ func TestCapturedRegistersStayReservedForTheFunction(t *testing.T) {
 			name: "a sibling scope reuses an uncaptured variable's register",
 			run: func(stack *ScopeStack) (program.VarLocation, program.VarLocation) {
 				stack.PushScope()
-				first := stack.DeclareVar("x", isa.RegisterInt)
+				first := stack.DeclareVar("x", isa.RegisterInt64)
 				stack.PopScope()
 				stack.PushScope()
-				second := stack.DeclareVar("y", isa.RegisterInt)
+				second := stack.DeclareVar("y", isa.RegisterInt64)
 				stack.PopScope()
 				return first, second
 			},
@@ -226,11 +226,11 @@ func TestCapturedRegistersStayReservedForTheFunction(t *testing.T) {
 			name: "a sibling scope does not reuse a captured variable's register",
 			run: func(stack *ScopeStack) (program.VarLocation, program.VarLocation) {
 				stack.PushScope()
-				first := stack.DeclareVar("x", isa.RegisterInt)
+				first := stack.DeclareVar("x", isa.RegisterInt64)
 				stack.MarkCaptured("x")
 				stack.PopScope()
 				stack.PushScope()
-				second := stack.DeclareVar("y", isa.RegisterInt)
+				second := stack.DeclareVar("y", isa.RegisterInt64)
 				stack.PopScope()
 				return first, second
 			},
@@ -241,12 +241,12 @@ func TestCapturedRegistersStayReservedForTheFunction(t *testing.T) {
 			run: func(stack *ScopeStack) (program.VarLocation, program.VarLocation) {
 				stack.PushScope()
 				stack.PushScope()
-				first := stack.DeclareVar("x", isa.RegisterInt)
+				first := stack.DeclareVar("x", isa.RegisterInt64)
 				stack.MarkCaptured("x")
 				stack.PopScope()
 				stack.PopScope()
 				stack.PushScope()
-				second := stack.DeclareVar("y", isa.RegisterInt)
+				second := stack.DeclareVar("y", isa.RegisterInt64)
 				stack.PopScope()
 				return first, second
 			},
@@ -258,11 +258,11 @@ func TestCapturedRegistersStayReservedForTheFunction(t *testing.T) {
 				stack.PushScope()
 				watermark := stack.Alloc.Snapshot()
 				stack.PushScope()
-				first := stack.DeclareVar("x", isa.RegisterInt)
+				first := stack.DeclareVar("x", isa.RegisterInt64)
 				stack.MarkCaptured("x")
 				stack.PopScope()
 				stack.RestoreWatermark(watermark)
-				second := stack.DeclareVar("y", isa.RegisterInt)
+				second := stack.DeclareVar("y", isa.RegisterInt64)
 				stack.PopScope()
 				return first, second
 			},
@@ -273,7 +273,7 @@ func TestCapturedRegistersStayReservedForTheFunction(t *testing.T) {
 			run: func(stack *ScopeStack) (program.VarLocation, program.VarLocation) {
 				stack.PushScope()
 				first := stack.DeclareVar("s", isa.RegisterString)
-				stack.DeclareVar("x", isa.RegisterInt)
+				stack.DeclareVar("x", isa.RegisterInt64)
 				stack.MarkCaptured("x")
 				stack.PopScope()
 				stack.PushScope()

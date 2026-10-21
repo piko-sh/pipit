@@ -37,13 +37,14 @@ func TestRangeNextStringDecodesRunes(t *testing.T) {
 	context := rangeNextContext{
 		DoneDestination: 0,
 		HasKey:          true,
-		KeyInstruction:  isa.Instruction{B: 1, C: uint8(isa.RegisterInt)},
+		KeyInstruction:  isa.Instruction{B: 1, C: uint8(isa.RegisterInt64)},
 		HasValue:        true,
-		ValInstruction:  isa.Instruction{B: 2, C: uint8(isa.RegisterInt)},
+		ValInstruction:  isa.Instruction{B: 2, C: uint8(isa.RegisterInt64)},
 	}
 
 	expected := []struct {
-		index    int64
+		index int64
+
 		runeCode int64
 	}{
 		{index: 0, runeCode: 'h'},
@@ -79,9 +80,9 @@ func TestRangeNextStringEmptyString(t *testing.T) {
 	context := rangeNextContext{
 		DoneDestination: 0,
 		HasKey:          true,
-		KeyInstruction:  isa.Instruction{B: 1, C: uint8(isa.RegisterInt)},
+		KeyInstruction:  isa.Instruction{B: 1, C: uint8(isa.RegisterInt64)},
 		HasValue:        true,
-		ValInstruction:  isa.Instruction{B: 2, C: uint8(isa.RegisterInt)},
+		ValInstruction:  isa.Instruction{B: 2, C: uint8(isa.RegisterInt64)},
 	}
 
 	rangeNextString(&registers, iterator, context)
@@ -101,7 +102,7 @@ func TestRangeNextStringValueOnlyNoKey(t *testing.T) {
 		DoneDestination: 0,
 		HasKey:          false,
 		HasValue:        true,
-		ValInstruction:  isa.Instruction{B: 1, C: uint8(isa.RegisterInt)},
+		ValInstruction:  isa.Instruction{B: 1, C: uint8(isa.RegisterInt64)},
 	}
 
 	rangeNextString(&registers, iterator, context)
@@ -124,9 +125,9 @@ func TestRangeNextStringInvalidUTF8YieldsRuneError(t *testing.T) {
 	context := rangeNextContext{
 		DoneDestination: 0,
 		HasKey:          true,
-		KeyInstruction:  isa.Instruction{B: 1, C: uint8(isa.RegisterInt)},
+		KeyInstruction:  isa.Instruction{B: 1, C: uint8(isa.RegisterInt64)},
 		HasValue:        true,
-		ValInstruction:  isa.Instruction{B: 2, C: uint8(isa.RegisterInt)},
+		ValInstruction:  isa.Instruction{B: 2, C: uint8(isa.RegisterInt64)},
 	}
 
 	rangeNextString(&registers, iterator, context)
@@ -174,4 +175,67 @@ func TestTypeAssertionsSeeTheScriptValue(t *testing.T) {
 		var boxed any = 3
 		require.Equal(t, 3, typeAssertOperand(vm, reflect.ValueOf(&boxed).Elem()).Interface())
 	})
+}
+
+func TestAnIndirectCellHoldsAValueTheStaticTypeCannotTake(t *testing.T) {
+	t.Parallel()
+
+	type erasedNode struct {
+		Key any
+
+		Left any
+	}
+	type instantiatedNode struct {
+		Key int
+
+		Left any
+	}
+	type sameShape struct {
+		Key any `json:"key"`
+
+		Left any
+	}
+
+	vm := newTestVM(t)
+	t.Cleanup(vm.ReleaseArena)
+	erased := reflect.TypeFor[*erasedNode]()
+
+	tests := []struct {
+		name string
+
+		source reflect.Value
+
+		want reflect.Type
+	}{
+		{name: "no initial value keeps the static type", source: reflect.Value{}, want: erased},
+		{name: "a value of the static type keeps it", source: reflect.ValueOf(&erasedNode{}), want: erased},
+		{name: "a convertible value keeps the static type", source: reflect.ValueOf(&sameShape{}), want: erased},
+		{
+			name:   "a value an erased body cannot convert takes its own type",
+			source: reflect.ValueOf(&instantiatedNode{Key: 1}),
+			want:   reflect.TypeFor[*instantiatedNode](),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tt.want, allocateIndirectCellType(vm, tt.source, erased))
+		})
+	}
+}
+
+func TestBuildSelectSendValueSendsATypedSliceAsTheElementType(t *testing.T) {
+	t.Parallel()
+
+	vm, _, registers := newStandardVM(t)
+	backing := []int64{3, 1, 2}
+	registers.SlicesInt[1] = backing
+
+	got := buildSelectSendValue(vm, registers, op(1, uint8(isa.RegisterSliceInt64), 0), reflect.TypeFor[[]int]())
+
+	sent, ok := reflect.TypeAssert[[]int](got)
+	require.True(t, ok, "an []int held as int64 storage is sent as []int")
+	sent[0] = 9
+	require.Equal(t, int64(9), backing[0], "the sent slice shares the sender's backing array")
 }

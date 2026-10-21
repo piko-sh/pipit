@@ -137,11 +137,6 @@ func (*loopUnrollRecogniser) Match(ctx patterns.RecogniseContext, statement *ast
 
 // Emit produces the unrolled bytecode for the loop.
 //
-// Emits an `i := 0` declaration in a fresh scope, then for each k in 0..tripCount-1 a
-// LOAD_INT_CONST of k into i followed by a compileStmt of the body. No back-edge jump, no
-// cond evaluation, no post clause; the loop's semantics reduce to a flat sequence at
-// compile time.
-//
 // Takes emitter (patterns.Emitter) which is the compiler emitting the current function.
 // Takes statement (*ast.ForStmt) which is the matched loop.
 // Takes matchToken (any) which is the loopUnrollMatch from Match.
@@ -159,14 +154,14 @@ func (*loopUnrollRecogniser) Emit(ctx context.Context, emitter patterns.Emitter,
 		return c.CompileForFallback(ctx, statement)
 	}
 	c.ScopeStack().PushScope()
-	loopVarLocation := c.ScopeStack().DeclareVar(match.loopVarIdent.Name, isa.RegisterInt)
+	loopVarLocation := c.ScopeStack().DeclareVar(match.loopVarIdent.Name, isa.RegisterInt64)
 	if loopVarLocation.IsSpilled || loopVarLocation.IsIndirect {
 		c.ScopeStack().PopScope()
 		return c.CompileForFallback(ctx, statement)
 	}
 	for k := range match.tripCount {
 		c.SetDebugPosition(ctx, statement.For)
-		program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), loopVarLocation.Register, safeconv.MustIntToUint8(k))
+		program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), loopVarLocation.Register, safeconv.MustIntToUint8(k))
 		if _, err := c.CompileStmt(ctx, statement.Body); err != nil {
 			c.ScopeStack().PopScope()
 			return program.VarLocation{}, err
@@ -175,7 +170,7 @@ func (*loopUnrollRecogniser) Emit(ctx context.Context, emitter patterns.Emitter,
 	c.ScopeStack().PopScope()
 	if needsWriteback {
 		c.SetDebugPosition(ctx, statement.For)
-		program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), outerLoopVar.Register, safeconv.MustIntToUint8(match.tripCount))
+		program.Emit(c.CurrentFunction(), isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), outerLoopVar.Register, safeconv.MustIntToUint8(match.tripCount))
 	}
 	return program.VarLocation{}, nil
 }

@@ -37,8 +37,8 @@ const (
 	// InterpTag is the build tag that identifies interpreted source files.
 	InterpTag = "interp"
 
-	// labelFileName represents sources without a .go filename, whose build constraints
-	// alone determine selection.
+	// labelFileName represents sources without a .go filename, whose build constraints alone
+	// determine selection.
 	labelFileName = "label.go"
 
 	// documentationPackage is the package name go/build ignores, used for files that only

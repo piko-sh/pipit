@@ -303,7 +303,8 @@ func (runner *ContainerPythonRunner) ensureStarted(parent context.Context) error
 		return runner.startError
 	}
 
-	ctx, cancel := context.WithTimeout(parent, 90*time.Second)
+	ctx, cancel := context.WithTimeoutCause(parent, 90*time.Second,
+		fmt.Errorf("container %s did not start in time", runner.image))
 	defer cancel()
 
 	hostPath := runner.hostBenchDir
@@ -338,7 +339,8 @@ func (runner *ContainerPythonRunner) ensureStarted(parent context.Context) error
 // PythonVersionString probes the interpreter for a one-line version identification, used
 // to populate the HostInfo block in the report.
 func PythonVersionString(parent context.Context, interpreter string) string {
-	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	ctx, cancel := context.WithTimeoutCause(parent, 5*time.Second,
+		fmt.Errorf("%s --version timed out", interpreter))
 	defer cancel()
 	output, err := exec.CommandContext(ctx, interpreter, "--version").CombinedOutput()
 	if err != nil {

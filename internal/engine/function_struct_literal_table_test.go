@@ -102,7 +102,7 @@ func TestStructLiteralAllocationSubOpRoutesQualifyingTypesToTheArena(t *testing.
 		name        string
 		want        isa.SubOpcodeTier2
 	}{
-		{name: "a qualifying struct allocates from the arena", literalType: reflect.TypeFor[literalPlainScalars](), want: isa.SubOpTier2AllocStructLiteral},
+		{name: "a qualifying struct allocates from the arena", literalType: reflect.TypeFor[literalPlainScalars](), want: isa.SubOpTier2AllocateStructLiteral},
 		{name: "a pointer-bearing struct falls back to the map path", literalType: reflect.TypeFor[literalWithPointer](), want: isa.SubOpTier2MakeMap},
 		{name: "a nil type falls back to the map path", literalType: nil, want: isa.SubOpTier2MakeMap},
 		{name: "a non-struct falls back to the map path", literalType: reflect.TypeFor[int](), want: isa.SubOpTier2MakeMap},

@@ -21,11 +21,24 @@
 package bytecode_test
 
 import (
+	"os"
 	"testing"
 
+	"go.uber.org/goleak"
+
+	"pipit.sh/pipit/internal/app"
+	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/leakcheck"
 )
 
 func TestMain(m *testing.M) {
-	leakcheck.VerifyTestMain(m)
+	app.SetLicenceCheckerStrictForTest(true)
+	engine.SetLicenceCountingForTest(true)
+	leakcheck.VerifyTestMain(m, goleak.Cleanup(finishSuite))
+}
+
+func finishSuite(code int) {
+	code = auditFinalReport(code)
+	code = censusGate(code)
+	os.Exit(code)
 }

@@ -94,8 +94,8 @@ func runSymbolsList(ctx context.Context, args []string, streams output.IO) int {
 	return 0
 }
 
-// runSymbolsShow prints the exported symbols for one registered package, and the name
-// the package declares when its table records one.
+// runSymbolsShow prints the exported symbols for one registered package, and the name the
+// package declares when its table records one.
 //
 // Takes args ([]string) which holds the show subcommand arguments.
 // Takes streams (output.IO) which carries the standard I/O streams.

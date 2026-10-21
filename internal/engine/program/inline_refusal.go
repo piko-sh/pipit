@@ -63,7 +63,7 @@ const (
 	// ops.
 	InlineRefusalClosureOps
 
-	// InlineRefusalChannelOps refuses callees using isa.SubOpSelect, isa.OpChannelSend, or
+	// InlineRefusalChannelOps refuses callees using isa.SubOpSelect, isa.OpSendToChannel, or
 	// recv ops.
 	InlineRefusalChannelOps
 
@@ -79,7 +79,8 @@ const (
 	// InlineRefusalOversize refuses callees whose hairiness score exceeds the budget.
 	InlineRefusalOversize
 
-	// InlineRefusalCapWatermark refuses splices that would push numRegisters past 256.
+	// InlineRefusalCapWatermark refuses splices that would push numRegisters past 256, or a
+	// table of the caller past what an operand can index.
 	InlineRefusalCapWatermark
 
 	// InlineRefusalCallerCap refuses sites once the caller has hit maxInlinesPerCaller.
@@ -109,6 +110,14 @@ const (
 	// literal): inlined into a deferred callee it would run in the frame recover is eligible
 	// for, while Go only honours recover called by the deferred function itself.
 	InlineRefusalRecover
+
+	// InlineRefusalObservesCallers refuses a body that calls a function able to inspect the
+	// call stack.
+	InlineRefusalObservesCallers
+
+	// InlineRefusalUndescribedWord refuses a body whose extension words cannot be moved to
+	// the caller's registers and tables.
+	InlineRefusalUndescribedWord
 )
 
 // BlockerForInstruction returns the refusal implied by an instruction appearing in a
@@ -120,8 +129,8 @@ const (
 // Returns the InlineRefusal kind, or InlineRefusalUnknown when the instruction does not
 // block inlining.
 func BlockerForInstruction(inst isa.Instruction) InlineRefusal {
-	if isa.InstrIsTier2SubOp(inst, isa.SubOpTier2SyncClosureUpvalues) ||
-		isa.InstrIsTier3SubOp(inst, isa.SubOpTier3SyncIIFEUpvalues) {
+	if isa.InstrIsTier2SubOp(inst, isa.SubOpTier2SynchroniseClosureCapturedVariables) ||
+		isa.InstrIsTier3SubOp(inst, isa.SubOpTier3SynchroniseIIFECapturedVariables) {
 		return InlineRefusalClosureOps
 	}
 	if inst.Op == isa.OpDrillTier1 {
@@ -132,9 +141,9 @@ func BlockerForInstruction(inst isa.Instruction) InlineRefusal {
 		return InlineRefusalDefer
 	case isa.OpGo:
 		return InlineRefusalGo
-	case isa.OpMakeClosure, isa.OpGetUpvalue, isa.OpSetUpvalue:
+	case isa.OpMakeClosure, isa.OpGetCapturedVariable, isa.OpSetCapturedVariable:
 		return InlineRefusalClosureOps
-	case isa.OpChannelSend:
+	case isa.OpSendToChannel:
 		return InlineRefusalChannelOps
 	default:
 	}

@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerEqInt sets ints[A] = (ints[B] == ints[C]) ? 1 : 0.
-TEXT ·handlerEqInt(SB), NOSPLIT|NOFRAME, $0
+// handlerEqualInt64 sets ints[A] = (ints[B] == ints[C]) ? 1 : 0.
+TEXT ·handlerEqualInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -42,8 +42,8 @@ TEXT ·handlerEqInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerNeInt sets ints[A] = (ints[B] != ints[C]) ? 1 : 0.
-TEXT ·handlerNeInt(SB), NOSPLIT|NOFRAME, $0
+// handlerNotEqualInt64 sets ints[A] = (ints[B] != ints[C]) ? 1 : 0.
+TEXT ·handlerNotEqualInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -59,8 +59,8 @@ TEXT ·handlerNeInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerLtInt sets ints[A] = (ints[B] < ints[C]) ? 1 : 0.
-TEXT ·handlerLtInt(SB), NOSPLIT|NOFRAME, $0
+// handlerLessThanInt64 sets ints[A] = (ints[B] < ints[C]) ? 1 : 0.
+TEXT ·handlerLessThanInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -76,8 +76,8 @@ TEXT ·handlerLtInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerLeInt sets ints[A] = (ints[B] <= ints[C]) ? 1 : 0.
-TEXT ·handlerLeInt(SB), NOSPLIT|NOFRAME, $0
+// handlerLessOrEqualInt64 sets ints[A] = (ints[B] <= ints[C]) ? 1 : 0.
+TEXT ·handlerLessOrEqualInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -93,8 +93,8 @@ TEXT ·handlerLeInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerGtInt sets ints[A] = (ints[B] > ints[C]) ? 1 : 0.
-TEXT ·handlerGtInt(SB), NOSPLIT|NOFRAME, $0
+// handlerGreaterThanInt64 sets ints[A] = (ints[B] > ints[C]) ? 1 : 0.
+TEXT ·handlerGreaterThanInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -110,8 +110,8 @@ TEXT ·handlerGtInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerGeInt sets ints[A] = (ints[B] >= ints[C]) ? 1 : 0.
-TEXT ·handlerGeInt(SB), NOSPLIT|NOFRAME, $0
+// handlerGreaterOrEqualInt64 sets ints[A] = (ints[B] >= ints[C]) ? 1 : 0.
+TEXT ·handlerGreaterOrEqualInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -127,8 +127,8 @@ TEXT ·handlerGeInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerEqUint sets ints[A] = (uints[B] == uints[C]) ? 1 : 0.
-TEXT ·handlerEqUint(SB), NOSPLIT|NOFRAME, $0
+// handlerEqualUint64 sets ints[A] = (uints[B] == uints[C]) ? 1 : 0.
+TEXT ·handlerEqualUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -145,8 +145,8 @@ TEXT ·handlerEqUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerNeUint sets ints[A] = (uints[B] != uints[C]) ? 1 : 0.
-TEXT ·handlerNeUint(SB), NOSPLIT|NOFRAME, $0
+// handlerNotEqualUint64 sets ints[A] = (uints[B] != uints[C]) ? 1 : 0.
+TEXT ·handlerNotEqualUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -163,8 +163,8 @@ TEXT ·handlerNeUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerLtUint sets ints[A] = (uints[B] < uints[C]) ? 1 : 0.
-TEXT ·handlerLtUint(SB), NOSPLIT|NOFRAME, $0
+// handlerLessThanUint64 sets ints[A] = (uints[B] < uints[C]) ? 1 : 0.
+TEXT ·handlerLessThanUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -181,8 +181,8 @@ TEXT ·handlerLtUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerLeUint sets ints[A] = (uints[B] <= uints[C]) ? 1 : 0.
-TEXT ·handlerLeUint(SB), NOSPLIT|NOFRAME, $0
+// handlerLessOrEqualUint64 sets ints[A] = (uints[B] <= uints[C]) ? 1 : 0.
+TEXT ·handlerLessOrEqualUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -199,8 +199,8 @@ TEXT ·handlerLeUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerGtUint sets ints[A] = (uints[B] > uints[C]) ? 1 : 0.
-TEXT ·handlerGtUint(SB), NOSPLIT|NOFRAME, $0
+// handlerGreaterThanUint64 sets ints[A] = (uints[B] > uints[C]) ? 1 : 0.
+TEXT ·handlerGreaterThanUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -217,8 +217,8 @@ TEXT ·handlerGtUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerGeUint sets ints[A] = (uints[B] >= uints[C]) ? 1 : 0.
-TEXT ·handlerGeUint(SB), NOSPLIT|NOFRAME, $0
+// handlerGreaterOrEqualUint64 sets ints[A] = (uints[B] >= uints[C]) ? 1 : 0.
+TEXT ·handlerGreaterOrEqualUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -235,8 +235,8 @@ TEXT ·handlerGeUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerEqFloat sets ints[A] = (floats[B] == floats[C]) ? 1 : 0.
-TEXT ·handlerEqFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerEqualFloat64 sets ints[A] = (floats[B] == floats[C]) ? 1 : 0.
+TEXT ·handlerEqualFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -254,8 +254,8 @@ TEXT ·handlerEqFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerNeFloat sets ints[A] = (floats[B] != floats[C]) ? 1 : 0.
-TEXT ·handlerNeFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerNotEqualFloat64 sets ints[A] = (floats[B] != floats[C]) ? 1 : 0.
+TEXT ·handlerNotEqualFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -273,8 +273,8 @@ TEXT ·handlerNeFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerLtFloat sets ints[A] = (floats[B] < floats[C]) ? 1 : 0.
-TEXT ·handlerLtFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerLessThanFloat64 sets ints[A] = (floats[B] < floats[C]) ? 1 : 0.
+TEXT ·handlerLessThanFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -290,8 +290,8 @@ TEXT ·handlerLtFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerLeFloat sets ints[A] = (floats[B] <= floats[C]) ? 1 : 0.
-TEXT ·handlerLeFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerLessOrEqualFloat64 sets ints[A] = (floats[B] <= floats[C]) ? 1 : 0.
+TEXT ·handlerLessOrEqualFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -307,8 +307,8 @@ TEXT ·handlerLeFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerGtFloat sets ints[A] = (floats[B] > floats[C]) ? 1 : 0.
-TEXT ·handlerGtFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerGreaterThanFloat64 sets ints[A] = (floats[B] > floats[C]) ? 1 : 0.
+TEXT ·handlerGreaterThanFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -324,8 +324,8 @@ TEXT ·handlerGtFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerGeFloat sets ints[A] = (floats[B] >= floats[C]) ? 1 : 0.
-TEXT ·handlerGeFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerGreaterOrEqualFloat64 sets ints[A] = (floats[B] >= floats[C]) ? 1 : 0.
+TEXT ·handlerGreaterOrEqualFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -400,4 +400,62 @@ TEXT ·handlerJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 poll_ok:
 
 skip:
+	DISPATCH_NEXT()
+
+// handlerJumpIfFalseBool jumps by the extension word's offset if bools[C] is false.
+TEXT ·handlerJumpIfFalseBool(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $24, AX
+	MOVQ    CTX_BOOLS_BASE(R15), CX
+	MOVBQZX (CX)(AX*1), BX
+	TESTQ   BX, BX
+	JNZ     taken
+	MOVL    (R12)(R14*4), DX
+	INCQ    R14
+	SHRQ    $8, DX
+	MOVWLZX DX, AX
+	MOVWQSX AX, AX
+	ADDQ    AX, R14
+	DECQ    CTX_POLL_BUDGET(R15)
+	JG      poll_ok
+	MOVQ    R14, CTX_PC(R15)
+	MOVQ    $EXIT_POLL, CTX_EXIT_REASON(R15)
+	MOVQ    R14, CTX_EXIT_PC(R15)
+	RET     
+poll_ok:
+	JMP     dispatch
+
+taken:
+	INCQ    R14
+
+dispatch:
+	DISPATCH_NEXT()
+
+// handlerJumpIfTrueBool jumps by the extension word's offset if bools[C] is true.
+TEXT ·handlerJumpIfTrueBool(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $24, AX
+	MOVQ    CTX_BOOLS_BASE(R15), CX
+	MOVBQZX (CX)(AX*1), BX
+	TESTQ   BX, BX
+	JZ      taken
+	MOVL    (R12)(R14*4), DX
+	INCQ    R14
+	SHRQ    $8, DX
+	MOVWLZX DX, AX
+	MOVWQSX AX, AX
+	ADDQ    AX, R14
+	DECQ    CTX_POLL_BUDGET(R15)
+	JG      poll_ok
+	MOVQ    R14, CTX_PC(R15)
+	MOVQ    $EXIT_POLL, CTX_EXIT_REASON(R15)
+	MOVQ    R14, CTX_EXIT_PC(R15)
+	RET     
+poll_ok:
+	JMP     dispatch
+
+taken:
+	INCQ    R14
+
+dispatch:
 	DISPATCH_NEXT()

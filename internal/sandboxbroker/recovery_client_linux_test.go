@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxbroker
 
@@ -43,8 +43,8 @@ func (stream *recoveryTestTransport) Wait() error {
 	return errors.Join(stream.clientTestTransport.Wait(), stream.waitErr)
 }
 
-func (stream *recoveryTestTransport) Close() error {
-	return errors.Join(stream.clientTestTransport.Close(), stream.closeErr)
+func (stream *recoveryTestTransport) Close(ctx context.Context) error {
+	return errors.Join(stream.clientTestTransport.Close(ctx), stream.closeErr)
 }
 
 func TestRecoveryExchangeRejectsInvalidResultsAndCleanup(t *testing.T) {
@@ -128,6 +128,6 @@ func recoveryExchangeFixture(t *testing.T, mode string) (*recoveryTestTransport,
 		}
 		_ = connection.codec.Write(response)
 	}()
-	t.Cleanup(func() { _ = stream.Close() })
+	t.Cleanup(func() { _ = stream.Close(t.Context()) })
 	return stream, requested
 }

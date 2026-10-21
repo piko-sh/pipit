@@ -21,12 +21,11 @@
 package engine
 
 var (
-	_ = handlerTruncateNarrow
+	_ = handlerTruncateToWidth
 )
 
-// handlerTruncateNarrow is the ASM-only handler for isa.OpTruncateNarrow. The Go
-// declaration is a NOSPLIT stub; the implementation is in the architecture-specific .s
-// file.
+// handlerTruncateToWidth is the ASM-only handler for isa.OpTruncateToWidth. The Go
+// declaration is a NOSPLIT stub.
 //
 //go:noescape
-func handlerTruncateNarrow()
+func handlerTruncateToWidth()

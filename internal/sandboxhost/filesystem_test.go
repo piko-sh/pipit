@@ -38,9 +38,12 @@ type filesystemAPIFixture struct {
 	closes   atomic.Int32
 }
 
-func (fixture *filesystemAPIFixture) Close() error        { fixture.closes.Add(1); return fixture.err }
+func (fixture *filesystemAPIFixture) Close(_ context.Context) error {
+	fixture.closes.Add(1)
+	return fixture.err
+}
 func (fixture *filesystemAPIFixture) Diagnostics() string { return "bounded diagnostics" }
-func (fixture *filesystemAPIFixture) evaluate(_ sandboxworker.Request) (sandboxworker.Response, error) {
+func (fixture *filesystemAPIFixture) evaluate(_ context.Context, _ sandboxworker.Request) (sandboxworker.Response, error) {
 	return fixture.response, fixture.err
 }
 
@@ -51,24 +54,24 @@ func TestIsolatedFilesystemAPI(t *testing.T) {
 		err:      nil, closes: atomic.Int32{},
 	}
 	worker := &IsolatedFilesystemWorker{process: fixture, used: atomic.Bool{}}
-	result, err := worker.Eval("1")
+	result, err := worker.Eval(t.Context(), "1")
 	require.NoError(t, err, "%+v", result)
 	require.Equal(t, "ok", result.Output)
-	_, err = worker.EvalFile("package main", "main")
+	_, err = worker.EvalFile(t.Context(), "package main", "main")
 	require.ErrorIs(t, err, ErrIsolatedUsed)
 	require.Equal(t, "bounded diagnostics", worker.Diagnostics(), "diagnostics unavailable")
-	require.NoError(t, worker.Close())
+	require.NoError(t, worker.Close(t.Context()))
 	failure := errors.New("cleanup failed")
 	fixture.err = failure
 	worker = &IsolatedFilesystemWorker{process: fixture, used: atomic.Bool{}}
-	result, err = worker.Eval("1")
+	result, err = worker.Eval(t.Context(), "1")
 	require.ErrorIs(t, err, failure, "failed result escaped: %v", result)
 	require.Empty(t, result.Output)
 	require.Nil(t, result.Value)
 	var absent *IsolatedFilesystemWorker
-	require.NoError(t, absent.Close())
+	require.NoError(t, absent.Close(t.Context()))
 	require.Empty(t, absent.Diagnostics())
-	_, err = absent.Eval("1")
+	_, err = absent.Eval(t.Context(), "1")
 	require.ErrorIs(t, err, ErrIsolatedUsed)
 }
 

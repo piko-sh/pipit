@@ -23,8 +23,8 @@ import "piko.sh/safeconv"
 // SourcePosition records the source file location for a single bytecode instruction. The
 // debugger uses it to map program counters back to source lines.
 type SourcePosition struct {
-	// Line is the 1-based source line number. 0 means unknown or synthetic, such as a NOP
-	// inserted by the optimiser.
+	// Line is the 1-based source line number. 0 means unknown or synthetic, such as a
+	// NO_OPERATION inserted by the optimiser.
 	Line int32
 
 	// Column is the 1-based source column number. 0 means unknown.

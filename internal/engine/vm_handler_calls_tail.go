@@ -78,19 +78,18 @@ func transferTailCallArguments(vm *VM, frame *CallFrame, registers *Registers, s
 }
 
 // reallocateTailCallFrame restores the caller's arena windows then re-saves and
-// re-allocates at the callee's per-bank sizes. Used only when tailReuseFrameInPlace is
-// false (layouts differ).
+// re-allocates at the callee's per-bank sizes.
 //
-// Takes vm (*VM) for execution state; its arena is updated.
+// Takes vm (*VM) which owns the arena to update.
 // Takes frame (*CallFrame) whose arena save point and registers are replaced for the
 // callee's layout.
 // Takes callee (*CompiledFunction) whose per-bank sizes drive reallocation.
 func reallocateTailCallFrame(vm *VM, frame *CallFrame, callee *program.CompiledFunction) {
 	if vm.Arena != nil {
-		vm.Arena.Restore(frame.arenaSave)
+		vm.Arena.restoreFrom(&frame.arenaSave)
 		vm.Arena.SaveInto(&frame.arenaSave)
 		callee.EnsurePrecomputedAllocCounts()
-		vm.Arena.allocRegistersIntoCached(&frame.Registers, callee.PrecomputedAllocCounts, callee.NonZeroBankMask)
+		vm.Arena.allocRegistersIntoCached(&frame.Registers, &callee.PrecomputedAllocCounts, callee.NonZeroBankMask)
 		return
 	}
 	frame.arenaSave = ArenaSavePoint{}
@@ -137,30 +136,30 @@ func snapshotTailCallArgs(vm *VM, site *program.CallSite, registers *Registers, 
 // Returns tailCallArgument containing the copied value and its kind.
 func snapshotOneTailArgument(registers *Registers, argumentLocation program.VarLocation) tailCallArgument {
 	switch argumentLocation.Kind {
-	case isa.RegisterInt:
-		return tailCallArgument{IntValue: registers.Ints[argumentLocation.Register], Kind: isa.RegisterInt}
-	case isa.RegisterFloat:
-		return tailCallArgument{FloatValue: registers.Floats[argumentLocation.Register], Kind: isa.RegisterFloat}
+	case isa.RegisterInt64:
+		return tailCallArgument{IntValue: registers.Ints[argumentLocation.Register], Kind: isa.RegisterInt64}
+	case isa.RegisterFloat64:
+		return tailCallArgument{FloatValue: registers.Floats[argumentLocation.Register], Kind: isa.RegisterFloat64}
 	case isa.RegisterString:
 		return tailCallArgument{StringValue: registers.Strings[argumentLocation.Register], Kind: isa.RegisterString}
 	case isa.RegisterGeneral:
 		return tailCallArgument{GeneralValue: registers.General[argumentLocation.Register], Kind: isa.RegisterGeneral}
 	case isa.RegisterBool:
 		return tailCallArgument{BoolValue: registers.Bools[argumentLocation.Register], Kind: isa.RegisterBool}
-	case isa.RegisterUint:
-		return tailCallArgument{UintValue: registers.Uints[argumentLocation.Register], Kind: isa.RegisterUint}
-	case isa.RegisterComplex:
-		return tailCallArgument{ComplexValue: registers.Complex[argumentLocation.Register], Kind: isa.RegisterComplex}
-	case isa.RegisterSliceInt:
-		return tailCallArgument{sliceIntValue: registers.SlicesInt[argumentLocation.Register], Kind: isa.RegisterSliceInt}
-	case isa.RegisterSliceFloat:
-		return tailCallArgument{sliceFloatValue: registers.slicesFloat[argumentLocation.Register], Kind: isa.RegisterSliceFloat}
+	case isa.RegisterUint64:
+		return tailCallArgument{UintValue: registers.Uints[argumentLocation.Register], Kind: isa.RegisterUint64}
+	case isa.RegisterComplex128:
+		return tailCallArgument{ComplexValue: registers.Complex[argumentLocation.Register], Kind: isa.RegisterComplex128}
+	case isa.RegisterSliceInt64:
+		return tailCallArgument{sliceIntValue: registers.SlicesInt[argumentLocation.Register], Kind: isa.RegisterSliceInt64}
+	case isa.RegisterSliceFloat64:
+		return tailCallArgument{sliceFloatValue: registers.slicesFloat[argumentLocation.Register], Kind: isa.RegisterSliceFloat64}
 	case isa.RegisterSliceString:
 		return tailCallArgument{sliceStringValue: registers.slicesString[argumentLocation.Register], Kind: isa.RegisterSliceString}
 	case isa.RegisterSliceBool:
 		return tailCallArgument{sliceBoolValue: registers.slicesBool[argumentLocation.Register], Kind: isa.RegisterSliceBool}
-	case isa.RegisterSliceUint:
-		return tailCallArgument{sliceUintValue: registers.slicesUint[argumentLocation.Register], Kind: isa.RegisterSliceUint}
+	case isa.RegisterSliceUint64:
+		return tailCallArgument{sliceUintValue: registers.slicesUint[argumentLocation.Register], Kind: isa.RegisterSliceUint64}
 	case isa.RegisterSliceByte:
 		return tailCallArgument{sliceByteValue: registers.slicesByte[argumentLocation.Register], Kind: isa.RegisterSliceByte}
 	default:
@@ -225,9 +224,9 @@ func placeOneTailArgument(regs *Registers, argument *tailCallArgument, parameter
 // Takes dest (int) which is the destination index in the bank.
 func placeTailArgSameKind(regs *Registers, argument *tailCallArgument, kind isa.RegisterKind, dest int) {
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		regs.Ints[dest] = argument.IntValue
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		regs.Floats[dest] = argument.FloatValue
 	case isa.RegisterString:
 		regs.Strings[dest] = argument.StringValue
@@ -235,19 +234,19 @@ func placeTailArgSameKind(regs *Registers, argument *tailCallArgument, kind isa.
 		regs.General[dest] = argument.GeneralValue
 	case isa.RegisterBool:
 		regs.Bools[dest] = argument.BoolValue
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		regs.Uints[dest] = argument.UintValue
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		regs.Complex[dest] = argument.ComplexValue
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		regs.SlicesInt[dest] = argument.sliceIntValue
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		regs.slicesFloat[dest] = argument.sliceFloatValue
 	case isa.RegisterSliceString:
 		regs.slicesString[dest] = argument.sliceStringValue
 	case isa.RegisterSliceBool:
 		regs.slicesBool[dest] = argument.sliceBoolValue
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		regs.slicesUint[dest] = argument.sliceUintValue
 	case isa.RegisterSliceByte:
 		regs.slicesByte[dest] = argument.sliceByteValue
@@ -266,27 +265,27 @@ func placeTailArgSameKind(regs *Registers, argument *tailCallArgument, kind isa.
 // Takes dest (int) which is the index in the general register bank.
 func boxTailArgumentToGeneral(regs *Registers, argument *tailCallArgument, dest int) {
 	switch argument.Kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		regs.General[dest] = reflect.ValueOf(argument.IntValue)
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		regs.General[dest] = reflect.ValueOf(argument.FloatValue)
 	case isa.RegisterString:
 		regs.General[dest] = reflect.ValueOf(argument.StringValue)
 	case isa.RegisterBool:
 		regs.General[dest] = reflect.ValueOf(argument.BoolValue)
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		regs.General[dest] = reflect.ValueOf(argument.UintValue)
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		regs.General[dest] = reflect.ValueOf(argument.ComplexValue)
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		regs.General[dest] = reflect.ValueOf(argument.sliceIntValue)
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		regs.General[dest] = reflect.ValueOf(argument.sliceFloatValue)
 	case isa.RegisterSliceString:
 		regs.General[dest] = reflect.ValueOf(argument.sliceStringValue)
 	case isa.RegisterSliceBool:
 		regs.General[dest] = reflect.ValueOf(argument.sliceBoolValue)
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		regs.General[dest] = reflect.ValueOf(argument.sliceUintValue)
 	case isa.RegisterSliceByte:
 		regs.General[dest] = reflect.ValueOf(argument.sliceByteValue)

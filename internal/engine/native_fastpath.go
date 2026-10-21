@@ -19,6 +19,9 @@
 package engine
 
 import (
+	"fmt"
+	"go/ast"
+	"go/types"
 	"reflect"
 	"strings"
 	"sync"
@@ -166,6 +169,51 @@ const (
 	// fastPathTagVoidString2 tags func(string, string).
 	fastPathTagVoidString2
 
+	// fastPathTagIntInt16 tags func(int) int16.
+	fastPathTagIntInt16
+
+	// fastPathTagIntInt32 tags func(int) int32.
+	fastPathTagIntInt32
+
+	// fastPathTagIntUint8 tags func(int) uint8.
+	fastPathTagIntUint8
+
+	// fastPathTagIntUint16 tags func(int) uint16.
+	fastPathTagIntUint16
+
+	// fastPathTagRetTypesType tags func() types.Type.
+	fastPathTagRetTypesType
+
+	// fastPathTagTypesTypeTypesType tags func(types.Type) types.Type.
+	fastPathTagTypesTypeTypesType
+
+	// fastPathTagTypesTypeBool tags func(types.Type) bool.
+	fastPathTagTypesTypeBool
+
+	// fastPathTagRetSelectionKind tags func() types.SelectionKind.
+	fastPathTagRetSelectionKind
+
+	// fastPathTagRetBasicKind tags func() types.BasicKind.
+	fastPathTagRetBasicKind
+
+	// fastPathTagRetTypesTuple tags func() *types.Tuple.
+	fastPathTagRetTypesTuple
+
+	// fastPathTagRetTypesTypeName tags func() *types.TypeName.
+	fastPathTagRetTypesTypeName
+
+	// fastPathTagRetTypesPackage tags func() *types.Package.
+	fastPathTagRetTypesPackage
+
+	// fastPathTagRetTypesVar tags func() *types.Var.
+	fastPathTagRetTypesVar
+
+	// fastPathTagIntTypesVar tags func(int) *types.Var.
+	fastPathTagIntTypesVar
+
+	// fastPathTagAstExprAstExpr tags func(ast.Expr) ast.Expr.
+	fastPathTagAstExprAstExpr
+
 	// fastPathTagStringError tags func(string) error.
 	fastPathTagStringError
 
@@ -200,6 +248,15 @@ const (
 	pipitIDFieldPrefix = isa.SynthesisedIDFieldPrefix
 )
 
+const (
+	// fmtArgsScratchDepth limits the idle variadic buffers kept by a VM to one per nested
+	// fmt call.
+	fmtArgsScratchDepth = 4
+
+	// fmtArgsScratchMaxCap bounds the capacity of a buffer a VM keeps.
+	fmtArgsScratchMaxCap = 64
+)
+
 var (
 	// nativeFastPathNone is the sentinel value indicating that a call site has no fast-path
 	// specialisation available.
@@ -208,7 +265,7 @@ var (
 	// nativeFastPathNoneEntry is the shared immutable entry stored at a call site once
 	// classification finds no fast path. Sharing one instance avoids an allocation each time
 	// a non-specialised site is probed.
-	nativeFastPathNoneEntry = &nativeFastPathEntry{fn: nativeFastPathNone, receiverAddr: 0, tag: 0}
+	nativeFastPathNoneEntry = &nativeFastPathEntry{fn: nativeFastPathNone, tag: 0, method: nativeMethodShape{}}
 
 	// fastPathTagByType maps concrete function reflect.Types to their corresponding
 	// fast-path tag for O(1) classification.
@@ -250,6 +307,21 @@ var (
 		reflect.TypeFor[func(int64)]():                         fastPathTagVoidInt64,
 		reflect.TypeFor[func(bool)]():                          fastPathTagVoidBool,
 		reflect.TypeFor[func(string, string)]():                fastPathTagVoidString2,
+		reflect.TypeFor[func(int) int16]():                     fastPathTagIntInt16,
+		reflect.TypeFor[func(int) int32]():                     fastPathTagIntInt32,
+		reflect.TypeFor[func(int) uint8]():                     fastPathTagIntUint8,
+		reflect.TypeFor[func(int) uint16]():                    fastPathTagIntUint16,
+		reflect.TypeFor[func() types.Type]():                   fastPathTagRetTypesType,
+		reflect.TypeFor[func(types.Type) types.Type]():         fastPathTagTypesTypeTypesType,
+		reflect.TypeFor[func(types.Type) bool]():               fastPathTagTypesTypeBool,
+		reflect.TypeFor[func() types.SelectionKind]():          fastPathTagRetSelectionKind,
+		reflect.TypeFor[func() types.BasicKind]():              fastPathTagRetBasicKind,
+		reflect.TypeFor[func() *types.Tuple]():                 fastPathTagRetTypesTuple,
+		reflect.TypeFor[func() *types.TypeName]():              fastPathTagRetTypesTypeName,
+		reflect.TypeFor[func() *types.Package]():               fastPathTagRetTypesPackage,
+		reflect.TypeFor[func() *types.Var]():                   fastPathTagRetTypesVar,
+		reflect.TypeFor[func(int) *types.Var]():                fastPathTagIntTypesVar,
+		reflect.TypeFor[func(ast.Expr) ast.Expr]():             fastPathTagAstExprAstExpr,
 		reflect.TypeFor[func(string) error]():                  fastPathTagStringError,
 		reflect.TypeFor[func(string, ...any) string]():         fastPathTagSprintfString,
 		reflect.TypeFor[func(string, ...any) error]():          fastPathTagSprintfError,
@@ -295,15 +367,17 @@ var (
 // an atomic pointer so a sibling goroutine cannot read a torn two-word fn interface.
 type nativeFastPathEntry struct {
 	// fn is the extracted native function value to dispatch, or nativeFastPathNone when
-	// classification found no fast path.
+	// classification found no fast path. Nil at a method site, whose entry never holds a
+	// method value bound to a receiver.
 	fn any
 
-	// receiverAddr is the address of the method receiver fn was bound to, used to invalidate
-	// the cache when the same method is called on a different receiver. Zero for non-method
-	// sites.
-	receiverAddr uintptr
+	// method holds a method site's receiver-free shape.
+	//
+	// It records the receiver type, method index and method expression. It is empty at other
+	// sites and when the method has no direct path.
+	method nativeMethodShape
 
-	// tag selects which fast-path dispatcher handles fn.
+	// tag selects which fast-path dispatcher handles the call.
 	tag nativeFastPathTag
 }
 
@@ -315,8 +389,34 @@ type nativeFastPathTag uint8
 // handling exactly one tag case.
 type fastPathDispatcher func(vm *VM, cached any, site *program.CallSite, registers *Registers)
 
+// fmtArgsScratchCallees are the code pointers of the fmt functions the fast-path
+// formatting dispatchers may hand a reused variadic buffer.
+//
+// Each reads its arguments during the call and keeps neither the slice nor its backing
+// array (Errorf keeps wrapped error values, not the slice).
+//
+// Any other function of the same type may keep the slice, so it gets a fresh one.
+var fmtArgsScratchCallees = map[uintptr]bool{
+	reflect.ValueOf(fmt.Sprintf).Pointer():  true,
+	reflect.ValueOf(fmt.Errorf).Pointer():   true,
+	reflect.ValueOf(fmt.Sprint).Pointer():   true,
+	reflect.ValueOf(fmt.Sprintln).Pointer(): true,
+}
+
+// fmtArgsScratch lends a formatting dispatcher its variadic []any buffer.
+//
+// A known fmt callee borrows an idle VM buffer; other callees receive a fresh allocation.
+type fmtArgsScratch struct {
+	// vm owns the idle buffers; nil when the buffer must not be reused.
+	vm *VM
+}
+
 // classifyNativeFastPath determines the fast-path tag for a given function value by
 // looking up its reflect.Type in the dispatch map.
+//
+// The formatting dispatchers wrap their operands for fmt, so they serve only the fmt
+// functions in fmtArgsScratchCallees. Any other function of the same type takes the
+// ordinary call path, which passes script values as themselves.
 //
 // Takes v (any) which is the native function value to classify.
 //
@@ -327,7 +427,13 @@ func classifyNativeFastPath(v any) nativeFastPathTag {
 	if !ok {
 		return fastPathTagNone
 	}
-
+	switch tag {
+	case fastPathTagSprintfString, fastPathTagSprintfError, fastPathTagSprintVarargs:
+		if !fmtArgsScratchCallees[reflect.ValueOf(v).Pointer()] {
+			return fastPathTagNone
+		}
+	default:
+	}
 	return tag
 }
 
@@ -341,10 +447,9 @@ func classifyNativeFastPath(v any) nativeFastPathTag {
 // Takes registers (*Registers) which is the VM register file to read arguments from and
 // write results to.
 //
-// Returns true and the matched tag if the fast path was taken, or false and
-// fastPathTagNone if no fast-path specialisation is available. The third return is the
-// recovered panic from the native call (e.g. sync.Mutex.Unlock on an unlocked mutex), nil
-// if none.
+// Returns bool which is true when the fast path was taken.
+// Returns nativeFastPathTag which is the matched tag, or fastPathTagNone on refusal.
+// Returns any which is the recovered native panic, or nil.
 func tryNativeFastPath(vm *VM, site *program.CallSite, v any, registers *Registers) (bool, nativeFastPathTag, any) {
 	tag := classifyNativeFastPath(v)
 	if tag == fastPathTagNone {
@@ -356,7 +461,7 @@ func tryNativeFastPath(vm *VM, site *program.CallSite, v any, registers *Registe
 		return false, fastPathTagNone, nil
 	}
 
-	if siteArgsRequireInterfaceAdapter(vm, site, registers) {
+	if siteArgsRequireInterfaceAdapter(vm, site, registers) || !fastPathArgumentsFit(tag, site, registers) {
 		return false, fastPathTagNone, nil
 	}
 
@@ -429,7 +534,21 @@ func argumentIsPipitSynthesised(value reflect.Value) bool {
 	if !probe.IsValid() {
 		return false
 	}
-	return isPipitSynthesisedReflectType(probe.Type())
+	return isPipitSynthesisedReflectType(probe.Type()) || isNamedCompositeThroughPointers(probe.Type())
+}
+
+// isNamedCompositeThroughPointers reports whether t, after any pointers, is a named
+// composite type, whose methods live in the program's method table and reach native code
+// only through an adapter.
+//
+// Takes t (reflect.Type) which may be nil.
+//
+// Returns bool which is true for such a type or a pointer to one.
+func isNamedCompositeThroughPointers(t reflect.Type) bool {
+	for t != nil && t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	return typemodel.IsNamedCompositeType(t)
 }
 
 // argStaticTypeNameRequiresAdapter checks the Compiler-recorded static type name for
@@ -528,65 +647,22 @@ func siteStaticTypeName(site *program.CallSite, argumentIndex int) string {
 	return site.ArgumentStaticTypeNames[argumentIndex]
 }
 
-// adaptArgForNativeAny prepares an `any`-typed argument for fast-path calls, applying
-// fmt/adapter wrapping for pipit-synthesised structs when the callee is a genuinely
-// native Go function while letting MakeFunc closures pass through unchanged to preserve
-// receiver identity.
-//
-// Takes vm (*VM) which is the active interpreter.
-// Takes cached (any) which is the unwrapped native function value the dispatcher already
-// type-asserted.
-// Takes raw (any) which is the just-read argument from readAnyArg.
-// Takes staticTypeName (string) which is the call site's recorded source-level type name.
-//
-// Returns the argument unchanged when no wrapping is needed; a pipitFmtValue or adapter
-// when the wrap applies.
-func adaptArgForNativeAny(vm *VM, cached any, raw any, staticTypeName string) any {
-	if raw == nil {
-		return nil
-	}
-	if calleeIsPipitMakeFunctionClosure(cached) {
-		return raw
-	}
-	return wrapPipitSynthesisedFmtArg(vm, raw, staticTypeName)
-}
-
 // readNativeAnyArg reads one argument destined for a native interface ({}) parameter and
-// re-clothes it with its source-level named type before adapting.
+// re-clothes it with its source-level named type. The native receives the value itself,
+// as compiled Go would pass it.
 //
 // Takes vm (*VM) which provides the symbol registry for the type restore.
-// Takes cached (any) which is the native callee, used by adaptArgForNativeAny.
 // Takes site (*CallSite) which carries the per-argument static type strings.
 // Takes registers (*Registers) which holds the source value.
 // Takes argumentIndex (int) which selects the argument and its static type string.
 //
-// Returns the prepared argument value ready to pass to the native function.
-func readNativeAnyArg(vm *VM, cached any, site *program.CallSite, registers *Registers, argumentIndex int) any {
+// Returns the argument value ready to pass to the native function.
+func readNativeAnyArg(vm *VM, _ any, site *program.CallSite, registers *Registers, argumentIndex int) any {
 	raw := readAnyArg(registers, site.Arguments[argumentIndex])
 	if argumentIndex < len(site.ArgumentStaticTypeStrings) {
 		raw = restoreNamedTypeForFmt(vm, raw, site.ArgumentStaticTypeStrings[argumentIndex])
 	}
-	return adaptArgForNativeAny(vm, cached, raw, siteStaticTypeName(site, argumentIndex))
-}
-
-// calleeIsPipitMakeFunctionClosure reports whether the cached native function value is
-// actually a pipit-side reflect.MakeFunc closure. All reflect.MakeFunc closures share one
-// trampoline code pointer (captured at init in reflectMakeFuncStubPointer); native Go
-// functions never report that pointer, so a single uintptr compare reliably distinguishes
-// the two kinds.
-//
-// Takes cached (any) which is the dispatcher's cached function.
-//
-// Returns true when cached is a reflect.MakeFunc result.
-func calleeIsPipitMakeFunctionClosure(cached any) bool {
-	if cached == nil {
-		return false
-	}
-	value := reflect.ValueOf(cached)
-	if value.Kind() != reflect.Func {
-		return false
-	}
-	return value.Pointer() == reflectMakeFuncStubPointer
+	return raw
 }
 
 // typeNameHasInterfaceAdapter reports whether the named source-level type has a
@@ -656,6 +732,14 @@ func isPipitSynthesisedReflectType(t reflect.Type) bool {
 //
 // Returns true when a fmt walk of t reaches a pipit-synthesised struct.
 func typeContainsPipitSynthesised(t reflect.Type) bool {
+	if t == nil {
+		return false
+	}
+	if cached, ok := pipitContainsSynthCache.Load(t); ok {
+		if result, isBool := cached.(bool); isBool {
+			return result
+		}
+	}
 	return typeContainsPipitSynthesisedWalk(t, map[reflect.Type]struct{}{})
 }
 
@@ -869,7 +953,8 @@ func fpDispatchSprintfString(vm *VM, cached any, site *program.CallSite, registe
 
 	format := readStringArg(registers, site.Arguments[0])
 	nVarArgs := len(site.Arguments) - 1
-	varArgs := make([]any, nVarArgs)
+	scratch := fmtArgsScratchFor(vm, cached)
+	varArgs := scratch.take(nVarArgs)
 
 	verbs := fmtArgumentVerbs(format, nVarArgs)
 	for i := range nVarArgs {
@@ -886,7 +971,9 @@ func fpDispatchSprintfString(vm *VM, cached any, site *program.CallSite, registe
 		varArgs = rewrittenArgs
 	}
 
-	registers.Strings[site.Returns[0].Register] = f(format, varArgs...)
+	result := f(format, varArgs...)
+	scratch.give(varArgs)
+	registers.Strings[site.Returns[0].Register] = result
 }
 
 // fpDispatchSprintfError dispatches a native function with the signature func(string,
@@ -905,7 +992,8 @@ func fpDispatchSprintfError(vm *VM, cached any, site *program.CallSite, register
 
 	format := readStringArg(registers, site.Arguments[0])
 	nVarArgs := len(site.Arguments) - 1
-	varArgs := make([]any, nVarArgs)
+	scratch := fmtArgsScratchFor(vm, cached)
+	varArgs := scratch.take(nVarArgs)
 
 	verbs := fmtArgumentVerbs(format, nVarArgs)
 	for i := range nVarArgs {
@@ -923,6 +1011,7 @@ func fpDispatchSprintfError(vm *VM, cached any, site *program.CallSite, register
 	}
 
 	result := f(format, varArgs...)
+	scratch.give(varArgs)
 	if result != nil {
 		registers.General[site.Returns[0].Register] = reflect.ValueOf(result)
 	} else {
@@ -944,16 +1033,22 @@ func fpDispatchSprintVarargs(vm *VM, cached any, site *program.CallSite, registe
 		return
 	}
 
-	varArgs := make([]any, len(site.Arguments))
+	scratch := fmtArgsScratchFor(vm, cached)
+	varArgs := scratch.take(len(site.Arguments))
 	for i := range site.Arguments {
 		raw := readAnyArg(registers, site.Arguments[i])
 		if i < len(site.ArgumentStaticTypeStrings) {
 			raw = restoreNamedTypeForFmt(vm, raw, site.ArgumentStaticTypeStrings[i])
 		}
 		varArgs[i] = wrapPipitSynthesisedFmtArgForVerb(vm, raw, 'v', siteStaticTypeName(site, i))
+		if kept := keepStringKindForPrint(reflect.ValueOf(raw), reflect.ValueOf(varArgs[i])); kept.IsValid() && kept.CanInterface() {
+			varArgs[i] = kept.Interface()
+		}
 	}
 
-	registers.Strings[site.Returns[0].Register] = f(varArgs...)
+	result := f(varArgs...)
+	scratch.give(varArgs)
+	registers.Strings[site.Returns[0].Register] = result
 }
 
 // fpDispatchBytesArrN dispatches a digest-returning native call. Generic body shared by
@@ -1074,9 +1169,9 @@ func readStringArg(registers *Registers, argument program.VarLocation) string {
 // Takes argument (VarLocation) which describes the register bank and index to read.
 //
 // Returns the int64 value from the int register bank if the argument kind is
-// isa.RegisterInt, or converts from the general register bank otherwise.
+// isa.RegisterInt64, or converts from the general register bank otherwise.
 func readIntArg(registers *Registers, argument program.VarLocation) int64 {
-	if argument.Kind == isa.RegisterInt {
+	if argument.Kind == isa.RegisterInt64 {
 		return registers.Ints[argument.Register]
 	}
 
@@ -1089,9 +1184,9 @@ func readIntArg(registers *Registers, argument program.VarLocation) int64 {
 // Takes argument (VarLocation) which describes the register bank and index to read.
 //
 // Returns the float64 value from the float register bank if the argument kind is
-// isa.RegisterFloat, or converts from the general register bank otherwise.
+// isa.RegisterFloat64, or converts from the general register bank otherwise.
 func readFloatArg(registers *Registers, argument program.VarLocation) float64 {
-	if argument.Kind == isa.RegisterFloat {
+	if argument.Kind == isa.RegisterFloat64 {
 		return registers.Floats[argument.Register]
 	}
 
@@ -1123,27 +1218,27 @@ func readBoolArg(registers *Registers, argument program.VarLocation) bool {
 // or nil if the kind is unrecognised or the value is invalid.
 func readAnyArg(registers *Registers, argument program.VarLocation) any {
 	switch argument.Kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return int(registers.Ints[argument.Register])
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return registers.Floats[argument.Register]
 	case isa.RegisterString:
 		return registers.Strings[argument.Register]
 	case isa.RegisterBool:
 		return registers.Bools[argument.Register]
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return registers.Uints[argument.Register]
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return registers.Complex[argument.Register]
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		return registers.SlicesInt[argument.Register]
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		return registers.slicesFloat[argument.Register]
 	case isa.RegisterSliceString:
 		return registers.slicesString[argument.Register]
 	case isa.RegisterSliceBool:
 		return registers.slicesBool[argument.Register]
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		return registers.slicesUint[argument.Register]
 	case isa.RegisterSliceByte:
 		return registers.slicesByte[argument.Register]
@@ -1197,6 +1292,21 @@ func init() {
 	fastPathDispatchTable[fastPathTagVoidInt64] = fpDispatchVoidInt64
 	fastPathDispatchTable[fastPathTagVoidBool] = fpDispatchVoidBool
 	fastPathDispatchTable[fastPathTagVoidString2] = fpDispatchVoidString2
+	fastPathDispatchTable[fastPathTagIntInt16] = fpDispatchIntInt16
+	fastPathDispatchTable[fastPathTagIntInt32] = fpDispatchIntInt32
+	fastPathDispatchTable[fastPathTagIntUint8] = fpDispatchIntUint8
+	fastPathDispatchTable[fastPathTagIntUint16] = fpDispatchIntUint16
+	fastPathDispatchTable[fastPathTagRetTypesType] = fpDispatchRetTypesType
+	fastPathDispatchTable[fastPathTagTypesTypeTypesType] = fpDispatchTypesTypeTypesType
+	fastPathDispatchTable[fastPathTagTypesTypeBool] = fpDispatchTypesTypeBool
+	fastPathDispatchTable[fastPathTagRetSelectionKind] = fpDispatchRetSelectionKind
+	fastPathDispatchTable[fastPathTagRetBasicKind] = fpDispatchRetBasicKind
+	fastPathDispatchTable[fastPathTagRetTypesTuple] = fpDispatchRetTypesTuple
+	fastPathDispatchTable[fastPathTagRetTypesTypeName] = fpDispatchRetTypesTypeName
+	fastPathDispatchTable[fastPathTagRetTypesPackage] = fpDispatchRetTypesPackage
+	fastPathDispatchTable[fastPathTagRetTypesVar] = fpDispatchRetTypesVar
+	fastPathDispatchTable[fastPathTagIntTypesVar] = fpDispatchIntTypesVar
+	fastPathDispatchTable[fastPathTagAstExprAstExpr] = fpDispatchAstExprAstExpr
 	fastPathDispatchTable[fastPathTagStringError] = fpDispatchStringError
 	fastPathDispatchTable[fastPathTagSprintfString] = fpDispatchSprintfString
 	fastPathDispatchTable[fastPathTagSprintfError] = fpDispatchSprintfError
@@ -1205,4 +1315,48 @@ func init() {
 	fastPathDispatchTable[fastPathTagBytesArr16] = fpDispatchBytesArr16
 	fastPathDispatchTable[fastPathTagBytesArr20] = fpDispatchBytesArr20
 	fastPathDispatchTable[fastPathTagBytesArr64] = fpDispatchBytesArr64
+}
+
+// fmtArgsScratchFor returns the scratch for one call of cached on vm.
+//
+// Takes vm (*VM) which owns the idle buffers; may be nil.
+// Takes cached (any) which is the callee.
+//
+// Returns fmtArgsScratch which lends from vm only when cached is a known fmt function.
+func fmtArgsScratchFor(vm *VM, cached any) fmtArgsScratch {
+	if vm == nil || !fmtArgsScratchCallees[reflect.ValueOf(cached).Pointer()] {
+		return fmtArgsScratch{vm: nil}
+	}
+	return fmtArgsScratch{vm: vm}
+}
+
+// take returns a zeroed buffer of length count.
+//
+// Takes count (int) which is the length.
+//
+// Returns []any which the caller passes back through give after the call.
+func (scratch fmtArgsScratch) take(count int) []any {
+	if vm := scratch.vm; vm != nil && vm.fmtArgsIdleCount > 0 {
+		vm.fmtArgsIdleCount--
+		buffer := vm.fmtArgsIdle[vm.fmtArgsIdleCount]
+		vm.fmtArgsIdle[vm.fmtArgsIdleCount] = nil
+		if cap(buffer) >= count {
+			return buffer[:count]
+		}
+	}
+	return make([]any, count)
+}
+
+// give clears a buffer take returned and keeps it for the VM's next formatting call. The
+// clearing drops every argument, so an idle buffer references nothing a run allocated.
+//
+// Takes buffer ([]any) which take returned.
+func (scratch fmtArgsScratch) give(buffer []any) {
+	vm := scratch.vm
+	if vm == nil || cap(buffer) > fmtArgsScratchMaxCap || vm.fmtArgsIdleCount >= fmtArgsScratchDepth {
+		return
+	}
+	clear(buffer)
+	vm.fmtArgsIdle[vm.fmtArgsIdleCount] = buffer[:0]
+	vm.fmtArgsIdleCount++
 }

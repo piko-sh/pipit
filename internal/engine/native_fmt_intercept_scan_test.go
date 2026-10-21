@@ -443,7 +443,7 @@ func TestClosureTypeStringPrefersTheNamedType(t *testing.T) {
 	t.Run("a converted closure reports its named type", func(t *testing.T) {
 		t.Parallel()
 
-		require.Equal(t, "main.Op", closureTypeString(&RuntimeClosure{namedType: "Op"}))
+		require.Equal(t, "main.Op", closureTypeString(&RuntimeClosure{namedType: testNamedFuncTypeID(t, "Op")}))
 	})
 
 	t.Run("a closure with neither name nor signature reports the erased shape", func(t *testing.T) {

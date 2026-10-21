@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,9 +16,12 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -40,7 +41,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	err = sandboxworker.Serve(workerIO.Stream(), sandboxworker.WithSymbols(stdlib.Providers()...))
+	err = sandboxworker.Serve(context.Background(), workerIO.Stream(), sandboxworker.WithSymbols(stdlib.Providers()...))
 	closeErr := workerIO.Stream().Close()
 	if err != nil || closeErr != nil {
 		fmt.Fprintln(os.Stderr, "worker protocol failed:", err, closeErr)

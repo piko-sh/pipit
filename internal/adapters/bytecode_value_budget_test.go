@@ -86,7 +86,7 @@ func TestBytecodeNamedZeroCannotBypassBudget(t *testing.T) {
 			data := codec.GeneralConstantDescriptorData{
 				Kind: uint8(descriptor.GeneralConstantNamedTypeZero), PackagePath: "host", SymbolName: name,
 			}
-			value, err := budget.reconstruct(data, registry)
+			value, err := budget.reconstruct(t.Context(), data, registry)
 			require.Error(t, err, "a named zero value needs valid authority and budget")
 			require.False(t, value.IsValid())
 			require.Equal(t, uintptr(maximumDecodedValueBytes), budget.remaining)
@@ -102,12 +102,12 @@ func TestBytecodeBorrowedSymbolsDoNotAllocateZeros(t *testing.T) {
 	data := codec.GeneralConstantDescriptorData{
 		Kind: uint8(descriptor.GeneralConstantPackageSymbol), PackagePath: "host", SymbolName: "Value",
 	}
-	value, err := budget.reconstruct(data, registry)
+	value, err := budget.reconstruct(t.Context(), data, registry)
 	require.NoError(t, err)
 	require.Equal(t, original, value, "a borrowed symbol is returned as it is")
 	require.Zero(t, budget.remaining, "borrowing a symbol costs no budget")
 	data.Kind = 255
-	value, err = budget.reconstruct(data, registry)
+	value, err = budget.reconstruct(t.Context(), data, registry)
 	require.Error(t, err, "an unknown constant kind is rejected")
 	require.False(t, value.IsValid())
 }
@@ -127,13 +127,13 @@ func TestBytecodeNamedAndCompositeZerosShareBudget(t *testing.T) {
 		},
 	}
 	for _, data := range []codec.GeneralConstantDescriptorData{named, composite} {
-		value, err := budget.reconstruct(data, registry)
+		value, err := budget.reconstruct(t.Context(), data, registry)
 		require.NoError(t, err, "a valid zero value is reconstructed")
 		require.True(t, value.CanSet())
 		require.True(t, value.IsZero())
 	}
 	require.Equal(t, uintptr(0), budget.remaining, "constant kinds share one budget")
-	value, err := budget.reconstruct(named, registry)
+	value, err := budget.reconstruct(t.Context(), named, registry)
 	require.False(t, value.IsValid(), "a named zero value respects the exhausted shared budget")
 	require.ErrorIs(t, err, errCorruptBytecodePayload)
 }
@@ -148,7 +148,7 @@ func TestBytecodeZeroValueBudgetSharedAcrossFunctionEdges(t *testing.T) {
 			Elem: &descriptor.TypeDescriptorData{Kind: uint8(descriptor.KindBasic), BasicKind: uint8(reflect.Uint8)},
 		},
 	}
-	constants := packGeneralConstantDescriptors(builder, []codec.GeneralConstantDescriptorData{data})
+	constants := packGeneralConstantDescriptors(t.Context(), builder, []codec.GeneralConstantDescriptorData{data}, "budget", new(error))
 	schemagen.CompiledFunctionStart(builder)
 	schemagen.CompiledFunctionAddGeneralConstantDescriptors(builder, constants)
 	leaf := schemagen.CompiledFunctionEnd(builder)

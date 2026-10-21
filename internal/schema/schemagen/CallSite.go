@@ -189,8 +189,62 @@ func (rcv *CallSite) MutateBlocksHostGoroutine(n bool) bool {
 	return rcv._tab.MutateBoolSlot(24, n)
 }
 
+func (rcv *CallSite) ArgumentStaticTypeNames(j int) []byte {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(26))
+	if o != 0 {
+		a := rcv._tab.Vector(o)
+		return rcv._tab.ByteVector(a + flatbuffers.UOffsetT(j*4))
+	}
+	return nil
+}
+
+func (rcv *CallSite) ArgumentStaticTypeNamesLength() int {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(26))
+	if o != 0 {
+		return rcv._tab.VectorLen(o)
+	}
+	return 0
+}
+
+func (rcv *CallSite) ArgumentStaticTypeStrings(j int) []byte {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(28))
+	if o != 0 {
+		a := rcv._tab.Vector(o)
+		return rcv._tab.ByteVector(a + flatbuffers.UOffsetT(j*4))
+	}
+	return nil
+}
+
+func (rcv *CallSite) ArgumentStaticTypeStringsLength() int {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(28))
+	if o != 0 {
+		return rcv._tab.VectorLen(o)
+	}
+	return 0
+}
+
+func (rcv *CallSite) LinkedTypeArgs(obj *TypeDescriptor, j int) bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(30))
+	if o != 0 {
+		x := rcv._tab.Vector(o)
+		x += flatbuffers.UOffsetT(j) * 4
+		x = rcv._tab.Indirect(x)
+		obj.Init(rcv._tab.Bytes, x)
+		return true
+	}
+	return false
+}
+
+func (rcv *CallSite) LinkedTypeArgsLength() int {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(30))
+	if o != 0 {
+		return rcv._tab.VectorLen(o)
+	}
+	return 0
+}
+
 func CallSiteStart(builder *flatbuffers.Builder) {
-	builder.StartObject(11)
+	builder.StartObject(14)
 }
 func CallSiteAddFunctionIndex(builder *flatbuffers.Builder, functionIndex uint16) {
 	builder.PrependUint16Slot(0, functionIndex, 0)
@@ -230,6 +284,24 @@ func CallSiteAddIsEllipsisSpread(builder *flatbuffers.Builder, isEllipsisSpread 
 }
 func CallSiteAddBlocksHostGoroutine(builder *flatbuffers.Builder, blocksHostGoroutine bool) {
 	builder.PrependBoolSlot(10, blocksHostGoroutine, false)
+}
+func CallSiteAddArgumentStaticTypeNames(builder *flatbuffers.Builder, argumentStaticTypeNames flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(11, flatbuffers.UOffsetT(argumentStaticTypeNames), 0)
+}
+func CallSiteStartArgumentStaticTypeNamesVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
+	return builder.StartVector(4, numElems, 4)
+}
+func CallSiteAddArgumentStaticTypeStrings(builder *flatbuffers.Builder, argumentStaticTypeStrings flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(12, flatbuffers.UOffsetT(argumentStaticTypeStrings), 0)
+}
+func CallSiteStartArgumentStaticTypeStringsVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
+	return builder.StartVector(4, numElems, 4)
+}
+func CallSiteAddLinkedTypeArgs(builder *flatbuffers.Builder, linkedTypeArgs flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(13, flatbuffers.UOffsetT(linkedTypeArgs), 0)
+}
+func CallSiteStartLinkedTypeArgsVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
+	return builder.StartVector(4, numElems, 4)
 }
 func CallSiteEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

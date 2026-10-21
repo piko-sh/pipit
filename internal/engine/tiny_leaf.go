@@ -18,13 +18,6 @@
 
 package engine
 
-// SAFETY: a tiny leaf reads or writes one struct field by byte offset from the receiver's
-// base pointer. The offset comes from TinyLeafLayout, which ClassifyTinyLeaf filled from
-// the compile-time struct layout table for the callee's receiver type, and the dispatch
-// inline cache admits the shortcut only when the live receiver's type word matches that
-// type, so the offset is valid for the memory it is applied to. The base pointer is taken
-// from an addressable reflect.Value, which keeps the struct alive across the access.
-
 import (
 	"reflect"
 	"unsafe"
@@ -55,9 +48,9 @@ type tinyLeafScalarArgument struct {
 // compiledFunction.TinyLeafShape and compiledFunction.TinyLeafLayout accordingly.
 //
 // Bails without setting a shape when the body length sits outside [1, 6] instructions,
-// when the first op is not a recognised GET_STRUCT_FIELD_*_T0 opener, when subsequent ops
-// do not match a known pattern, or when the structLayoutTable index is out of bounds.
-// Runs once per function at the end of Optimise(); the allowlist is strict so anything
+// when the first op is not a recognised tier-0 GET_STRUCT_FIELD_* opener, when subsequent
+// ops do not match a known pattern, or when the structLayoutTable index is out of bounds.
+// Runs once per function at the end of Optimise(). The allowlist is strict so anything
 // not provably safe stays unclassified.
 //
 // Takes compiledFunction (*CompiledFunction) which is the function to classify.
@@ -68,27 +61,25 @@ func ClassifyTinyLeaf(compiledFunction *program.CompiledFunction) {
 		return
 	}
 	body := compiledFunction.Body
-	first := findNextNonNop(body, 0)
+	first := findNextNonNoOperation(body, 0)
 	if first < 0 {
 		return
 	}
 	op0 := body[first]
 	switch op0.Op {
-	case isa.OpGetStructFieldUint:
+	case isa.OpGetStructFieldUint64:
 		tryClassifyReturnUintField(compiledFunction, body, first)
-	case isa.OpGetStructFieldIntT0:
+	case isa.OpGetStructFieldInt64:
 		tryClassifyEnvAtIntFieldSlotOrReturnIntField(compiledFunction, body, first)
 	case isa.OpDrillTier1:
 		tryClassifyIncField(compiledFunction, body, first)
-	case isa.OpSetStructFieldIntT0, isa.OpSetStructFieldUint, isa.OpSetStructFieldFloat, isa.OpSetStructFieldBool:
+	case isa.OpSetStructFieldInt64, isa.OpSetStructFieldUint64, isa.OpSetStructFieldFloat64, isa.OpSetStructFieldBool:
 		tryClassifySetScalarFieldFromArg(compiledFunction, body, first)
 	default:
 	}
 }
 
-// tryClassifyIncField matches the void `recv.fieldX++` body: a lone
-// isa.SubOpIncStructFieldInt or isa.SubOpIncStructFieldUint on the receiver in general[0]
-// with nothing but NOPs after it. The callee must take exactly the receiver as parameter.
+// tryClassifyIncField matches a void `recv.fieldX++` body.
 //
 // Takes compiledFunction (*CompiledFunction) which is the function whose shape is being
 // classified.
@@ -98,10 +89,10 @@ func tryClassifyIncField(compiledFunction *program.CompiledFunction, body []isa.
 	op0 := body[first]
 	var shape program.TinyLeafShape
 	switch isa.SubOpcode(op0.A) {
-	case isa.SubOpIncStructFieldInt:
-		shape = program.TinyLeafIncIntField
-	case isa.SubOpIncStructFieldUint:
-		shape = program.TinyLeafIncUintField
+	case isa.SubOpIncrementStructFieldInt64:
+		shape = program.TinyLeafIncrementIntField
+	case isa.SubOpIncrementStructFieldUint64:
+		shape = program.TinyLeafIncrementUintField
 	default:
 		return
 	}
@@ -109,16 +100,14 @@ func tryClassifyIncField(compiledFunction *program.CompiledFunction, body []isa.
 		return
 	}
 	layoutIndex := int(op0.C)
-	if layoutIndex >= len(compiledFunction.StructLayoutTable) || hasNonNopAfter(body, first+1) {
+	if layoutIndex >= len(compiledFunction.StructLayoutTable) || !voidBodyEndsAfter(body, first+1) {
 		return
 	}
 	compiledFunction.TinyLeafLayout = compiledFunction.StructLayoutTable[layoutIndex]
 	compiledFunction.TinyLeafShape = shape
 }
 
-// tryClassifySetScalarFieldFromArg matches the void `recv.fieldX = argument` body: a lone
-// tier-0 scalar field set whose receiver is general[0] and whose value register is the
-// callee's second parameter, with nothing but NOPs after it.
+// tryClassifySetScalarFieldFromArg matches a void `recv.fieldX = argument` body.
 //
 // Takes compiledFunction (*CompiledFunction) which is the function whose shape is being
 // classified.
@@ -136,7 +125,7 @@ func tryClassifySetScalarFieldFromArg(compiledFunction *program.CompiledFunction
 		return
 	}
 	layoutIndex := int(op0.C)
-	if layoutIndex >= len(compiledFunction.StructLayoutTable) || hasNonNopAfter(body, first+1) {
+	if layoutIndex >= len(compiledFunction.StructLayoutTable) || !voidBodyEndsAfter(body, first+1) {
 		return
 	}
 	layout := compiledFunction.StructLayoutTable[layoutIndex]
@@ -166,12 +155,12 @@ func tinyLeafReceiverIsOnlyParameter(compiledFunction *program.CompiledFunction)
 // Returns the value bank, or isa.RegisterGeneral for any other opcode.
 func tinyLeafSetOpBank(op isa.Opcode) isa.RegisterKind {
 	switch op {
-	case isa.OpSetStructFieldIntT0:
-		return isa.RegisterInt
-	case isa.OpSetStructFieldUint:
-		return isa.RegisterUint
-	case isa.OpSetStructFieldFloat:
-		return isa.RegisterFloat
+	case isa.OpSetStructFieldInt64:
+		return isa.RegisterInt64
+	case isa.OpSetStructFieldUint64:
+		return isa.RegisterUint64
+	case isa.OpSetStructFieldFloat64:
+		return isa.RegisterFloat64
 	case isa.OpSetStructFieldBool:
 		return isa.RegisterBool
 	default:
@@ -188,11 +177,11 @@ func tinyLeafSetOpBank(op isa.Opcode) isa.RegisterKind {
 func tinyLeafScalarFieldBank(kind reflect.Kind) isa.RegisterKind {
 	switch kind {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return isa.RegisterInt
+		return isa.RegisterInt64
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return isa.RegisterUint
+		return isa.RegisterUint64
 	case reflect.Float32, reflect.Float64:
-		return isa.RegisterFloat
+		return isa.RegisterFloat64
 	case reflect.Bool:
 		return isa.RegisterBool
 	default:
@@ -222,19 +211,19 @@ func tinyLeafSiteCompatible(site *program.CallSite, callee *program.CompiledFunc
 		}
 	}
 	switch callee.TinyLeafShape {
-	case program.TinyLeafIncIntField, program.TinyLeafIncUintField, program.TinyLeafSetScalarFieldFromArg:
+	case program.TinyLeafIncrementIntField, program.TinyLeafIncrementUintField, program.TinyLeafSetScalarFieldFromArg:
 		return len(site.Returns) == 0
 	case program.TinyLeafReturnIntField:
-		return len(site.Returns) == 1 && site.Returns[0].Kind == isa.RegisterInt
+		return len(site.Returns) == 1 && site.Returns[0].Kind == isa.RegisterInt64
 	default:
-		return len(site.Returns) == 1 && site.Returns[0].Kind == isa.RegisterUint
+		return len(site.Returns) == 1 && site.Returns[0].Kind == isa.RegisterUint64
 	}
 }
 
-// tryClassifyReturnUintField matches `GET_STRUCT_FIELD_UINT_T0 + TIER2_RETURN`.
+// tryClassifyReturnUintField matches `GET_STRUCT_FIELD_UINT64 + RETURN`.
 //
 // Requires GET to write uint[0] with a==0 and b==0 (receiver is param 0) and the next
-// non-NOP op to be isa.OpDrillTier1 carrying the isa.SubOpDrillTier2 +
+// non-NO_OPERATION op to be isa.OpDrillTier1 carrying the isa.SubOpDrillTier2 +
 // isa.SubOpTier2Return decoder bytes. On match, stores the layout and sets the shape.
 //
 // Takes compiledFunction (*CompiledFunction) which is the function whose shape is being
@@ -250,11 +239,11 @@ func tryClassifyReturnUintField(compiledFunction *program.CompiledFunction, body
 	if layoutIndex >= len(compiledFunction.StructLayoutTable) {
 		return
 	}
-	next := findNextNonNop(body, first+1)
+	next := findNextNonNoOperation(body, first+1)
 	if next < 0 || !isTier2Return(body[next]) {
 		return
 	}
-	if hasNonNopAfter(body, next+1) {
+	if hasNonNoOperationAfter(body, next+1) {
 		return
 	}
 	compiledFunction.TinyLeafLayout = compiledFunction.StructLayoutTable[layoutIndex]
@@ -262,9 +251,9 @@ func tryClassifyReturnUintField(compiledFunction *program.CompiledFunction, body
 }
 
 // tryClassifyEnvAtIntFieldSlotOrReturnIntField classifies bodies that begin with
-// GET_STRUCT_FIELD_INT_T0. The body is either the 2-op `return recv.intField`
+// GET_STRUCT_FIELD_INT64. The body is either the 2-op `return recv.intField`
 // (TinyLeafReturnIntField) or the 3-op `return env[recv.slot]`
-// (tinyLeafReturnEnvUintAtIntFieldSlot); disambiguates by inspecting the next non-NOP op.
+// (tinyLeafReturnEnvUintAtIntFieldSlot).
 //
 // Takes compiledFunction (*CompiledFunction) which is the function whose shape is being
 // classified.
@@ -279,7 +268,7 @@ func tryClassifyEnvAtIntFieldSlotOrReturnIntField(compiledFunction *program.Comp
 	if layoutIndex >= len(compiledFunction.StructLayoutTable) {
 		return
 	}
-	next := findNextNonNop(body, first+1)
+	next := findNextNonNoOperation(body, first+1)
 	if next < 0 {
 		return
 	}
@@ -287,15 +276,15 @@ func tryClassifyEnvAtIntFieldSlotOrReturnIntField(compiledFunction *program.Comp
 	switch {
 	case isTier2Return(op1):
 		classifyReturnIntFieldShape(compiledFunction, body, next, layoutIndex)
-	case op1.Op == isa.OpSliceGetUint:
-		classifyEnvUintAtSliceGetUint(compiledFunction, body, next, layoutIndex, op1)
-	case op1.Op == isa.OpDrillTier1 && isa.SubOpcode(op1.A) == isa.SubOpSliceGetUintDirect:
-		classifyEnvUintAtSliceGetUintDirect(compiledFunction, body, next, layoutIndex, op1)
+	case op1.Op == isa.OpGetElementUint64:
+		classifyEnvUintAtGetElementUint64(compiledFunction, body, next, layoutIndex, op1)
+	case op1.Op == isa.OpDrillTier1 && isa.SubOpcode(op1.A) == isa.SubOpGetSliceUint64Element:
+		classifyEnvUintAtGetSliceUint64Element(compiledFunction, body, next, layoutIndex, op1)
 	}
 }
 
 // classifyReturnIntFieldShape finalises TinyLeafReturnIntField when the GET op is
-// immediately followed by a tier-2 return with no other non-NOP ops trailing.
+// immediately followed by a tier-2 return with no other non-NO_OPERATION ops trailing.
 //
 // Takes compiledFunction (*CompiledFunction) which is the function whose shape is being
 // classified.
@@ -303,15 +292,15 @@ func tryClassifyEnvAtIntFieldSlotOrReturnIntField(compiledFunction *program.Comp
 // Takes retPos (int) which is the position of the return op.
 // Takes layoutIndex (int) which indexes into structLayoutTable.
 func classifyReturnIntFieldShape(compiledFunction *program.CompiledFunction, body []isa.Instruction, retPos, layoutIndex int) {
-	if hasNonNopAfter(body, retPos+1) {
+	if hasNonNoOperationAfter(body, retPos+1) {
 		return
 	}
 	compiledFunction.TinyLeafLayout = compiledFunction.StructLayoutTable[layoutIndex]
 	compiledFunction.TinyLeafShape = program.TinyLeafReturnIntField
 }
 
-// classifyEnvUintAtSliceGetUint finalises tinyLeafReturnEnvUintAtIntFieldSlot when the
-// GET op is followed by isa.OpSliceGetUint env[recv.field] and a tier-2 return.
+// classifyEnvUintAtGetElementUint64 finalises tinyLeafReturnEnvUintAtIntFieldSlot when
+// the GET op is followed by isa.OpGetElementUint64 env[recv.field] and a tier-2 return.
 //
 // Takes compiledFunction (*CompiledFunction) which is the function whose shape is being
 // classified.
@@ -319,31 +308,32 @@ func classifyReturnIntFieldShape(compiledFunction *program.CompiledFunction, bod
 // Takes next (int) which is the position immediately after the GET.
 // Takes layoutIndex (int) which indexes into structLayoutTable.
 // Takes op1 (isa.Instruction) which is the candidate slice-get instruction.
-func classifyEnvUintAtSliceGetUint(compiledFunction *program.CompiledFunction, body []isa.Instruction, next, layoutIndex int, op1 isa.Instruction) {
+func classifyEnvUintAtGetElementUint64(compiledFunction *program.CompiledFunction, body []isa.Instruction, next, layoutIndex int, op1 isa.Instruction) {
 	if op1.A != 0 || op1.C != 0 {
 		return
 	}
-	ret := findNextNonNop(body, next+1)
+	ret := findNextNonNoOperation(body, next+1)
 	if ret < 0 || !isTier2Return(body[ret]) {
 		return
 	}
-	if hasNonNopAfter(body, ret+1) {
+	if hasNonNoOperationAfter(body, ret+1) {
 		return
 	}
 	compiledFunction.TinyLeafLayout = compiledFunction.StructLayoutTable[layoutIndex]
 	compiledFunction.TinyLeafShape = program.TinyLeafReturnEnvUintAtIntFieldSlot
 }
 
-// classifyEnvUintAtSliceGetUintDirect finalises typed-direct shape.
+// classifyEnvUintAtGetSliceUint64Element finalises typed-direct shape.
 //
 // Finalises tinyLeafReturnEnvUintAtIntFieldSlot for the typed-direct variant emitted when
-// narrow-uint widths are promoted to isa.RegisterSliceUint at the call-slot. Encoding:
+// narrow-uint widths are promoted to isa.RegisterSliceUint64 at the call-slot. The
+// encoding follows.
 //
-// DRILL_TIER1 a=isa.SubOpSliceGetUintDirect b=0 c=envSliceReg EXT a=indexReg b=0 c=0
-// TIER2_RETURN (1 value)
+// DRILL_TIER1 a=isa.SubOpGetSliceUint64Element b=0 c=envSliceReg EXTENSION a=indexReg b=0
+// c=0 RETURN (1 value)
 //
 // b=0 because the typed-direct op writes the uint result into uints[0] (the leaf's return
-// slot); c is the slicesUint register holding env.
+// slot). c is the slicesUint register holding env.
 //
 // Takes compiledFunction (*CompiledFunction) which is the function whose shape is being
 // classified.
@@ -351,34 +341,36 @@ func classifyEnvUintAtSliceGetUint(compiledFunction *program.CompiledFunction, b
 // Takes next (int) which is the position immediately after the GET.
 // Takes layoutIndex (int) which indexes into structLayoutTable.
 // Takes op1 (isa.Instruction) which is the candidate direct slice-get instruction.
-func classifyEnvUintAtSliceGetUintDirect(compiledFunction *program.CompiledFunction, body []isa.Instruction, next, layoutIndex int, op1 isa.Instruction) {
+func classifyEnvUintAtGetSliceUint64Element(compiledFunction *program.CompiledFunction, body []isa.Instruction, next, layoutIndex int, op1 isa.Instruction) {
 	if op1.B != 0 {
 		return
 	}
 	extPos := next + 1
-	if extPos >= len(body) || body[extPos].Op != isa.OpExt {
+	if extPos >= len(body) || body[extPos].Op != isa.OpExtension {
 		return
 	}
-	ret := findNextNonNop(body, extPos+1)
+	ret := findNextNonNoOperation(body, extPos+1)
 	if ret < 0 || !isTier2Return(body[ret]) {
 		return
 	}
-	if hasNonNopAfter(body, ret+1) {
+	if hasNonNoOperationAfter(body, ret+1) {
 		return
 	}
 	compiledFunction.TinyLeafLayout = compiledFunction.StructLayoutTable[layoutIndex]
 	compiledFunction.TinyLeafShape = program.TinyLeafReturnEnvUintAtIntFieldSlot
 }
 
-// findNextNonNop returns the index of the first non-NOP instruction at or after start, or
-// -1 if none. NOPs in pipit are encoded as {isa.OpDrillTier1, 0, 0, 0} (the all-zero word
-// that the dispatch fast-path treats as a no-op).
+// findNextNonNoOperation returns the index of the first non-NO_OPERATION instruction at
+// or after start, or -1 if none. no-operation instructions in pipit are encoded as
+// {isa.OpDrillTier1, 0, 0, 0} (the all-zero word that the dispatch fast-path treats as a
+// no-op).
 //
 // Takes body ([]isa.Instruction) which is the function body slice.
 // Takes start (int) which is the starting index.
 //
-// Returns the index of the first non-NOP at or after start, or -1 when only NOPs remain.
-func findNextNonNop(body []isa.Instruction, start int) int {
+// Returns the index of the first non-NO_OPERATION at or after start, or -1 when only
+// no-operation instructions remain.
+func findNextNonNoOperation(body []isa.Instruction, start int) int {
 	for i := start; i < len(body); i++ {
 		instr := body[i]
 		if instr.Op == isa.OpDrillTier1 && instr.A == 0 && instr.B == 0 && instr.C == 0 {
@@ -389,24 +381,38 @@ func findNextNonNop(body []isa.Instruction, start int) int {
 	return -1
 }
 
-// hasNonNopAfter reports whether any instruction at or after start is not a NOP. Used to
-// guard against accidental "match" on bodies that have trailing real ops the classifier
-// does not recognise.
+// hasNonNoOperationAfter reports whether any instruction at or after start is not a
+// NO_OPERATION. Used to guard against accidental "match" on bodies that have trailing
+// real ops the classifier does not recognise.
 //
 // Takes body ([]isa.Instruction) which is the function body slice.
 // Takes start (int) which is the starting index.
 //
-// Returns true when at least one non-NOP exists at or after start.
-func hasNonNopAfter(body []isa.Instruction, start int) bool {
-	return findNextNonNop(body, start) >= 0
+// Returns true when at least one non-NO_OPERATION exists at or after start.
+func hasNonNoOperationAfter(body []isa.Instruction, start int) bool {
+	return findNextNonNoOperation(body, start) >= 0
 }
 
-// isTier2Return reports whether instr is the tier-2 TIER2_RETURN op. The encoding is
+// voidBodyEndsAfter reports whether the remaining body does no work before returning.
+//
+// Takes body ([]isa.Instruction) which is the function body slice.
+// Takes start (int) which is the starting index.
+//
+// Returns bool which is true when nothing but the frame's end follows.
+func voidBodyEndsAfter(body []isa.Instruction, start int) bool {
+	next := findNextNonNoOperation(body, start)
+	if next < 0 {
+		return true
+	}
+	return isa.InstrIsTier3SubOp(body[next], isa.SubOpTier3ReturnVoid) && !hasNonNoOperationAfter(body, next+1)
+}
+
+// isTier2Return reports whether instr is the tier-2 RETURN op. The encoding is
 // {isa.OpDrillTier1, isa.SubOpDrillTier2, isa.SubOpTier2Return, count}.
 //
 // Takes instr (isa.Instruction) which is the candidate instruction.
 //
-// Returns true when instr matches the TIER2_RETURN encoding.
+// Returns true when instr matches the RETURN encoding.
 func isTier2Return(instr isa.Instruction) bool {
 	return instr.Op == isa.OpDrillTier1 &&
 		isa.SubOpcode(instr.A) == isa.SubOpDrillTier2 &&
@@ -415,19 +421,21 @@ func isTier2Return(instr isa.Instruction) bool {
 
 // runTinyLeafInline executes the recognised tiny-leaf body of callee directly in the
 // caller's frame, writing the result into the caller's return slot defined by
-// site.Returns[0]. The path bypasses pushCompiledFrame entirely.
+// site.Returns[0].
 //
-// runTinyLeafInline dispatches a classified tiny-leaf callee without pushing a frame.
-// Unrecognised shapes fall through and return opContinue so the caller takes the ordinary
-// call path.
+// A leaf that reads a field declines when it cannot read its receiver or its argument in
+// place. It has then written nothing, and the caller has to make the call in a frame. A
+// leaf that writes a field makes that call itself.
 //
 // Takes vm (*VM) which carries the panic machinery.
 // Takes registers (*Registers) which is the caller's register file.
 // Takes site (*CallSite) which carries argument and return slot metadata.
 // Takes callee (*CompiledFunction) which carries the tiny-leaf shape and layout.
 //
-// Returns opContinue.
-func runTinyLeafInline(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) OpResult {
+// Returns OpResult which is opContinue once the body has run, the panic it raised, or the
+// result of the framed call a writing leaf fell back to.
+// Returns bool which is false when the leaf declined and the call is still to be made.
+func runTinyLeafInline(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) (OpResult, bool) {
 	switch callee.TinyLeafShape {
 	case program.TinyLeafReturnUintField:
 		return runTinyLeafReturnUintField(vm, registers, site, callee)
@@ -435,15 +443,15 @@ func runTinyLeafInline(vm *VM, registers *Registers, site *program.CallSite, cal
 		return runTinyLeafReturnIntField(vm, registers, site, callee)
 	case program.TinyLeafReturnEnvUintAtIntFieldSlot:
 		return runTinyLeafReturnEnvUintAtIntFieldSlot(vm, registers, site, callee)
-	case program.TinyLeafIncIntField:
-		return runTinyLeafIncIntField(vm, registers, site, callee)
-	case program.TinyLeafIncUintField:
-		return runTinyLeafIncUintField(vm, registers, site, callee)
+	case program.TinyLeafIncrementIntField:
+		return runTinyLeafIncrementIntField(vm, registers, site, callee), true
+	case program.TinyLeafIncrementUintField:
+		return runTinyLeafIncrementUintField(vm, registers, site, callee), true
 	case program.TinyLeafSetScalarFieldFromArg:
-		return runTinyLeafSetScalarFieldFromArg(vm, registers, site, callee)
+		return runTinyLeafSetScalarFieldFromArg(vm, registers, site, callee), true
 	default:
 	}
-	return opContinue
+	return opContinue, false
 }
 
 // tinyLeafMutateFallback finishes a mutating tiny-leaf call whose receiver the inline
@@ -488,11 +496,11 @@ func tinyLeafArgumentValue(registers *Registers, site *program.CallSite, kind re
 		return tinyLeafScalarArgument{}, false
 	}
 	switch bank {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return tinyLeafScalarArgument{intValue: registers.Ints[argument.Register]}, true
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return tinyLeafScalarArgument{uintValue: registers.Uints[argument.Register]}, true
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return tinyLeafScalarArgument{floatValue: registers.Floats[argument.Register]}, true
 	default:
 		return tinyLeafScalarArgument{boolValue: registers.Bools[argument.Register]}, true
@@ -520,11 +528,11 @@ func tinyLeafBoxedArgumentValue(value reflect.Value, bank isa.RegisterKind) (tin
 		return tinyLeafScalarArgument{}, false
 	}
 	switch bank {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return tinyLeafScalarArgument{intValue: value.Int()}, true
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return tinyLeafScalarArgument{uintValue: value.Uint()}, true
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return tinyLeafScalarArgument{floatValue: value.Float()}, true
 	default:
 		return tinyLeafScalarArgument{boolValue: value.Bool()}, true
@@ -539,26 +547,27 @@ func tinyLeafBoxedArgumentValue(value reflect.Value, bank isa.RegisterKind) (tin
 // Takes site (*CallSite) which carries argument and return slot metadata.
 // Takes callee (*CompiledFunction) which carries the layout selected by the classifier.
 //
-// Returns opContinue once the result has been written into the caller's return register,
-// or the raised interpreted panic when the receiver is a nil pointer.
+// Returns OpResult which is opContinue once the result has been written into the caller's
+// return register, or the raised interpreted panic when the receiver is a nil pointer.
+// Returns bool which is false when the field could not be read and nothing was written.
 //
 //nolint:dupl // hot-path twin
-func runTinyLeafReturnUintField(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) OpResult {
+func runTinyLeafReturnUintField(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) (OpResult, bool) {
 	recv := registers.General[site.Arguments[0].Register]
 	if base, ok := structFieldUnsafeBaseFromValue(recv); ok {
 		fieldPointer := unsafe.Add(base, uintptr(callee.TinyLeafLayout.Offset))
 		registers.Uints[site.Returns[0].Register] = readUintAt(fieldPointer, reflect.Kind(callee.TinyLeafLayout.Kind))
-		return opContinue
+		return opContinue, true
 	}
 	field, fieldOK := tinyLeafReflectField(recv, callee.TinyLeafLayout)
-	if !fieldOK {
+	if !fieldOK || !field.CanUint() {
 		if structFieldReceiverIsNilPointer(recv) {
-			return raiseNilPointerDereference(vm)
+			return raiseNilPointerDereference(vm), true
 		}
-		return opContinue
+		return opContinue, false
 	}
 	registers.Uints[site.Returns[0].Register] = field.Uint()
-	return opContinue
+	return opContinue, true
 }
 
 // runTinyLeafReturnIntField implements the inlined body for the `return recv.fieldX`
@@ -569,83 +578,98 @@ func runTinyLeafReturnUintField(vm *VM, registers *Registers, site *program.Call
 // Takes site (*CallSite) which carries argument and return slot metadata.
 // Takes callee (*CompiledFunction) which carries the layout selected by the classifier.
 //
-// Returns opContinue once the result has been written into the caller's return register,
-// or the raised interpreted panic when the receiver is a nil pointer.
+// Returns OpResult which is opContinue once the result has been written into the caller's
+// return register, or the raised interpreted panic when the receiver is a nil pointer.
+// Returns bool which is false when the field could not be read and nothing was written.
 //
 //nolint:dupl // hot-path twin
-func runTinyLeafReturnIntField(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) OpResult {
+func runTinyLeafReturnIntField(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) (OpResult, bool) {
 	recv := registers.General[site.Arguments[0].Register]
 	if base, ok := structFieldUnsafeBaseFromValue(recv); ok {
 		fieldPointer := unsafe.Add(base, uintptr(callee.TinyLeafLayout.Offset))
 		registers.Ints[site.Returns[0].Register] = readIntAt(fieldPointer, reflect.Kind(callee.TinyLeafLayout.Kind))
-		return opContinue
+		return opContinue, true
 	}
 	field, fieldOK := tinyLeafReflectField(recv, callee.TinyLeafLayout)
-	if !fieldOK {
+	if !fieldOK || !field.CanInt() {
 		if structFieldReceiverIsNilPointer(recv) {
-			return raiseNilPointerDereference(vm)
+			return raiseNilPointerDereference(vm), true
 		}
-		return opContinue
+		return opContinue, false
 	}
 	registers.Ints[site.Returns[0].Register] = field.Int()
-	return opContinue
+	return opContinue, true
 }
 
 // runTinyLeafReturnEnvUintAtIntFieldSlot implements the inlined body for `return
 // env[recv.slot]`.
-//
-// Reads the int slot field from the receiver, then indexes into the uint slice held in
-// the env argument (arguments[1] for the recognised shape, varNode.Eval style). Switches
-// over the env argument's bank. The remaining kinds are handled by the default, which
-// delegates to tinyLeafEnvGeneralIndex().
 //
 // Takes vm (*VM) which carries the panic machinery.
 // Takes registers (*Registers) which is the caller's register file.
 // Takes site (*CallSite) which carries argument and return slot metadata.
 // Takes callee (*CompiledFunction) which carries the layout selected by the classifier.
 //
-// Returns opContinue once the result has been written into the caller's return register.
-func runTinyLeafReturnEnvUintAtIntFieldSlot(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) OpResult {
+// Returns OpResult which is opContinue once the result has been written into the caller's
+// return register, or the raised interpreted panic for a nil pointer receiver or a slot
+// outside the slice.
+// Returns bool which is false when the slot or the slice could not be read and nothing
+// was written.
+func runTinyLeafReturnEnvUintAtIntFieldSlot(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) (OpResult, bool) {
 	if len(site.Arguments) < 2 {
-		return opContinue
+		return opContinue, false
 	}
 	recv := registers.General[site.Arguments[0].Register]
-	base, ok := structFieldUnsafeBaseFromValue(recv)
-	if !ok {
-		if structFieldReceiverIsNilPointer(recv) {
-			return raiseNilPointerDereference(vm)
-		}
-		return opContinue
+	var slot int64
+	if base, ok := structFieldUnsafeBaseFromValue(recv); ok {
+		slot = readIntAt(unsafe.Add(base, uintptr(callee.TinyLeafLayout.Offset)), reflect.Kind(callee.TinyLeafLayout.Kind))
+	} else if reflected, readable := tinyLeafReflectSlot(recv, callee.TinyLeafLayout); readable {
+		slot = reflected
+	} else if structFieldReceiverIsNilPointer(recv) {
+		return raiseNilPointerDereference(vm), true
+	} else {
+		return opContinue, false
 	}
-
-	fieldPointer := unsafe.Add(base, uintptr(callee.TinyLeafLayout.Offset))
-	slot := readIntAt(fieldPointer, reflect.Kind(callee.TinyLeafLayout.Kind))
 
 	switch envArg := site.Arguments[1]; envArg.Kind {
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		envSlice := registers.slicesUint[envArg.Register]
 		if int(slot) < 0 || int(slot) >= len(envSlice) {
-			return tinyLeafIndexPanic(vm, int(slot), len(envSlice))
+			return tinyLeafIndexPanic(vm, int(slot), len(envSlice)), true
 		}
 		registers.Uints[site.Returns[0].Register] = envSlice[int(slot)]
-		return opContinue
-	case isa.RegisterSliceInt:
+		return opContinue, true
+	case isa.RegisterSliceInt64:
 		envSlice := registers.SlicesInt[envArg.Register]
 		if int(slot) < 0 || int(slot) >= len(envSlice) {
-			return tinyLeafIndexPanic(vm, int(slot), len(envSlice))
+			return tinyLeafIndexPanic(vm, int(slot), len(envSlice)), true
 		}
 		registers.Uints[site.Returns[0].Register] = safeconv.Int64ToUint64Reinterpret(envSlice[int(slot)])
-		return opContinue
-	default:
+		return opContinue, true
+	case isa.RegisterGeneral:
 		return tinyLeafEnvGeneralIndex(vm, registers, site, envArg, int(slot))
+	default:
+		return opContinue, false
 	}
+}
+
+// tinyLeafReflectSlot reads the int slot field through reflect for an env-index leaf
+// whose receiver is held by value.
+//
+// Takes receiver (reflect.Value) which is the receiver.
+// Takes layout (program.StructFieldLayout) which locates the field.
+//
+// Returns int64 which is the slot.
+// Returns bool which is false when the receiver holds no such field to read.
+func tinyLeafReflectSlot(receiver reflect.Value, layout program.StructFieldLayout) (int64, bool) {
+	field, ok := tinyLeafReflectField(receiver, layout)
+	if !ok || !field.CanInt() {
+		return 0, false
+	}
+	return field.Int(), true
 }
 
 // tinyLeafEnvGeneralIndex handles the reflect fallback for the env-index tiny leaf when
 // the env argument lives in the general bank.
-//
-// Indexes the general-bank slice value reflectively. Split out as the cold path so the
-// typed cases stay inline on the hot walker.
 //
 // Takes vm (*VM) which carries the panic machinery.
 // Takes registers (*Registers) which is the caller's register file.
@@ -653,18 +677,20 @@ func runTinyLeafReturnEnvUintAtIntFieldSlot(vm *VM, registers *Registers, site *
 // Takes envArg (VarLocation) which locates the env argument in the general bank.
 // Takes slot (int) which is the env index derived from the receiver field.
 //
-// Returns opContinue once the result has been written, or opPanicError on an out-of-range
-// slot.
-func tinyLeafEnvGeneralIndex(vm *VM, registers *Registers, site *program.CallSite, envArg program.VarLocation, slot int) OpResult {
+// Returns OpResult which is opContinue once the result has been written, or the raised
+// panic for an out-of-range slot.
+// Returns bool which is false when the argument is not a slice of unsigned integers and
+// nothing was written.
+func tinyLeafEnvGeneralIndex(vm *VM, registers *Registers, site *program.CallSite, envArg program.VarLocation, slot int) (OpResult, bool) {
 	envValue := registers.General[envArg.Register]
-	if !envValue.IsValid() || envValue.Kind() != reflect.Slice {
-		return opContinue
+	if !envValue.IsValid() || envValue.Kind() != reflect.Slice || !isUnsignedIntKind(envValue.Type().Elem().Kind()) {
+		return opContinue, false
 	}
 	if slot < 0 || slot >= envValue.Len() {
-		return tinyLeafIndexPanic(vm, slot, envValue.Len())
+		return tinyLeafIndexPanic(vm, slot, envValue.Len()), true
 	}
 	registers.Uints[site.Returns[0].Register] = envValue.Index(slot).Uint()
-	return opContinue
+	return opContinue, true
 }
 
 // tinyLeafIndexPanic raises Go's mandatory index-out-of-range panic for the inlined
@@ -761,7 +787,7 @@ func tinyLeafReflectField(recv reflect.Value, layout program.StructFieldLayout) 
 }
 
 // readUintAt loads a uint8/16/32/64-kind field from fieldPtr. Mirrors the switch in
-// handleGetStructFieldUintT0.
+// handleGetStructFieldUint64.
 //
 // Takes p (unsafe.Pointer) which addresses the field bytes.
 // Takes kind (reflect.Kind) which selects the load width.
@@ -788,7 +814,7 @@ func readUintAt(p unsafe.Pointer, kind reflect.Kind) uint64 {
 }
 
 // readIntAt loads an int8/16/32/64-kind field from fieldPtr. Mirrors the switch in
-// handleGetStructFieldIntT0.
+// handleGetStructFieldInt64.
 //
 // Takes p (unsafe.Pointer) which addresses the field bytes.
 // Takes kind (reflect.Kind) which selects the load width.

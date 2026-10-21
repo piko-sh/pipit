@@ -4,31 +4,29 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function intIntLookup
-;   registers: int=5 general=1
-;   dispatch:  asm=8 shim=1 exit=0 go=1
-;   params:    (general, int)
-;   returns:   (int)
+;   registers: int64=5 general=1
+;   dispatch:  asm=7 shim=1 exit=0 go=0
+;   params:    (general, int64)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=-1
 
-0000 S 0:MAP_INDEX_OK_INT_INT       3   0   0
-0001   0:EXT                        4   0   0
-0002 A 1:MOVE_INT                  35   1   3
-0003 A 1:MOVE_INT                  35   2   4
-0004 G 1:NOT                       52   3   2
-0005 A 0:JUMP_IF_FALSE              3   3   0    ; if ints[3] == 0 goto +3
-0006 A 0:LOAD_INT_CONST             3   0   0    ; ints[3] = -1
-0007 A 1:MOVE_INT                  35   0   3
-0008 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0009 A 1:MOVE_INT                  35   0   1
-0010 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 0:GET_MAP_INT64_INT64_OK                               3   0   0
+0001   0:EXTENSION                                            4   0   0
+0002 A 1:MOVE_INT64                                          35   1   3
+0003 A 1:MOVE_INT64                                          35   2   4
+0004 A 0:JUMP_IF_TRUE                                         2   2   0    ; if ints[2] != 0 goto +2
+0005 A 0:LOAD_INT64_CONSTANT                                  0   0   0    ; ints[0] = -1
+0006 A 2:RETURN                                               0  10   1    ; 1 values
+0007 A 1:MOVE_INT64                                          35   0   1
+0008 A 2:RETURN                                               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function stringStringLookup
-;   registers: int=2 string=3 general=1
-;   dispatch:  asm=8 shim=1 exit=0 go=1
+;   registers: int64=2 string=3 general=1
+;   dispatch:  asm=7 shim=1 exit=0 go=0
 ;   params:    (general, string)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -36,170 +34,209 @@
 ; constants:
 ;   strings: [0]="missing"
 
-0000 S 0:MAP_INDEX_OK_STRING_STRING   2   0   0
-0001   0:EXT                        1   0   0
-0002 A 1:MOVE_STRING               37   1   2
-0003 A 1:MOVE_INT                  35   0   1
-0004 G 1:NOT                       52   1   0
-0005 A 0:JUMP_IF_FALSE              1   3   0    ; if ints[1] == 0 goto +3
-0006 A 0:LOAD_STRING_CONST          2   0   0    ; strings[2] = "missing"
-0007 A 1:MOVE_STRING               37   0   2
-0008 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0009 A 1:MOVE_STRING               37   0   1
-0010 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 0:GET_MAP_STRING_STRING_OK                             2   0   0
+0001   0:EXTENSION                                            1   0   0
+0002 A 1:MOVE_STRING                                         37   1   2
+0003 A 1:MOVE_INT64                                          35   0   1
+0004 A 0:JUMP_IF_TRUE                                         0   2   0    ; if ints[0] != 0 goto +2
+0005 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "missing"
+0006 A 2:RETURN                                               0  10   1    ; 1 values
+0007 A 1:MOVE_STRING                                         37   0   1
+0008 A 2:RETURN                                               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function stringIntLookup
-;   registers: int=4 string=1 general=1
-;   dispatch:  asm=7 shim=1 exit=0 go=1
+;   registers: int64=4 string=1 general=1
+;   dispatch:  asm=6 shim=1 exit=0 go=0
 ;   params:    (general, string)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=-1
 
-0000 S 0:MAP_INDEX_OK_STRING_INT    2   0   0
-0001   0:EXT                        3   0   0
-0002 A 1:MOVE_INT                  35   0   2
-0003 A 1:MOVE_INT                  35   1   3
-0004 G 1:NOT                       52   2   1
-0005 A 0:JUMP_IF_FALSE              2   3   0    ; if ints[2] == 0 goto +3
-0006 A 0:LOAD_INT_CONST             2   0   0    ; ints[2] = -1
-0007 A 1:MOVE_INT                  35   0   2
-0008 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0009 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 0:GET_MAP_STRING_INT64_OK                              2   0   0
+0001   0:EXTENSION                                            3   0   0
+0002 A 1:MOVE_INT64                                          35   0   2
+0003 A 1:MOVE_INT64                                          35   1   3
+0004 A 0:JUMP_IF_TRUE                                         1   2   0    ; if ints[1] != 0 goto +2
+0005 A 0:LOAD_INT64_CONSTANT                                  0   0   0    ; ints[0] = -1
+0006 A 2:RETURN                                               0  10   1    ; 1 values
+0007 A 2:RETURN                                               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function intStringLookup
-;   registers: int=3 string=2 general=1
-;   dispatch:  asm=7 shim=1 exit=0 go=1
-;   params:    (general, int)
+;   registers: int64=3 string=2 general=1
+;   dispatch:  asm=6 shim=1 exit=0 go=0
+;   params:    (general, int64)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   strings: [0]="missing"
 
-0000 S 0:MAP_INDEX_OK_INT_STRING    1   0   0
-0001   0:EXT                        2   0   0
-0002 A 1:MOVE_STRING               37   0   1
-0003 A 1:MOVE_INT                  35   1   2
-0004 G 1:NOT                       52   2   1
-0005 A 0:JUMP_IF_FALSE              2   3   0    ; if ints[2] == 0 goto +3
-0006 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "missing"
-0007 A 1:MOVE_STRING               37   0   1
-0008 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0009 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 0:GET_MAP_INT64_STRING_OK                              1   0   0
+0001   0:EXTENSION                                            2   0   0
+0002 A 1:MOVE_STRING                                         37   0   1
+0003 A 1:MOVE_INT64                                          35   1   2
+0004 A 0:JUMP_IF_TRUE                                         1   2   0    ; if ints[1] != 0 goto +2
+0005 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "missing"
+0006 A 2:RETURN                                               0  10   1    ; 1 values
+0007 A 2:RETURN                                               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=4 string=6 general=3
-;   dispatch:  asm=43 shim=19 exit=0 go=22
+;   registers: int64=25 string=15 general=9
+;   dispatch:  asm=76 shim=47 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
-;   ints:    [0]=1  [1]=10  [2]=2  [3]=20  [4]=3  [5]=42  [6]=7  [7]=99
-;   strings: [0]="a"  [1]="alpha"  [2]="z"  [3]="k"  [4]="seven"  [5]=""  [6]="/"
+;   ints:    [0]=1  [1]=10  [2]=2  [3]=20  [4]=3  [5]=42  [6]=7  [7]=99  [8]=-1
+;   strings: [0]="a"  [1]="alpha"  [2]="z"  [3]="k"  [4]="seven"  [5]=""  [6]="/"  [7]="missing"
 
-0000 G 2:MAKE_MAP                   0  12   0
-0001   0:EXT                        0   0   1
-0002 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0003 A 1:LOAD_INT_CONST_SMALL      75   1  10    ; ints[1] = 10
-0004 G 1:MOVE_INT_TO_GENERAL       40   1   0
-0005 G 1:MOVE_INT_TO_GENERAL       40   2   1
-0006 S 0:MAP_SET                    0   1   2
-0007 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
-0008 A 1:LOAD_INT_CONST_SMALL      75   1  20    ; ints[1] = 20
-0009 G 1:MOVE_INT_TO_GENERAL       40   1   0
-0010 G 1:MOVE_INT_TO_GENERAL       40   2   1
-0011 S 0:MAP_SET                    0   1   2
-0012 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
-0013 A 1:CALL                     128   0   0    ; call (site 0)
-0014 A 1:MOVE_INT                  35   0   1
-0015 G 2:MAKE_MAP                   0  12   0
-0016   0:EXT                        0   0   1
-0017 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
-0018 A 1:LOAD_INT_CONST_SMALL      75   2  10    ; ints[2] = 10
-0019 G 1:MOVE_INT_TO_GENERAL       40   1   1
-0020 G 1:MOVE_INT_TO_GENERAL       40   2   2
-0021 S 0:MAP_SET                    0   1   2
-0022 A 1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
-0023 A 1:LOAD_INT_CONST_SMALL      75   2  20    ; ints[2] = 20
-0024 G 1:MOVE_INT_TO_GENERAL       40   1   1
-0025 G 1:MOVE_INT_TO_GENERAL       40   2   2
-0026 S 0:MAP_SET                    0   1   2
-0027 A 1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
-0028 A 1:CALL                     128   1   0    ; call (site 1)
-0029 A 1:MOVE_INT                  35   1   2
-0030 G 2:MAKE_MAP                   0  12   0
-0031   0:EXT                        1   0   1
-0032 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "a"
-0033 A 0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "alpha"
-0034 G 1:MOVE_STRING_TO_GENERAL    44   1   0
-0035 G 1:MOVE_STRING_TO_GENERAL    44   2   1
-0036 S 0:MAP_SET                    0   1   2
-0037 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "a"
-0038 A 1:CALL                     128   2   0    ; call (site 2)
-0039 A 1:MOVE_STRING               37   0   1
-0040 G 2:MAKE_MAP                   0  12   0
-0041   0:EXT                        1   0   1
-0042 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "a"
-0043 A 0:LOAD_STRING_CONST          2   1   0    ; strings[2] = "alpha"
-0044 G 1:MOVE_STRING_TO_GENERAL    44   1   1
-0045 G 1:MOVE_STRING_TO_GENERAL    44   2   2
-0046 S 0:MAP_SET                    0   1   2
-0047 A 0:LOAD_STRING_CONST          1   2   0    ; strings[1] = "z"
-0048 A 1:CALL                     128   3   0    ; call (site 3)
-0049 A 1:MOVE_STRING               37   1   2
-0050 G 2:MAKE_MAP                   0  12   0
-0051   0:EXT                        2   0   1
-0052 A 0:LOAD_STRING_CONST          2   3   0    ; strings[2] = "k"
-0053 A 1:LOAD_INT_CONST_SMALL      75   2  42    ; ints[2] = 42
-0054 G 1:MOVE_STRING_TO_GENERAL    44   1   2
-0055 G 1:MOVE_INT_TO_GENERAL       40   2   2
-0056 S 0:MAP_SET                    0   1   2
-0057 A 0:LOAD_STRING_CONST          2   3   0    ; strings[2] = "k"
-0058 A 1:CALL                     128   4   0    ; call (site 4)
-0059 G 2:MAKE_MAP                   0  12   0
-0060   0:EXT                        3   0   1
-0061 A 1:LOAD_INT_CONST_SMALL      75   3   7    ; ints[3] = 7
-0062 A 0:LOAD_STRING_CONST          2   4   0    ; strings[2] = "seven"
-0063 G 1:MOVE_INT_TO_GENERAL       40   1   3
-0064 G 1:MOVE_STRING_TO_GENERAL    44   2   2
-0065 S 0:MAP_SET                    0   1   2
-0066 A 1:LOAD_INT_CONST_SMALL      75   3  99    ; ints[3] = 99
-0067 A 1:CALL                     128   5   0    ; call (site 5)
-0068 A 0:LOAD_STRING_CONST          3   5   0    ; strings[3] = ""
-0069 A 1:CALL_SCALAR              134   6   0
-0070 S 0:CONCAT_STRING              3   3   4
-0071 A 0:LOAD_STRING_CONST          4   6   0    ; strings[4] = "/"
-0072 S 0:CONCAT_STRING              3   3   4
-0073 A 1:CALL_SCALAR              134   7   0
-0074 S 0:CONCAT_STRING              3   3   4
-0075 A 0:LOAD_STRING_CONST          4   6   0    ; strings[4] = "/"
-0076 S 0:CONCAT_STRING              5   3   4
-0077 S 0:CONCAT_STRING              3   5   0
-0078 A 0:LOAD_STRING_CONST          4   6   0    ; strings[4] = "/"
-0079 S 0:CONCAT_STRING              5   3   4
-0080 S 0:CONCAT_STRING              3   5   1
-0081 A 0:LOAD_STRING_CONST          4   6   0    ; strings[4] = "/"
-0082 S 0:CONCAT_STRING              3   3   4
-0083 A 1:CALL_SCALAR              134   8   0
-0084 S 0:CONCAT_STRING              3   3   4
-0085 A 0:LOAD_STRING_CONST          4   6   0    ; strings[4] = "/"
-0086 S 0:CONCAT_STRING              5   3   4
-0087 S 0:CONCAT_STRING              3   5   2
-0088 A 1:MOVE_STRING               37   0   3
-0089 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 2:MAKE_MAP                                             0  12   0
+0001   0:EXTENSION                                            0   0   1
+0002 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0003 A 1:LOAD_INT64_IMMEDIATE                                75   1  10    ; ints[1] = 10
+0004 S 1:BOX_INT64                                           40   1   0
+0005 S 1:BOX_INT64                                           40   2   1
+0006 S 0:SET_MAP                                              0   1   2
+0007 A 1:LOAD_INT64_IMMEDIATE                                75   0   2    ; ints[0] = 2
+0008 A 1:LOAD_INT64_IMMEDIATE                                75   1  20    ; ints[1] = 20
+0009 S 1:BOX_INT64                                           40   1   0
+0010 S 1:BOX_INT64                                           40   2   1
+0011 S 0:SET_MAP                                              0   1   2
+0012 A 1:LOAD_INT64_IMMEDIATE                                75   0   2    ; ints[0] = 2
+0013 A 0:MOVE_GENERAL                                         3   0   0
+0014 A 1:MOVE_INT64                                          35   1   0
+0015 S 0:GET_MAP_INT64_INT64_OK                               7   3   1    ; inlined body of function 0 called at PC 13
+0016   0:EXTENSION                                            8   0   0
+0017 A 1:MOVE_INT64                                          35   5   7
+0018 A 1:MOVE_INT64                                          35   6   8
+0019 A 0:JUMP_IF_TRUE                                         6   2   0    ; if ints[6] != 0 goto +2
+0020 A 0:LOAD_INT64_CONSTANT                                  0   8   0    ; ints[0] = -1
+0021 A 1:JUMP                                                74   1   0    ; goto 1
+0022 A 1:MOVE_INT64                                          35   0   5
+0023 S 2:MAKE_MAP                                             0  12   0
+0024   0:EXTENSION                                            0   0   1
+0025 A 1:LOAD_INT64_IMMEDIATE                                75   1   1    ; ints[1] = 1
+0026 A 1:LOAD_INT64_IMMEDIATE                                75   2  10    ; ints[2] = 10
+0027 S 1:BOX_INT64                                           40   1   1
+0028 S 1:BOX_INT64                                           40   2   2
+0029 S 0:SET_MAP                                              0   1   2
+0030 A 1:LOAD_INT64_IMMEDIATE                                75   1   2    ; ints[1] = 2
+0031 A 1:LOAD_INT64_IMMEDIATE                                75   2  20    ; ints[2] = 20
+0032 S 1:BOX_INT64                                           40   1   1
+0033 S 1:BOX_INT64                                           40   2   2
+0034 S 0:SET_MAP                                              0   1   2
+0035 A 1:LOAD_INT64_IMMEDIATE                                75   1   3    ; ints[1] = 3
+0036 A 0:MOVE_GENERAL                                         4   0   0
+0037 A 1:MOVE_INT64                                          35   2   1
+0038 S 0:GET_MAP_INT64_INT64_OK                              12   4   2    ; inlined body of function 0 called at PC 36
+0039   0:EXTENSION                                           13   0   0
+0040 A 1:MOVE_INT64                                          35  10  12
+0041 A 1:MOVE_INT64                                          35  11  13
+0042 A 0:JUMP_IF_TRUE                                        11   2   0    ; if ints[11] != 0 goto +2
+0043 A 0:LOAD_INT64_CONSTANT                                  1   8   0    ; ints[1] = -1
+0044 A 1:JUMP                                                74   1   0    ; goto 1
+0045 A 1:MOVE_INT64                                          35   1  10
+0046 S 2:MAKE_MAP                                             0  12   0
+0047   0:EXTENSION                                            1   0   1
+0048 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "a"
+0049 A 0:LOAD_STRING_CONSTANT                                 1   1   0    ; strings[1] = "alpha"
+0050 S 1:BOX_STRING                                          44   1   0
+0051 S 1:BOX_STRING                                          44   2   1
+0052 S 0:SET_MAP                                              0   1   2
+0053 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "a"
+0054 A 0:MOVE_GENERAL                                         5   0   0
+0055 A 1:MOVE_STRING                                         37   1   0
+0056 S 0:GET_MAP_STRING_STRING_OK                             8   5   1    ; inlined body of function 1 called at PC 54
+0057   0:EXTENSION                                           15   0   0
+0058 A 1:MOVE_STRING                                         37   7   8
+0059 A 1:MOVE_INT64                                          35  14  15
+0060 A 0:JUMP_IF_TRUE                                        14   2   0    ; if ints[14] != 0 goto +2
+0061 A 0:LOAD_STRING_CONSTANT                                 0   7   0    ; strings[0] = "missing"
+0062 A 1:JUMP                                                74   1   0    ; goto 1
+0063 A 1:MOVE_STRING                                         37   0   7
+0064 S 2:MAKE_MAP                                             0  12   0
+0065   0:EXTENSION                                            1   0   1
+0066 A 0:LOAD_STRING_CONSTANT                                 1   0   0    ; strings[1] = "a"
+0067 A 0:LOAD_STRING_CONSTANT                                 2   1   0    ; strings[2] = "alpha"
+0068 S 1:BOX_STRING                                          44   1   1
+0069 S 1:BOX_STRING                                          44   2   2
+0070 S 0:SET_MAP                                              0   1   2
+0071 A 0:LOAD_STRING_CONSTANT                                 1   2   0    ; strings[1] = "z"
+0072 A 0:MOVE_GENERAL                                         6   0   0
+0073 A 1:MOVE_STRING                                         37   2   1
+0074 S 0:GET_MAP_STRING_STRING_OK                            11   6   2    ; inlined body of function 1 called at PC 72
+0075   0:EXTENSION                                           17   0   0
+0076 A 1:MOVE_STRING                                         37  10  11
+0077 A 1:MOVE_INT64                                          35  16  17
+0078 A 0:JUMP_IF_TRUE                                        16   2   0    ; if ints[16] != 0 goto +2
+0079 A 0:LOAD_STRING_CONSTANT                                 1   7   0    ; strings[1] = "missing"
+0080 A 1:JUMP                                                74   1   0    ; goto 1
+0081 A 1:MOVE_STRING                                         37   1  10
+0082 S 2:MAKE_MAP                                             0  12   0
+0083   0:EXTENSION                                            2   0   1
+0084 A 0:LOAD_STRING_CONSTANT                                 2   3   0    ; strings[2] = "k"
+0085 A 1:LOAD_INT64_IMMEDIATE                                75   2  42    ; ints[2] = 42
+0086 S 1:BOX_STRING                                          44   1   2
+0087 S 1:BOX_INT64                                           40   2   2
+0088 S 0:SET_MAP                                              0   1   2
+0089 A 0:LOAD_STRING_CONSTANT                                 2   3   0    ; strings[2] = "k"
+0090 A 0:MOVE_GENERAL                                         7   0   0
+0091 A 1:MOVE_STRING                                         37  12   2
+0092 S 0:GET_MAP_STRING_INT64_OK                             20   7  12    ; inlined body of function 2 called at PC 90
+0093   0:EXTENSION                                           21   0   0
+0094 A 1:MOVE_INT64                                          35   2  20
+0095 A 1:MOVE_INT64                                          35  19  21
+0096 A 0:JUMP_IF_TRUE                                        19   1   0    ; if ints[19] != 0 goto +1
+0097 A 0:LOAD_INT64_CONSTANT                                  2   8   0    ; ints[2] = -1
+0098 S 2:MAKE_MAP                                             0  12   0
+0099   0:EXTENSION                                            3   0   1
+0100 A 1:LOAD_INT64_IMMEDIATE                                75   3   7    ; ints[3] = 7
+0101 A 0:LOAD_STRING_CONSTANT                                 2   4   0    ; strings[2] = "seven"
+0102 S 1:BOX_INT64                                           40   1   3
+0103 S 1:BOX_STRING                                          44   2   2
+0104 S 0:SET_MAP                                              0   1   2
+0105 A 1:LOAD_INT64_IMMEDIATE                                75   3  99    ; ints[3] = 99
+0106 A 0:MOVE_GENERAL                                         8   0   0
+0107 A 1:MOVE_INT64                                          35  22   3
+0108 S 0:GET_MAP_INT64_STRING_OK                             14   8  22    ; inlined body of function 3 called at PC 106
+0109   0:EXTENSION                                           24   0   0
+0110 A 1:MOVE_STRING                                         37   2  14
+0111 A 1:MOVE_INT64                                          35  23  24
+0112 A 0:JUMP_IF_TRUE                                        23   1   0    ; if ints[23] != 0 goto +1
+0113 A 0:LOAD_STRING_CONSTANT                                 2   7   0    ; strings[2] = "missing"
+0114 A 0:LOAD_STRING_CONSTANT                                 3   5   0    ; strings[3] = ""
+0115 A 1:CALL_SCALAR                                        134   6   0
+0116 S 0:CONCATENATE_STRING                                   3   3   4
+0117 A 0:LOAD_STRING_CONSTANT                                 4   6   0    ; strings[4] = "/"
+0118 S 0:CONCATENATE_STRING                                   3   3   4
+0119 A 1:CALL_SCALAR                                        134   7   0
+0120 S 0:CONCATENATE_STRING                                   3   3   4
+0121 A 0:LOAD_STRING_CONSTANT                                 4   6   0    ; strings[4] = "/"
+0122 S 0:CONCATENATE_STRING                                   5   3   4
+0123 S 0:CONCATENATE_STRING                                   3   5   0
+0124 A 0:LOAD_STRING_CONSTANT                                 4   6   0    ; strings[4] = "/"
+0125 S 0:CONCATENATE_STRING                                   5   3   4
+0126 S 0:CONCATENATE_STRING                                   3   5   1
+0127 A 0:LOAD_STRING_CONSTANT                                 4   6   0    ; strings[4] = "/"
+0128 S 0:CONCATENATE_STRING                                   3   3   4
+0129 A 1:CALL_SCALAR                                        134   8   0
+0130 S 0:CONCATENATE_STRING                                   3   3   4
+0131 A 0:LOAD_STRING_CONSTANT                                 4   6   0    ; strings[4] = "/"
+0132 S 0:CONCATENATE_STRING                                   5   3   4
+0133 S 0:CONCATENATE_STRING                                   0   5   2
+0134 A 2:RETURN                                               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function stringFromInt
-;   registers: int=10 string=1 general=3 bool=1 uint=1
-;   dispatch:  asm=27 shim=7 exit=0 go=6
-;   params:    (int)
+;   registers: int64=11 string=1 general=3 bool=1 uint64=1
+;   dispatch:  asm=29 shim=7 exit=0 go=2
+;   params:    (int64)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
 
@@ -208,50 +245,51 @@
 ;   strings: [0]="0"
 ;   uints:   [0]=45
 
-0000 A 1:EQ_INT_CONST_JUMP_FALSE  124   0   0
-0001   0:EXT                        2   0   0
-0002 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "0"
-0003 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0004 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0005 A 0:LT_INT                     2   0   1
-0006 G 1:INT_TO_BOOL               54   0   2
-0007 G 1:BOOL_TO_INT               53   1   0
-0008 A 0:JUMP_IF_FALSE              1   1   0    ; if ints[1] == 0 goto +1
-0009 A 1:NEG_INT                   46   0   0
-0010 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0011 S 0:MAKE_SLICE                 0   1   1
-0012   0:EXT                        0   0   0
-0013 A 1:LOAD_INT_CONST_SMALL      75   6   1    ; LICM hoist of PC 19
-0014 A 1:LOAD_INT_CONST_SMALL      75   7  10    ; LICM hoist of PC 21
-0015 A 1:LOAD_INT_CONST_SMALL      75   8   0    ; LICM hoist of PC 25
-0016 A 1:LOAD_INT_CONST_SMALL      75   9  10    ; LICM hoist of PC 30
-0017 A 1:GT_INT_CONST_JUMP_FALSE  127   0   0
-0018   0:EXT                       14   0   0
-0019 S 0:MAKE_SLICE                 1   6   6
-0020   0:EXT                        0   0   0
-0021 A 1:LOAD_INT_CONST_SMALL      75   3  48    ; ints[3] = 48
-0022 A 0:REM_INT                    5   0   7
-0023 A 0:ADD_INT                    3   3   5
-0024 G 1:INT_TO_UINT               55   0   3
-0025 A 0:TRUNCATE_NARROW            0   8   5
-0026 G 0:PACK_TYPED                 2   0   5
-0027   0:EXT                        1   0   0
-0028 S 0:INDEX_SET                  1   8   2
-0029 S 0:APPEND_SPREAD              2   1   0
-0030 A 0:MOVE_GENERAL               0   2   1
-0031 A 0:DIV_INT                    0   0   9
-0032 A 1:JUMP                      74 240 255    ; goto -16
-0033 G 1:BOOL_TO_INT               53   1   0
-0034 A 0:JUMP_IF_FALSE              1  10   0    ; if ints[1] == 0 goto +10
-0035 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
-0036 S 0:MAKE_SLICE                 1   1   1
-0037   0:EXT                        0   0   0
-0038 A 1:LOAD_UINT_CONST_SMALL     99   0  45    ; uints[0] = 45
-0039 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0040 G 0:PACK_TYPED                 2   0   5
-0041   0:EXT                        1   0   0
-0042 S 0:INDEX_SET                  1   1   2
-0043 S 0:APPEND_SPREAD              2   1   0
-0044 A 0:MOVE_GENERAL               0   2   1
-0045 A 1:BYTES_TO_STRING           11   0   0
-0046 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 1:EQUAL_INT64_CONSTANT_THEN_JUMP_IF_FALSE            124   0   0
+0001   0:EXTENSION                                            2   0   0
+0002 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "0"
+0003 A 2:RETURN                                               0  10   1    ; 1 values
+0004 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0005 A 0:LESS_THAN_INT64                                      2   0   1
+0006 A 1:CONVERT_INT64_TO_BOOL                               54   0   2
+0007 A 2:JUMP_IF_FALSE_BOOL                                   0  20   0
+0008   0:EXTENSION                                            1   0   0
+0009 A 1:NEGATE_INT64                                        46   0   0
+0010 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0011 S 0:MAKE_SLICE                                           0   1   1
+0012   0:EXTENSION                                            0   0   0
+0013 A 1:GREATER_THAN_INT64_CONSTANT_THEN_JUMP_IF_FALSE     127   0   0
+0014   0:EXTENSION                                           19   0   0
+0015 A 1:LOAD_INT64_IMMEDIATE                                75   6   1    ; LICM hoist of PC 19
+0016 A 1:LOAD_INT64_IMMEDIATE                                75   7  48    ; LICM hoist of PC 21
+0017 A 1:LOAD_INT64_IMMEDIATE                                75   8  10    ; LICM hoist of PC 16
+0018 A 1:LOAD_INT64_IMMEDIATE                                75   9   0    ; LICM hoist of PC 25
+0019 A 1:LOAD_INT64_IMMEDIATE                                75  10  10    ; LICM hoist of PC 30
+0020 S 0:MAKE_SLICE                                           1   6   6
+0021   0:EXTENSION                                            0   0   0
+0022 A 0:REMAINDER_INT64                                      5   0   8
+0023 A 0:ADD_INT64                                            3   7   5
+0024 A 1:CONVERT_INT64_TO_UINT64                             55   0   3
+0025 A 0:TRUNCATE_TO_WIDTH                                    0   8   5
+0026 G 0:BOX_AS_TYPE                                          2   0   5
+0027   0:EXTENSION                                            1   0   0
+0028 S 0:SET_ELEMENT                                          1   9   2
+0029 S 0:APPEND_SPREAD                                        2   1   0
+0030 A 0:MOVE_GENERAL                                         0   2   1
+0031 A 0:DIVIDE_INT64                                         0   0  10
+0032 A 1:LESS_OR_EQUAL_INT64_CONSTANT_THEN_JUMP_IF_FALSE    122   0   0
+0033   0:EXTENSION                                          242 255   0
+0034 A 2:JUMP_IF_FALSE_BOOL                                   0  20   0
+0035   0:EXTENSION                                           10   0   0
+0036 A 1:LOAD_INT64_IMMEDIATE                                75   1   1    ; ints[1] = 1
+0037 S 0:MAKE_SLICE                                           1   1   1
+0038   0:EXTENSION                                            0   0   0
+0039 A 1:LOAD_UINT64_IMMEDIATE                               99   0  45    ; uints[0] = 45
+0040 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0041 G 0:BOX_AS_TYPE                                          2   0   5
+0042   0:EXTENSION                                            1   0   0
+0043 S 0:SET_ELEMENT                                          1   1   2
+0044 S 0:APPEND_SPREAD                                        2   1   0
+0045 A 0:MOVE_GENERAL                                         0   2   1
+0046 A 1:CONVERT_BYTES_TO_STRING                             11   0   0
+0047 A 2:RETURN                                               0  10   1    ; 1 values

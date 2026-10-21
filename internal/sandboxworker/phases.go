@@ -19,6 +19,7 @@
 package sandboxworker
 
 import (
+	"context"
 	"time"
 
 	"pipit.sh/pipit/internal/app"
@@ -32,7 +33,7 @@ import (
 // Takes message (sandboxwire.Message) which must be the first source request.
 //
 // Returns error for phase refusal, protocol failure or result transmission failure.
-func (session *connection) serveSubmission(stream transport, interpreter *app.RestrictedInterpreter, message sandboxwire.Message) error {
+func (session *connection) serveSubmission(ctx context.Context, stream transport, interpreter *app.RestrictedInterpreter, message sandboxwire.Message) error {
 	if message.Kind != sandboxwire.Run || message.ID != 1 {
 		return sandboxwire.ErrProtocol
 	}
@@ -42,7 +43,7 @@ func (session *connection) serveSubmission(stream transport, interpreter *app.Re
 	}
 	identity := uint64(1)
 	var phaseErr error
-	response, err := execute(interpreter, request, func() error {
+	response, err := execute(ctx, interpreter, request, func() error {
 		phaseErr = session.awaitExecution(stream, 1)
 		if phaseErr == nil {
 			identity = 2

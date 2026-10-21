@@ -30,16 +30,15 @@ import (
 // interpreter its own version with `//go:build interp`.
 const BuildTag = buildfilter.InterpTag
 
-// FileFilter reports whether the interpreter compiles a file. It uses only the base
-// name, applying just build constraints to sources without a .go suffix.
+// FileFilter reports whether the interpreter compiles a file. It uses only the base name,
+// applying just build constraints to sources without a .go suffix.
 //
 // Takes name (string) which is the file's name.
 // Takes src ([]byte) which is the file's content.
 //
 // Returns bool which is true when the file is compiled.
-// Returns error which wraps ErrParse when the file's build constraints are malformed,
-// its header cannot be read (for example it holds a NUL byte), or a test file imports
-// "C".
+// Returns error which wraps ErrParse when the file's build constraints are malformed, its
+// header cannot be read (for example it holds a NUL byte), or a test file imports "C".
 type FileFilter func(name string, src []byte) (bool, error)
 
 // NewFileFilter returns the filter the interpreter applies to a package's files. It

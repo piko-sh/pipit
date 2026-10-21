@@ -72,7 +72,7 @@ func TestSelfhost(t *testing.T) {
 
 	args := harnessArgs()
 	var stdout, stderr bytes.Buffer
-	status := run(args, &stdout, &stderr)
+	status := run(t.Context(), args, &stdout, &stderr)
 
 	if stdout.Len() > 0 {
 		t.Logf("selfhost summary:\n%s", stdout.String())
@@ -102,7 +102,7 @@ func TestSelfhostAssemblyDispatch(t *testing.T) {
 
 	args := []string{"-go-dispatch=false", "-limit", "40", "-report", filepath.Join(t.TempDir(), "report.md")}
 	var stdout, stderr bytes.Buffer
-	status, results := runWithResults(args, &stdout, &stderr)
+	status, results := runWithResults(t.Context(), args, &stdout, &stderr)
 	require.NotEqual(t, 2, status, "the harness starts on the assembly dispatcher: %s", stderr.String())
 	require.NotNil(t, results)
 	if stdout.Len() > 0 {
@@ -127,7 +127,7 @@ func TestSelfhostIsDeterministic(t *testing.T) {
 		args := append(harnessArgs(), "-report", filepath.Join(t.TempDir(), "report.md"))
 		var stdout, stderr bytes.Buffer
 		started := time.Now()
-		status, results := runWithResults(args, &stdout, &stderr)
+		status, results := runWithResults(t.Context(), args, &stdout, &stderr)
 		require.NotEqual(t, 2, status, "run %d starts: %s", iteration, stderr.String())
 		require.NotNil(t, results)
 		t.Logf("run %d: status %d, %d programs in %s, heap after GC %d MiB", iteration, status, len(results), time.Since(started).Round(time.Millisecond), heapInUseMiB())
@@ -196,7 +196,7 @@ func TestSelfhostCompilesItself(t *testing.T) {
 		files = append(files, file)
 	}
 	info := newTypesInfo()
-	config := &types.Config{Sizes: types.SizesFor("gc", "amd64"), GoVersion: engine.InterpretedGoVersion, Importer: h.symbols}
+	config := &types.Config{Sizes: types.SizesFor("gc", "amd64"), GoVersion: engine.InterpretedGoVersion, Importer: h.symbols.Importer(ctx)}
 	_, checkErr := config.Check(compileImportPath, fset, files, info)
 	require.NoError(t, checkErr, "type-checking the compiler")
 
@@ -205,7 +205,7 @@ func TestSelfhostCompilesItself(t *testing.T) {
 	require.NoError(t, err, "native compile of the compiler")
 	nativeTime := time.Since(nativeStart)
 	interpretedStart := time.Now()
-	interpreted, disassembly, err := h.compileInterpreted(ctx, fset, info, files, compileImportPath)
+	interpreted, disassembly, err := h.compileInterpreted(ctx, fset, info, files, compileImportPath, selfCompileTimeout)
 	if err != nil {
 		require.Failf(t, "interpreted compile of the compiler", "%v\n%s", err, pipit.UncaughtPanicStack(err))
 	}

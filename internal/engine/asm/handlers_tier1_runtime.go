@@ -23,16 +23,16 @@ import (
 )
 
 const (
-	// goSymbolCap is the Plan-9 ASM symbol for the Cap trampoline.
-	goSymbolCap = "·asmCallCap(SB)"
+	// goSymbolCapacityGeneral is the Plan-9 ASM symbol for the Cap trampoline.
+	goSymbolCapacityGeneral = "·asmCallCapacityGeneral(SB)"
 
-	// goSymbolBytesToString is the Plan-9 ASM symbol for the BytesToString trampoline
+	// goSymbolConvertBytesToString is the Plan-9 ASM symbol for the BytesToString trampoline
 	// (arena-backed string materialisation).
-	goSymbolBytesToString = "·asmCallBytesToString(SB)"
+	goSymbolConvertBytesToString = "·asmCallConvertBytesToString(SB)"
 
-	// goSymbolBoxSliceInt is the Plan-9 ASM symbol for the BoxSliceInt trampoline
+	// goSymbolBoxSliceInt64 is the Plan-9 ASM symbol for the BoxSliceInt64 trampoline
 	// (reflect.ValueOf on an int slice via vm).
-	goSymbolBoxSliceInt = "·asmCallBoxSliceInt(SB)"
+	goSymbolBoxSliceInt64 = "·asmCallBoxSliceInt64(SB)"
 )
 
 // tier1RuntimeHandlers returns the tier-1 umbrella sub-op handler definitions for Go
@@ -42,54 +42,52 @@ const (
 // for this group.
 func tier1RuntimeHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		handlerSubOpCap(),
-		handlerSubOpBytesToString(),
-		handlerSubOpBoxSliceInt(),
-		handlerSubOpAllocStructLiteral(),
+		handlerCapacityGeneral(),
+		handlerConvertBytesToString(),
+		handlerBoxSliceInt64(),
+		handlerAllocateStructLiteral(),
 	}
 }
 
-// handlerSubOpAllocStructLiteral returns the AllocStructLiteral handler, performing a
+// handlerAllocateStructLiteral returns the AllocateStructLiteral handler, performing a
 // pure-assembly arena bump allocation of a zeroed pointer-free struct into general[C].
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpAllocStructLiteral() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerAllocateStructLiteral() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name:      "handlerSubOpAllocStructLiteral",
-		Comment:   "handlerSubOpAllocStructLiteral carves a zeroed pointer-free struct literal from the arena generic-bytes slab into general[C]; falls back to Go via EXIT_TIER2.",
+		Name:      "handlerAllocateStructLiteral",
+		Comment:   "handlerAllocateStructLiteral carves a zeroed pointer-free struct literal from the arena generic-bytes slab into general[C]. It falls back to Go via EXIT_TIER2.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitAllocStructLiteral(emitter)
+			architecture.EmitAllocateStructLiteral(emitter)
 		},
 	}
 }
 
-// 2-operand sub-ops (Cap, BytesToString, BoxSliceInt).
-
-// handlerSubOpCap returns the Cap sub-op handler.
+// handlerCapacityGeneral returns the Cap sub-op handler.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpCap() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return inlineGoTwoOperandShim("handlerSubOpCap",
-		"handlerSubOpCap sets ints[B] = cap(value at C) via asmCallCap (collectionLengthOrCap).",
-		goSymbolCap)
+func handlerCapacityGeneral() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return inlineGoTwoOperandShim("handlerCapacityGeneral",
+		"handlerCapacityGeneral sets ints[B] = cap(value at C) via asmCallCapacityGeneral (collectionLengthOrCap).",
+		goSymbolCapacityGeneral)
 }
 
-// handlerSubOpBytesToString returns the BytesToString sub-op handler.
+// handlerConvertBytesToString returns the BytesToString sub-op handler.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpBytesToString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return inlineGoTwoOperandShim("handlerSubOpBytesToString",
-		"handlerSubOpBytesToString sets strings[B] = string(bytes at C) via asmCallBytesToString (arena-backed).",
-		goSymbolBytesToString)
+func handlerConvertBytesToString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return inlineGoTwoOperandShim("handlerConvertBytesToString",
+		"handlerConvertBytesToString sets strings[B] = string(bytes at C) via asmCallConvertBytesToString (arena-backed).",
+		goSymbolConvertBytesToString)
 }
 
-// handlerSubOpBoxSliceInt returns the BoxSliceInt sub-op handler.
+// handlerBoxSliceInt64 returns the BoxSliceInt64 sub-op handler.
 //
 // Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
-func handlerSubOpBoxSliceInt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
-	return inlineGoTwoOperandShim("handlerSubOpBoxSliceInt",
-		"handlerSubOpBoxSliceInt boxes []int64 at C into general[B] via asmCallBoxSliceInt (reflect.ValueOf).",
-		goSymbolBoxSliceInt)
+func handlerBoxSliceInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return inlineGoTwoOperandShim("handlerBoxSliceInt64",
+		"handlerBoxSliceInt64 boxes []int64 at C into general[B] via asmCallBoxSliceInt64 (reflect.ValueOf).",
+		goSymbolBoxSliceInt64)
 }

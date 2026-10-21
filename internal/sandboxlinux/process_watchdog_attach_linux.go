@@ -23,6 +23,8 @@ package sandboxlinux
 import (
 	"context"
 	"errors"
+
+	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 // prepareWatchdog reserves a per-process aggregate and requires sealed supervisor
@@ -32,20 +34,20 @@ import (
 // Takes parent (*Group) which is the retained outer aggregate.
 //
 // Returns the aggregate for source or broker placement only while its watchdog is live.
-func (process *WorkerProcess) prepareWatchdog(config WorkerConfig, parent *Group) (*Group, error) {
+func (process *WorkerProcess) prepareWatchdog(ctx context.Context, config WorkerConfig, parent *Group) (*Group, error) {
 	var err error
-	process.container, err = parent.newChild(config.Limits)
+	process.container, err = parent.newChild(ctx, config.Limits)
 	if err != nil {
 		return nil, err
 	}
 	supervisor := config
 	supervisor.Executable, supervisor.Digest = config.WatchdogExecutable, config.WatchdogDigest
-	process.watchdog, err = launchHostWatchdog(process.context, supervisor, process.container)
+	process.watchdog, err = launchHostWatchdog(ctx, supervisor, process.container)
 	if err != nil {
 		return nil, err
 	}
-	process.stopWatchdogExit = context.AfterFunc(process.watchdog.context, process.cancel)
-	if err := errors.Join(process.context.Err(), process.watchdog.context.Err()); err != nil {
+	process.stopWatchdogExit = process.watchdog.onLifetimeEnd(process.cancel)
+	if err := errors.Join(ctx.Err(), process.watchdog.lifetimeErr()); err != nil {
 		return nil, err
 	}
 	return process.container, nil
@@ -54,22 +56,22 @@ func (process *WorkerProcess) prepareWatchdog(config WorkerConfig, parent *Group
 // cleanupWatchdog releases protection only after protected process and image cleanup.
 //
 // Returns error while supervisor reaping, its resources or the aggregate remain owned.
-func (process *WorkerProcess) cleanupWatchdog() error {
+func (process *WorkerProcess) cleanupWatchdog(ctx context.Context) error {
 	if process.watchdog != nil {
 		if process.stopWatchdogExit != nil {
 			process.stopWatchdogExit()
 			process.stopWatchdogExit = nil
 		}
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(process.context), workerCleanupTimeout)
-		err := process.watchdog.stopSupervisor(ctx)
+		stopCtx, cancel := sandboxwire.CleanupContext(ctx)
+		err := process.watchdog.stopSupervisor(stopCtx)
 		cancel()
 		if err != nil {
 			return err
 		}
 	}
 	if process.container != nil {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(process.context), workerCleanupTimeout)
-		err := process.container.closeGroup(ctx)
+		closeCtx, cancel := sandboxwire.CleanupContext(ctx)
+		err := process.container.closeGroup(closeCtx)
 		cancel()
 		return err
 	}
@@ -88,7 +90,7 @@ func (process *WorkerProcess) stopSupervisor(ctx context.Context) error {
 	}
 	select {
 	case <-process.done:
-		return process.cleanup()
+		return process.cleanup(ctx)
 	case <-ctx.Done():
 		return ctx.Err()
 	}

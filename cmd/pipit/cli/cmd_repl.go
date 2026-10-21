@@ -31,5 +31,5 @@ import (
 //
 // Returns int which is the exit code: 0 on clean exit, 1 on error.
 func RunRepl(ctx context.Context, _ []string, streams output.IO) int {
-	return repl.Run(ctx, streams, ExtraSymbols(ctx), loggerOptions(ctx)...)
+	return repl.Run(ctx, streams, ExtraSymbols(ctx))
 }

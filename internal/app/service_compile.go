@@ -185,6 +185,9 @@ type typeCheckOptions struct {
 // Returns *CompiledFunction which is the compiled representation.
 // Returns error when parsing, type-checking, or compilation fails.
 func (s *Service) Compile(ctx context.Context, code string) (*program.CompiledFunction, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, engine.NewSafeError(safeMessageCompilationCancelled, fmt.Errorf(fault.ErrChainFmt, fault.ErrExecutionCancelled, err))
 	}
@@ -196,34 +199,17 @@ func (s *Service) Compile(ctx context.Context, code string) (*program.CompiledFu
 	}
 	ctx, cancel := s.applyMaxExecutionTime(ctx)
 	defer cancel()
-	ctx = logging.ContextWithLogger(ctx, s.config.logger)
-
-	_, err := parser.ParseExprFrom(s.fileSet, evalFileName, code, 0)
-	if err == nil {
-		result, compileErr := s.compileExpression(ctx, code)
-		if compileErr != nil {
-			return nil, engine.NewSafeError(safeMessageCompilationFailed, fmt.Errorf("compiling source: %w", compileErr))
-		}
-		return result, nil
+	var bindErr error
+	if ctx, bindErr = s.bindLogger(ctx); bindErr != nil {
+		return nil, bindErr
 	}
 
-	wrappedCode := "package main\nfunc _eval_() {\n" + code + "\n}"
-	file, parseErr := parser.ParseFile(s.fileSet, evalFileName, wrappedCode, 0)
-	if parseErr == nil {
-		result, compileErr := s.compileFile(ctx, file)
-		if compileErr == nil {
-			return result, nil
-		}
-
-		if mixedResult, mixedErr := s.compileMixed(ctx, code); mixedErr == nil {
-			return mixedResult, nil
-		}
-		return nil, engine.NewSafeError(safeMessageCompilationFailed, fmt.Errorf("compiling source: %w", compileErr))
+	result, err := s.compileSource(ctx, code)
+	if err != nil {
+		return nil, engine.NewSafeError(safeMessageCompilationFailed, fmt.Errorf("compiling source: %w", err))
 	}
-
-	result, compileErr := s.compileMixed(ctx, code)
-	if compileErr != nil {
-		return nil, engine.NewSafeError(safeMessageCompilationFailed, fmt.Errorf("compiling source: %w", compileErr))
+	if err := runLicenceChecker(ctx, result, s.licenceCheckerStrict()); err != nil {
+		return nil, engine.NewSafeError(safeMessageCompilationFailed, err)
 	}
 	return result, nil
 }
@@ -237,7 +223,38 @@ func (s *Service) Compile(ctx context.Context, code string) (*program.CompiledFu
 // Returns *CompiledFileSet which holds all compiled functions.
 // Returns error when parsing, type-checking, or compilation fails; a compiler panic is
 // reported as fault.ErrCompilePanic, as for CompileProgram.
-func (s *Service) CompileFileSet(ctx context.Context, sources map[string]string) (compiled *program.CompiledFileSet, err error) {
+func (s *Service) CompileFileSet(ctx context.Context, sources map[string]string) (*program.CompiledFileSet, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
+	compiled, err := s.compileFileSetAttempt(ctx, sources)
+	if errors.Is(err, errLicenceGrantsRejected) && !arenaPromotionOff(ctx) {
+		engine.NoteLicenceRecompile()
+		return s.compileFileSetAttempt(compileWithoutArenaPromotion(ctx), sources)
+	}
+	return compiled, err
+}
+
+// compileFileSetAttempt runs one compileFileSet attempt and gives back the global slots
+// it reserved when it fails, so a failed compile leaves the service as it found it.
+//
+// Takes sources (map[string]string) which maps filenames to source code.
+//
+// Returns *CompiledFileSet which holds all compiled functions.
+// Returns error when the attempt fails.
+func (s *Service) compileFileSetAttempt(ctx context.Context, sources map[string]string) (compiled *program.CompiledFileSet, err error) {
+	rollback := s.beginSlotRollback()
+	defer func() { rollback(err) }()
+	return s.compileFileSet(ctx, sources)
+}
+
+// compileFileSet performs one compilation attempt for CompileFileSet.
+//
+// Takes sources (map[string]string) which maps filenames to source code.
+//
+// Returns *CompiledFileSet which holds all compiled functions.
+// Returns error when parsing, type-checking, compilation or the licence checker fails.
+func (s *Service) compileFileSet(ctx context.Context, sources map[string]string) (compiled *program.CompiledFileSet, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logCompilePanic(ctx, recovered)
@@ -253,7 +270,7 @@ func (s *Service) CompileFileSet(ctx context.Context, sources map[string]string)
 	}
 	ctx, cancel := s.applyMaxExecutionTime(ctx)
 	defer cancel()
-	ctx = logging.ContextWithLogger(ctx, s.config.logger)
+	ctx, _ = logging.From(logging.WithFallbackLogger(ctx, s.config.logger))
 
 	s.applyEnvOverrides()
 
@@ -263,7 +280,7 @@ func (s *Service) CompileFileSet(ctx context.Context, sources map[string]string)
 	}
 
 	info := frontend.NewTypesInfo()
-	typesPackage, err := s.checkPackageTypes(mainPackageName, files, info, typeCheckOptions{interpretedPaths: nil, allowUnusedImports: false})
+	typesPackage, err := s.checkPackageTypes(ctx, mainPackageName, files, info, typeCheckOptions{interpretedPaths: nil, allowUnusedImports: false})
 	if err != nil {
 		return nil, engine.NewSafeError(safeMessageCompilationFailed, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, err))
 	}
@@ -293,8 +310,25 @@ func (s *Service) CompileFileSet(ctx context.Context, sources map[string]string)
 
 	cfs := program.NewCompiledFileSet(
 		rootFunction, entrypoints, c.InitFunctionIndices(), variableInitialisationFunction)
-	s.bindDebugProgram(cfs, []debug.PackageBinding{mainPackageBinding(typesPackage, c)})
+	s.recordFileSetMetadata(cfs, files, info, typesPackage, c)
 	return cfs, nil
+}
+
+// recordFileSetMetadata records what a freshly compiled file set carries beside its code,
+// including the interfaces it declares, the plan for skipping unchanged variable
+// initialisers, and the debugger's binding.
+//
+// Takes cfs (*program.CompiledFileSet) which was just compiled.
+// Takes files ([]*ast.File) which are its parsed files.
+// Takes info (*types.Info) which is the type checker's record of them.
+// Takes typesPackage (*types.Package) which is the type-checked package.
+// Takes c (*compile.Compiler) which compiled it.
+func (s *Service) recordFileSetMetadata(cfs *program.CompiledFileSet, files []*ast.File, info *types.Info, typesPackage *types.Package, c *compile.Compiler) {
+	s.recordNamedInterfaces(cfs, []*types.Package{typesPackage})
+	if cfs.VariableInitFunction() != nil {
+		s.recordVarInitReusePlan(cfs, compile.AnalyseVarInitReuse(files, info, c.GlobalVariables()))
+	}
+	s.bindDebugProgram(cfs, []debug.PackageBinding{mainPackageBinding(typesPackage, c)})
 }
 
 // mainPackageBinding describes a single-package program for the debugger.
@@ -343,6 +377,39 @@ func (s *Service) bindDebugProgram(cfs *program.CompiledFileSet, packages []debu
 // Returns *CompiledFileSet which contains all compiled functions.
 // Returns error when parsing, type-checking, or compilation fails.
 func (s *Service) CompileProgram(ctx context.Context, modulePath string, packages map[string]map[string]string) (*program.CompiledFileSet, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
+	compiled, err := s.compileProgram(ctx, modulePath, packages)
+	if errors.Is(err, errLicenceGrantsRejected) && !arenaPromotionOff(ctx) {
+		engine.NoteLicenceRecompile()
+		return s.compileProgram(compileWithoutArenaPromotion(ctx), modulePath, packages)
+	}
+	return compiled, err
+}
+
+// compileProgram performs one compilation attempt for CompileProgram.
+//
+// Takes modulePath (string) which is the module path.
+// Takes packages (map[string]map[string]string) which maps package paths to sources.
+//
+// Returns *CompiledFileSet which contains all compiled functions.
+// Returns error when parsing, type-checking, compilation or the licence checker fails.
+func (s *Service) compileProgram(ctx context.Context, modulePath string, packages map[string]map[string]string) (compiled *program.CompiledFileSet, err error) {
+	rollback := s.beginSlotRollback()
+	defer func() { rollback(err) }()
+	return s.compileProgramAttempt(ctx, modulePath, packages)
+}
+
+// compileProgramAttempt does compileProgram's work. compileProgram rolls back the slots a
+// failed attempt reserved.
+//
+// Takes modulePath (string) which is the module path.
+// Takes packages (map[string]map[string]string) which maps package paths to sources.
+//
+// Returns *CompiledFileSet which contains all compiled functions.
+// Returns error when parsing, type-checking, compilation or the licence checker fails.
+func (s *Service) compileProgramAttempt(ctx context.Context, modulePath string, packages map[string]map[string]string) (*program.CompiledFileSet, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, engine.NewSafeError(safeMessageCompilationCancelled, fmt.Errorf(fault.ErrChainFmt, fault.ErrExecutionCancelled, err))
 	}
@@ -351,7 +418,7 @@ func (s *Service) CompileProgram(ctx context.Context, modulePath string, package
 	}
 	ctx, cancel := s.applyMaxExecutionTime(ctx)
 	defer cancel()
-	ctx = logging.ContextWithLogger(ctx, s.config.logger)
+	ctx, _ = logging.From(logging.WithFallbackLogger(ctx, s.config.logger))
 
 	s.applyEnvOverrides()
 
@@ -394,6 +461,11 @@ func (s *Service) CompileProgram(ctx context.Context, modulePath string, package
 
 	cfs := program.NewCompiledFileSet(
 		rootFunction, resolveEntrypoints(mainFunctionTable, lastFunctionTable), allInitFunctions, nil)
+	packagesCompiled := make([]*types.Package, len(compiled.bindings))
+	for i := range compiled.bindings {
+		packagesCompiled[i] = compiled.bindings[i].Package
+	}
+	s.recordNamedInterfaces(cfs, packagesCompiled)
 	s.bindDebugProgram(cfs, compiled.bindings)
 	return cfs, nil
 }
@@ -501,7 +573,7 @@ func (s *Service) compileSinglePackage(
 		}
 	}()
 	info := frontend.NewTypesInfo()
-	typesPackage, err := s.checkPackageTypes(pkg.importPath, pkg.files, info, typeCheckOptions{interpretedPaths: interpretedPaths, allowUnusedImports: false})
+	typesPackage, err := s.checkPackageTypes(ctx, pkg.importPath, pkg.files, info, typeCheckOptions{interpretedPaths: interpretedPaths, allowUnusedImports: false})
 	if err != nil {
 		return nil, fmt.Errorf(fault.ErrChainMessageFmt, fault.ErrTypeCheck, pkg.importPath, err)
 	}
@@ -538,9 +610,9 @@ func (s *Service) compileSinglePackage(
 //
 // Returns *types.Package which is the checked package.
 // Returns error which joins the package's type errors, the first one first, or nil.
-func (s *Service) checkPackageTypes(packagePath string, files []*ast.File, info *types.Info, options typeCheckOptions) (*types.Package, error) {
+func (s *Service) checkPackageTypes(ctx context.Context, packagePath string, files []*ast.File, info *types.Info, options typeCheckOptions) (*types.Package, error) {
 	typeErrors := newCappedErrors(maxTypeErrorsPerPackage)
-	typesConfig := s.newTypesConfig()
+	typesConfig := s.newTypesConfig(ctx)
 	typesConfig.DisableUnusedImportCheck = options.allowUnusedImports
 	typesConfig.Error = func(err error) {
 		if !typeErrors.full() {
@@ -593,11 +665,18 @@ func (s *Service) packageCompilerConfig(rootFunction *program.CompiledFunction, 
 //
 // Takes importPath (string) which is the package's import path.
 // Takes result (*packageCompileResult) which holds the compiled package output.
-func (s *Service) bridgePackageExports(importPath string, result *packageCompileResult) {
+//
+// Returns error wrapping fault.ErrCompilation and symtab.ErrTypesPackageLayout when the
+// registry rejects the package's types; its variables are then not bridged.
+func (s *Service) bridgePackageExports(importPath string, result *packageCompileResult) error {
 	exports := collectPackageExports(result)
 
+	s.symbols.MarkScriptPackage(importPath)
 	s.symbols.RegisterPackage(importPath, exports)
-	s.symbols.RegisterTypesPackage(importPath, result.typesPackage)
+
+	if err := s.symbols.RegisterTypesPackage(importPath, result.typesPackage); err != nil {
+		return fmt.Errorf("%w: registering the types of package %q: %w", fault.ErrCompilation, importPath, err)
+	}
 
 	if len(result.exportedVars) > 0 {
 		s.pendingVarBridges = append(s.pendingVarBridges, pendingVarBridge{
@@ -607,6 +686,7 @@ func (s *Service) bridgePackageExports(importPath string, result *packageCompile
 	}
 
 	publishExternalMethods(s.globals, result.rootFunction)
+	return nil
 }
 
 // finalisePendingVarBridges reads the post-init value of every recorded exported var from
@@ -737,8 +817,7 @@ func (s *Service) enrichRenamedPackageError(err error, identifier string, files 
 }
 
 // parseAndValidateImports parses every package and enforces the import policy. Imports
-// within the source batch are treated as local, including packages that failed to
-// parse.
+// within the source batch are treated as local, including packages that failed to parse.
 //
 // Takes modulePath (string) which is the module's root import path.
 // Takes packages (map[string]map[string]string) which maps each package's relative path
@@ -780,8 +859,7 @@ func (s *Service) parseAndValidateFileSet(ctx context.Context, sources map[strin
 	return files, nil
 }
 
-// checkImports rejects denied paths and external imports absent from an active
-// allowlist.
+// checkImports rejects denied paths and external imports absent from an active allowlist.
 //
 // Takes set (packageSet) which holds the parsed packages and the import paths of those
 // that failed, all of which count as local.
@@ -1170,9 +1248,8 @@ func constantToReflectValue(value constant.Value) reflect.Value {
 // Takes packageName (func(string) string) which names an unaliased import; nil selects
 // symtab.AssumedPackageName.
 //
-// Returns map[string]string mapping each local alias to its fully qualified import
-// path. Blank imports ("_"), dot imports (".") and imports with no usable name are
-// excluded.
+// Returns map[string]string mapping each local alias to its fully qualified import path.
+// Blank imports ("_"), dot imports (".") and imports with no usable name are excluded.
 func buildImportAliasMap(files []*ast.File, packageName func(string) string) map[string]string {
 	if packageName == nil {
 		packageName = symtab.AssumedPackageName
@@ -1270,8 +1347,9 @@ func extractMissingPackagePath(message string) string {
 }
 
 // pretouchCompileTimeDerivedState eagerly builds per-function structures (ASM call-info
-// tables and precomputed alloc counts) at compile time, so the first execution does not
-// pay to build them lazily.
+// tables and precomputed alloc counts) at compile time and when bytecode is loaded, so
+// the first execution does not pay to build them lazily and goroutines a program starts
+// never build them at once.
 //
 // Takes rootFunction (*CompiledFunction) which is the fileset root produced by the
 // Compiler.
@@ -1337,7 +1415,8 @@ func countSourceBytes(packages map[string]map[string]string) int {
 //
 // Takes recovered (any) which is the value recover returned.
 func logCompilePanic(ctx context.Context, recovered any) {
-	logging.LoggerFrom(ctx).Warn("Compiler panicked",
+	_, logger := logging.From(ctx)
+	logger.Warn("Compiler panicked",
 		slog.String("panic", fmt.Sprint(recovered)),
 		slog.String("stack", string(runtimedebug.Stack())))
 }
@@ -1355,4 +1434,30 @@ func cancellationError(ctx context.Context) error {
 		return cause
 	}
 	return fmt.Errorf(fault.ErrChainFmt, fault.ErrExecutionCancelled, cause)
+}
+
+// compileSource compiles code as an expression, as statements wrapped in a function, or
+// as a mix of declarations and statements, in that order of preference.
+//
+// Takes code (string) which is the Go source code.
+//
+// Returns *program.CompiledFunction which is the compiled code.
+// Returns error which is the compiler's error when no form compiles.
+func (s *Service) compileSource(ctx context.Context, code string) (*program.CompiledFunction, error) {
+	if _, err := parser.ParseExprFrom(s.fileSet, evalFileName, code, 0); err == nil {
+		return s.compileExpression(ctx, code)
+	}
+	wrappedCode := "package main\nfunc _eval_() {\n" + code + "\n}"
+	file, parseErr := parser.ParseFile(s.fileSet, evalFileName, wrappedCode, 0)
+	if parseErr != nil {
+		return s.compileMixed(ctx, code)
+	}
+	result, compileErr := s.compileFile(ctx, file)
+	if compileErr == nil {
+		return result, nil
+	}
+	if mixedResult, mixedErr := s.compileMixed(ctx, code); mixedErr == nil {
+		return mixedResult, nil
+	}
+	return nil, compileErr
 }

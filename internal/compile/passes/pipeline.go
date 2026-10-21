@@ -20,9 +20,11 @@ package passes
 
 import (
 	"context"
+	"fmt"
 
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/engine/program"
+	"pipit.sh/pipit/internal/isa"
 )
 
 const (
@@ -32,7 +34,27 @@ const (
 
 	// postPurityPipelineCapacity is the length of the full PostPurityPipeline, used to size
 	// the slice up front.
-	postPurityPipelineCapacity = 15
+	postPurityPipelineCapacity = 20
+)
+
+var (
+	// compareJumpSweep holds three-instruction patterns followed by compare-and-jump
+	// fusions.
+	compareJumpSweep = [][]slotFusion{{
+		func(compiledFunction *program.CompiledFunction, body []isa.Instruction, i int, jumpTargets map[int]bool) bool {
+			return FuseThreeInstrPatterns(compiledFunction, body, i, len(body), jumpTargets)
+		},
+		fuseRegisterCompareJump,
+	}}
+
+	// compareJumpSweepAfterCoalescing holds compare-and-jump fusions followed by
+	// increment-and-branch fusions.
+	compareJumpSweepAfterCoalescing = [][]slotFusion{
+		{fuseRegisterCompareJump},
+		{func(_ *program.CompiledFunction, body []isa.Instruction, i int, jumpTargets map[int]bool) bool {
+			return fuseIncrementThenCompareJump(body, i, len(body), jumpTargets)
+		}},
+	}
 )
 
 // licmPass hoists loop-invariant struct-field reads, and when constantLoads is set also
@@ -43,6 +65,21 @@ type licmPass struct {
 	// compare-and-branch and arithmetic superinstructions, and hoisting one of those would
 	// leave the fusion without its operand.
 	constantLoads bool
+
+	// elementStoresKeepFields carries ProgramFacts.ElementStoresKeepFields to the
+	// struct-field family.
+	elementStoresKeepFields bool
+}
+
+// ProgramFacts holds facts about the whole program for the post-purity passes.
+type ProgramFacts struct {
+	// ElementStoresKeepFields is true when element stores preserve scalar fields and slice
+	// headers.
+	//
+	// The compiler sets it from the program's own code, so it assumes that no native
+	// function returns a slice laid over the memory of a struct the program also reads
+	// through its fields.
+	ElementStoresKeepFields bool
 }
 
 // Name returns the pass identifier.
@@ -54,7 +91,7 @@ func (licmPass) Name() string { return "licm" }
 // constant-load hoist when the pass enables it.
 //
 // A hoist releases the pointer-alias facts because it moves PCs, so the analysis is
-// recomputed when the function had them; the in-place append and composite reuse passes
+// recomputed when the function had them. The in-place append and composite reuse passes
 // would otherwise skip the function.
 //
 // Takes state (*PassContext) which carries the options and the shared analysis.
@@ -84,7 +121,7 @@ func (pass licmPass) hoist(ctx context.Context, state *PassContext, compiledFunc
 			return err
 		}
 	}
-	if err := hoistLoopInvariantStructFieldReads(ctx, compiledFunction, state.Analysis); err != nil {
+	if err := hoistLoopInvariantStructFieldReads(ctx, compiledFunction, state.Analysis, pass.elementStoresKeepFields); err != nil {
 		return err
 	}
 	if !pass.constantLoads {
@@ -98,6 +135,48 @@ func (pass licmPass) hoist(ctx context.Context, state *PassContext, compiledFunc
 	}
 	hoistLoopInvariantSliceChains(compiledFunction, state.Analysis)
 	return nil
+}
+
+// lateFieldReadsPass lifts loop-invariant struct-field reads a second time, once move
+// coalescing has run.
+type lateFieldReadsPass struct {
+	// elementStoresKeepFields carries ProgramFacts.ElementStoresKeepFields to the
+	// struct-field family.
+	elementStoresKeepFields bool
+}
+
+// Name returns the pass identifier.
+//
+// Returns string which is the pass identifier.
+func (lateFieldReadsPass) Name() string { return "late-field-reads" }
+
+// Run straightens the body and lifts its loop-invariant field reads.
+//
+// Straightening moves PCs and so releases the pointer-alias facts. They are computed
+// again when the function had them.
+//
+// Takes state (*PassContext) which carries the shared analysis, invalidated on change.
+// Takes compiledFunction (*program.CompiledFunction) whose body is rewritten in place.
+//
+// Returns error when cancellation fires.
+func (pass lateFieldReadsPass) Run(ctx context.Context, state *PassContext, compiledFunction *program.CompiledFunction) error {
+	if !bodyHasFieldReadAndLoop(compiledFunction.Body) {
+		return nil
+	}
+	hadAliasInfo := compiledFunction.AliasInfo != nil
+	changed, err := compactBody(ctx, compiledFunction)
+	if changed {
+		state.Analysis.invalidate()
+	}
+	if err != nil {
+		return err
+	}
+	if hadAliasInfo && compiledFunction.AliasInfo == nil {
+		if err := RunPointerAliasAnalysis(ctx, compiledFunction); err != nil {
+			return err
+		}
+	}
+	return licmPass{constantLoads: false, elementStoresKeepFields: pass.elementStoresKeepFields}.Run(ctx, state, compiledFunction)
 }
 
 // fuseConstOperandsPass folds constant loads into the arithmetic that consumes them once
@@ -121,6 +200,78 @@ func (fuseConstOperandsPass) Run(_ context.Context, state *PassContext, compiled
 	changed := false
 	for i := range body {
 		changed = FuseArithConst(compiledFunction, body, i, len(body), jumpTargets) || changed
+	}
+	if changed {
+		state.Analysis.invalidate()
+	}
+	return nil
+}
+
+// fuseCompareJumpsPass fuses adjacent integer comparisons and branches.
+type fuseCompareJumpsPass struct {
+	// afterCoalescing limits the second run to register comparisons.
+	afterCoalescing bool
+}
+
+// Name returns the pass identifier.
+//
+// Returns string which is the pass identifier.
+func (fuseCompareJumpsPass) Name() string { return "fuse-compare-jumps" }
+
+// Run threads branches and fuses comparisons with their following branch.
+//
+// Takes ctx (context.Context) which cancels a sweep part way.
+// Takes state (*PassContext) which carries the shared analysis, invalidated on change.
+// Takes compiledFunction (*program.CompiledFunction) whose body is rewritten in place.
+//
+// Returns error when the context is cancelled.
+func (pass fuseCompareJumpsPass) Run(ctx context.Context, state *PassContext, compiledFunction *program.CompiledFunction) error {
+	if threadBranchesOnOneRegister(compiledFunction.Body) {
+		state.Analysis.invalidate()
+	}
+	jumpTargets := state.Analysis.JumpTargets()
+	fusions := compareJumpSweep
+	if pass.afterCoalescing {
+		fusions = compareJumpSweepAfterCoalescing
+	}
+	changed := false
+	for _, sweep := range fusions {
+		swept, err := sweepSlotFusions(ctx, compiledFunction, jumpTargets, sweep)
+		changed = changed || swept
+		if err != nil {
+			if changed {
+				state.Analysis.invalidate()
+			}
+			return fmt.Errorf("compare-and-jump fusion cancelled: %w", err)
+		}
+	}
+	if changed {
+		state.Analysis.invalidate()
+	}
+	return nil
+}
+
+// fuseElementConversionsPass folds unsigned reads into adjacent conversions to int.
+type fuseElementConversionsPass struct{}
+
+// Name returns the pass identifier.
+//
+// Returns string which is the pass identifier.
+func (fuseElementConversionsPass) Name() string { return "fuse-element-conversions" }
+
+// Run applies FuseGetElementUint64AsInt64() and FuseGetStringByteAsInt64() at every slot.
+//
+// Takes state (*PassContext) which carries the shared analysis, invalidated on change.
+// Takes compiledFunction (*program.CompiledFunction) whose body is rewritten in place.
+//
+// Returns error (always nil).
+func (fuseElementConversionsPass) Run(_ context.Context, state *PassContext, compiledFunction *program.CompiledFunction) error {
+	body := compiledFunction.Body
+	jumpTargets := state.Analysis.JumpTargets()
+	changed := false
+	for i := range body {
+		changed = FuseGetElementUint64AsInt64(compiledFunction, body, i, len(body), jumpTargets) ||
+			FuseGetStringByteAsInt64(compiledFunction, body, i, len(body), jumpTargets) || changed
 	}
 	if changed {
 		state.Analysis.invalidate()
@@ -170,22 +321,25 @@ func (releaseConstantIndicesPass) Run(_ context.Context, _ *PassContext, compile
 	return nil
 }
 
-// elideSyncClosureUpvaluesPass nops isa.SubOpTier2SyncClosureUpvalues in functions that
-// never create closures.
-type elideSyncClosureUpvaluesPass struct{}
+// elideSynchroniseClosureCapturedVariablesPass nops
+// isa.SubOpTier2SynchroniseClosureCapturedVariables in functions that never create
+// closures.
+type elideSynchroniseClosureCapturedVariablesPass struct{}
 
 // Name returns the pass identifier.
 //
 // Returns string which is the pass identifier.
-func (elideSyncClosureUpvaluesPass) Name() string { return "elide-sync-closure-upvalues" }
+func (elideSynchroniseClosureCapturedVariablesPass) Name() string {
+	return "elide-sync-closure-upvalues"
+}
 
-// Run applies elideUnusedSyncClosureUpvalues().
+// Run applies elideUnusedSynchroniseClosureCapturedVariables().
 //
 // Takes compiledFunction (*program.CompiledFunction) whose body is rewritten in place.
 //
 // Returns error (always nil).
-func (elideSyncClosureUpvaluesPass) Run(_ context.Context, _ *PassContext, compiledFunction *program.CompiledFunction) error {
-	elideUnusedSyncClosureUpvalues(compiledFunction, compiledFunction.Body)
+func (elideSynchroniseClosureCapturedVariablesPass) Run(_ context.Context, _ *PassContext, compiledFunction *program.CompiledFunction) error {
+	elideUnusedSynchroniseClosureCapturedVariables(compiledFunction, compiledFunction.Body)
 	return nil
 }
 
@@ -397,21 +551,18 @@ func (releaseAliasInfoPass) Run(_ context.Context, _ *PassContext, compiledFunct
 
 // functionPipeline returns the per-function passes Optimise runs, in order.
 //
-// Passes whose optimisation is switched off in opts are left out rather than run as
-// no-ops, so the returned list is also a statement of what the compilation does.
-//
 // Takes opts (Options) which selects the optional passes.
 //
 // Returns the passes in execution order.
 func functionPipeline(opts Options) []Pass {
 	pipeline := make([]Pass, 0, functionPipelineCapacity)
 	if opts.LICM {
-		pipeline = append(pipeline, licmPass{constantLoads: false})
+		pipeline = append(pipeline, licmPass{constantLoads: false, elementStoresKeepFields: false})
 	}
 	pipeline = append(pipeline,
 		peepholeFusionPass{},
 		releaseConstantIndicesPass{},
-		elideSyncClosureUpvaluesPass{},
+		elideSynchroniseClosureCapturedVariablesPass{},
 		truncateElisionPass{},
 	)
 	if opts.CSE {
@@ -427,27 +578,25 @@ func functionPipeline(opts Options) []Pass {
 // PostPurityPipeline returns the per-function passes the post-purity peephole stage runs,
 // in order.
 //
-// The stage first resolves the range-value snapshots, so the snapshots that remain can be
-// scalarised, then re-runs LICM, GVN, CSE and BCE once heap purity and pointer aliasing
-// are known, promotes inlineable method calls, demotes unsafe in-place appends, releases
-// the alias information, fuses 32-bit truncations into their operations and finally
-// deletes the dead words the earlier passes left.
-//
 // Takes opts (Options) which selects the optional passes.
+// Takes facts (ProgramFacts) which holds what the caller knows of the whole program.
 // Takes rewriteMethodCalls (Pass) which promotes inlineable method calls. It lives in the
 // inline package, which the passes package cannot import, so the caller supplies it. nil
 // omits the step.
 //
 // Returns the passes in execution order.
-func PostPurityPipeline(opts Options, rewriteMethodCalls Pass) []Pass {
+func PostPurityPipeline(opts Options, facts ProgramFacts, rewriteMethodCalls Pass) []Pass {
 	pipeline := make([]Pass, 0, postPurityPipelineCapacity)
 	pipeline = append(pipeline, rangeAliasPass{})
 	if opts.CSE {
 		pipeline = append(pipeline, scalarizeSnapshotsPass{})
 	}
 	pipeline = append(pipeline, fuseConstOperandsPass{})
+	if opts.CSE {
+		pipeline = append(pipeline, fuseCompareJumpsPass{afterCoalescing: false})
+	}
 	if opts.LICM {
-		pipeline = append(pipeline, licmPass{constantLoads: true})
+		pipeline = append(pipeline, licmPass{constantLoads: true, elementStoresKeepFields: facts.ElementStoresKeepFields})
 	}
 	if opts.GVN {
 		pipeline = append(pipeline, gvnPass{})
@@ -459,10 +608,50 @@ func PostPurityPipeline(opts Options, rewriteMethodCalls Pass) []Pass {
 		pipeline = append(pipeline, bcePass{})
 	}
 	if opts.CSE {
-		pipeline = append(pipeline, coalesceMovesPass{}, elideRangedTruncatesPass{})
+		pipeline = append(pipeline, coalesceMovesPass{})
+		if opts.LICM {
+			pipeline = append(pipeline, lateFieldReadsPass{elementStoresKeepFields: facts.ElementStoresKeepFields})
+		}
+		pipeline = append(pipeline, fuseCompareJumpsPass{afterCoalescing: true}, fuseElementConversionsPass{}, elideRangedTruncatesPass{})
 	}
 	if rewriteMethodCalls != nil {
 		pipeline = append(pipeline, rewriteMethodCalls)
 	}
-	return append(pipeline, inPlaceAppendPass{}, compositeZeroReusePass{}, releaseAliasInfoPass{}, fuseNarrow32Pass{}, compactBodyPass{})
+	pipeline = append(pipeline, inPlaceAppendPass{}, compositeZeroReusePass{}, releaseAliasInfoPass{}, fuseNarrow32Pass{})
+	if opts.CSE {
+		pipeline = append(pipeline, fuseLatePairsPass{})
+	}
+	return append(pipeline, compactBodyPass{})
+}
+
+// bodyHasFieldReadAndLoop reports whether the body has a hoistable field read and a
+// backward jump.
+//
+// Takes body ([]isa.Instruction) which is the instruction stream.
+//
+// Returns true when both are present.
+func bodyHasFieldReadAndLoop(body []isa.Instruction) bool {
+	reads, loops := false, false
+	for pc := range body {
+		reads = reads || isHoistableReadAt(body, pc)
+		if target, jumps := program.JumpTargetAt(body, pc); jumps && target <= pc {
+			loops = true
+		}
+		if reads && loops {
+			return true
+		}
+	}
+	return false
+}
+
+// fuseRegisterCompareJump is FuseCompareRegJump() over the whole body, as a slot fusion.
+//
+// Takes compiledFunction (*program.CompiledFunction) which owns the body.
+// Takes body ([]isa.Instruction) which is rewritten in place.
+// Takes i (int) which is the candidate comparison.
+// Takes jumpTargets (map[int]bool) which marks the protected jump destinations.
+//
+// Returns bool which is true when the comparison was fused with its jump.
+func fuseRegisterCompareJump(compiledFunction *program.CompiledFunction, body []isa.Instruction, i int, jumpTargets map[int]bool) bool {
+	return FuseCompareRegJump(compiledFunction, body, i, len(body), jumpTargets)
 }

@@ -4,26 +4,24 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=3 complex=3
-;   dispatch:  asm=8 shim=5 exit=0 go=0
+;   registers: int64=3 complex128=3
+;   dispatch:  asm=6 shim=5 exit=0 go=0
 ;   params:    (none)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=0  [1]=1  [2]=2
 ;   complex: [0]=(2+3i)  [1]=(1+1i)
 
-0000 S 0:LOAD_COMPLEX_CONST         0   0   0
-0001 S 0:LOAD_COMPLEX_CONST         1   0   0
-0002 S 0:LOAD_COMPLEX_CONST         2   1   0
-0003 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0004 S 0:EQ_COMPLEX                 1   0   1
-0005 A 0:JUMP_IF_FALSE              1   2   0    ; if ints[1] == 0 goto +2
-0006 A 0:ADD_INT_CONST              2   0   1    ; const = 1
-0007 A 1:MOVE_INT                  35   0   2
-0008 S 0:NE_COMPLEX                 1   0   2
-0009 A 0:JUMP_IF_FALSE              1   2   0    ; if ints[1] == 0 goto +2
-0010 A 0:ADD_INT_CONST              2   0   2    ; const = 2
-0011 A 1:MOVE_INT                  35   0   2
-0012 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 0:LOAD_COMPLEX128_CONSTANT                             0   0   0
+0001 S 0:LOAD_COMPLEX128_CONSTANT                             1   0   0
+0002 S 0:LOAD_COMPLEX128_CONSTANT                             2   1   0
+0003 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0004 S 0:EQUAL_COMPLEX128                                     1   0   1
+0005 A 0:JUMP_IF_FALSE                                        1   1   0    ; if ints[1] == 0 goto +1
+0006 A 0:ADD_INT64_CONSTANT                                   0   0   1    ; const = 1
+0007 S 0:NOT_EQUAL_COMPLEX128                                 1   0   2
+0008 A 0:JUMP_IF_FALSE                                        1   1   0    ; if ints[1] == 0 goto +1
+0009 A 0:ADD_INT64_CONSTANT                                   0   0   2    ; const = 2
+0010 A 2:RETURN                                               0  10   1    ; 1 values

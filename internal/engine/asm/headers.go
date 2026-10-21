@@ -195,6 +195,13 @@ type DispatchContextOffsets struct {
 	// (bytes the struct-literal allocation handler carved since the last write-back).
 	ArenaGenericBytesCharged uintptr
 
+	// ArenaRouteState is the byte offset of the arenaRouteState field (address of the
+	// arena's revoked-epoch route state, or zero without an arena), CTX_ARENA_ROUTE_STATE.
+	ArenaRouteState uintptr
+
+	// Globals is the byte offset of the globals field (the VM's GlobalStore), CTX_GLOBALS.
+	Globals uintptr
+
 	// CurrentFrame is the byte offset of the CurrentFrame field: the cached address of the
 	// active callFrame, maintained by the inline call/return ASM and the Go frame-change
 	// refresh sites so shim trampolines resolve the frame with one load.
@@ -566,6 +573,54 @@ type CallFrameOffsets struct {
 	// FunctionTypeTableLen is the byte offset of the typeTable slice length within
 	// CompiledFunction (FN_TYPE_TABLE_LEN).
 	FunctionTypeTableLen uintptr
+
+	// FunctionFieldStoreGrants is the byte offset of the FieldStoreArenaSafePCs map pointer
+	// within CompiledFunction (FN_FIELD_STORE_GRANTS). A nil map grants no field store.
+	FunctionFieldStoreGrants uintptr
+
+	// RouteLocalBlind is the byte offset of revokedLocalBlind within the arena's
+	// revoked-epoch route state (ROUTE_LOCAL_BLIND).
+	RouteLocalBlind uintptr
+
+	// FunctionGlobalBases is the byte offset of the GlobalBases pointer within
+	// CompiledFunction (FN_GLOBAL_BASES). A nil pointer shifts no global operand.
+	FunctionGlobalBases uintptr
+
+	// GlobalStoreShared is the byte offset of the shared flag within GlobalStore
+	// (GS_SHARED); its low byte is non-zero once the store is shared.
+	GlobalStoreShared uintptr
+
+	// GlobalStoreInts is the byte offset of the int bank slice within GlobalStore (GS_INTS).
+	GlobalStoreInts uintptr
+
+	// GlobalStoreFloats is the byte offset of the float bank slice within GlobalStore
+	// (GS_FLOATS).
+	GlobalStoreFloats uintptr
+
+	// GlobalStoreBools is the byte offset of the bool bank slice within GlobalStore
+	// (GS_BOOLS).
+	GlobalStoreBools uintptr
+
+	// GlobalStoreUints is the byte offset of the uint bank slice within GlobalStore
+	// (GS_UINTS).
+	GlobalStoreUints uintptr
+
+	// GlobalStoreGeneral is the byte offset of the general bank slice within GlobalStore
+	// (GS_GENERAL).
+	GlobalStoreGeneral uintptr
+
+	// RouteNoteSeq is the byte offset of noteSeq within the arena's revoked-epoch route
+	// state (ROUTE_NOTE_SEQ).
+	RouteNoteSeq uintptr
+
+	// RouteNotesUntraced is the byte offset, within the arena's revoked-epoch route state,
+	// of the revoked-epoch hand-off count for the untraced-container cause
+	// (ROUTE_NOTES_UNTRACED).
+	RouteNotesUntraced uintptr
+
+	// RouteNotesBlind is the byte offset of the revoked-epoch blind hand-off count within
+	// the arena's revoked-epoch route state (ROUTE_NOTES_BLIND).
+	RouteNotesBlind uintptr
 
 	// SharedCells is the byte offset of the SharedCells field (closure-cell dedup map;
 	// lazily allocated).
@@ -1067,6 +1122,7 @@ func addFunctionTableDefines(defines *offsetDefineList, offsets *CallFrameOffset
 	defines.add("FN_STRUCT_LAYOUT_TABLE_LEN", offsets.FunctionStructLayoutTableLen)
 	defines.add("FN_TYPE_TABLE", offsets.FunctionTypeTable)
 	defines.add("FN_TYPE_TABLE_LEN", offsets.FunctionTypeTableLen)
+	defines.add("FN_FIELD_STORE_GRANTS", offsets.FunctionFieldStoreGrants)
 	defines.add("FN_RESULT_KINDS", offsets.FunctionResultKinds)
 	defines.add("FN_RESULT_KINDS_LEN", offsets.FunctionResultKindsLen)
 	defines.add("FN_STRUCT_LITERAL_TABLE", offsets.FunctionStructLiteralTableBase)
@@ -1076,6 +1132,34 @@ func addFunctionTableDefines(defines *offsetDefineList, offsets *CallFrameOffset
 	defines.add("SLE_BYTES", offsets.StructLiteralEntryBytes)
 	defines.add("SLE_ALIGN_MASK", offsets.StructLiteralEntryAlignMask)
 	defines.add("SLE_FLAG", offsets.StructLiteralEntryFlag)
+}
+
+// addRouteStateDefines appends the ROUTE_* defines that locate the fields of the arena's
+// revoked-epoch route state the pointer-store route reads and writes through
+// CTX_ARENA_ROUTE_STATE.
+//
+// Takes defines (*offsetDefineList) which receives the new entries.
+// Takes offsets (*CallFrameOffsets) which supplies the field positions.
+func addRouteStateDefines(defines *offsetDefineList, offsets *CallFrameOffsets) {
+	defines.add("ROUTE_LOCAL_BLIND", offsets.RouteLocalBlind)
+	defines.add("ROUTE_NOTE_SEQ", offsets.RouteNoteSeq)
+	defines.add("ROUTE_NOTES_UNTRACED", offsets.RouteNotesUntraced)
+	defines.add("ROUTE_NOTES_BLIND", offsets.RouteNotesBlind)
+}
+
+// addGlobalStoreDefines appends the defines GET_GLOBAL's handler reads a package variable
+// through: the GlobalStore's banks and shared flag, and the function's global bases.
+//
+// Takes defines (*offsetDefineList) which receives the new entries.
+// Takes offsets (*CallFrameOffsets) which supplies the field positions.
+func addGlobalStoreDefines(defines *offsetDefineList, offsets *CallFrameOffsets) {
+	defines.add("FN_GLOBAL_BASES", offsets.FunctionGlobalBases)
+	defines.add("GS_SHARED", offsets.GlobalStoreShared)
+	defines.add("GS_INTS", offsets.GlobalStoreInts)
+	defines.add("GS_FLOATS", offsets.GlobalStoreFloats)
+	defines.add("GS_BOOLS", offsets.GlobalStoreBools)
+	defines.add("GS_UINTS", offsets.GlobalStoreUints)
+	defines.add("GS_GENERAL", offsets.GlobalStoreGeneral)
 }
 
 // addCallFrameRegisterBankDefines appends the CF_REGS_* pointer, length and capacity
@@ -1139,6 +1223,8 @@ func emitOffsetsCallFrame(offsets *CallFrameOffsets) string {
 	defines.add("CF_REGS_LAST_MASK", offsets.RegsLastAllocMask)
 	defines.add("CF_FUNCTION", offsets.Function)
 	addFunctionTableDefines(&defines, offsets)
+	addRouteStateDefines(&defines, offsets)
+	addGlobalStoreDefines(&defines, offsets)
 	defines.add("CF_SHARED_CELLS", offsets.SharedCells)
 	defines.add("CF_UPVALUES_PTR", offsets.Upvalues)
 	defines.add("CF_RETURNDEST_PTR", offsets.ReturnDestPtr)
@@ -1171,7 +1257,7 @@ func emitOffsetsDispatchContextExtended(offsets *DispatchContextOffsets) string 
 	structFieldTables := emitStructFieldTableDefines(offsets)
 	sliceByteBank := emitSliceByteBankDefines(offsets)
 	sliceByteArena := emitSliceByteArenaDefines(offsets)
-	return preamble + body + structFieldTables + sliceByteBank + sliceByteArena + "\n" + emitOffsetsStructFieldLayout() + "\n" + emitOffsetsUpvalueCell()
+	return preamble + body + structFieldTables + sliceByteBank + sliceByteArena + "\n" + emitOffsetsStructFieldLayout() + "\n" + emitOffsetsUpvalueCell() + emitOffsetsTypedElementShape()
 }
 
 // buildExtendedDispatchContextDefines assembles the main CTX_* define block emitted at
@@ -1211,6 +1297,8 @@ func buildExtendedDispatchContextDefines(offsets *DispatchContextOffsets) offset
 	defines.add("CTX_ARENA_GENERIC_HDR", offsets.ArenaGenericBytesSlabHeader)
 	defines.add("CTX_ARENA_GENERIC_IDX_PTR", offsets.ArenaGenericBytesIndexPointer)
 	defines.add("CTX_ARENA_GENERIC_CHARGED", offsets.ArenaGenericBytesCharged)
+	defines.add("CTX_ARENA_ROUTE_STATE", offsets.ArenaRouteState)
+	defines.add("CTX_GLOBALS", offsets.Globals)
 	defines.add("CTX_ASM_CI_PTRS", offsets.AsmCallInfoBasesPtr)
 	defines.add("CTX_DISPATCH_SAVES", offsets.DispatchSavesPtr)
 	defines.add("CTX_STRINGS_BASE", offsets.StringsBase)
@@ -1335,9 +1423,11 @@ func emitOffsetsStructFieldLayout() string {
 #define REFLECT_FLOAT64 14
 #define REFLECT_INTERFACE 20
 #define REFLECT_POINTER 22
+#define REFLECT_SLICE   23
 
 // reflect.Value flag bits, pinned by TestReflectValueFlagConstants.
 #define FLAG_KIND_MASK 0x1F
+#define FLAG_RO        0x60
 #define FLAG_INDIR     0x80
 #define FLAG_ADDR      0x100
 
@@ -1349,7 +1439,8 @@ func emitOffsetsStructFieldLayout() string {
 }
 
 // emitOffsetsUpvalueCell returns the static #define block covering upvalueCell field
-// offsets and isa.RegisterKind enum values the tier-0 GET_UPVALUE handler reads.
+// offsets and isa.RegisterKind enum values the tier-0 GET_CAPTURED_VARIABLE handler
+// reads.
 //
 // Returns string containing the CELL_*, REGKIND_* and DS_* #define blocks.
 func emitOffsetsUpvalueCell() string {
@@ -1361,12 +1452,13 @@ func emitOffsetsUpvalueCell() string {
 #define CELL_BOOL_VALUE  256
 #define CELL_IS_INDIRECT 258
 
-// registerKind values for the GET_UPVALUE destination bank, pinned by
+// registerKind values for the GET_CAPTURED_VARIABLE and GET_GLOBAL destination banks, pinned by
 // TestRegisterKindConstants.
-#define REGKIND_INT   0
-#define REGKIND_FLOAT 1
-#define REGKIND_BOOL  4
-#define REGKIND_UINT  5
+#define REGKIND_INT     0
+#define REGKIND_FLOAT   1
+#define REGKIND_GENERAL 3
+#define REGKIND_BOOL    4
+#define REGKIND_UINT    5
 
 // asmDispatchSave field offsets, pinned by TestASMDispatchSaveOffsets.
 #define DS_CODE_BASE     0
@@ -1377,6 +1469,32 @@ func emitOffsetsUpvalueCell() string {
 #define DS_BOOL_CONSTS   40
 #define DS_UINT_CONSTS   48
 #define DS_SIZE_SHIFT    6
+
+`
+}
+
+// emitOffsetsTypedElementShape returns the static #define block for the typed element
+// shape cache the GET_ELEMENT_INT64 and GET_ELEMENT_UINT64 handlers read, which holds the
+// shape's field offsets, its container values and the front slot hash.
+//
+// Returns string containing the TES_* #define block.
+func emitOffsetsTypedElementShape() string {
+	return `// typedElementShape field offsets and typedContainer values, pinned by
+// TestTypedElementShapeOffsets. The element kind is a reflect.Kind word whose low byte the
+// handlers read (both ports are little-endian).
+#define TES_COLLECTION_TYPE 0
+#define TES_ELEMENT_SIZE    8
+#define TES_ARRAY_LENGTH    16
+#define TES_ELEMENT_KIND    24
+#define TES_CONTAINER       32
+#define TES_CONTAINER_SLICE         1
+#define TES_CONTAINER_ARRAY         2
+#define TES_CONTAINER_ARRAY_POINTER 3
+
+// typedElementShapeSlot's hash: the slot is (type * TES_HASH_MULTIPLIER) >> TES_SLOT_SHIFT,
+// pinned by TestTypedElementShapeOffsets.
+#define TES_HASH_MULTIPLIER 0x9E3779B97F4A7C15
+#define TES_SLOT_SHIFT      54
 
 `
 }

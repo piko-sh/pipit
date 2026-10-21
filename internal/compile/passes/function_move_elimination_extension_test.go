@@ -34,15 +34,15 @@ func TestScanAndEliminateMoveKeepsMovePassedToDeferOrGo(t *testing.T) {
 			t.Parallel()
 
 			body := []isa.Instruction{
-				isa.NewTier1Instruction(isa.SubOpMoveInt, 2, 1),
+				isa.NewTier1Instruction(isa.SubOpMoveInt64, 2, 1),
 				mk(op, 0, 1, 0),
-				mk(isa.OpExt, 0, 2, uint8(isa.RegisterInt)),
-				mk(isa.OpAddInt, 3, 2, 0),
-				isa.NewTier1Instruction(isa.SubOpMoveInt, 2, 7),
+				mk(isa.OpExtension, 0, 2, uint8(isa.RegisterInt64)),
+				mk(isa.OpAddInt64, 3, 2, 0),
+				isa.NewTier1Instruction(isa.SubOpMoveInt64, 2, 7),
 				returnVoid(),
 			}
 			original := append([]isa.Instruction(nil), body...)
-			candidate := MoveCandidate{Kind: isa.RegisterInt, Destination: 2, Source: 1}
+			candidate := MoveCandidate{Kind: isa.RegisterInt64, Destination: 2, Source: 1}
 
 			require.False(t, ScanAndEliminateMove(body, 0, len(body), BuildAllJumpTargets(body), candidate))
 			require.Equal(t, original, body)

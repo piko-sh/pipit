@@ -29,7 +29,7 @@ import (
 
 func TestNewVMWithoutCancelHasNoCancellationWatcher(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithCancelCause(context.Background())
+	ctx, cancel := context.WithCancelCause(t.Context())
 	cancel(fault.ErrMainReturned)
 
 	tests := []struct {

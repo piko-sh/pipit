@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/symtab"
 )
 
@@ -81,14 +82,22 @@ type RestrictedSessionConfig struct {
 // RestrictedSession retains script state without exposing the backing service. Any
 // admitted submission failure is terminal.
 type RestrictedSession struct {
-	// ctx is the session-scoped context, cancelled on close or expiry.
-	ctx context.Context
+	// closedCause is why the session ended, nil while it is open. The mutex guards it.
+	closedCause error
 
-	// cancel terminates the session with a cause.
-	cancel context.CancelCauseFunc
+	// closed is closed when the session ends.
+	closed chan struct{}
 
-	// stopLifetime cancels the outer lifetime context.
-	stopLifetime context.CancelFunc
+	// cancelActive cancels the active submission's context with the session's end, nil while
+	// no submission runs. The mutex guards it.
+	cancelActive context.CancelCauseFunc
+
+	// stopWatch stops the watch that ends the session when the context it was made with
+	// ends. The mutex guards it.
+	stopWatch func() bool
+
+	// lifetime ends the session once its total lifetime has passed. The mutex guards it.
+	lifetime *time.Timer
 
 	// idle is the timer for the current idle interval.
 	idle *time.Timer
@@ -156,6 +165,9 @@ func NewRestrictedSessionWithProvider(ctx context.Context, config RestrictedSess
 // Takes provider (symtab.SymbolProviderPort) which may be nil for the math-only surface.
 //
 // Returns the session, or a configuration error.
+//
+// Concurrent access is guarded by a mutex. The context watch may end the session from
+// another goroutine. The session mutex guards termination.
 func newRestrictedSession(ctx context.Context, config RestrictedSessionConfig, provider symtab.SymbolProviderPort) (*RestrictedSession, error) {
 	if ctx == nil {
 		return nil, ErrInvalidRestrictedConfig
@@ -167,29 +179,33 @@ func newRestrictedSession(ctx context.Context, config RestrictedSessionConfig, p
 	if err != nil {
 		return nil, err
 	}
-	lifetime, stopLifetime := context.WithTimeoutCause(ctx, config.Lifetime, errRestrictedSessionExpired)
-	sessionContext, cancel := context.WithCancelCause(lifetime)
 	output := &restrictedOutput{buffer: bytes.Buffer{}, remaining: 0, truncated: false}
+	service, err := interpreter.newService(ctx, output)
+	if err != nil {
+		return nil, err
+	}
 	session := &RestrictedSession{
-		mutex: sync.Mutex{}, config: config, ctx: sessionContext, cancel: cancel,
-		stopLifetime: stopLifetime, idle: nil, generation: 0, active: false,
-		session: interpreter.newService(output).NewSession(), output: output,
+		mutex: sync.Mutex{}, config: config, closedCause: nil, closed: make(chan struct{}),
+		cancelActive: nil, stopWatch: nil, lifetime: nil, idle: nil, generation: 0, active: false,
+		session: service.NewSession(), output: output,
 		sourceRemaining: config.MaxCumulativeSourceBytes, outputRemaining: config.MaxCumulativeOutputBytes,
 		costRemaining: config.costBudget, submissionsRemaining: config.MaxSubmissions,
 	}
+	session.mutex.Lock()
+	defer session.mutex.Unlock()
 	session.armIdle()
-	context.AfterFunc(sessionContext, session.releaseClosed)
+	session.lifetime = time.AfterFunc(config.Lifetime, func() { session.terminate(errRestrictedSessionExpired) })
+	session.stopWatch = context.AfterFunc(ctx, func() { session.terminate(context.Cause(ctx)) })
 	return session, nil
 }
 
 // Close permanently cancels the session. Active work observes cooperative cancellation;
 // its interpreter state is released when the active call returns.
 func (session *RestrictedSession) Close() {
-	if session == nil || session.cancel == nil {
+	if session == nil || session.closed == nil {
 		return
 	}
-	session.cancel(errRestrictedSessionClosed)
-	session.releaseClosed()
+	session.terminate(errRestrictedSessionClosed)
 }
 
 // submit evaluates one bounded submission with retained script state.
@@ -201,19 +217,43 @@ func (session *RestrictedSession) submit(ctx context.Context, source string) (Re
 	return SubmitRestrictedSessionPhased(ctx, session, source, func() error { return nil })
 }
 
-// releaseClosed drops retained state only after its exclusive owner has stopped.
+// terminate ends the session with cause.
 //
-// Safe for concurrent use; acquires the session mutex.
-func (session *RestrictedSession) releaseClosed() {
+// Takes cause (error) which is why the session ends.
+//
+// Safe for concurrent use. It acquires the session mutex.
+func (session *RestrictedSession) terminate(cause error) {
 	session.mutex.Lock()
 	defer session.mutex.Unlock()
-	if session.ctx.Err() == nil {
+	session.terminateLocked(cause)
+}
+
+// terminateLocked ends the session with cause unless it has already ended.
+//
+// The active submission is cancelled before the closed channel is closed, so anything
+// that wakes on the channel finds the submission already cancelled.
+//
+// Takes cause (error) which is why the session ends.
+//
+// The caller must hold the session mutex.
+func (session *RestrictedSession) terminateLocked(cause error) {
+	if session.closedCause != nil {
 		return
 	}
+	session.closedCause = cause
+	if session.cancelActive != nil {
+		session.cancelActive(cause)
+	}
+	close(session.closed)
 	if session.idle != nil {
 		session.idle.Stop()
 	}
-	session.stopLifetime()
+	if session.lifetime != nil {
+		session.lifetime.Stop()
+	}
+	if session.stopWatch != nil {
+		session.stopWatch()
+	}
 	if !session.active {
 		session.session = nil
 		session.output = nil
@@ -229,13 +269,10 @@ func (session *RestrictedSession) armIdle() {
 	session.idle = time.AfterFunc(session.config.IdleTimeout, func() {
 		session.mutex.Lock()
 		defer session.mutex.Unlock()
-		if session.active || session.generation != generation || session.ctx.Err() != nil {
+		if session.active || session.generation != generation {
 			return
 		}
-		session.cancel(errRestrictedSessionExpired)
-		session.stopLifetime()
-		session.session = nil
-		session.output = nil
+		session.terminateLocked(errRestrictedSessionExpired)
 	})
 }
 
@@ -249,15 +286,15 @@ func (session *RestrictedSession) armIdle() {
 func (session *RestrictedSession) admit(source string) error {
 	session.mutex.Lock()
 	defer session.mutex.Unlock()
-	if session.ctx.Err() != nil {
-		return context.Cause(session.ctx)
+	if session.closedCause != nil {
+		return session.closedCause
 	}
 	if session.active {
 		return ErrRestrictedBusy
 	}
 	if len(source) > session.config.Interpreter.MaxSourceBytes || len(source) > session.sourceRemaining ||
 		session.submissionsRemaining == 0 || session.costRemaining <= 0 {
-		session.cancel(ErrRestrictedLimit)
+		session.terminateLocked(ErrRestrictedLimit)
 		return ErrRestrictedLimit
 	}
 	session.active = true
@@ -279,17 +316,31 @@ func (session *RestrictedSession) finish(err error) error {
 	session.mutex.Lock()
 	defer session.mutex.Unlock()
 	if err != nil {
-		session.cancel(err)
+		session.terminateLocked(err)
 	}
 	session.active = false
-	if session.ctx.Err() != nil {
-		session.stopLifetime()
+	session.cancelActive = nil
+	if session.closedCause != nil {
 		session.session = nil
 		session.output = nil
-		return errors.Join(err, context.Cause(session.ctx))
+		return errors.Join(err, session.closedCause)
 	}
 	session.armIdle()
 	return nil
+}
+
+// watchActive has the session's end cancel the admitted submission's context.
+//
+// Takes cancel (context.CancelCauseFunc) which cancels the submission's context.
+//
+// Safe for concurrent use. It acquires the session mutex.
+func (session *RestrictedSession) watchActive(cancel context.CancelCauseFunc) {
+	session.mutex.Lock()
+	defer session.mutex.Unlock()
+	session.cancelActive = cancel
+	if session.closedCause != nil {
+		cancel(session.closedCause)
+	}
 }
 
 // evaluatePhased runs an exclusively admitted submission and charges cumulative budgets.
@@ -310,7 +361,7 @@ func (session *RestrictedSession) evaluatePhased(
 	service := session.session.service
 	service.limits.CostBudget = min(config.CostBudget, session.costRemaining)
 	service.lastCostUsed.Store(0)
-	compileContext, cancelCompile := context.WithTimeout(ctx, restrictedCompilationTimeout)
+	compileContext, cancelCompile := context.WithTimeoutCause(ctx, restrictedCompilationTimeout, fault.ErrExecutionCancelled)
 	execute, err := session.session.compileSubmission(compileContext, source)
 	err = errors.Join(err, compileContext.Err())
 	cancelCompile()
@@ -323,7 +374,7 @@ func (session *RestrictedSession) evaluatePhased(
 	if err := ctx.Err(); err != nil {
 		return RestrictedResult{}, err
 	}
-	executionContext, cancelExecution := context.WithTimeout(ctx, config.Timeout)
+	executionContext, cancelExecution := context.WithTimeoutCause(ctx, config.Timeout, fault.ErrExecutionCancelled)
 	defer cancelExecution()
 	value, err := execute(executionContext)
 	result := RestrictedResult{
@@ -353,7 +404,7 @@ func (session *RestrictedSession) evaluatePhased(
 func SubmitRestrictedSessionPhased(
 	ctx context.Context, session *RestrictedSession, source string, beginExecution func() error,
 ) (result RestrictedResult, err error) {
-	if ctx == nil || session == nil || session.ctx == nil || beginExecution == nil {
+	if ctx == nil || session == nil || session.closed == nil || beginExecution == nil {
 		return RestrictedResult{}, ErrInvalidRestrictedConfig
 	}
 	if err := session.admit(source); err != nil {
@@ -369,19 +420,18 @@ func SubmitRestrictedSessionPhased(
 			result.Value = nil
 		}
 	}()
-	operation, cancel := context.WithCancelCause(session.ctx)
-	stopCaller := context.AfterFunc(ctx, func() { cancel(context.Cause(ctx)) })
-	defer stopCaller()
+	operation, cancel := context.WithCancelCause(ctx)
 	defer cancel(context.Canceled)
+	session.watchActive(cancel)
 	if err = ctx.Err(); err == nil {
 		result, err = session.evaluatePhased(operation, source, func() error {
-			if err := errors.Join(ctx.Err(), session.ctx.Err()); err != nil {
+			if err := operation.Err(); err != nil {
 				return err
 			}
 			if err := beginExecution(); err != nil {
 				return err
 			}
-			return errors.Join(ctx.Err(), session.ctx.Err())
+			return operation.Err()
 		})
 	}
 	err = errors.Join(err, ctx.Err())

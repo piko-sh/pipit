@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerGetStructFieldIntT0 sets ints[A] = receiver[B].field(layout[C]) for full-width scalar fields; other shapes fall back to handlerPathBShimGetStructFieldIntT0.
-TEXT ·handlerGetStructFieldIntT0(SB), NOSPLIT|NOFRAME, $0
+// handlerGetStructFieldInt64 sets ints[A] = receiver[B].field(layout[C]) for full-width scalar fields. Other shapes fall back to handlerPathBShimGetStructFieldInt64.
+TEXT ·handlerGetStructFieldInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $24, BX
 	MOVQ    CTX_FRAME_POINTER(R15), AX
@@ -83,10 +83,10 @@ sf_have_base:
 	MOVQ    CX, (R8)(AX*8)
 	DISPATCH_NEXT()
 sf_shim:
-	JMP     ·handlerPathBShimGetStructFieldIntT0(SB)
+	JMP     ·handlerPathBShimGetStructFieldInt64(SB)
 
-// handlerSetStructFieldIntT0 sets receiver[A].field(layout[C]) = ints[B] for full-width scalar fields; other shapes fall back to handlerPathBShimSetStructFieldIntT0.
-TEXT ·handlerSetStructFieldIntT0(SB), NOSPLIT|NOFRAME, $0
+// handlerSetStructFieldInt64 sets receiver[A].field(layout[C]) = ints[B] for full-width scalar fields. Other shapes fall back to handlerPathBShimSetStructFieldInt64.
+TEXT ·handlerSetStructFieldInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $24, BX
 	MOVQ    CTX_FRAME_POINTER(R15), AX
@@ -143,10 +143,10 @@ sf_have_base:
 	MOVQ    CX, (DI)
 	DISPATCH_NEXT()
 sf_shim:
-	JMP     ·handlerPathBShimSetStructFieldIntT0(SB)
+	JMP     ·handlerPathBShimSetStructFieldInt64(SB)
 
-// handlerGetStructFieldUintT0 sets uints[A] = receiver[B].field(layout[C]) for full-width scalar fields; other shapes fall back to handlerPathBShimGetStructFieldUintT0.
-TEXT ·handlerGetStructFieldUintT0(SB), NOSPLIT|NOFRAME, $0
+// handlerGetStructFieldUint64 sets uints[A] = receiver[B].field(layout[C]) for full-width scalar fields. Other shapes fall back to handlerPathBShimGetStructFieldUint64.
+TEXT ·handlerGetStructFieldUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $24, BX
 	MOVQ    CTX_FRAME_POINTER(R15), AX
@@ -204,10 +204,10 @@ sf_have_base:
 	MOVQ    CX, (SI)(AX*8)
 	DISPATCH_NEXT()
 sf_shim:
-	JMP     ·handlerPathBShimGetStructFieldUintT0(SB)
+	JMP     ·handlerPathBShimGetStructFieldUint64(SB)
 
-// handlerSetStructFieldUintT0 sets receiver[A].field(layout[C]) = uints[B] for full-width scalar fields; other shapes fall back to handlerPathBShimSetStructFieldUintT0.
-TEXT ·handlerSetStructFieldUintT0(SB), NOSPLIT|NOFRAME, $0
+// handlerSetStructFieldUint64 sets receiver[A].field(layout[C]) = uints[B] for full-width scalar fields. Other shapes fall back to handlerPathBShimSetStructFieldUint64.
+TEXT ·handlerSetStructFieldUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $24, BX
 	MOVQ    CTX_FRAME_POINTER(R15), AX
@@ -265,10 +265,10 @@ sf_have_base:
 	MOVQ    CX, (DI)
 	DISPATCH_NEXT()
 sf_shim:
-	JMP     ·handlerPathBShimSetStructFieldUintT0(SB)
+	JMP     ·handlerPathBShimSetStructFieldUint64(SB)
 
-// handlerGetStructFieldFloatT0 sets floats[A] = receiver[B].field(layout[C]) for full-width scalar fields; other shapes fall back to handlerPathBShimGetStructFieldFloatT0.
-TEXT ·handlerGetStructFieldFloatT0(SB), NOSPLIT|NOFRAME, $0
+// handlerGetStructFieldFloat64 sets floats[A] = receiver[B].field(layout[C]) for full-width scalar fields. Other shapes fall back to handlerPathBShimGetStructFieldFloat64.
+TEXT ·handlerGetStructFieldFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $24, BX
 	MOVQ    CTX_FRAME_POINTER(R15), AX
@@ -322,10 +322,10 @@ sf_have_base:
 	MOVQ    CX, (R9)(AX*8)
 	DISPATCH_NEXT()
 sf_shim:
-	JMP     ·handlerPathBShimGetStructFieldFloatT0(SB)
+	JMP     ·handlerPathBShimGetStructFieldFloat64(SB)
 
-// handlerSetStructFieldFloatT0 sets receiver[A].field(layout[C]) = floats[B] for full-width scalar fields; other shapes fall back to handlerPathBShimSetStructFieldFloatT0.
-TEXT ·handlerSetStructFieldFloatT0(SB), NOSPLIT|NOFRAME, $0
+// handlerSetStructFieldFloat64 sets receiver[A].field(layout[C]) = floats[B] for full-width scalar fields. Other shapes fall back to handlerPathBShimSetStructFieldFloat64.
+TEXT ·handlerSetStructFieldFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $24, BX
 	MOVQ    CTX_FRAME_POINTER(R15), AX
@@ -379,10 +379,10 @@ sf_have_base:
 	MOVQ    CX, (DI)
 	DISPATCH_NEXT()
 sf_shim:
-	JMP     ·handlerPathBShimSetStructFieldFloatT0(SB)
+	JMP     ·handlerPathBShimSetStructFieldFloat64(SB)
 
-// handlerGetStructFieldBoolT0 sets bools[A] = receiver[B].field(layout[C]) for full-width scalar fields; other shapes fall back to handlerPathBShimGetStructFieldBoolT0.
-TEXT ·handlerGetStructFieldBoolT0(SB), NOSPLIT|NOFRAME, $0
+// handlerGetStructFieldBool sets bools[A] = receiver[B].field(layout[C]) for full-width scalar fields. Other shapes fall back to handlerPathBShimGetStructFieldBool.
+TEXT ·handlerGetStructFieldBool(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $24, BX
 	MOVQ    CTX_FRAME_POINTER(R15), AX
@@ -437,10 +437,10 @@ sf_have_base:
 	MOVB    CL, (SI)(AX*1)
 	DISPATCH_NEXT()
 sf_shim:
-	JMP     ·handlerPathBShimGetStructFieldBoolT0(SB)
+	JMP     ·handlerPathBShimGetStructFieldBool(SB)
 
-// handlerSetStructFieldBoolT0 sets receiver[A].field(layout[C]) = bools[B] for full-width scalar fields; other shapes fall back to handlerPathBShimSetStructFieldBoolT0.
-TEXT ·handlerSetStructFieldBoolT0(SB), NOSPLIT|NOFRAME, $0
+// handlerSetStructFieldBool sets receiver[A].field(layout[C]) = bools[B] for full-width scalar fields. Other shapes fall back to handlerPathBShimSetStructFieldBool.
+TEXT ·handlerSetStructFieldBool(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $24, BX
 	MOVQ    CTX_FRAME_POINTER(R15), AX
@@ -495,10 +495,10 @@ sf_have_base:
 	MOVB    CL, (DI)
 	DISPATCH_NEXT()
 sf_shim:
-	JMP     ·handlerPathBShimSetStructFieldBoolT0(SB)
+	JMP     ·handlerPathBShimSetStructFieldBool(SB)
 
-// handlerGetStructFieldSliceIndexScalar sets bank(ext2.C)[A] = receiver[B].field(layout[C])[ints[ext1.C]].subfield(ext2.wide); other shapes fall back to handlerPathBShimGetStructFieldSliceIndexScalar.
-TEXT ·handlerGetStructFieldSliceIndexScalar(SB), NOSPLIT|NOFRAME, $0
+// handlerGetStructFieldElementField sets bank(ext2.C)[A] = receiver[B].field(layout[C])[ints[ext1.C]].subfield(ext2.wide). Other shapes fall back to handlerPathBShimGetStructFieldElementField.
+TEXT ·handlerGetStructFieldElementField(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $24, BX
 	MOVQ    CTX_FRAME_POINTER(R15), AX
@@ -597,10 +597,10 @@ sfsi_done:
 	ADDQ    $2, R14
 	DISPATCH_NEXT()
 sf_shim:
-	JMP     ·handlerPathBShimGetStructFieldSliceIndexScalar(SB)
+	JMP     ·handlerPathBShimGetStructFieldElementField(SB)
 
-// handlerGetStructFieldSliceLen sets ints[A] = len(receiver[B].field(layout[C])) for slice-kind fields; other shapes fall back to handlerPathBShimGetStructFieldSliceLen.
-TEXT ·handlerGetStructFieldSliceLen(SB), NOSPLIT|NOFRAME, $0
+// handlerLengthStructField sets ints[A] = len(receiver[B].field(layout[C])) for slice-kind fields. Other shapes fall back to handlerPathBShimLengthStructField.
+TEXT ·handlerLengthStructField(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $24, BX
 	MOVQ    CTX_FRAME_POINTER(R15), AX
@@ -654,4 +654,4 @@ sf_have_base:
 	MOVQ    CX, (R8)(AX*8)
 	DISPATCH_NEXT()
 sf_shim:
-	JMP     ·handlerPathBShimGetStructFieldSliceLen(SB)
+	JMP     ·handlerPathBShimLengthStructField(SB)

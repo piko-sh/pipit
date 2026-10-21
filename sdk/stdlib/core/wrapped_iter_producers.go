@@ -161,8 +161,9 @@ func reflectSlicesAppendSeq(s, seq any) any {
 	result := reflect.MakeSlice(rv.Type(), rv.Len(), rv.Len())
 	reflect.Copy(result, rv)
 	seqVal := reflect.ValueOf(seq)
+	elementType := rv.Type().Elem()
 	for v := range seqVal.Seq() {
-		result = reflect.Append(result, v)
+		result = reflect.Append(result, valueAs(v, elementType))
 	}
 	return result.Interface()
 }
@@ -255,7 +256,8 @@ func reflectMapsInsert(m, seq any) {
 		panic(fmt.Sprintf("maps.Insert: unsupported type %T", m))
 	}
 	seqVal := reflect.ValueOf(seq)
+	keyType, valueType := rv.Type().Key(), rv.Type().Elem()
 	for k, v := range seqVal.Seq2() {
-		rv.SetMapIndex(k, v)
+		rv.SetMapIndex(valueAs(k, keyType), valueAs(v, valueType))
 	}
 }

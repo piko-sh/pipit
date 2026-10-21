@@ -33,6 +33,7 @@ import (
 	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/policy"
+	"pipit.sh/pipit/internal/sandboxwire"
 	"pipit.sh/pipit/internal/sandboxworker"
 	"pipit.sh/pipit/internal/stdlibindex"
 )
@@ -158,7 +159,7 @@ func NewIsolatedWorker(ctx context.Context, config IsolatedConfig) (*IsolatedWor
 		return nil, err
 	}
 	if err != nil {
-		return nil, cleanupOrFail(err, process.Close)
+		return nil, cleanupOrFail(ctx, err, process.Close)
 	}
 	return &IsolatedWorker{process: process, imports: config.Imports, used: atomic.Bool{}}, nil
 }
@@ -169,8 +170,8 @@ func NewIsolatedWorker(ctx context.Context, config IsolatedConfig) (*IsolatedWor
 //
 // Returns RestrictedResult containing only bounded output and a JSON scalar.
 // Returns error for script failure, cancellation, protocol failure or cleanup failure.
-func (worker *IsolatedWorker) Eval(source string) (RestrictedResult, error) {
-	return worker.evaluate(sandboxworker.Request{Kind: "expression", Source: source, Entrypoint: ""})
+func (worker *IsolatedWorker) Eval(ctx context.Context, source string) (RestrictedResult, error) {
+	return worker.evaluate(ctx, sandboxworker.Request{Kind: "expression", Source: source, Entrypoint: ""})
 }
 
 // EvalFile compiles a complete source file and executes its named entrypoint once.
@@ -180,20 +181,20 @@ func (worker *IsolatedWorker) Eval(source string) (RestrictedResult, error) {
 //
 // Returns RestrictedResult containing only bounded output and a JSON scalar.
 // Returns error for script failure, cancellation, protocol failure or cleanup failure.
-func (worker *IsolatedWorker) EvalFile(source, entrypoint string) (RestrictedResult, error) {
-	return worker.evaluate(sandboxworker.Request{Kind: "file", Source: source, Entrypoint: entrypoint})
+func (worker *IsolatedWorker) EvalFile(ctx context.Context, source, entrypoint string) (RestrictedResult, error) {
+	return worker.evaluate(ctx, sandboxworker.Request{Kind: "file", Source: source, Entrypoint: entrypoint})
 }
 
 // Close permanently closes admission and terminates any active submission. Resource
 // cleanup may be retried; a worker can never be reused after Close.
 //
 // Returns error for worker failure or incomplete native cleanup.
-func (worker *IsolatedWorker) Close() error {
+func (worker *IsolatedWorker) Close(ctx context.Context) error {
 	if worker == nil || worker.process == nil {
 		return nil
 	}
 	worker.used.Store(true)
-	return worker.process.Close()
+	return worker.process.Close(ctx)
 }
 
 // Diagnostics returns bounded, untrusted native stdout and stderr for host inspection.
@@ -212,19 +213,19 @@ func (worker *IsolatedWorker) Diagnostics() string {
 //
 // Returns RestrictedResult only after successful native lifecycle completion.
 // Returns error for any failed execution or boundary invariant.
-func (worker *IsolatedWorker) evaluate(request sandboxworker.Request) (RestrictedResult, error) {
+func (worker *IsolatedWorker) evaluate(ctx context.Context, request sandboxworker.Request) (RestrictedResult, error) {
 	if worker == nil || worker.process == nil || !worker.used.CompareAndSwap(false, true) {
 		return RestrictedResult{}, ErrIsolatedUsed
 	}
 	response, err := sandboxworker.Exchange(worker.process,
 		sandboxworker.Configuration{Profile: sandboxworker.Profile, Imports: worker.imports}, request)
 	if err != nil {
-		return RestrictedResult{}, errors.Join(err, worker.process.Close())
+		return RestrictedResult{}, errors.Join(err, closeIsolatedProcess(ctx, worker.process))
 	}
 	if err := worker.process.Wait(); err != nil {
-		return RestrictedResult{}, errors.Join(err, worker.process.Close())
+		return RestrictedResult{}, errors.Join(err, closeIsolatedProcess(ctx, worker.process))
 	}
-	if err := worker.process.Close(); err != nil {
+	if err := worker.process.Close(ctx); err != nil {
 		return RestrictedResult{}, err
 	}
 	result := RestrictedResult{
@@ -235,6 +236,18 @@ func (worker *IsolatedWorker) evaluate(request sandboxworker.Request) (Restricte
 		return result, &fault.EvaluationError{Tier: "isolated", Message: response.Error}
 	}
 	return result, nil
+}
+
+// closeIsolatedProcess closes process after a failure under ctx's values without its
+// cancellation and with a bound (sandboxwire.CleanupContext).
+//
+// Takes process (isolatedProcess) which is closed.
+//
+// Returns error from the close.
+func closeIsolatedProcess(ctx context.Context, process isolatedProcess) error {
+	cleanupCtx, cancel := sandboxwire.CleanupContext(ctx)
+	defer cancel()
+	return process.Close(cleanupCtx)
 }
 
 // IsolatedCleanupError reports that a constructor's launch failed and the cleanup it then
@@ -293,7 +306,7 @@ type isolatedProcess interface {
 	// Close terminates the worker and releases native resources.
 	//
 	// Returns error when cleanup fails.
-	Close() error
+	Close(ctx context.Context) error
 
 	// Output returns bounded, untrusted native diagnostic text.
 	//
@@ -306,13 +319,18 @@ type isolatedProcess interface {
 // Retry when it does not, so a constructor never hands back a live owner alongside an
 // error.
 //
+// The cleanup runs under ctx's values without its cancellation and with a bound
+// (sandboxwire.CleanupContext). A Retry runs under the context the host passes it.
+//
 // Takes launch (error) which is the non-nil launch failure.
-// Takes closer (func() error) which releases the partial resources.
+// Takes closer (func(context.Context) error) which releases the partial resources.
 //
 // Returns error which is launch, or an *IsolatedCleanupError.
-func cleanupOrFail(launch error, closer func() error) error {
-	if closeErr := closer(); closeErr != nil {
-		return &IsolatedCleanupError{launch: launch, cleanup: closeErr, retry: func(context.Context) error { return closer() }}
+func cleanupOrFail(ctx context.Context, launch error, closer func(ctx context.Context) error) error {
+	cleanupCtx, cancel := sandboxwire.CleanupContext(ctx)
+	defer cancel()
+	if closeErr := closer(cleanupCtx); closeErr != nil {
+		return &IsolatedCleanupError{launch: launch, cleanup: closeErr, retry: closer}
 	}
 	return launch
 }

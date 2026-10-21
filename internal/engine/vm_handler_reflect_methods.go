@@ -20,6 +20,7 @@ package engine
 
 import (
 	"go/token"
+	"iter"
 	"reflect"
 	"slices"
 	"strconv"
@@ -40,17 +41,90 @@ type pipitMethodEntry struct {
 	// methodRoot is the root function owning the method, or nil for the current root.
 	methodRoot *program.CompiledFunction
 
+	// embedded is the type of the embedded field that declares a promoted method, without
+	// its pointer, and nil for the type's own method.
+	embedded reflect.Type
+
+	// nativeType is the function type of the embedded native type's or interface's method a
+	// promoted method is, when callee is nil. A method of a concrete type takes its receiver
+	// first.
+	nativeType reflect.Type
+
 	// name is the method name.
 	name string
+
+	// path is the runtime indices of the embedded fields a promoted method is reached
+	// through from the receiver's struct, and nil for the type's own method.
+	path []int
+}
+
+// forReceiver returns the entry for the body that runs on a receiver of receiverType. For
+// a generic type's method that is the body compiled for the receiver's type arguments,
+// whose recorded signature carries those arguments rather than the shared body's
+// interfaces.
+//
+// Takes vm (*VM) which supplies the root when the entry names none.
+// Takes receiverType (reflect.Type) which is the receiver's runtime type.
+//
+// Returns pipitMethodEntry which is the entry itself when no specialised body applies.
+// Returns error which wraps fault.ErrNoMethodBodyForReceiver when the method has
+// specialised bodies but none for receiverType. The entry is then unchanged.
+func (entry pipitMethodEntry) forReceiver(vm *VM, receiverType reflect.Type) (pipitMethodEntry, error) {
+	if entry.callee == nil {
+		return entry, nil
+	}
+	if entry.embedded != nil {
+		receiverType = entry.embedded
+	}
+	root := entry.methodRoot
+	if root == nil && vm != nil {
+		root = vm.rootFunction
+	}
+	body, err := receiverTypeMethodBody(root, receiverType, entry.callee)
+	if err != nil {
+		return entry, err
+	}
+	entry.callee = body
+	return entry, nil
+}
+
+// functionType returns the method's function type as reflect shows it, with receiverType
+// as the first parameter when it is given, and the method's result types.
+//
+// Takes receiverType (reflect.Type) which is the receiver parameter, or nil for a method
+// value.
+//
+// Returns reflect.Type which is the function type.
+// Returns []reflect.Type which are the result types.
+func (entry pipitMethodEntry) functionType(receiverType reflect.Type) (reflect.Type, []reflect.Type) {
+	var in, out []reflect.Type
+	if entry.callee == nil {
+		in, out = nativeMethodInOutTypes(entry.nativeType, entry.embedded)
+	} else {
+		in, out = pipitMethodInOutTypes(entry.callee)
+	}
+	if receiverType != nil {
+		in = append([]reflect.Type{receiverType}, in...)
+	}
+	if entry.callee == nil {
+		return reflect.FuncOf(in, out, entry.nativeType.IsVariadic()), out
+	}
+	return reflect.FuncOf(entry.callee.VariadicSafeInTypes(in), out, entry.callee.IsVariadic), out
 }
 
 // pipitTypeStringer carries a rendered type name for fmt.
-type pipitTypeStringer string
+//
+// It is a struct rather than a string so fmt.Sprint spaces it from its neighbours as it
+// spaces the reflect.Type it stands for.
+type pipitTypeStringer struct {
+	// name is the rendered type name.
+	name string
+}
 
 // String returns the rendered type name.
 //
 // Returns string which is the rendered type name.
-func (s pipitTypeStringer) String() string { return string(s) }
+func (s pipitTypeStringer) String() string { return s.name }
 
 // pipitReflectTypeName returns the script type name behind a reflect type: a synthesised
 // struct's sentinel name, a pool type's bare name, or a registered type name; and whether
@@ -70,7 +144,7 @@ func pipitReflectTypeName(vm *VM, rt reflect.Type) (name string, pointer bool) {
 		base = base.Elem()
 		pointer = true
 	}
-	if info, ok := typemodel.LookupNamedScalarPoolInfo(base); ok {
+	if info, ok := typemodel.LookupNamedTypeInfo(base); ok {
 		return info.BareName, pointer
 	}
 	if sentinel := bareSentinelName(base); sentinel != "" {
@@ -111,7 +185,7 @@ func pipitMethodSet(vm *VM, typeName string, pointer bool) []pipitMethodEntry {
 		if !ok || (callee.IsPointerReceiver && !pointer) {
 			continue
 		}
-		set = append(set, pipitMethodEntry{callee: callee, methodRoot: methodRoot, name: methodName})
+		set = append(set, pipitMethodEntry{callee: callee, methodRoot: methodRoot, name: methodName, path: nil, embedded: nil, nativeType: nil})
 	}
 	slices.SortFunc(set, func(a, b pipitMethodEntry) int { return strings.Compare(a.name, b.name) })
 	return set
@@ -142,7 +216,7 @@ func pipitMethodInOutTypes(callee *program.CompiledFunction) (in, out []reflect.
 	return in, out
 }
 
-// pipitReflectMethod builds the reflect.Method for entry as seen on receiverType: its
+// pipitReflectMethod builds the reflect.Method for entry as seen on receiverType. Its
 // Func takes the receiver as the first parameter and runs the compiled method.
 //
 // Takes vm (*VM) which runs the method.
@@ -151,15 +225,24 @@ func pipitMethodInOutTypes(callee *program.CompiledFunction) (in, out []reflect.
 // Takes index (int) which is the method's index in the method set.
 //
 // Returns reflect.Method which is the descriptor.
+//
+// Panics when the returned function is called without a compiled body for the receiver
+// type arguments.
 func pipitReflectMethod(vm *VM, entry pipitMethodEntry, receiverType reflect.Type, index int) reflect.Method {
 	if named, ok := receiverType.(pipitNamedType); ok {
 		receiverType = named.Type
 	}
-	in, out := pipitMethodInOutTypes(entry.callee)
-	withReceiver := append([]reflect.Type{receiverType}, in...)
-	functionType := reflect.FuncOf(entry.callee.VariadicSafeInTypes(withReceiver), out, entry.callee.IsVariadic)
+	entry, bodyErr := entry.forReceiver(vm, receiverType)
+	functionType, out := entry.functionType(receiverType)
 	callee, methodRoot := entry.callee, entry.methodRoot
+	vm.exportGuestCode()
 	function := reflect.MakeFunc(functionType, func(arguments []reflect.Value) []reflect.Value {
+		if bodyErr != nil {
+			panic(bodyErr)
+		}
+		if entry.path != nil {
+			return callPromotedMethod(vm, entry, arguments[0], arguments[1:], out)
+		}
 		bound := newCrossPackageBoundMethod(vm, methodRoot, callee)
 		receiver := receiverValueFor(callee, arguments[0])
 		results := bound.invoke(receiver, unwrapInterfaceArguments(arguments[1:]), identityArg)
@@ -168,19 +251,31 @@ func pipitReflectMethod(vm *VM, entry pipitMethodEntry, receiverType reflect.Typ
 	return reflect.Method{Name: entry.name, PkgPath: "", Type: functionType, Func: function, Index: index}
 }
 
-// pipitBoundMethodValue builds the func value reflect.Value.Method returns: the compiled
-// method bound to receiver.
+// pipitBoundMethodValue builds the func value reflect.Value.Method returns, consisting of
+// the compiled method bound to receiver.
 //
 // Takes vm (*VM) which runs the method.
 // Takes entry (pipitMethodEntry) which is the method.
 // Takes receiver (reflect.Value) which is the bound receiver.
 //
-// Returns reflect.Value which is the callable.
+// Returns reflect.Value which is the callable. When no body was compiled for the
+// receiver's type arguments, calling it panics with the fault.ErrNoMethodBodyForReceiver
+// error, as a direct call raises it.
+//
+// Panics when the returned function is called without a compiled body for the receiver
+// type arguments.
 func pipitBoundMethodValue(vm *VM, entry pipitMethodEntry, receiver reflect.Value) reflect.Value {
-	in, out := pipitMethodInOutTypes(entry.callee)
-	functionType := reflect.FuncOf(entry.callee.VariadicSafeInTypes(in), out, entry.callee.IsVariadic)
+	entry, bodyErr := entry.forReceiver(vm, receiverMethodType(receiver))
+	functionType, out := entry.functionType(nil)
 	callee, methodRoot := entry.callee, entry.methodRoot
+	vm.exportGuestCode()
 	return reflect.MakeFunc(functionType, func(arguments []reflect.Value) []reflect.Value {
+		if bodyErr != nil {
+			panic(bodyErr)
+		}
+		if entry.path != nil {
+			return callPromotedMethod(vm, entry, receiver, arguments, out)
+		}
 		bound := newCrossPackageBoundMethod(vm, methodRoot, callee)
 		boundReceiver := receiverValueFor(callee, receiver)
 		results := bound.invoke(boundReceiver, unwrapInterfaceArguments(arguments), identityArg)
@@ -231,11 +326,14 @@ func interceptReflectTypeMethods(vm *VM, registers *Registers, site *program.Cal
 // Returns handled (bool) which is false when the receiver is not a script type or the
 // arguments do not fit.
 func pipitReflectTypeMethodCall(vm *VM, rt reflect.Type, methodName string, arguments []reflect.Value) (results []reflect.Value, panicMessage string, handled bool) {
-	typeName, pointer := pipitReflectTypeName(vm, rt)
+	typeName, _ := pipitReflectTypeName(vm, rt)
 	if typeName == "" {
+		if methodName == "Implements" {
+			return nativeImplementsScriptInterface(rt, arguments)
+		}
 		return nil, "", false
 	}
-	set := pipitMethodSet(vm, typeName, pointer)
+	set := pipitReceiverMethodSet(vm, typeName, rt)
 	switch methodName {
 	case "NumMethod":
 		return []reflect.Value{reflect.ValueOf(len(set))}, "", true
@@ -243,9 +341,186 @@ func pipitReflectTypeMethodCall(vm *VM, rt reflect.Type, methodName string, argu
 		return pipitReflectMethodAt(vm, rt, set, arguments)
 	case "MethodByName":
 		return pipitReflectMethodNamed(vm, rt, set, arguments)
+	case "Implements":
+		return pipitReflectImplements(vm, rt, set, arguments)
+	case "Methods":
+		return []reflect.Value{reflect.ValueOf(pipitReflectTypeMethods(vm, rt, set))}, "", true
 	default:
 		return nil, "", false
 	}
+}
+
+// pipitReflectTypeMethods is reflect.Type.Methods over a script type's sorted method set.
+// It yields the sequence Method(i) gives for each i in [0, NumMethod()).
+//
+// Takes vm (*VM) which owns the method tables.
+// Takes rt (reflect.Type) which is the receiver type.
+// Takes set ([]pipitMethodEntry) which is the sorted method set.
+//
+// Returns iter.Seq[reflect.Method] which yields each method.
+func pipitReflectTypeMethods(vm *VM, rt reflect.Type, set []pipitMethodEntry) iter.Seq[reflect.Method] {
+	return func(yield func(reflect.Method) bool) {
+		for index, entry := range set {
+			if !yield(pipitReflectMethod(vm, entry, rt, index)) {
+				return
+			}
+		}
+	}
+}
+
+// pipitReflectValueMethods is reflect.Value.Methods for a value of a script type. It
+// yields each method of the value's type with the method value bound to it, as Method(i)
+// gives.
+//
+// Takes vm (*VM) which owns the method tables.
+// Takes inner (reflect.Value) which is the receiver value.
+// Takes set ([]pipitMethodEntry) which is the sorted method set.
+//
+// Returns iter.Seq2[reflect.Method, reflect.Value] which yields each method and its bound
+// value.
+func pipitReflectValueMethods(vm *VM, inner reflect.Value, set []pipitMethodEntry) iter.Seq2[reflect.Method, reflect.Value] {
+	return func(yield func(reflect.Method, reflect.Value) bool) {
+		for index, entry := range set {
+			if !yield(pipitReflectMethod(vm, entry, inner.Type(), index), pipitBoundMethodValue(vm, entry, inner)) {
+				return
+			}
+		}
+	}
+}
+
+// pipitReflectImplements answers reflect.Type.Implements(u) for a script type, which is
+// whether its method set has every method of the interface u, with the same signature
+// when both are recorded. Panics as reflect does for a nil or non-interface u.
+//
+// Takes vm (*VM) which supplies the root for generic receivers.
+// Takes rt (reflect.Type) which is the receiver type.
+// Takes set ([]pipitMethodEntry) which is the sorted method set.
+// Takes arguments ([]reflect.Value) which carry u.
+//
+// Returns the bool result, a panic message, and whether the call was handled.
+func pipitReflectImplements(vm *VM, rt reflect.Type, set []pipitMethodEntry, arguments []reflect.Value) ([]reflect.Value, string, bool) {
+	if len(arguments) < 1 || !arguments[0].IsValid() {
+		return nil, "", false
+	}
+	target, ok := reflect.TypeAssert[reflect.Type](arguments[0])
+	if !ok && arguments[0].Kind() == reflect.Interface && !arguments[0].IsNil() {
+		target, ok = reflect.TypeAssert[reflect.Type](arguments[0].Elem())
+	}
+	if !ok || target == nil {
+		return nil, "reflect: nil type passed to Type.Implements", true
+	}
+	if target.Kind() != reflect.Interface {
+		return nil, "reflect: non-interface type passed to Type.Implements", true
+	}
+	if named, isNamed := rt.(pipitNamedType); isNamed {
+		rt = named.Type
+	}
+	for required := range target.Methods() {
+		entry, found := findPipitMethodEntry(set, required.Name)
+		if !found {
+			return []reflect.Value{reflect.ValueOf(false)}, "", true
+		}
+		specialised, err := entry.forReceiver(vm, rt)
+		if err != nil {
+			return nil, err.Error(), true
+		}
+		if !pipitMethodSignatureMatches(specialised, required.Type) {
+			return []reflect.Value{reflect.ValueOf(false)}, "", true
+		}
+	}
+	return []reflect.Value{reflect.ValueOf(true)}, "", true
+}
+
+// nativeImplementsScriptInterface answers reflect.Type.Implements(u) for a native type
+// when u is a script interface. The interface's runtime type is any's, so reflect itself
+// would answer true for every type.
+//
+// Takes rt (reflect.Type) which is the native receiver type.
+// Takes arguments ([]reflect.Value) which carry u.
+//
+// Returns the bool result, an empty panic message, and whether the call was handled,
+// which it is only when u is a script interface.
+func nativeImplementsScriptInterface(rt reflect.Type, arguments []reflect.Value) ([]reflect.Value, string, bool) {
+	if len(arguments) < 1 || !arguments[0].IsValid() {
+		return nil, "", false
+	}
+	argument := arguments[0]
+	if argument.Kind() == reflect.Interface && !argument.IsNil() {
+		argument = argument.Elem()
+	}
+	target, ok := reflect.TypeAssert[typemodel.NamedInterfaceWrapper](argument)
+	if !ok || target.Kind() != reflect.Interface {
+		return nil, "", false
+	}
+	for required := range target.Methods() {
+		method, found := rt.MethodByName(required.Name)
+		if !found || !nativeMethodMatches(rt, method, required.Type) {
+			return []reflect.Value{reflect.ValueOf(false)}, "", true
+		}
+	}
+	return []reflect.Value{reflect.ValueOf(true)}, "", true
+}
+
+// nativeMethodMatches reports whether a native type's method has the signature an
+// interface method requires. A requirement without a recorded type matches by name.
+//
+// Takes rt (reflect.Type) which is the native type, whose concrete methods take the
+// receiver first.
+// Takes method (reflect.Method) which is its method.
+// Takes required (reflect.Type) which is the interface method's type, or nil.
+//
+// Returns bool which is true when the parameter and result types agree.
+func nativeMethodMatches(rt reflect.Type, method reflect.Method, required reflect.Type) bool {
+	if required == nil || required.Kind() != reflect.Func {
+		return true
+	}
+	in := slices.Collect(method.Type.Ins())
+	if rt.Kind() != reflect.Interface && len(in) > 0 {
+		in = in[1:]
+	}
+	return method.Type.IsVariadic() == required.IsVariadic() &&
+		slices.Equal(in, slices.Collect(required.Ins())) &&
+		slices.Equal(slices.Collect(method.Type.Outs()), slices.Collect(required.Outs()))
+}
+
+// findPipitMethodEntry returns the entry of a sorted method set with the given name.
+//
+// Takes set ([]pipitMethodEntry) which is the sorted method set.
+// Takes name (string) which is the method name.
+//
+// Returns pipitMethodEntry which is the entry.
+// Returns bool which is false when the set has no such method.
+func findPipitMethodEntry(set []pipitMethodEntry, name string) (pipitMethodEntry, bool) {
+	index, found := slices.BinarySearchFunc(set, name, func(entry pipitMethodEntry, target string) int {
+		return strings.Compare(entry.name, target)
+	})
+	if !found {
+		return pipitMethodEntry{}, false
+	}
+	return set[index], true
+}
+
+// pipitMethodSignatureMatches reports whether a compiled method has the signature an
+// interface method requires. A requirement or a method without a recorded signature (a
+// script interface's method, whose types are only known by name) matches by name alone.
+//
+// Takes entry (pipitMethodEntry) which is the method.
+// Takes required (reflect.Type) which is the interface method's type, or nil.
+//
+// Returns bool which is true when the parameter and result types agree.
+func pipitMethodSignatureMatches(entry pipitMethodEntry, required reflect.Type) bool {
+	if entry.callee == nil {
+		signature, _ := entry.functionType(nil)
+		return required == nil || required.Kind() != reflect.Func || signature == required
+	}
+	signature := entry.callee.SignatureReflectType
+	if required == nil || required.Kind() != reflect.Func || signature == nil || signature.Kind() != reflect.Func {
+		return true
+	}
+	return signature.NumIn() == required.NumIn() && signature.NumOut() == required.NumOut() &&
+		signature.IsVariadic() == required.IsVariadic() &&
+		slices.Equal(slices.Collect(signature.Ins()), slices.Collect(required.Ins())) &&
+		slices.Equal(slices.Collect(signature.Outs()), slices.Collect(required.Outs()))
 }
 
 // pipitReflectMethodAt answers reflect.Type.Method(i) over a script type's sorted method
@@ -305,7 +580,7 @@ func interceptReflectValueMethodIndex(vm *VM, registers *Registers, site *progra
 	if !ok {
 		return opContinue, false
 	}
-	set := pipitMethodSet(vm, typeName, inner.Kind() == reflect.Pointer)
+	set := pipitReceiverMethodSet(vm, typeName, inner.Type())
 	if index < 0 || index >= len(set) {
 		return raiseNativePanicAsInterpreted(vm, newRuntimePanicError("%s", reflectMethodOutOfRange)), true
 	}
@@ -348,7 +623,7 @@ func renderPipitTypeString(rt reflect.Type) string {
 		}
 		return named.sourceName
 	}
-	if info, ok := typemodel.LookupNamedScalarPoolInfo(rt); ok {
+	if info, ok := typemodel.LookupNamedTypeInfo(rt); ok {
 		return info.QualifiedName
 	}
 	if rt.Kind() == reflect.Struct {

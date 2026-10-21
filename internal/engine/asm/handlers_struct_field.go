@@ -46,13 +46,11 @@ const (
 	layoutKindNone = ""
 )
 
-// structFieldScalarGetDefinition builds one tier-0 scalar struct-field GET handler:
-// bank[A] = *(receiver[B].base + structLayoutTable[C].Offset) for full-width scalar
-// fields. Narrow widths, flagged layouts and exotic receiver shapes fall back to the
-// suppressed tier-2 shim named by shimSymbol, which re-runs the instruction through the
-// Go handler.
+// structFieldScalarGetDefinition builds one tier-0 scalar struct-field GET handler.
+// Narrow widths, flagged layouts and exotic receiver shapes fall back to the suppressed
+// tier-2 shim named by shimSymbol, which re-runs the instruction through the Go handler.
 //
-// Takes name (string) which is the handler symbol, e.g. "handlerGetStructFieldIntT0".
+// Takes name (string) which is the handler symbol, e.g. "handlerGetStructFieldInt64".
 // Takes kindA (string) which is the primary accepted layout Kind byte immediate.
 // Takes kindB (string) which is the secondary accepted layout Kind byte immediate.
 // Takes bank (string) which names the destination register bank.
@@ -62,21 +60,19 @@ const (
 func structFieldScalarGetDefinition(name, kindA, kindB, bank, shimSymbol string) asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 		Name:      name,
-		Comment:   name + " sets " + bank + "[A] = receiver[B].field(layout[C]) for full-width scalar fields; other shapes fall back to " + shimSymbol + ".",
+		Comment:   name + " sets " + bank + "[A] = receiver[B].field(layout[C]) for full-width scalar fields. Other shapes fall back to " + shimSymbol + ".",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitStructFieldScalarGetT0(emitter, kindA, kindB, bank, shimSymbol)
+			architecture.EmitStructFieldScalarGet(emitter, kindA, kindB, bank, shimSymbol)
 		},
 	}
 }
 
-// structFieldScalarSetDefinition builds one tier-0 scalar struct-field SET handler:
-// *(receiver[A].base + structLayoutTable[C].Offset) = bank[B]. Scalar stores carry no
-// pointers so the handlers need no write barrier; fallback semantics mirror the GET
-// family.
+// structFieldScalarSetDefinition builds one tier-0 scalar struct-field SET handler.
+// Scalar stores carry no pointers so the handlers need no write barrier.
 //
-// Takes name (string) which is the handler symbol, e.g. "handlerSetStructFieldIntT0".
+// Takes name (string) which is the handler symbol, e.g. "handlerSetStructFieldInt64".
 // Takes kindA (string) which is the primary accepted layout Kind byte immediate.
 // Takes kindB (string) which is the secondary accepted layout Kind byte immediate.
 // Takes bank (string) which names the source register bank.
@@ -86,11 +82,11 @@ func structFieldScalarGetDefinition(name, kindA, kindB, bank, shimSymbol string)
 func structFieldScalarSetDefinition(name, kindA, kindB, bank, shimSymbol string) asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 		Name:      name,
-		Comment:   name + " sets receiver[A].field(layout[C]) = " + bank + "[B] for full-width scalar fields; other shapes fall back to " + shimSymbol + ".",
+		Comment:   name + " sets receiver[A].field(layout[C]) = " + bank + "[B] for full-width scalar fields. Other shapes fall back to " + shimSymbol + ".",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitStructFieldScalarSetT0(emitter, kindA, kindB, bank, shimSymbol)
+			architecture.EmitStructFieldScalarSet(emitter, kindA, kindB, bank, shimSymbol)
 		},
 	}
 }
@@ -103,32 +99,32 @@ func structFieldScalarSetDefinition(name, kindA, kindB, bank, shimSymbol string)
 // Returns the slice of handler definitions in jump-table order.
 func structFieldHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		structFieldScalarGetDefinition("handlerGetStructFieldIntT0", layoutKindInt, layoutKindInt64, "ints", "handlerPathBShimGetStructFieldIntT0"),
-		structFieldScalarSetDefinition("handlerSetStructFieldIntT0", layoutKindInt, layoutKindInt64, "ints", "handlerPathBShimSetStructFieldIntT0"),
-		structFieldScalarGetDefinition("handlerGetStructFieldUintT0", layoutKindUint, layoutKindUint64, "uints", "handlerPathBShimGetStructFieldUintT0"),
-		structFieldScalarSetDefinition("handlerSetStructFieldUintT0", layoutKindUint, layoutKindUint64, "uints", "handlerPathBShimSetStructFieldUintT0"),
-		structFieldScalarGetDefinition("handlerGetStructFieldFloatT0", layoutKindFloat64, layoutKindNone, "floats", "handlerPathBShimGetStructFieldFloatT0"),
-		structFieldScalarSetDefinition("handlerSetStructFieldFloatT0", layoutKindFloat64, layoutKindNone, "floats", "handlerPathBShimSetStructFieldFloatT0"),
-		structFieldScalarGetDefinition("handlerGetStructFieldBoolT0", layoutKindBool, layoutKindNone, "bools", "handlerPathBShimGetStructFieldBoolT0"),
-		structFieldScalarSetDefinition("handlerSetStructFieldBoolT0", layoutKindBool, layoutKindNone, "bools", "handlerPathBShimSetStructFieldBoolT0"),
+		structFieldScalarGetDefinition("handlerGetStructFieldInt64", layoutKindInt, layoutKindInt64, "ints", "handlerPathBShimGetStructFieldInt64"),
+		structFieldScalarSetDefinition("handlerSetStructFieldInt64", layoutKindInt, layoutKindInt64, "ints", "handlerPathBShimSetStructFieldInt64"),
+		structFieldScalarGetDefinition("handlerGetStructFieldUint64", layoutKindUint, layoutKindUint64, "uints", "handlerPathBShimGetStructFieldUint64"),
+		structFieldScalarSetDefinition("handlerSetStructFieldUint64", layoutKindUint, layoutKindUint64, "uints", "handlerPathBShimSetStructFieldUint64"),
+		structFieldScalarGetDefinition("handlerGetStructFieldFloat64", layoutKindFloat64, layoutKindNone, "floats", "handlerPathBShimGetStructFieldFloat64"),
+		structFieldScalarSetDefinition("handlerSetStructFieldFloat64", layoutKindFloat64, layoutKindNone, "floats", "handlerPathBShimSetStructFieldFloat64"),
+		structFieldScalarGetDefinition("handlerGetStructFieldBool", layoutKindBool, layoutKindNone, "bools", "handlerPathBShimGetStructFieldBool"),
+		structFieldScalarSetDefinition("handlerSetStructFieldBool", layoutKindBool, layoutKindNone, "bools", "handlerPathBShimSetStructFieldBool"),
 		{
-			Name: "handlerGetStructFieldSliceIndexScalar",
-			Comment: "handlerGetStructFieldSliceIndexScalar sets bank(ext2.C)[A] = " +
-				"receiver[B].field(layout[C])[ints[ext1.C]].subfield(ext2.wide); other shapes " +
-				"fall back to handlerPathBShimGetStructFieldSliceIndexScalar.",
+			Name: "handlerGetStructFieldElementField",
+			Comment: "handlerGetStructFieldElementField sets bank(ext2.C)[A] = " +
+				"receiver[B].field(layout[C])[ints[ext1.C]].subfield(ext2.wide). Other shapes " +
+				"fall back to handlerPathBShimGetStructFieldElementField.",
 			FrameSize: frameSizeZero,
 			Flags:     flagsNoSplitNoFrame,
 			Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-				architecture.EmitStructFieldSliceIndexScalar(emitter, "handlerPathBShimGetStructFieldSliceIndexScalar")
+				architecture.EmitStructFieldSliceIndexScalar(emitter, "handlerPathBShimGetStructFieldElementField")
 			},
 		},
 		{
-			Name:      "handlerGetStructFieldSliceLen",
-			Comment:   "handlerGetStructFieldSliceLen sets ints[A] = len(receiver[B].field(layout[C])) for slice-kind fields; other shapes fall back to handlerPathBShimGetStructFieldSliceLen.",
+			Name:      "handlerLengthStructField",
+			Comment:   "handlerLengthStructField sets ints[A] = len(receiver[B].field(layout[C])) for slice-kind fields. Other shapes fall back to handlerPathBShimLengthStructField.",
 			FrameSize: frameSizeZero,
 			Flags:     flagsNoSplitNoFrame,
 			Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-				architecture.EmitStructFieldSliceLen(emitter, "handlerPathBShimGetStructFieldSliceLen")
+				architecture.EmitStructFieldSliceLen(emitter, "handlerPathBShimLengthStructField")
 			},
 		},
 	}

@@ -162,14 +162,14 @@ func TestRegisterCountsMirrorTheDeclaredBanks(t *testing.T) {
 	t.Parallel()
 
 	compiledFunction := NewNamedFunction("registers")
-	compiledFunction.NumRegisters[isa.RegisterInt] = 4
+	compiledFunction.NumRegisters[isa.RegisterInt64] = 4
 	compiledFunction.NumRegisters[isa.RegisterGeneral] = 2
 
 	counts := compiledFunction.RegisterCounts()
 
-	require.Equal(t, uint32(4), counts[isa.RegisterInt])
+	require.Equal(t, uint32(4), counts[isa.RegisterInt64])
 	require.Equal(t, uint32(2), counts[isa.RegisterGeneral])
-	require.Equal(t, uint32(0), counts[isa.RegisterFloat])
+	require.Equal(t, uint32(0), counts[isa.RegisterFloat64])
 }
 
 func TestSlotKindReportsGeneralForIndirectVariables(t *testing.T) {
@@ -180,9 +180,9 @@ func TestSlotKindReportsGeneralForIndirectVariables(t *testing.T) {
 		info GlobalVariableInfo
 		want isa.RegisterKind
 	}{
-		{name: "a direct integer slot keeps its bank", info: GlobalVariableInfo{Kind: isa.RegisterInt}, want: isa.RegisterInt},
+		{name: "a direct integer slot keeps its bank", info: GlobalVariableInfo{Kind: isa.RegisterInt64}, want: isa.RegisterInt64},
 		{name: "a direct string slot keeps its bank", info: GlobalVariableInfo{Kind: isa.RegisterString}, want: isa.RegisterString},
-		{name: "an indirect slot is held in the general bank", info: GlobalVariableInfo{Kind: isa.RegisterInt, IsIndirect: true}, want: isa.RegisterGeneral},
+		{name: "an indirect slot is held in the general bank", info: GlobalVariableInfo{Kind: isa.RegisterInt64, IsIndirect: true}, want: isa.RegisterGeneral},
 		{name: "an indirect general slot stays general", info: GlobalVariableInfo{Kind: isa.RegisterGeneral, IsIndirect: true}, want: isa.RegisterGeneral},
 	}
 
@@ -202,14 +202,14 @@ func TestKindDefaultReflectTypeCoversEveryScalarBank(t *testing.T) {
 		name string
 		kind isa.RegisterKind
 	}{
-		{name: "the integer bank defaults to int", kind: isa.RegisterInt, want: reflect.TypeFor[int]()},
-		{name: "the float bank defaults to float64", kind: isa.RegisterFloat, want: reflect.TypeFor[float64]()},
+		{name: "the integer bank defaults to int", kind: isa.RegisterInt64, want: reflect.TypeFor[int]()},
+		{name: "the float bank defaults to float64", kind: isa.RegisterFloat64, want: reflect.TypeFor[float64]()},
 		{name: "the string bank defaults to string", kind: isa.RegisterString, want: reflect.TypeFor[string]()},
 		{name: "the boolean bank defaults to bool", kind: isa.RegisterBool, want: reflect.TypeFor[bool]()},
-		{name: "the unsigned bank defaults to uint64", kind: isa.RegisterUint, want: reflect.TypeFor[uint64]()},
-		{name: "the complex bank defaults to complex128", kind: isa.RegisterComplex, want: reflect.TypeFor[complex128]()},
+		{name: "the unsigned bank defaults to uint64", kind: isa.RegisterUint64, want: reflect.TypeFor[uint64]()},
+		{name: "the complex bank defaults to complex128", kind: isa.RegisterComplex128, want: reflect.TypeFor[complex128]()},
 		{name: "the general bank defaults to the empty interface", kind: isa.RegisterGeneral, want: reflect.TypeFor[any]()},
-		{name: "a typed slice bank defaults to the empty interface", kind: isa.RegisterSliceInt, want: reflect.TypeFor[any]()},
+		{name: "a typed slice bank defaults to the empty interface", kind: isa.RegisterSliceInt64, want: reflect.TypeFor[any]()},
 	}
 
 	for _, tt := range tests {
@@ -231,10 +231,10 @@ func TestIsReturnInstructionAcceptsBothReturnEncodings(t *testing.T) {
 		{name: "a tier-two return of one value", instruction: returnInstruction(1), want: true},
 		{name: "a tier-two return of no values", instruction: returnInstruction(0), want: true},
 		{name: "a tier-three void return", instruction: isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid), want: true},
-		{name: "a tier-zero opcode is not a return", instruction: isa.Instruction{Op: isa.OpAddInt}, want: false},
-		{name: "another tier-one sub-op is not a return", instruction: isa.NewTier1Instruction(isa.SubOpNegInt, 0, 0), want: false},
+		{name: "a tier-zero opcode is not a return", instruction: isa.Instruction{Op: isa.OpAddInt64}, want: false},
+		{name: "another tier-one sub-op is not a return", instruction: isa.NewTier1Instruction(isa.SubOpNegateInt64, 0, 0), want: false},
 		{name: "another tier-two sub-op is not a return", instruction: isa.NewTier2Instruction(isa.SubOpTier2MakeMap, 0), want: false},
-		{name: "another tier-three sub-op is not a return", instruction: isa.NewTier3Instruction(isa.SubOpTier3Nop), want: false},
+		{name: "another tier-three sub-op is not a return", instruction: isa.NewTier3Instruction(isa.SubOpTier3NoOperation), want: false},
 	}
 
 	for _, tt := range tests {
@@ -290,13 +290,13 @@ func TestArenaCountsFromNumRegsMirrorsEveryBank(t *testing.T) {
 	t.Parallel()
 
 	var numRegs [isa.NumRegisterKinds]uint32
-	numRegs[isa.RegisterInt] = 3
-	numRegs[isa.RegisterFloat] = 4
+	numRegs[isa.RegisterInt64] = 3
+	numRegs[isa.RegisterFloat64] = 4
 	numRegs[isa.RegisterString] = 5
 	numRegs[isa.RegisterGeneral] = 6
 	numRegs[isa.RegisterBool] = 7
-	numRegs[isa.RegisterUint] = 8
-	numRegs[isa.RegisterComplex] = 9
+	numRegs[isa.RegisterUint64] = 8
+	numRegs[isa.RegisterComplex128] = 9
 
 	counts := ArenaCountsFromNumRegs(numRegs)
 
@@ -313,12 +313,12 @@ func TestEnsurePrecomputedAllocCountsIsIdempotent(t *testing.T) {
 	t.Parallel()
 
 	compiledFunction := NewNamedFunction("counts")
-	compiledFunction.NumRegisters[isa.RegisterInt] = 2
+	compiledFunction.NumRegisters[isa.RegisterInt64] = 2
 
 	compiledFunction.EnsurePrecomputedAllocCounts()
 	first := compiledFunction.PrecomputedAllocCounts
 
-	compiledFunction.NumRegisters[isa.RegisterInt] = 9
+	compiledFunction.NumRegisters[isa.RegisterInt64] = 9
 	compiledFunction.EnsurePrecomputedAllocCounts()
 
 	require.Equal(t, first, compiledFunction.PrecomputedAllocCounts,

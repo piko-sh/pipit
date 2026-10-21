@@ -89,11 +89,11 @@ func compileTinyLeafFixture(t *testing.T) (*program.CompiledFileSet, map[string]
 	return compiled, byName
 }
 
-func TestClassifyTinyLeafIncIntField(t *testing.T) {
+func TestClassifyTinyLeafIncrementIntField(t *testing.T) {
 	t.Parallel()
 	_, functions := compileTinyLeafFixture(t)
-	require.Equal(t, program.TinyLeafIncIntField, functions["C.Inc"].TinyLeafShape)
-	require.Equal(t, program.TinyLeafIncUintField, functions["C.IncU"].TinyLeafShape)
+	require.Equal(t, program.TinyLeafIncrementIntField, functions["C.Inc"].TinyLeafShape)
+	require.Equal(t, program.TinyLeafIncrementUintField, functions["C.IncU"].TinyLeafShape)
 	require.Equal(t, program.TinyLeafNone, functions["C.IncW"].TinyLeafShape, "a narrow uint field does not fuse and stays unclassified")
 	require.Equal(t, program.TinyLeafReturnIntField, functions["C.Get"].TinyLeafShape)
 	require.Equal(t, uint8(1), functions["C.Inc"].TinyLeafLayout.PathLength)

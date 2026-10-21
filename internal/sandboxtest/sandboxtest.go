@@ -30,8 +30,8 @@ import (
 )
 
 // Command re-executes the test binary to run one named test with env added to the
-// inherited environment. It omits -test.v so standard output contains only the test's
-// own writes.
+// inherited environment. It omits -test.v so standard output contains only the test's own
+// writes.
 //
 // Takes test (string) which is the exact name of the test the child runs.
 // Takes env (...string) which holds the extra KEY=value entries, usually the variable
@@ -84,9 +84,8 @@ func CgroupParent(tb testing.TB) string {
 	return parent
 }
 
-// RequiredBinary returns a static fixture path from an environment variable, failing
-// the test if it is unset. Call CgroupParent first to skip hosts without a delegated
-// cgroup.
+// RequiredBinary returns a static fixture path from an environment variable, failing the
+// test if it is unset. Call CgroupParent first to skip hosts without a delegated cgroup.
 //
 // Takes tb (testing.TB) which reports a missing fixture path.
 // Takes variable (string) which names the environment variable that holds the path.

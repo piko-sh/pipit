@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxbroker
 
@@ -51,7 +51,7 @@ func TestLinuxBrokerLandlock(t *testing.T) {
 	if _, err := brokerLandlockABI(); err != nil {
 		sandboxtest.SkipUnlessRequired(t, "PIPIT_REQUIRE_BROKER_LANDLOCK", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	for _, mode := range []string{"child", "recovery"} {
 		command := sandboxtest.Command(ctx, "TestLinuxBrokerLandlock", "PIPIT_TEST_BROKER_LANDLOCK="+mode, "PIPIT_TEST_BROKER_ROOT="+t.TempDir())

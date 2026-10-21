@@ -27,10 +27,7 @@ import (
 )
 
 const (
-	// registerBitWidth is the underlying width of the int and uint register banks. Used as
-	// the high anchor when sign-extending narrow integers in isa.OpTruncateNarrow: the value
-	// is shifted up by (registerBitWidth - declaredWidth), then arithmetic-shifted back down
-	// so the sign bit of the declared width propagates correctly.
+	// registerBitWidth is the underlying width of the int and uint register banks.
 	registerBitWidth uint = 64
 
 	// smallIntBoxLow is the inclusive lower bound of the pre-allocated reflect.Value box
@@ -61,6 +58,9 @@ const (
 	// remainder operation has a zero divisor. It mirrors the Go runtime's own wording so
 	// interpreted programs observe identical panic text.
 	integerDivideByZeroMessage = "runtime error: integer divide by zero"
+
+	// negativeShiftAmountMessage is the panic message for a negative signed shift count.
+	negativeShiftAmountMessage = "runtime error: negative shift amount"
 
 	// MoveGeneralModeDynamic dispatches to valueCopyForBoundaryArena's runtime kind switch.
 	MoveGeneralModeDynamic uint8 = 0
@@ -245,11 +245,13 @@ func boxBoolToGeneral(v bool) reflect.Value {
 	return boolBoxCache[0]
 }
 
-// handleExt is the handler for an extension opcode slot; it is a no-op that continues
-// dispatch.
+// handleExtension is the handler for an extension opcode slot. It is a no-op that
+// continues dispatch.
 //
 // Returns OpResult indicating the next execution step.
-func handleExt(_ *VM, _ *CallFrame, _ *Registers, _ isa.Instruction) OpResult { return opContinue }
+func handleExtension(_ *VM, _ *CallFrame, _ *Registers, _ isa.Instruction) OpResult {
+	return opContinue
+}
 
 // conditionalJump reads the extension word from the bytecode stream and advances the
 // program counter by the encoded offset when shouldJump is true. This is a small helper
@@ -306,35 +308,35 @@ func stringConstBoundsCheck(vm *VM, frame *CallFrame, instruction isa.Instructio
 	return frame.Function.StringConstants[instruction.C], opContinue, true
 }
 
-// handleMoveInt copies a signed integer value between virtual machine registers.
+// handleMoveInt64Body copies a signed integer value between virtual machine registers.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes source and destination register indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMoveInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMoveInt64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = registers.Ints[instruction.B]
 	return opContinue
 }
 
-// handleMoveFloat copies a floating-point value between virtual machine registers.
+// handleMoveFloat64Body copies a floating-point value between virtual machine registers.
 //
 // Takes registers (*Registers) which provides the float register banks.
 // Takes instruction (instruction) which encodes source and destination register indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMoveFloat(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMoveFloat64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Floats[instruction.A] = registers.Floats[instruction.B]
 	return opContinue
 }
 
-// handleMoveString copies a string value between virtual machine registers.
+// handleMoveStringBody copies a string value between virtual machine registers.
 //
 // Takes registers (*Registers) which provides the string register banks.
 // Takes instruction (instruction) which encodes source and destination register indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMoveString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMoveStringBody(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Strings[instruction.A] = registers.Strings[instruction.B]
 	return opContinue
 }
@@ -375,79 +377,78 @@ func handleMoveGeneral(vm *VM, _ *CallFrame, registers *Registers, instruction i
 	return opContinue
 }
 
-// handleMoveSliceInt copies a SlicesInt slice header.
-//
-// Used by the bytecode inliner during splice register remapping. Same-bank only;
-// cross-bank conversions route through CopyOneCallArgument or the dedicated adoption
-// opcodes (isa.SubOpAdoptGeneralToSlicesFloat etc.).
+// handleMoveSliceInt64Body copies a SlicesInt slice header.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes destination index in operand A and source
 // index in operand B.
 //
 // Returns OpResult signalling the VM dispatch loop to continue.
-func handleMoveSliceInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMoveSliceInt64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.SlicesInt[instruction.A] = registers.SlicesInt[instruction.B]
 	return opContinue
 }
 
-// handleMoveSliceFloat copies a slicesFloat slice header between typed-slice registers.
+// handleMoveSliceFloat64Body copies a slicesFloat slice header between typed-slice
+// registers.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction).
 //
 // Returns OpResult indicating the next execution step.
-func handleMoveSliceFloat(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMoveSliceFloat64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.slicesFloat[instruction.A] = registers.slicesFloat[instruction.B]
 	return opContinue
 }
 
-// handleMoveSliceString copies a slicesString slice header between typed-slice registers.
+// handleMoveSliceStringBody copies a slicesString slice header between typed-slice
+// registers.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction).
 //
 // Returns OpResult indicating the next execution step.
-func handleMoveSliceString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMoveSliceStringBody(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.slicesString[instruction.A] = registers.slicesString[instruction.B]
 	return opContinue
 }
 
-// handleMoveSliceBool copies a slicesBool slice header between typed-slice registers.
+// handleMoveSliceBoolBody copies a slicesBool slice header between typed-slice registers.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction).
 //
 // Returns OpResult indicating the next execution step.
-func handleMoveSliceBool(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMoveSliceBoolBody(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.slicesBool[instruction.A] = registers.slicesBool[instruction.B]
 	return opContinue
 }
 
-// handleMoveSliceUint copies a slicesUint slice header between typed-slice registers.
+// handleMoveSliceUint64Body copies a slicesUint slice header between typed-slice
+// registers.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction).
 //
 // Returns OpResult indicating the next execution step.
-func handleMoveSliceUint(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMoveSliceUint64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.slicesUint[instruction.A] = registers.slicesUint[instruction.B]
 	return opContinue
 }
 
-// handleMoveSliceByte copies a slicesByte slice header between typed-slice registers.
+// handleMoveSliceByteBody copies a slicesByte slice header between typed-slice registers.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction).
 //
 // Returns OpResult indicating the next execution step.
-func handleMoveSliceByte(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMoveSliceByteBody(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.slicesByte[instruction.A] = registers.slicesByte[instruction.B]
 	return opContinue
 }
 
-// handleLoadIntConst loads a signed integer constant from the function constant pool into
-// a register.
+// handleLoadInt64Constant loads a signed integer constant from the function constant pool
+// into a register.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which provides access to the function constant pool.
@@ -456,7 +457,7 @@ func handleMoveSliceByte(_ *VM, _ *CallFrame, registers *Registers, instruction 
 // index.
 //
 // Returns OpResult indicating the next execution step.
-func handleLoadIntConst(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLoadInt64Constant(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	index := instruction.WideIndex()
 	if int(index) >= len(frame.Function.IntConstants) {
 		vMBoundsError(vm, frame, boundsTableIntConstant, int(index), len(frame.Function.IntConstants))
@@ -466,8 +467,8 @@ func handleLoadIntConst(vm *VM, frame *CallFrame, registers *Registers, instruct
 	return opContinue
 }
 
-// handleLoadFloatConst loads a floating-point constant from the function constant pool
-// into a register.
+// handleLoadFloat64Constant loads a floating-point constant from the function constant
+// pool into a register.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which provides access to the function constant pool.
@@ -476,7 +477,7 @@ func handleLoadIntConst(vm *VM, frame *CallFrame, registers *Registers, instruct
 // index.
 //
 // Returns OpResult indicating the next execution step.
-func handleLoadFloatConst(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLoadFloat64Constant(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	index := instruction.WideIndex()
 	if int(index) >= len(frame.Function.FloatConstants) {
 		vMBoundsError(vm, frame, boundsTableFloatConstant, int(index), len(frame.Function.FloatConstants))
@@ -486,7 +487,7 @@ func handleLoadFloatConst(vm *VM, frame *CallFrame, registers *Registers, instru
 	return opContinue
 }
 
-// handleLoadStringConst loads a string constant from the function constant pool into a
+// handleLoadStringConstant loads a string constant from the function constant pool into a
 // register.
 //
 // Takes vm (*VM) which is the virtual machine.
@@ -496,7 +497,7 @@ func handleLoadFloatConst(vm *VM, frame *CallFrame, registers *Registers, instru
 // index.
 //
 // Returns OpResult indicating the next execution step.
-func handleLoadStringConst(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLoadStringConstant(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	index := instruction.WideIndex()
 	if int(index) >= len(frame.Function.StringConstants) {
 		vMBoundsError(vm, frame, boundsTableStringConstant, int(index), len(frame.Function.StringConstants))
@@ -506,8 +507,8 @@ func handleLoadStringConst(vm *VM, frame *CallFrame, registers *Registers, instr
 	return opContinue
 }
 
-// handleLoadGeneralConst loads a general constant from the function constant pool into a
-// register.
+// handleLoadGeneralConstant loads a general constant from the function constant pool into
+// a register.
 //
 // When the constant is a struct, a fresh addressable copy is created so that each
 // invocation gets its own mutable value and pointer-receiver methods can be called.
@@ -519,7 +520,7 @@ func handleLoadStringConst(vm *VM, frame *CallFrame, registers *Registers, instr
 // index.
 //
 // Returns OpResult indicating the next execution step.
-func handleLoadGeneralConst(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLoadGeneralConstant(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	index := instruction.WideIndex()
 	if int(index) >= len(frame.Function.GeneralConstants) {
 		vMBoundsError(vm, frame, boundsTableGeneralConstant, int(index), len(frame.Function.GeneralConstants))
@@ -534,7 +535,7 @@ func handleLoadGeneralConst(vm *VM, frame *CallFrame, registers *Registers, inst
 	return opContinue
 }
 
-// handleLoadCompositeZeroReuse loads a composite-zero constant, reusing the destination
+// handleLoadCompositeZeroInPlace loads a composite-zero constant, reusing the destination
 // register's storage when it already holds a same-typed addressable value.
 //
 // Takes vm (*VM) which supplies the arena for the fallback copy.
@@ -543,7 +544,7 @@ func handleLoadGeneralConst(vm *VM, frame *CallFrame, registers *Registers, inst
 // Takes instruction (instruction) which encodes the destination and constant index.
 //
 // Returns OpResult indicating the next execution step.
-func handleLoadCompositeZeroReuse(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLoadCompositeZeroInPlace(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	index := instruction.WideIndex()
 	if int(index) >= len(frame.Function.GeneralConstants) {
 		vMBoundsError(vm, frame, boundsTableGeneralConstant, int(index), len(frame.Function.GeneralConstants))
@@ -559,30 +560,31 @@ func handleLoadCompositeZeroReuse(vm *VM, frame *CallFrame, registers *Registers
 	return opContinue
 }
 
-// handleLoadNil loads an invalid reflect.Value representing nil into a general register.
+// handleLoadNilBody loads an invalid reflect.Value representing nil into a general
+// register.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleLoadNil(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLoadNilBody(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.General[instruction.A] = reflect.Value{}
 	return opContinue
 }
 
-// handleLoadZero stores the zero value for the register kind specified by instruction.b
-// into the destination register.
+// handleLoadZeroBody stores the zero value for the register kind specified by
+// instruction.b into the destination register.
 //
 // Takes registers (*Registers) which provides all typed register banks.
 // Takes instruction (instruction) which encodes the operand slots and the register kind
 // in operand B.
 //
 // Returns OpResult indicating the next execution step.
-func handleLoadZero(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLoadZeroBody(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	switch isa.RegisterKind(instruction.B) {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		registers.Ints[instruction.A] = 0
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		registers.Floats[instruction.A] = 0
 	case isa.RegisterString:
 		registers.Strings[instruction.A] = ""
@@ -590,19 +592,19 @@ func handleLoadZero(_ *VM, _ *CallFrame, registers *Registers, instruction isa.I
 		registers.General[instruction.A] = reflect.Value{}
 	case isa.RegisterBool:
 		registers.Bools[instruction.A] = false
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.Uints[instruction.A] = 0
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		registers.Complex[instruction.A] = 0
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		registers.SlicesInt[instruction.A] = nil
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		registers.slicesFloat[instruction.A] = nil
 	case isa.RegisterSliceString:
 		registers.slicesString[instruction.A] = nil
 	case isa.RegisterSliceBool:
 		registers.slicesBool[instruction.A] = nil
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		registers.slicesUint[instruction.A] = nil
 	case isa.RegisterSliceByte:
 		registers.slicesByte[instruction.A] = nil
@@ -611,47 +613,44 @@ func handleLoadZero(_ *VM, _ *CallFrame, registers *Registers, instruction isa.I
 	return opContinue
 }
 
-// handleAddInt performs signed integer addition of two register operands in the virtual
+// handleAddInt64 performs signed integer addition of two register operands in the virtual
 // machine.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleAddInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleAddInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = registers.Ints[instruction.B] + registers.Ints[instruction.C]
 	return opContinue
 }
 
-// handleSubInt performs signed integer subtraction of two register operands in the
+// handleSubtractInt64 performs signed integer subtraction of two register operands in the
 // virtual machine.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleSubInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSubtractInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = registers.Ints[instruction.B] - registers.Ints[instruction.C]
 	return opContinue
 }
 
-// handleMulInt performs signed integer multiplication of two register operands in the
-// virtual machine.
+// handleMultiplyInt64 performs signed integer multiplication of two register operands in
+// the virtual machine.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMulInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMultiplyInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = registers.Ints[instruction.B] * registers.Ints[instruction.C]
 	return opContinue
 }
 
-// handleDivInt performs signed integer division of two register operands in the virtual
-// machine.
-//
-// When the divisor is zero, raises an interpreted integer-divide-by-zero panic instead of
-// continuing.
+// handleDivideInt64 performs signed integer division of two register operands in the
+// virtual machine.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes registers (*Registers) which holds the register banks.
@@ -659,7 +658,7 @@ func handleMulInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Ins
 //
 // Returns OpResult which signals the VM dispatch loop to continue, or the result of
 // raising an interpreted divide-by-zero panic when the divisor register holds zero.
-func handleDivInt(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleDivideInt64(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	divisor := registers.Ints[instruction.C]
 	if divisor == 0 {
 		return raiseNativePanicAsInterpreted(vm, newRuntimePanicError(integerDivideByZeroMessage))
@@ -668,11 +667,8 @@ func handleDivInt(vm *VM, _ *CallFrame, registers *Registers, instruction isa.In
 	return opContinue
 }
 
-// handleRemInt computes the signed integer remainder of two register operands in the
-// virtual machine.
-//
-// When the divisor is zero, raises an interpreted integer-divide-by-zero panic instead of
-// continuing.
+// handleRemainderInt64 computes the signed integer remainder of two register operands in
+// the virtual machine.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes registers (*Registers) which holds the register banks.
@@ -680,7 +676,7 @@ func handleDivInt(vm *VM, _ *CallFrame, registers *Registers, instruction isa.In
 //
 // Returns OpResult which signals the VM dispatch loop to continue, or the result of
 // raising an interpreted divide-by-zero panic when the divisor register holds zero.
-func handleRemInt(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleRemainderInt64(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	divisor := registers.Ints[instruction.C]
 	if divisor == 0 {
 		return raiseNativePanicAsInterpreted(vm, newRuntimePanicError(integerDivideByZeroMessage))
@@ -689,105 +685,120 @@ func handleRemInt(vm *VM, _ *CallFrame, registers *Registers, instruction isa.In
 	return opContinue
 }
 
-// handleNegInt negates a signed integer register value in the virtual machine.
+// handleNegateInt64Body negates a signed integer register value in the virtual machine.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleNegInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleNegateInt64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = -registers.Ints[instruction.B]
 	return opContinue
 }
 
-// handleBitAnd performs a bitwise AND of two signed integer register operands in the
+// handleBitAndInt64 performs a bitwise AND of two signed integer register operands in the
 // virtual machine.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleBitAnd(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleBitAndInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = registers.Ints[instruction.B] & registers.Ints[instruction.C]
 	return opContinue
 }
 
-// handleBitOr performs a bitwise OR of two signed integer register operands in the
+// handleBitOrInt64 performs a bitwise OR of two signed integer register operands in the
 // virtual machine.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleBitOr(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleBitOrInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = registers.Ints[instruction.B] | registers.Ints[instruction.C]
 	return opContinue
 }
 
-// handleBitXor performs a bitwise XOR of two signed integer register operands in the
+// handleBitXorInt64 performs a bitwise XOR of two signed integer register operands in the
 // virtual machine.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleBitXor(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleBitXorInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = registers.Ints[instruction.B] ^ registers.Ints[instruction.C]
 	return opContinue
 }
 
-// handleBitAndNot performs a bitwise AND NOT of two signed integer register operands in
-// the virtual machine.
+// handleBitAndNotInt64 performs a bitwise AND NOT of two signed integer register operands
+// in the virtual machine.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleBitAndNot(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleBitAndNotInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = registers.Ints[instruction.B] &^ registers.Ints[instruction.C]
 	return opContinue
 }
 
-// handleBitNot performs a bitwise complement of a signed integer register value in the
-// virtual machine.
+// handleBitNotInt64Body performs a bitwise complement of a signed integer register value
+// in the virtual machine.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleBitNot(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleBitNotInt64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = ^registers.Ints[instruction.B]
 	return opContinue
 }
 
-// handleShiftLeft performs a left bit shift of a signed integer register by the amount in
-// another register.
+// handleShiftLeftInt64 performs a left bit shift of a signed integer register by the
+// amount in another register.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the destination, value, and shift-amount
 // register indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleShiftLeft(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleShiftLeftInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = registers.Ints[instruction.B] << uint(registers.Ints[instruction.C]) //nolint:gosec // register shift
 	return opContinue
 }
 
-// handleShiftRight performs a right bit shift of a signed integer register by the amount
-// in another register.
+// handleCheckShiftCount handles isa.SubOpTier2CheckShiftCount, raising Go's panic when
+// the shift count in ints[C] is below zero.
+//
+// Takes vm (*VM) which raises the panic.
+// Takes registers (*Registers) which holds the count.
+// Takes instruction (isa.Instruction) which names the count's register in C.
+//
+// Returns OpResult which continues, or is the raised panic's result.
+func handleCheckShiftCount(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	if registers.Ints[instruction.C] < 0 {
+		return raiseNativePanicAsInterpreted(vm, newRuntimePanicError(negativeShiftAmountMessage))
+	}
+	return opContinue
+}
+
+// handleShiftRightInt64 performs a right bit shift of a signed integer register by the
+// amount in another register.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the destination, value, and shift-amount
 // register indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleShiftRight(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleShiftRightInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = registers.Ints[instruction.B] >> uint(registers.Ints[instruction.C]) //nolint:gosec // register shift
 	return opContinue
 }
 
-// handleSubIntConst subtracts a constant pool integer from a register value in the
-// virtual machine.
+// handleSubtractInt64Constant subtracts a constant pool integer from a register value in
+// the virtual machine.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which provides access to the function constant pool.
@@ -796,7 +807,7 @@ func handleShiftRight(_ *VM, _ *CallFrame, registers *Registers, instruction isa
 // pool index.
 //
 // Returns OpResult indicating the next execution step.
-func handleSubIntConst(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSubtractInt64Constant(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	if int(instruction.C) >= len(frame.Function.IntConstants) {
 		vMBoundsError(vm, frame, boundsTableIntConstant, int(instruction.C), len(frame.Function.IntConstants))
 		return opPanicError
@@ -805,7 +816,7 @@ func handleSubIntConst(vm *VM, frame *CallFrame, registers *Registers, instructi
 	return opContinue
 }
 
-// handleAddIntConst adds a constant pool integer to a register value in the virtual
+// handleAddInt64Constant adds a constant pool integer to a register value in the virtual
 // machine.
 //
 // Takes vm (*VM) which is the virtual machine.
@@ -815,7 +826,7 @@ func handleSubIntConst(vm *VM, frame *CallFrame, registers *Registers, instructi
 // pool index.
 //
 // Returns OpResult indicating the next execution step.
-func handleAddIntConst(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleAddInt64Constant(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	if int(instruction.C) >= len(frame.Function.IntConstants) {
 		vMBoundsError(vm, frame, boundsTableIntConstant, int(instruction.C), len(frame.Function.IntConstants))
 		return opPanicError
@@ -824,8 +835,8 @@ func handleAddIntConst(vm *VM, frame *CallFrame, registers *Registers, instructi
 	return opContinue
 }
 
-// handleLeIntConstJumpFalse compares a register against an integer constant and branches
-// when the less-or-equal condition is false.
+// handleLessOrEqualInt64ConstantThenJumpIfFalse compares a register against an integer
+// constant and branches when the less-or-equal condition is false.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which provides access to the bytecode body and program
@@ -835,7 +846,7 @@ func handleAddIntConst(vm *VM, frame *CallFrame, registers *Registers, instructi
 // index.
 //
 // Returns OpResult indicating the next execution step.
-func handleLeIntConstJumpFalse(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLessOrEqualInt64ConstantThenJumpIfFalse(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	constantValue, errResult, ok := intConstBoundsCheck(vm, frame, instruction)
 	if !ok {
 		return errResult
@@ -843,8 +854,8 @@ func handleLeIntConstJumpFalse(vm *VM, frame *CallFrame, registers *Registers, i
 	return conditionalJump(frame, registers.Ints[instruction.B] > constantValue)
 }
 
-// handleLtIntConstJumpFalse compares a register against an integer constant and branches
-// when the less-than condition is false.
+// handleLessThanInt64ConstantThenJumpIfFalse compares a register against an integer
+// constant and branches when the less-than condition is false.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which provides access to the bytecode body and program
@@ -854,7 +865,7 @@ func handleLeIntConstJumpFalse(vm *VM, frame *CallFrame, registers *Registers, i
 // index.
 //
 // Returns OpResult indicating the next execution step.
-func handleLtIntConstJumpFalse(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLessThanInt64ConstantThenJumpIfFalse(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	constantValue, errResult, ok := intConstBoundsCheck(vm, frame, instruction)
 	if !ok {
 		return errResult
@@ -862,45 +873,60 @@ func handleLtIntConstJumpFalse(vm *VM, frame *CallFrame, registers *Registers, i
 	return conditionalJump(frame, registers.Ints[instruction.B] >= constantValue)
 }
 
-// handleLtIntJumpFalse compares two register operands and branches by the extension-word
-// offset when the less-than condition is false. Fuses isa.OpLtInt + isa.OpJumpIfFalse.
+// handleLessThanInt64ThenJumpIfFalse compares two register operands and branches by the
+// extension-word offset when the less-than condition is false. Fuses isa.OpLessThanInt64
+// + isa.OpJumpIfFalse.
 //
 // Takes frame (*CallFrame) which is the active call frame.
 // Takes registers (*Registers) which is the active register file.
 // Takes instruction (instruction) which encodes the operand registers in B and C.
 //
 // Returns OpResult indicating the next execution step.
-func handleLtIntJumpFalse(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLessThanInt64ThenJumpIfFalse(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	return conditionalJump(frame, registers.Ints[instruction.B] >= registers.Ints[instruction.C])
 }
 
-// handleLeIntJumpFalse compares two register operands and branches by the extension-word
-// offset when the less-or-equal condition is false. Fuses isa.OpLeInt +
-// isa.OpJumpIfFalse.
+// handleLessOrEqualInt64ThenJumpIfFalse compares two register operands and branches by
+// the extension-word offset when the less-or-equal condition is false. Fuses
+// isa.OpLessOrEqualInt64 + isa.OpJumpIfFalse.
 //
 // Takes frame (*CallFrame) which provides the bytecode body and PC.
 // Takes registers (*Registers) which holds the integer operands.
 // Takes instruction (instruction) which encodes the operand register indices in B and C.
 //
 // Returns OpResult indicating the next execution step.
-func handleLeIntJumpFalse(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLessOrEqualInt64ThenJumpIfFalse(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	return conditionalJump(frame, registers.Ints[instruction.B] > registers.Ints[instruction.C])
 }
 
-// handleGtIntJumpFalse compares two register operands and branches by the extension-word
-// offset when the greater-than condition is false. Fuses isa.OpGtInt + isa.OpJumpIfFalse.
+// handleGreaterThanInt64ThenJumpIfFalse compares two register operands and branches by
+// the extension-word offset when the greater-than condition is false. Fuses
+// isa.OpGreaterThanInt64 + isa.OpJumpIfFalse.
 //
 // Takes frame (*CallFrame) which provides the bytecode body and PC.
 // Takes registers (*Registers) which holds the integer operands.
 // Takes instruction (instruction) which encodes the operand register indices in B and C.
 //
 // Returns OpResult indicating the next execution step.
-func handleGtIntJumpFalse(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGreaterThanInt64ThenJumpIfFalse(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	return conditionalJump(frame, registers.Ints[instruction.B] <= registers.Ints[instruction.C])
 }
 
-// handleGeIntJumpFalse compares two register operands and branches by the extension-word
-// offset when the greater-or-equal condition is false. Fuses isa.OpGeInt +
+// handleGreaterOrEqualInt64ThenJumpIfFalse compares two register operands and branches by
+// the extension-word offset when the greater-or-equal condition is false. Fuses
+// isa.OpGreaterOrEqualInt64 + isa.OpJumpIfFalse.
+//
+// Takes frame (*CallFrame) which provides the bytecode body and PC.
+// Takes registers (*Registers) which holds the integer operands.
+// Takes instruction (instruction) which encodes the operand register indices in B and C.
+//
+// Returns OpResult indicating the next execution step.
+func handleGreaterOrEqualInt64ThenJumpIfFalse(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	return conditionalJump(frame, registers.Ints[instruction.B] < registers.Ints[instruction.C])
+}
+
+// handleEqualInt64ThenJumpIfFalse compares two register operands and branches by the
+// extension-word offset when the equality condition is false. Fuses isa.OpEqualInt64 +
 // isa.OpJumpIfFalse.
 //
 // Takes frame (*CallFrame) which provides the bytecode body and PC.
@@ -908,101 +934,91 @@ func handleGtIntJumpFalse(_ *VM, frame *CallFrame, registers *Registers, instruc
 // Takes instruction (instruction) which encodes the operand register indices in B and C.
 //
 // Returns OpResult indicating the next execution step.
-func handleGeIntJumpFalse(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
-	return conditionalJump(frame, registers.Ints[instruction.B] < registers.Ints[instruction.C])
-}
-
-// handleEqIntJumpFalse compares two register operands and branches by the extension-word
-// offset when the equality condition is false. Fuses isa.OpEqInt + isa.OpJumpIfFalse.
-//
-// Takes frame (*CallFrame) which provides the bytecode body and PC.
-// Takes registers (*Registers) which holds the integer operands.
-// Takes instruction (instruction) which encodes the operand register indices in B and C.
-//
-// Returns OpResult indicating the next execution step.
-func handleEqIntJumpFalse(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleEqualInt64ThenJumpIfFalse(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	return conditionalJump(frame, registers.Ints[instruction.B] != registers.Ints[instruction.C])
 }
 
-// handleNeIntJumpFalse compares two register operands and branches by the extension-word
-// offset when the inequality condition is false. Fuses isa.OpNeInt + isa.OpJumpIfFalse.
+// handleNotEqualInt64ThenJumpIfFalse compares two register operands and branches by the
+// extension-word offset when the inequality condition is false. Fuses isa.OpNotEqualInt64
+// + isa.OpJumpIfFalse.
 //
 // Takes frame (*CallFrame) which provides the bytecode body and PC.
 // Takes registers (*Registers) which holds the integer operands.
 // Takes instruction (instruction) which encodes the operand register indices in B and C.
 //
 // Returns OpResult indicating the next execution step.
-func handleNeIntJumpFalse(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleNotEqualInt64ThenJumpIfFalse(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	return conditionalJump(frame, registers.Ints[instruction.B] == registers.Ints[instruction.C])
 }
 
-// handleAddFloat performs floating-point addition of two register operands in the virtual
-// machine.
+// handleAddFloat64 performs floating-point addition of two register operands in the
+// virtual machine.
 //
 // Takes registers (*Registers) which provides the float register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleAddFloat(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleAddFloat64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Floats[instruction.A] = registers.Floats[instruction.B] + registers.Floats[instruction.C]
 	return opContinue
 }
 
-// handleSubFloat performs floating-point subtraction of two register operands in the
-// virtual machine.
+// handleSubtractFloat64 performs floating-point subtraction of two register operands in
+// the virtual machine.
 //
 // Takes registers (*Registers) which provides the float register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleSubFloat(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSubtractFloat64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Floats[instruction.A] = registers.Floats[instruction.B] - registers.Floats[instruction.C]
 	return opContinue
 }
 
-// handleMulFloat performs floating-point multiplication of two register operands in the
+// handleMultiplyFloat64 performs floating-point multiplication of two register operands
+// in the virtual machine.
+//
+// Takes registers (*Registers) which provides the float register banks.
+// Takes instruction (instruction) which encodes the operand indices.
+//
+// Returns OpResult indicating the next execution step.
+func handleMultiplyFloat64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	registers.Floats[instruction.A] = registers.Floats[instruction.B] * registers.Floats[instruction.C]
+	return opContinue
+}
+
+// handleDivideFloat64 performs floating-point division of two register operands in the
 // virtual machine.
 //
 // Takes registers (*Registers) which provides the float register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMulFloat(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
-	registers.Floats[instruction.A] = registers.Floats[instruction.B] * registers.Floats[instruction.C]
-	return opContinue
-}
-
-// handleDivFloat performs floating-point division of two register operands in the virtual
-// machine.
-//
-// Takes registers (*Registers) which provides the float register banks.
-// Takes instruction (instruction) which encodes the operand indices.
-//
-// Returns OpResult indicating the next execution step.
-func handleDivFloat(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleDivideFloat64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Floats[instruction.A] = registers.Floats[instruction.B] / registers.Floats[instruction.C]
 	return opContinue
 }
 
-// handleNegFloat negates a floating-point register value in the virtual machine.
+// handleNegateFloat64Body negates a floating-point register value in the virtual machine.
 //
 // Takes registers (*Registers) which provides the float register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleNegFloat(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleNegateFloat64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Floats[instruction.A] = -registers.Floats[instruction.B]
 	return opContinue
 }
 
-// handleConcatString concatenates two string register values using the arena allocator.
+// handleConcatenateString concatenates two string register values using the arena
+// allocator.
 //
 // Takes vm (*VM) which provides access to the arena allocator.
 // Takes registers (*Registers) which provides the string register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleConcatString(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleConcatenateString(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	a := registers.Strings[instruction.B]
 	b := registers.Strings[instruction.C]
 	if vm.Limits.MaxStringSize > 0 && len(a)+len(b) > vm.Limits.MaxStringSize {
@@ -1010,246 +1026,246 @@ func handleConcatString(vm *VM, _ *CallFrame, registers *Registers, instruction 
 			errStringLimit, len(a)+len(b), vm.Limits.MaxStringSize)
 		return opPanicError
 	}
-	registers.Strings[instruction.A] = ArenaConcatString(vm.Arena, a, b)
+	registers.Strings[instruction.A] = ArenaConcatenateString(vm.Arena, a, b)
 	return opContinue
 }
 
-// handleLenString computes the byte length of a string register value and stores it as an
-// integer.
+// handleLengthStringBody computes the byte length of a string register value and stores
+// it as an integer.
 //
 // Takes registers (*Registers) which provides the string and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleLenString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLengthStringBody(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = int64(len(registers.Strings[instruction.B]))
 	return opContinue
 }
 
-// handleAdd performs addition on two general register operands using reflection-based
-// type dispatch.
+// handleAddGeneral performs addition on two general register operands using
+// reflection-based type dispatch.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleAdd(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleAddGeneral(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	a, b := registers.General[instruction.B], registers.General[instruction.C]
 	registers.General[instruction.A] = ReflectBinaryOp(a, b, func(x, y int64) int64 { return x + y },
 		func(x, y float64) float64 { return x + y }, func(x, y string) string { return x + y }, nil)
 	return opContinue
 }
 
-// handleSub performs subtraction on two general register operands using reflection-based
-// type dispatch.
+// handleSubtractGeneral performs subtraction on two general register operands using
+// reflection-based type dispatch.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleSub(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSubtractGeneral(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	a, b := registers.General[instruction.B], registers.General[instruction.C]
 	registers.General[instruction.A] = ReflectBinaryOp(a, b, func(x, y int64) int64 { return x - y },
 		func(x, y float64) float64 { return x - y }, nil, nil)
 	return opContinue
 }
 
-// handleMul performs multiplication on two general register operands using
+// handleMultiplyGeneral performs multiplication on two general register operands using
 // reflection-based type dispatch.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMul(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMultiplyGeneral(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	a, b := registers.General[instruction.B], registers.General[instruction.C]
 	registers.General[instruction.A] = ReflectBinaryOp(a, b, func(x, y int64) int64 { return x * y },
 		func(x, y float64) float64 { return x * y }, nil, nil)
 	return opContinue
 }
 
-// handleDiv performs division on two general register operands using reflection-based
-// type dispatch.
-//
-// Takes registers (*Registers) which holds the register banks.
-// Takes instruction (instruction) which encodes the operand indices.
-//
-// Returns OpResult indicating the next execution step.
-func handleDiv(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
-	a, b := registers.General[instruction.B], registers.General[instruction.C]
-	registers.General[instruction.A] = ReflectBinaryOp(a, b, func(x, y int64) int64 { return x / y },
-		func(x, y float64) float64 { return x / y }, nil, func(x, y uint64) uint64 { return x / y })
-	return opContinue
-}
-
-// handleRem computes the remainder of two general register operands using
+// handleDivideGeneral performs division on two general register operands using
 // reflection-based type dispatch.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleRem(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleDivideGeneral(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	a, b := registers.General[instruction.B], registers.General[instruction.C]
+	registers.General[instruction.A] = ReflectBinaryOp(a, b, func(x, y int64) int64 { return x / y },
+		func(x, y float64) float64 { return x / y }, nil, func(x, y uint64) uint64 { return x / y })
+	return opContinue
+}
+
+// handleRemainderGeneral computes the remainder of two general register operands using
+// reflection-based type dispatch.
+//
+// Takes registers (*Registers) which holds the register banks.
+// Takes instruction (instruction) which encodes the operand indices.
+//
+// Returns OpResult indicating the next execution step.
+func handleRemainderGeneral(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	a, b := registers.General[instruction.B], registers.General[instruction.C]
 	registers.General[instruction.A] = ReflectBinaryOp(a, b, func(x, y int64) int64 { return x % y }, nil, nil, func(x, y uint64) uint64 { return x % y })
 	return opContinue
 }
 
-// handleEqInt tests equality of two signed integer register values and stores the boolean
-// result as an int.
+// handleEqualInt64 tests equality of two signed integer register values and stores the
+// boolean result as an int.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleEqInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleEqualInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Ints[instruction.B] == registers.Ints[instruction.C])
 	return opContinue
 }
 
-// handleNeInt tests inequality of two signed integer register values and stores the
-// boolean result as an int.
+// handleNotEqualInt64 tests inequality of two signed integer register values and stores
+// the boolean result as an int.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleNeInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleNotEqualInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Ints[instruction.B] != registers.Ints[instruction.C])
 	return opContinue
 }
 
-// handleLtInt tests whether the first signed integer register is less than the second and
-// stores the result.
+// handleLessThanInt64 tests whether the first signed integer register is less than the
+// second and stores the result.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleLtInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLessThanInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Ints[instruction.B] < registers.Ints[instruction.C])
 	return opContinue
 }
 
-// handleLeInt tests whether the first signed integer register is less than or equal to
-// the second and stores the result.
+// handleLessOrEqualInt64 tests whether the first signed integer register is less than or
+// equal to the second and stores the result.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleLeInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLessOrEqualInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Ints[instruction.B] <= registers.Ints[instruction.C])
 	return opContinue
 }
 
-// handleGtInt tests whether the first signed integer register is greater than the second
-// and stores the result.
-//
-// Takes registers (*Registers) which holds the register banks.
-// Takes instruction (instruction) which encodes the operand indices.
-//
-// Returns OpResult indicating the next execution step.
-func handleGtInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
-	registers.Ints[instruction.A] = boolToInt64(registers.Ints[instruction.B] > registers.Ints[instruction.C])
-	return opContinue
-}
-
-// handleGeInt tests whether the first signed integer register is greater than or equal to
+// handleGreaterThanInt64 tests whether the first signed integer register is greater than
 // the second and stores the result.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleGeInt(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGreaterThanInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	registers.Ints[instruction.A] = boolToInt64(registers.Ints[instruction.B] > registers.Ints[instruction.C])
+	return opContinue
+}
+
+// handleGreaterOrEqualInt64 tests whether the first signed integer register is greater
+// than or equal to the second and stores the result.
+//
+// Takes registers (*Registers) which holds the register banks.
+// Takes instruction (instruction) which encodes the operand indices.
+//
+// Returns OpResult indicating the next execution step.
+func handleGreaterOrEqualInt64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Ints[instruction.B] >= registers.Ints[instruction.C])
 	return opContinue
 }
 
-// handleEqFloat tests equality of two floating-point register values and stores the
+// handleEqualFloat64 tests equality of two floating-point register values and stores the
 // boolean result as an int.
 //
 // Takes registers (*Registers) which provides the float and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleEqFloat(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleEqualFloat64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Floats[instruction.B] == registers.Floats[instruction.C])
 	return opContinue
 }
 
-// handleLtFloat tests whether the first float register is less than the second and stores
-// the result as an int.
+// handleLessThanFloat64 tests whether the first float register is less than the second
+// and stores the result as an int.
 //
 // Takes registers (*Registers) which provides the float and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleLtFloat(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLessThanFloat64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Floats[instruction.B] < registers.Floats[instruction.C])
 	return opContinue
 }
 
-// handleLeFloat tests whether the first float register is less than or equal to the
-// second and stores the result.
+// handleLessOrEqualFloat64 tests whether the first float register is less than or equal
+// to the second and stores the result.
 //
 // Takes registers (*Registers) which provides the float and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleLeFloat(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLessOrEqualFloat64(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Floats[instruction.B] <= registers.Floats[instruction.C])
 	return opContinue
 }
 
-// handleEqString tests equality of two string register values and stores the boolean
+// handleEqualString tests equality of two string register values and stores the boolean
 // result as an int.
 //
 // Takes registers (*Registers) which provides the string and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleEqString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleEqualString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Strings[instruction.B] == registers.Strings[instruction.C])
 	return opContinue
 }
 
-// handleLtString tests whether the first string register is lexicographically less than
-// the second and stores the result.
+// handleLessThanString tests whether the first string register is lexicographically less
+// than the second and stores the result.
 //
 // Takes registers (*Registers) which provides the string and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleLtString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLessThanString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Strings[instruction.B] < registers.Strings[instruction.C])
 	return opContinue
 }
 
-// handleLeString tests whether the first string register is lexicographically less than
-// or equal to the second.
+// handleLessOrEqualString tests whether the first string register is lexicographically
+// less than or equal to the second.
 //
 // Takes registers (*Registers) which provides the string and integer register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleLeString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLessOrEqualString(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Strings[instruction.B] <= registers.Strings[instruction.C])
 	return opContinue
 }
 
-// handleEqInterfaceNil sets ints[A] = 1 when general[B] is the zero-value interface (no
-// dynamic type, no dynamic value), and 0 otherwise. This matches Go's "interface holding
-// typed nil != nil" rule that would otherwise be lost in reflectEqual's typed-nil fast
-// path.
+// handleEqualInterfaceNil sets ints[A] = 1 when general[B] is the zero-value interface
+// (no dynamic type, no dynamic value), and 0 otherwise. This matches Go's "interface
+// holding typed nil != nil" rule that would otherwise be lost in reflectEqual's typed-nil
+// fast path.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the destination int register in operand A
 // and the source general register in operand B.
 //
 // Returns OpResult indicating the next execution step.
-func handleEqInterfaceNil(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleEqualInterfaceNil(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	value := registers.General[instruction.C]
 	if !value.IsValid() {
 		registers.Ints[instruction.B] = 1
@@ -1263,14 +1279,14 @@ func handleEqInterfaceNil(_ *VM, _ *CallFrame, registers *Registers, instruction
 	return opContinue
 }
 
-// handleNeInterfaceNil is the != mirror of handleEqInterfaceNil.
+// handleNotEqualInterfaceNil is the != mirror of handleEqualInterfaceNil.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the destination int register in operand A
 // and the source general register in operand B.
 //
 // Returns OpResult indicating the next execution step.
-func handleNeInterfaceNil(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleNotEqualInterfaceNil(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	value := registers.General[instruction.C]
 	if !value.IsValid() {
 		registers.Ints[instruction.B] = 0
@@ -1284,14 +1300,15 @@ func handleNeInterfaceNil(_ *VM, _ *CallFrame, registers *Registers, instruction
 	return opContinue
 }
 
-// handleEqGeneral compares two general-bank values for equality under Go's == semantics.
+// handleEqualGeneral compares two general-bank values for equality under Go's ==
+// semantics.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes registers (*Registers) which holds the operands and destination.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleEqGeneral(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleEqualGeneral(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	equal, offending := interfaceValuesEqual(
 		registers.General[instruction.B], registers.General[instruction.C], true)
 	if offending.IsValid() {
@@ -1301,9 +1318,10 @@ func handleEqGeneral(vm *VM, _ *CallFrame, registers *Registers, instruction isa
 	return opContinue
 }
 
-// handleSubOpEqInterfaceStrict implements isa.SubOpEqInterfaceStrict: general[B] ==
-// general[C] with strict interface equality, where a nil interface equals only a nil
-// interface. The destination int register travels in the trailing isa.OpExt word.
+// handleEqualInterfaceStrict implements isa.SubOpEqualInterfaceStrict, which computes
+// general[B] == general[C] with strict interface equality, where a nil interface equals
+// only a nil interface. The destination int register travels in the trailing
+// isa.OpExtension word.
 //
 // Takes vm (*VM) which raises the uncomparable panic.
 // Takes frame (*CallFrame) which supplies and advances past the extension word.
@@ -1311,7 +1329,7 @@ func handleEqGeneral(vm *VM, _ *CallFrame, registers *Registers, instruction isa
 // Takes instruction (instruction) which encodes the two general operand registers.
 //
 // Returns OpResult which continues, or the panic result for uncomparable operands.
-func handleSubOpEqInterfaceStrict(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleEqualInterfaceStrict(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	equal, offending := interfaceValuesEqual(
@@ -1323,7 +1341,7 @@ func handleSubOpEqInterfaceStrict(vm *VM, frame *CallFrame, registers *Registers
 	return opContinue
 }
 
-// handleSubOpNeInterfaceStrict is the != mirror of handleSubOpEqInterfaceStrict.
+// handleNotEqualInterfaceStrict is the != mirror of handleEqualInterfaceStrict.
 //
 // Takes vm (*VM) which raises the uncomparable panic.
 // Takes frame (*CallFrame) which supplies and advances past the extension word.
@@ -1331,7 +1349,7 @@ func handleSubOpEqInterfaceStrict(vm *VM, frame *CallFrame, registers *Registers
 // Takes instruction (instruction) which encodes the two general operand registers.
 //
 // Returns OpResult which continues, or the panic result for uncomparable operands.
-func handleSubOpNeInterfaceStrict(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleNotEqualInterfaceStrict(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	equal, offending := interfaceValuesEqual(
@@ -1359,62 +1377,62 @@ func isNilableAndNil(v reflect.Value) bool {
 	return false
 }
 
-// handleLtGeneral tests whether the first general register is less than the second using
-// reflection comparison.
-//
-// Takes registers (*Registers) which holds the register banks.
-// Takes instruction (instruction) which encodes the operand indices.
-//
-// Returns OpResult indicating the next execution step.
-func handleLtGeneral(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
-	registers.Ints[instruction.A] = boolToInt64(reflectCompare(registers.General[instruction.B], registers.General[instruction.C]) < 0)
-	return opContinue
-}
-
-// handleLeGeneral tests whether the first general register is less than or equal to the
-// second using reflection.
-//
-// Takes registers (*Registers) which holds the register banks.
-// Takes instruction (instruction) which encodes the operand indices.
-//
-// Returns OpResult indicating the next execution step.
-func handleLeGeneral(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
-	registers.Ints[instruction.A] = boolToInt64(reflectCompare(registers.General[instruction.B], registers.General[instruction.C]) <= 0)
-	return opContinue
-}
-
-// handleGtGeneral tests whether the first general register is greater than the second
+// handleLessThanGeneral tests whether the first general register is less than the second
 // using reflection comparison.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleGtGeneral(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLessThanGeneral(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	registers.Ints[instruction.A] = boolToInt64(reflectCompare(registers.General[instruction.B], registers.General[instruction.C]) < 0)
+	return opContinue
+}
+
+// handleLessOrEqualGeneral tests whether the first general register is less than or equal
+// to the second using reflection.
+//
+// Takes registers (*Registers) which holds the register banks.
+// Takes instruction (instruction) which encodes the operand indices.
+//
+// Returns OpResult indicating the next execution step.
+func handleLessOrEqualGeneral(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	registers.Ints[instruction.A] = boolToInt64(reflectCompare(registers.General[instruction.B], registers.General[instruction.C]) <= 0)
+	return opContinue
+}
+
+// handleGreaterThanGeneral tests whether the first general register is greater than the
+// second using reflection comparison.
+//
+// Takes registers (*Registers) which holds the register banks.
+// Takes instruction (instruction) which encodes the operand indices.
+//
+// Returns OpResult indicating the next execution step.
+func handleGreaterThanGeneral(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(reflectCompare(registers.General[instruction.B], registers.General[instruction.C]) > 0)
 	return opContinue
 }
 
-// handleGeGeneral tests whether the first general register is greater than or equal to
-// the second using reflection.
+// handleGreaterOrEqualGeneral tests whether the first general register is greater than or
+// equal to the second using reflection.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleGeGeneral(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGreaterOrEqualGeneral(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(reflectCompare(registers.General[instruction.B], registers.General[instruction.C]) >= 0)
 	return opContinue
 }
 
-// handleNot performs a logical NOT on an integer register, storing 1 if the value is zero
-// and 0 otherwise.
+// handleNotInt64Body performs a logical NOT on an integer register, storing 1 if the
+// value is zero and 0 otherwise.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleNot(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleNotInt64Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = boolToInt64(registers.Ints[instruction.B] == 0)
 	return opContinue
 }

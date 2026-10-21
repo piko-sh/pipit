@@ -4,22 +4,22 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: float=1 general=4 uint=1
+;   registers: float64=1 general=4 uint64=1
 ;   dispatch:  asm=2 shim=4 exit=0 go=1
 ;   params:    (none)
-;   returns:   (float)
+;   returns:   (float64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   uints:   [0]=4607182418800017408
 
-0000 A 0:LOAD_UINT_CONST            0   0   0
-0001 S 0:ALLOC_INDIRECT             0   0   5
-0002   0:EXT                        0   0   0
-0003 S 0:CONVERT                    1   0   0
-0004   0:EXT                        1   0   0
-0005 S 0:CONVERT                    2   1   0
-0006   0:EXT                        2   0   0
-0007 S 0:DEREF                      3   2   0
-0008 G 1:MOVE_GENERAL_TO_FLOAT     43   0   3
-0009 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 0:LOAD_UINT64_CONSTANT                                 0   0   0
+0001 S 0:ALLOCATE_INDIRECT                                    0   0   5
+0002   0:EXTENSION                                            0   0   0
+0003 S 0:CONVERT_GENERAL                                      1   0   0
+0004   0:EXTENSION                                            1   0   0
+0005 S 0:CONVERT_GENERAL                                      2   1   0
+0006   0:EXTENSION                                            2   0   0
+0007 S 0:DEREFERENCE                                          3   2   0
+0008 G 1:UNBOX_FLOAT64                                       43   0   3
+0009 A 2:RETURN                                               0  10   1    ; 1 values

@@ -19,6 +19,7 @@
 package schema
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -87,6 +88,32 @@ func TestUnpackRejectsPreviousDescriptorNumbering(t *testing.T) {
 	require.ErrorIs(t, err, fbs.ErrSchemaVersionMismatch)
 	require.Nil(t, payload)
 	require.False(t, validate(packed))
+}
+
+func TestUnpackRejectsAnotherRevisionOfTheSameFormatVersion(t *testing.T) {
+	t.Parallel()
+
+	major := []byte{byte(BytecodeFormatVersion >> 8), byte(BytecodeFormatVersion)}
+	tests := []struct {
+		name   string
+		suffix []byte
+	}{
+		{name: "the format version alone, as builds before the first revision hashed it", suffix: major},
+		{name: "the revision before", suffix: append(slices.Clone(major), byte((BytecodeFormatRevision-1)>>8), byte(BytecodeFormatRevision-1))},
+		{name: "the revision after", suffix: append(slices.Clone(major), byte((BytecodeFormatRevision+1)>>8), byte(BytecodeFormatRevision+1))},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			otherHash := fbs.ComputeSchemaHash(append(slices.Clone(schemaContent), tt.suffix...))
+			packed := fbs.PackAlloc(otherHash, []byte{1, 2, 3, 4})
+
+			payload, err := Unpack(packed)
+			require.ErrorIs(t, err, fbs.ErrSchemaVersionMismatch)
+			require.Nil(t, payload)
+		})
+	}
 }
 
 func TestValidateAcceptsCurrentSchemaHash(t *testing.T) {

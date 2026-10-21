@@ -4,16 +4,16 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=1 string=2
+;   registers: int64=1 string=2
 ;   dispatch:  asm=3 shim=1 exit=0 go=0
 ;   params:    (none)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   strings: [0]="go gopher"  [1]="go"
 
-0000 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "go gopher"
-0001 A 0:LOAD_STRING_CONST          1   1   0    ; strings[1] = "go"
-0002 S 0:STR_LAST_INDEX             0   0   1
-0003 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "go gopher"
+0001 A 0:LOAD_STRING_CONSTANT                                 1   1   0    ; strings[1] = "go"
+0002 S 0:STRINGS_LAST_INDEX                                   0   0   1
+0003 A 2:RETURN                                               0  10   1    ; 1 values

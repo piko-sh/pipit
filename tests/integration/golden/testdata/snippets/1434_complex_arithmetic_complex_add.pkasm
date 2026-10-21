@@ -4,18 +4,18 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: complex=3
+;   registers: complex128=3
 ;   dispatch:  asm=3 shim=3 exit=0 go=0
 ;   params:    (none)
-;   returns:   (complex)
+;   returns:   (complex128)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   complex: [0]=(1+2i)  [1]=(2+2i)
 
-0000 S 0:LOAD_COMPLEX_CONST         1   0   0
-0001 A 1:MOVE_COMPLEX              15   0   1
-0002 S 0:LOAD_COMPLEX_CONST         2   1   0
-0003 A 1:MOVE_COMPLEX              15   1   2
-0004 S 0:ADD_COMPLEX                0   0   1
-0005 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 0:LOAD_COMPLEX128_CONSTANT                             1   0   0
+0001 A 1:MOVE_COMPLEX128                                     15   0   1
+0002 S 0:LOAD_COMPLEX128_CONSTANT                             2   1   0
+0003 A 1:MOVE_COMPLEX128                                     15   1   2
+0004 S 0:ADD_COMPLEX128                                       0   0   1
+0005 A 2:RETURN                                               0  10   1    ; 1 values

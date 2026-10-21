@@ -35,10 +35,10 @@ const (
 	bceGenBankFlag uint16 = 0x8000
 )
 
-// derefStabilityTracker tracks idempotent DEREF writes to general-bank registers. A
-// byte-identical DEREF whose source has not been written since the prior one preserves
-// length facts, preventing `(*p)[i]` patterns from invalidating the BCE proof established
-// by an earlier `len(*p)` call.
+// derefStabilityTracker tracks idempotent DEREFERENCE writes to general-bank registers. A
+// byte-identical DEREFERENCE whose source has not been written since the prior one
+// preserves length facts, preventing `(*p)[i]` patterns from invalidating the BCE proof
+// established by an earlier `len(*p)` call.
 type derefStabilityTracker struct {
 	// lastProducer holds the most recent instruction that wrote each general-bank register.
 	lastProducer [isa.GeneralRegisterBankSize]isa.Instruction
@@ -51,7 +51,7 @@ type derefStabilityTracker struct {
 	nextVersion uint32
 }
 
-// newDerefStabilityTracker builds a tracker primed so the first real DEREF write
+// newDerefStabilityTracker builds a tracker primed so the first real DEREFERENCE write
 // registers as fresh.
 //
 // Returns a tracker ready for use at the start of a basic block.
@@ -68,7 +68,7 @@ func (t *derefStabilityTracker) Reset() {
 }
 
 // isIdempotentGeneralWrite reports whether writing inst to general[reg] reproduces the
-// value already held there. Restricted to isa.OpDeref.
+// value already held there. Restricted to isa.OpDereference.
 //
 // Takes inst (isa.Instruction) which is the candidate instruction about to write
 // general[reg].
@@ -76,7 +76,7 @@ func (t *derefStabilityTracker) Reset() {
 //
 // Returns true when the write reproduces the existing value.
 func (t *derefStabilityTracker) isIdempotentGeneralWrite(inst isa.Instruction, reg uint8) bool {
-	if inst.Op != isa.OpDeref {
+	if inst.Op != isa.OpDereference {
 		return false
 	}
 	if inst != t.lastProducer[reg] {
@@ -153,8 +153,8 @@ func elideRedundantBoundsChecks(compiledFunction *program.CompiledFunction, body
 //
 // The Unchecked rewrite fires only when the index register is BOTH recorded in safeIndex
 // (proven index < len) AND flagged in nonNegative (proven index >= 0). The signed
-// isa.OpLtInt comparison behind safeIndex does not exclude negative indices, so the
-// second proof is required for soundness; without it the rewrite is refused.
+// isa.OpLessThanInt64 comparison behind safeIndex does not exclude negative indices, so
+// the second proof is required for soundness.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
@@ -176,30 +176,30 @@ func rewriteIfBoundsSafe(compiledFunction *program.CompiledFunction,
 	inst := body[pc]
 	idxReg := uint8(0)
 	switch inst.Op {
-	case isa.OpSliceGetIntDirect:
+	case isa.OpGetSliceInt64Element:
 		if safeIndex[inst.C] != uint16(inst.B)+1 || !nonNegative[inst.C] {
 			return
 		}
 		idxReg = inst.C
-		body[pc] = isa.NewInstruction(isa.OpSliceGetIntDirectUnchecked, inst.A, inst.B, inst.C)
-	case isa.OpSliceSetIntDirect:
+		body[pc] = isa.NewInstruction(isa.OpGetSliceInt64ElementUnchecked, inst.A, inst.B, inst.C)
+	case isa.OpSetSliceInt64Element:
 		if safeIndex[inst.B] != uint16(inst.A)+1 || !nonNegative[inst.B] {
 			return
 		}
 		idxReg = inst.B
-		body[pc] = isa.NewInstruction(isa.OpSliceSetIntDirectUnchecked, inst.A, inst.B, inst.C)
-	case isa.OpSliceGetInt:
+		body[pc] = isa.NewInstruction(isa.OpSetSliceInt64ElementUnchecked, inst.A, inst.B, inst.C)
+	case isa.OpGetElementInt64:
 		if safeIndex[inst.C] != uint16(inst.B)+1|bceGenBankFlag || !nonNegative[inst.C] {
 			return
 		}
 		idxReg = inst.C
-		body[pc] = isa.NewInstruction(isa.OpSliceGetIntUnchecked, inst.A, inst.B, inst.C)
-	case isa.OpSliceSetInt:
+		body[pc] = isa.NewInstruction(isa.OpGetElementInt64Unchecked, inst.A, inst.B, inst.C)
+	case isa.OpSetElementInt64:
 		if safeIndex[inst.B] != uint16(inst.A)+1|bceGenBankFlag || !nonNegative[inst.B] {
 			return
 		}
 		idxReg = inst.B
-		body[pc] = isa.NewInstruction(isa.OpSliceSetIntUnchecked, inst.A, inst.B, inst.C)
+		body[pc] = isa.NewInstruction(isa.OpSetElementInt64Unchecked, inst.A, inst.B, inst.C)
 	default:
 		return
 	}
@@ -211,8 +211,8 @@ func rewriteIfBoundsSafe(compiledFunction *program.CompiledFunction,
 }
 
 // recordNonNegativeFact marks an int-bank register as provably non-negative when the
-// instruction at pc loads a non-negative constant. Required because the signed LtInt
-// comparison does not exclude negative indices.
+// instruction at pc loads a non-negative constant. Required because the signed
+// LessThanInt64 comparison does not exclude negative indices.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the compiled function
 // supplying the constant pool.
@@ -222,11 +222,11 @@ func rewriteIfBoundsSafe(compiledFunction *program.CompiledFunction,
 // non-negativity table updated in place.
 func recordNonNegativeFact(compiledFunction *program.CompiledFunction, body []isa.Instruction, pc int, nonNegative *[isa.GeneralRegisterBankSize]bool) {
 	inst := body[pc]
-	if inst.Op == isa.OpDrillTier1 && isa.SubOpcode(inst.A) == isa.SubOpLoadIntConstSmall {
+	if inst.Op == isa.OpDrillTier1 && isa.SubOpcode(inst.A) == isa.SubOpLoadInt64Immediate {
 		nonNegative[inst.B] = true
 		return
 	}
-	if inst.Op != isa.OpLoadIntConst || inst.C != 0 {
+	if inst.Op != isa.OpLoadInt64Constant || inst.C != 0 {
 		return
 	}
 	poolIndex := int(inst.B)
@@ -271,8 +271,8 @@ func invalidateProofPCsForCleared(safeIndex *[isa.GeneralRegisterBankSize]uint16
 }
 
 // recordLenFact captures lengthOf[lenReg] = sliceReg + 1 when inst is a recognised length
-// opcode (SubOpLenSliceIntDirect or SubOpLen). Reflect-bank facts are tagged with
-// bceGenBankFlag to keep the two banks distinct.
+// opcode (SubOpLengthSliceInt64 or SubOpLengthGeneral). Reflect-bank facts are tagged
+// with bceGenBankFlag to keep the two banks distinct.
 //
 // Takes inst (isa.Instruction) which is the candidate instruction to inspect.
 // Takes lengthOf (*[isa.GeneralRegisterBankSize]uint16) which is the length-fact table to
@@ -284,12 +284,12 @@ func recordLenFact(inst isa.Instruction, lengthOf *[isa.GeneralRegisterBankSize]
 		return
 	}
 	switch isa.SubOpcode(inst.A) {
-	case isa.SubOpLenSliceIntDirect:
+	case isa.SubOpLengthSliceInt64:
 		lenReg := inst.B
 		sliceReg := inst.C
 		clearFactsTargetingLenReg(lengthOf, safeIndex, lenReg)
 		lengthOf[lenReg] = uint16(sliceReg) + 1
-	case isa.SubOpLen:
+	case isa.SubOpLengthGeneral:
 		lenReg := inst.B
 		sliceReg := inst.C
 		clearFactsTargetingLenReg(lengthOf, safeIndex, lenReg)
@@ -300,10 +300,6 @@ func recordLenFact(inst isa.Instruction, lengthOf *[isa.GeneralRegisterBankSize]
 
 // recordLtJumpFact captures safeIndex[idxReg] = sliceReg + 1 when the two-instruction
 // window starting at pc matches the bounds-proof pattern.
-//
-// The pattern is isa.OpLtInt followed by isa.OpJumpIfFalse with a matching condition
-// register, and the right-hand side of the comparison must resolve to a known length via
-// lengthOf.
 //
 // On the fall-through edge (subsequent PCs in linear order), the index register is
 // provably less than the slice's length.
@@ -324,9 +320,9 @@ func recordLtJumpFact(body []isa.Instruction, pc int, lengthOf *[isa.GeneralRegi
 	jmp := body[pc+1]
 	var idxReg, lenReg uint8
 	switch {
-	case cmp.Op == isa.OpLtInt && jmp.Op == isa.OpJumpIfFalse && cmp.A == jmp.A:
+	case cmp.Op == isa.OpLessThanInt64 && jmp.Op == isa.OpJumpIfFalse && cmp.A == jmp.A:
 		idxReg, lenReg = cmp.B, cmp.C
-	case isa.InstrIsTier1SubOp(cmp, isa.SubOpLtIntJumpFalse) && jmp.Op == isa.OpExt:
+	case isa.InstrIsTier1SubOp(cmp, isa.SubOpLessThanInt64ThenJumpIfFalse) && jmp.Op == isa.OpExtension:
 
 		idxReg, lenReg = cmp.B, cmp.C
 	default:
@@ -348,7 +344,7 @@ func recordLtJumpFact(body []isa.Instruction, pc int, lengthOf *[isa.GeneralRegi
 // Takes safeIndex (*[isa.GeneralRegisterBankSize]uint16) which is the safe-index fact
 // table to update.
 // Takes tracker (*derefStabilityTracker) which is the deref-stability tracker used to
-// preserve idempotent re-DEREF facts.
+// preserve idempotent re-DEREFERENCE facts.
 func invalidateBoundsFacts(
 	inst isa.Instruction,
 	lengthOf *[isa.GeneralRegisterBankSize]uint16,
@@ -378,7 +374,7 @@ func invalidateBoundsFacts(
 // Returns true when inst belongs to the conservative block list.
 func instructionClearsAllBoundsFacts(inst isa.Instruction) bool {
 	switch inst.Op {
-	case isa.OpMakeClosure, isa.OpAppend, isa.OpAppendSpread, isa.OpAppendByteFast, isa.OpAppendByteFastInPlace,
+	case isa.OpMakeClosure, isa.OpAppend, isa.OpAppendSpread, isa.OpAppendByte, isa.OpAppendByteInPlace,
 		isa.OpAppendInPlace, isa.OpAppendSpreadInPlace,
 		isa.OpSliceString:
 		return true
@@ -386,9 +382,9 @@ func instructionClearsAllBoundsFacts(inst isa.Instruction) bool {
 	}
 	if inst.Op == isa.OpDrillTier1 {
 		switch isa.SubOpcode(inst.A) {
-		case isa.SubOpAppendInt, isa.SubOpAppendUint, isa.SubOpAppendFloat,
-			isa.SubOpAppendString, isa.SubOpAppendBool,
-			isa.SubOpStarAppendByteFast, isa.SubOpStarAppendByteSpread,
+		case isa.SubOpAppendInt64Wide, isa.SubOpAppendUint64Wide, isa.SubOpAppendFloat64Wide,
+			isa.SubOpAppendStringWide, isa.SubOpAppendBoolWide,
+			isa.SubOpAppendByteViaPointer, isa.SubOpAppendSpreadByteViaPointer,
 			isa.SubOpCall, isa.SubOpTailCall, isa.SubOpCallMethod,
 			isa.SubOpCallMethodInlineable, isa.SubOpCallNative, isa.SubOpCallIIFE,
 			isa.SubOpDrillTier2:
@@ -425,9 +421,6 @@ func invalidateIntRegisterFacts(inst isa.Instruction, lengthOf *[isa.GeneralRegi
 
 // invalidateSliceIntRegisterFacts kills any fact whose underlying sliceReg matches a
 // register written by inst in the slicesInt bank.
-//
-// A write to slicesInt[X] (for example via isa.SubOpMakeSliceInt) can change the slice's
-// length, so any lengthOf and safeIndex entry naming X is stale.
 //
 // Takes inst (isa.Instruction) which is the instruction whose writes are being applied.
 // Takes lengthOf (*[isa.GeneralRegisterBankSize]uint16) which is the length-fact table to
@@ -469,7 +462,7 @@ func clearFactsTargetingLenReg(lengthOf *[isa.GeneralRegisterBankSize]uint16, sa
 //
 // A write to general[X] (for example via isa.OpMakeSlice into an addressable destination)
 // can change the slice's length, so any lengthOf and safeIndex entry naming X in the
-// reflect bank is stale, except when the write is an idempotent re-DEREF; see
+// reflect bank is stale, except when the write is an idempotent re-DEREFERENCE. See
 // derefStabilityTracker for the soundness argument. Idempotent writes preserve the value
 // general[X] already held, so any length fact pointing at general[X] remains valid.
 //

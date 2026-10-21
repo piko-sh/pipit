@@ -136,7 +136,7 @@ func TestRegisterNativeBackedGenericTypesMultiMethodNoPanic(t *testing.T) {
 	}
 
 	require.NotPanics(t, func() {
-		registry.registerNativeBackedGenericTypes(pkg, exports, converter)
+		registry.registerNativeBackedGenericTypes(t.Context(), pkg, exports, converter)
 	})
 
 	object := pkg.Scope().Lookup("Pointer")

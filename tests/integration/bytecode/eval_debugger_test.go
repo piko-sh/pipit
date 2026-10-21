@@ -224,7 +224,7 @@ func main() {
 		dbg.SetBreakpoint("main.go", 5)
 
 		execution := debugtest.Run(t, dbg, func() (any, error) {
-			return service.EvalFile(context.Background(), source, "main")
+			return service.EvalFile(t.Context(), source, "main")
 		})
 
 		snap := debugtest.WaitPause(t, dbg)
@@ -258,7 +258,7 @@ func main() {
 		dbg.SetBreakpoint("main.go", 6)
 
 		execution := debugtest.Run(t, dbg, func() (any, error) {
-			return service.EvalFile(context.Background(), source, "main")
+			return service.EvalFile(t.Context(), source, "main")
 		})
 
 		snap1 := debugtest.WaitPause(t, dbg)
@@ -296,7 +296,7 @@ func main() {
 		dbg.ClearBreakpoint("main.go", 4)
 
 		execution := debugtest.Run(t, dbg, func() (any, error) {
-			return service.EvalFile(context.Background(), source, "main")
+			return service.EvalFile(t.Context(), source, "main")
 		})
 
 		snap := debugtest.WaitPause(t, dbg)
@@ -329,7 +329,7 @@ func main() {
 		dbg.SetBreakpoint("main.go", 8)
 
 		execution := debugtest.Run(t, dbg, func() (any, error) {
-			return service.EvalFile(context.Background(), source, "main")
+			return service.EvalFile(t.Context(), source, "main")
 		})
 
 		snap := debugtest.WaitPause(t, dbg)
@@ -369,7 +369,7 @@ func main() {
 		dbg.SetBreakpoint("main.go", 8)
 
 		execution := debugtest.Run(t, dbg, func() (any, error) {
-			return service.EvalFile(context.Background(), source, "main")
+			return service.EvalFile(t.Context(), source, "main")
 		})
 
 		snap := debugtest.WaitPause(t, dbg)
@@ -410,7 +410,7 @@ func main() {
 		dbg.SetBreakpoint("main.go", 4)
 
 		execution := debugtest.Run(t, dbg, func() (any, error) {
-			return service.EvalFile(context.Background(), source, "main")
+			return service.EvalFile(t.Context(), source, "main")
 		})
 
 		snap := debugtest.WaitPause(t, dbg)
@@ -445,7 +445,7 @@ func main() {
 		dbg.SetBreakpoint("main.go", 4)
 
 		execution := debugtest.Run(t, dbg, func() (any, error) {
-			return service.EvalFile(context.Background(), source, "main")
+			return service.EvalFile(t.Context(), source, "main")
 		})
 
 		debugtest.WaitPause(t, dbg)
@@ -472,7 +472,7 @@ func main() {
 		dbg.SetBreakpoint("main.go", 5)
 
 		execution := debugtest.Run(t, dbg, func() (any, error) {
-			return service.EvalFile(context.Background(), source, "main")
+			return service.EvalFile(t.Context(), source, "main")
 		})
 
 		snap := debugtest.WaitPause(t, dbg)
@@ -511,7 +511,7 @@ func main() {
 		dbg.SetBreakpoint("main.go", 4)
 
 		execution := debugtest.Run(t, dbg, func() (any, error) {
-			return service.EvalFile(context.Background(), source, "main")
+			return service.EvalFile(t.Context(), source, "main")
 		})
 
 		snap := debugtest.WaitPause(t, dbg)

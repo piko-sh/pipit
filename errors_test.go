@@ -19,6 +19,7 @@
 package pipit_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -40,4 +41,23 @@ func TestCompileProblemsListsEveryFailedPackage(t *testing.T) {
 	require.ErrorAs(t, err, &list)
 	require.Len(t, pipit.CompileProblems(err), 2)
 	require.Nil(t, pipit.CompileProblems(nil))
+}
+
+func TestUncaughtPanicValueAndStack(t *testing.T) {
+	t.Parallel()
+	interpreter := pipit.NewInterpreter()
+	t.Cleanup(func() { _ = interpreter.Close() })
+	compiled, err := interpreter.CompileFileSet(t.Context(), map[string]string{"main.go": "package main\n\nfunc explode() int { panic(\"boom\") }\n\nfunc run() int { return explode() }\n"})
+	require.NoError(t, err)
+	_, err = interpreter.ExecuteEntrypoint(t.Context(), compiled, "run")
+	require.Error(t, err)
+
+	value, ok := pipit.UncaughtPanicValue(err)
+	require.True(t, ok)
+	require.Equal(t, "boom", value)
+	require.Contains(t, pipit.UncaughtPanicStack(err), "explode")
+
+	_, ok = pipit.UncaughtPanicValue(errors.New("plain"))
+	require.False(t, ok)
+	require.Empty(t, pipit.UncaughtPanicStack(errors.New("plain")))
 }

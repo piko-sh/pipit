@@ -33,6 +33,7 @@ readonly ENGINE_DIR="${PIPIT_ROOT}/internal/engine"
 
 # Generators in dependency order, as "name:file".
 readonly ENGINE_GENERATORS=(
+    "spec-names:gen_spec_names.go"
     "opcode-tables:gen_opcode_tables.go"
     "flat-switch:gen_flat_switch.go"
     "kind-families:gen_kind_families.go"
@@ -68,7 +69,7 @@ generator_file() {
         fi
     done
 
-    pipit::log::fatal "Unknown generator: $name (expected: opcode-tables, flat-switch, kind-families)"
+    pipit::log::fatal "Unknown generator: $name (expected: spec-names, opcode-tables, flat-switch, kind-families)"
 }
 
 # generate_all runs every generator in dependency order.

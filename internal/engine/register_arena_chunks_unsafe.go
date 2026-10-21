@@ -21,9 +21,6 @@
 package engine
 
 const (
-	// ArenaChunkRecyclingEnabled turns on zero-and-reuse of dead chunks. The mark phase
-	// traces from every root through pointers, interfaces and slice headers into the slabs
-	// (see markReflectValueAt), so a chunk that compactPhase finds dead is unreachable from
-	// interpreted code and can be cleared and reinstalled safely.
+	// ArenaChunkRecyclingEnabled turns on zero-and-reuse of dead chunks.
 	ArenaChunkRecyclingEnabled = true
 )

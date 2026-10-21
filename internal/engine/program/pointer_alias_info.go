@@ -37,13 +37,42 @@ const (
 // carry an all-wild environment, a sound fallback where every may-alias query returns
 // "yes".
 type PointerAliasInfo struct {
-	// PerPCEnv holds the post-execution alias environment for each PC in the function body.
-	PerPCEnv []AliasEnvironment
+	// classes holds the alias classes after each PC in turn, width of them for each PC.
+	classes []AliasClass
+
+	// width is the number of general-bank registers tracked, counted from register zero. A
+	// register past it is wild at every PC.
+	width int
 }
 
-// MayAlias reports whether two general-bank registers could refer to the same heap object
-// at the program point immediately after pc executed. Returns the conservative "true"
-// when the alias environment for pc is not populated.
+// NewPointerAliasInfo returns alias information for a body of the given length, with
+// every class wild.
+//
+// Takes words (int) which is the length of the function body.
+// Takes width (int) which is the number of general-bank registers to track.
+//
+// Returns *PointerAliasInfo which answers "may alias" for every query until classes are
+// stored in it.
+func NewPointerAliasInfo(words, width int) *PointerAliasInfo {
+	width = min(max(width, 0), GeneralAliasBankSize)
+	return &PointerAliasInfo{classes: make([]AliasClass, words*width), width: width}
+}
+
+// ClassesAt returns the alias classes of the tracked registers after pc ran.
+//
+// Takes pc (int) which is the PC whose post-execution environment is wanted.
+//
+// Returns []AliasClass which the caller may write to, one class for each tracked
+// register, or nil when pc lies outside the body.
+func (info *PointerAliasInfo) ClassesAt(pc int) []AliasClass {
+	start := pc * info.width
+	if pc < 0 || start+info.width > len(info.classes) {
+		return nil
+	}
+	return info.classes[start : start+info.width : start+info.width]
+}
+
+// MayAlias reports whether two general registers may refer to the same object after pc.
 //
 // Takes pc (int) which is the PC whose post-execution environment is consulted.
 // Takes regA (uint8) which is the first register slot being queried.
@@ -51,30 +80,25 @@ type PointerAliasInfo struct {
 //
 // Returns true when regA == regB (always aliases), when either class is wild (unknown
 // origin), or when both carry the same non-wild class (provably aliased).
-// Returns false only when both classes are concrete and different; callers (CSE, LICM,
+// Returns false only when both classes are concrete and different. Callers (CSE, LICM,
 // GVN) use the false return to keep cached reads alive through writes via the other
 // register.
 func (info *PointerAliasInfo) MayAlias(pc int, regA, regB uint8) bool {
-	if info == nil {
+	if info == nil || regA == regB {
 		return true
 	}
-	if regA == regB {
+	classes := info.ClassesAt(pc)
+	if int(regA) >= len(classes) || int(regB) >= len(classes) {
 		return true
 	}
-	if pc < 0 || pc >= len(info.PerPCEnv) {
-		return true
-	}
-	env := &info.PerPCEnv[pc]
-	classA := env.Class[regA]
-	classB := env.Class[regB]
+	classA, classB := classes[regA], classes[regB]
 	if classA == AliasClassWild || classB == AliasClassWild {
 		return true
 	}
 	return classA == classB
 }
 
-// AliasEnvironment is the immutable snapshot of every general-bank register's alias class
-// at one program point.
+// AliasEnvironment snapshots every general register's alias class at one program point.
 type AliasEnvironment struct {
 	// Class holds the alias class for each general-bank register slot.
 	Class [GeneralAliasBankSize]AliasClass

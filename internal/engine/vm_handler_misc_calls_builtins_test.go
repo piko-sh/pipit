@@ -48,18 +48,18 @@ func TestReadOneBuiltinArgReadsTheNamedBank(t *testing.T) {
 		load func(*Registers)
 		want any
 	}{
-		{name: "the int bank", kind: isa.RegisterInt, load: func(r *Registers) { r.Ints[1] = 3 }, want: int64(3)},
-		{name: "the float bank", kind: isa.RegisterFloat, load: func(r *Registers) { r.Floats[1] = 1.5 }, want: 1.5},
+		{name: "the int bank", kind: isa.RegisterInt64, load: func(r *Registers) { r.Ints[1] = 3 }, want: int64(3)},
+		{name: "the float bank", kind: isa.RegisterFloat64, load: func(r *Registers) { r.Floats[1] = 1.5 }, want: 1.5},
 		{name: "the string bank", kind: isa.RegisterString, load: func(r *Registers) { r.Strings[1] = "s" }, want: "s"},
 		{name: "the bool bank", kind: isa.RegisterBool, load: func(r *Registers) { r.Bools[1] = true }, want: true},
-		{name: "the uint bank", kind: isa.RegisterUint, load: func(r *Registers) { r.Uints[1] = 4 }, want: uint64(4)},
-		{name: "the complex bank", kind: isa.RegisterComplex, load: func(r *Registers) { r.Complex[1] = 2i }, want: 2i},
+		{name: "the uint bank", kind: isa.RegisterUint64, load: func(r *Registers) { r.Uints[1] = 4 }, want: uint64(4)},
+		{name: "the complex bank", kind: isa.RegisterComplex128, load: func(r *Registers) { r.Complex[1] = 2i }, want: 2i},
 		{
 			name: "a populated general register", kind: isa.RegisterGeneral,
 			load: func(r *Registers) { r.General[1] = reflect.ValueOf("boxed") }, want: "boxed",
 		},
 		{name: "an unset general register", kind: isa.RegisterGeneral, load: func(*Registers) {}, want: nil},
-		{name: "a slice bank has no print form", kind: isa.RegisterSliceInt, load: func(*Registers) {}, want: nil},
+		{name: "a slice bank has no print form", kind: isa.RegisterSliceInt64, load: func(*Registers) {}, want: nil},
 	}
 
 	for _, tt := range tests {
@@ -91,7 +91,7 @@ func TestCallBuiltinPrintsItsArguments(t *testing.T) {
 			t.Parallel()
 
 			vm, frame, registers := newExtWordFrame(t,
-				op(1, uint8(isa.RegisterInt), 0),
+				op(1, uint8(isa.RegisterInt64), 0),
 				op(2, uint8(isa.RegisterString), 0),
 			)
 			output := &strings.Builder{}
@@ -110,7 +110,7 @@ func TestCallBuiltinPrintsItsArguments(t *testing.T) {
 func TestCallBuiltinSurfacesAWriteFailure(t *testing.T) {
 	t.Parallel()
 
-	vm, frame, registers := newExtWordFrame(t, op(1, uint8(isa.RegisterInt), 0))
+	vm, frame, registers := newExtWordFrame(t, op(1, uint8(isa.RegisterInt64), 0))
 	vm.SetStderrWriter(failingWriter{})
 	registers.Ints[1] = 1
 
@@ -185,7 +185,7 @@ func TestCallBuiltinClearIgnoresAnUnsetRegister(t *testing.T) {
 func TestCallBuiltinIgnoresAnUnknownIdentifier(t *testing.T) {
 	t.Parallel()
 
-	vm, frame, registers := newExtWordFrame(t, op(1, uint8(isa.RegisterInt), 0))
+	vm, frame, registers := newExtWordFrame(t, op(1, uint8(isa.RegisterInt64), 0))
 
 	got := handleCallBuiltin(vm, frame, registers, op(0, 250, 1))
 	require.Equal(t, opContinue, got)
@@ -199,7 +199,7 @@ func TestRecoverOnlyFiresInTheEligibleFrame(t *testing.T) {
 
 		vm, frame, registers := newStandardVM(t)
 
-		got := handleRecover(vm, frame, registers, op(0, 0, 0))
+		got := handleRecoverBody(vm, frame, registers, op(0, 0, 0))
 		require.Equal(t, opContinue, got)
 		require.False(t, registers.General[0].IsValid(), "recover() outside a panic returns nil")
 	})
@@ -212,7 +212,7 @@ func TestRecoverOnlyFiresInTheEligibleFrame(t *testing.T) {
 		vm.panicValue = "boom"
 		vm.recoverEligibleFrame = vm.FramePointer
 
-		got := handleRecover(vm, frame, registers, op(0, 0, 0))
+		got := handleRecoverBody(vm, frame, registers, op(0, 0, 0))
 		require.Equal(t, opContinue, got)
 		require.Equal(t, "boom", registers.General[0].Interface())
 		require.False(t, vm.panicking, "the panic is over once it has been recovered")
@@ -228,7 +228,7 @@ func TestRecoverOnlyFiresInTheEligibleFrame(t *testing.T) {
 		vm.panicValue = "boom"
 		vm.recoverEligibleFrame = vm.FramePointer + 1
 
-		got := handleRecover(vm, frame, registers, op(0, 0, 0))
+		got := handleRecoverBody(vm, frame, registers, op(0, 0, 0))
 		require.Equal(t, opContinue, got)
 		require.False(t, registers.General[0].IsValid())
 		require.True(t, vm.panicking, "only the frame that deferred the recover may catch it")
@@ -242,7 +242,7 @@ func TestRecoverOnlyFiresInTheEligibleFrame(t *testing.T) {
 		vm.panicValue = nil
 		vm.recoverEligibleFrame = vm.FramePointer
 
-		got := handleRecover(vm, frame, registers, op(0, 0, 0))
+		got := handleRecoverBody(vm, frame, registers, op(0, 0, 0))
 		require.Equal(t, opContinue, got)
 		require.False(t, registers.General[0].IsValid())
 	})
@@ -257,7 +257,7 @@ func TestPanicWithNoRecoverUnwindsToTheHost(t *testing.T) {
 		vm, frame, registers := newStandardVM(t)
 		registers.General[0] = reflect.ValueOf("boom")
 
-		got := handlePanic(vm, frame, registers, op(0, 0, 0))
+		got := handlePanicBody(vm, frame, registers, op(0, 0, 0))
 		require.NotEqual(t, opContinue, got, "an unrecovered panic must not continue dispatch")
 		require.Equal(t, "boom", vm.panicValue)
 	})
@@ -267,7 +267,7 @@ func TestPanicWithNoRecoverUnwindsToTheHost(t *testing.T) {
 
 		vm, frame, registers := newStandardVM(t)
 
-		got := handlePanic(vm, frame, registers, op(0, 0, 0))
+		got := handlePanicBody(vm, frame, registers, op(0, 0, 0))
 		require.NotEqual(t, opContinue, got)
 		require.NotNil(t, vm.panicValue, "a bare panic(nil) still carries Go's placeholder error")
 	})
@@ -280,7 +280,7 @@ func TestPanicWithNoRecoverUnwindsToTheHost(t *testing.T) {
 		vm.panicValue = "first"
 		registers.General[0] = reflect.ValueOf("second")
 
-		got := handlePanic(vm, frame, registers, op(0, 0, 0))
+		got := handlePanicBody(vm, frame, registers, op(0, 0, 0))
 		require.Equal(t, opPanicError, got)
 		require.Equal(t, "second", vm.panicValue)
 		require.Error(t, vm.evalError, "a panic during a panic is terminal")
@@ -340,7 +340,7 @@ func TestDeferRefusesATargetThatIsNotCallable(t *testing.T) {
 func TestDeferChainsANativeFunction(t *testing.T) {
 	t.Parallel()
 
-	vm, frame, registers := newExtWordFrame(t, op(0, 1, uint8(isa.RegisterInt)))
+	vm, frame, registers := newExtWordFrame(t, op(0, 1, uint8(isa.RegisterInt64)))
 	registers.General[0] = reflect.ValueOf(func(int64) {})
 	registers.Ints[1] = 9
 
@@ -438,14 +438,14 @@ func TestPlaceOneReflectArgumentWritesTheNamedBank(t *testing.T) {
 		inspect  func(*testing.T, *Registers)
 	}{
 		{
-			name: "the int bank", kind: isa.RegisterInt, argument: int64(4),
+			name: "the int bank", kind: isa.RegisterInt64, argument: int64(4),
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, int64(4), r.Ints[0])
 			},
 		},
 		{
-			name: "the float bank", kind: isa.RegisterFloat, argument: 1.5,
+			name: "the float bank", kind: isa.RegisterFloat64, argument: 1.5,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.InDelta(t, 1.5, r.Floats[0], 0)
@@ -473,35 +473,35 @@ func TestPlaceOneReflectArgumentWritesTheNamedBank(t *testing.T) {
 			},
 		},
 		{
-			name: "the uint bank", kind: isa.RegisterUint, argument: uint64(6),
+			name: "the uint bank", kind: isa.RegisterUint64, argument: uint64(6),
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, uint64(6), r.Uints[0])
 			},
 		},
 		{
-			name: "the complex bank", kind: isa.RegisterComplex, argument: 2i,
+			name: "the complex bank", kind: isa.RegisterComplex128, argument: 2i,
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, 2i, r.Complex[0])
 			},
 		},
 		{
-			name: "the int-slice bank", kind: isa.RegisterSliceInt, argument: []int64{1},
+			name: "the int-slice bank", kind: isa.RegisterSliceInt64, argument: []int64{1},
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, []int64{1}, r.SlicesInt[0])
 			},
 		},
 		{
-			name: "the int-slice bank from a platform-width slice", kind: isa.RegisterSliceInt, argument: []int{2},
+			name: "the int-slice bank from a platform-width slice", kind: isa.RegisterSliceInt64, argument: []int{2},
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, []int64{2}, r.SlicesInt[0])
 			},
 		},
 		{
-			name: "the float-slice bank", kind: isa.RegisterSliceFloat, argument: []float64{1.5},
+			name: "the float-slice bank", kind: isa.RegisterSliceFloat64, argument: []float64{1.5},
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, []float64{1.5}, r.slicesFloat[0])
@@ -522,7 +522,7 @@ func TestPlaceOneReflectArgumentWritesTheNamedBank(t *testing.T) {
 			},
 		},
 		{
-			name: "the uint-slice bank", kind: isa.RegisterSliceUint, argument: []uint64{3},
+			name: "the uint-slice bank", kind: isa.RegisterSliceUint64, argument: []uint64{3},
 			inspect: func(t *testing.T, r *Registers) {
 				t.Helper()
 				require.Equal(t, []uint64{3}, r.slicesUint[0])
@@ -551,7 +551,7 @@ func TestPlaceOneReflectArgumentWritesTheNamedBank(t *testing.T) {
 		t.Parallel()
 
 		registers := standardRegisters()
-		placeOneReflectArgument(&registers, reflect.ValueOf([]string{"s"}), isa.RegisterSliceFloat, 0, nil)
+		placeOneReflectArgument(&registers, reflect.ValueOf([]string{"s"}), isa.RegisterSliceFloat64, 0, nil)
 
 		require.Nil(t, registers.slicesFloat[0])
 	})
@@ -561,7 +561,7 @@ func TestPlaceReflectArgsFillsEachBankInOrder(t *testing.T) {
 	t.Parallel()
 
 	registers := standardRegisters()
-	kinds := []isa.RegisterKind{isa.RegisterInt, isa.RegisterString, isa.RegisterInt}
+	kinds := []isa.RegisterKind{isa.RegisterInt64, isa.RegisterString, isa.RegisterInt64}
 
 	placeReflectArgs(&registers, []reflect.Value{
 		reflect.ValueOf(int64(1)),
@@ -582,7 +582,7 @@ func TestPlaceReflectArgsStopsAtTheDeclaredParameters(t *testing.T) {
 	placeReflectArgs(&registers, []reflect.Value{
 		reflect.ValueOf(int64(1)),
 		reflect.ValueOf(int64(2)),
-	}, []isa.RegisterKind{isa.RegisterInt}, nil)
+	}, []isa.RegisterKind{isa.RegisterInt64}, nil)
 
 	require.Equal(t, int64(1), registers.Ints[0])
 	require.Zero(t, registers.Ints[1], "an operand the callee does not declare is dropped")
@@ -594,7 +594,7 @@ func TestCoerceNativeGoroutineArgsFitsTheParameterTypes(t *testing.T) {
 	vm := newTestVM(t)
 	arguments := []reflect.Value{reflect.ValueOf(int64(1)), reflect.ValueOf(int64(2)), reflect.ValueOf(int64(3))}
 
-	coerceNativeGoroutineArgs(vm, reflect.ValueOf(func(int32, bool) {}), arguments)
+	require.NoError(t, coerceNativeGoroutineArgs(vm, reflect.ValueOf(func(int32, bool) {}), arguments))
 
 	require.Equal(t, int32(1), arguments[0].Interface())
 	require.Equal(t, true, arguments[1].Interface())

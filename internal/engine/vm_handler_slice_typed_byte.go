@@ -32,12 +32,12 @@ const (
 	sliceBoundsOutOfRangeFormat = "runtime error: slice bounds out of range [%d:%d:%d] with capacity %d"
 )
 
-// handleSubOpMakeSliceByte creates a typed []byte slice.
+// handleMakeSliceByte creates a typed []byte slice.
 //
 // Performs slicesByte[B] = make([]byte, ints[C], ints[ext.A]). Routes the backing through
 // vm.arena.AllocByteBacking - the same byte slab arenaMakeSliceBacking uses for the
 // general-bank path - so byte allocation stays arena-resident even in the typed bank. The
-// length>0 guard restores Go's zero-initialisation guarantee for the live prefix; the
+// length>0 guard restores Go's zero-initialisation guarantee for the live prefix. The
 // bump allocator returns whatever the slab last held.
 //
 // Takes vm (*VM) which provides the arena and reports panics.
@@ -47,7 +47,7 @@ const (
 //
 // Returns opContinue on success, opPanicError when length or capacity is invalid or
 // exceeds the configured allocation limit.
-func handleSubOpMakeSliceByte(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMakeSliceByte(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	length := registers.Ints[instruction.C]
@@ -68,33 +68,25 @@ func handleSubOpMakeSliceByte(vm *VM, frame *CallFrame, registers *Registers, in
 	return opContinue
 }
 
-// handleSubOpBoxSliceByte boxes a typed []byte into the general bank.
-//
-// Writes general[B] = reflect.ValueOf(slicesByte[C]). Used at boundaries with
-// reflect-bank consumers (native call, map value, interface conversion, container
-// insert).
+// handleBoxSliceByte boxes a typed []byte into the general bank.
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which carries B and C operands.
 //
 // Returns opContinue.
-func handleSubOpBoxSliceByte(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleBoxSliceByte(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.General[instruction.B] = reflect.ValueOf(registers.slicesByte[instruction.C])
 	return opContinue
 }
 
-// handleSubOpSliceByteToString converts a typed []byte to a string.
-//
-// Writes strings[B] = string(slicesByte[C]) through the arena's byte slab via
-// arenaBytesToString(), the same allocation path the general-bank
-// handleFlatSubOpBytesToString() uses.
+// handleConvertSliceByteToString converts a typed []byte to a string.
 //
 // Takes vm (*VM) which provides the arena.
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (instruction) which carries B and C operands.
 //
 // Returns opContinue.
-func handleSubOpSliceByteToString(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleConvertSliceByteToString(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Strings[instruction.B] = arenaBytesToString(vm.Arena, registers.slicesByte[instruction.C])
 	return opContinue
 }

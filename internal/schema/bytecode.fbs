@@ -104,6 +104,8 @@ table TypeDescField {
     tag: string;
     package_path: string;
     type_descriptor: TypeDescriptor;
+    // embedded marks an embedded (anonymous) field, whose methods and fields promote.
+    embedded: bool;
 }
 
 table TypeDescriptor {
@@ -120,6 +122,9 @@ table TypeDescriptor {
     params: [TypeDescriptor];
     results: [TypeDescriptor];
     is_variadic: bool;
+    // back_reference marks a KindNamed descriptor that names an enclosing self-referential
+    // named composite type (package_path and name) instead of describing it again.
+    back_reference: bool;
 }
 
 table GeneralConstantDescriptor {
@@ -141,6 +146,13 @@ table CallSite {
     returns: [VarLocation];
     is_ellipsis_spread: bool;
     blocks_host_goroutine: bool;
+    // argument_static_type_names and argument_static_type_strings record each argument's
+    // source-level named type, which native calls use to name and adapt script values.
+    argument_static_type_names: [string];
+    argument_static_type_strings: [string];
+    // linked_type_args are the type arguments a call through a generic function's linked
+    // sibling prepends to its arguments.
+    linked_type_args: [TypeDescriptor];
 }
 
 table MethodTableEntry {
@@ -151,6 +163,12 @@ table MethodTableEntry {
 table TypeNameEntry {
     name: string;
     type_descriptor: TypeDescriptor;
+}
+
+table ReceiverMethodEntry {
+    receiver_type_descriptor: TypeDescriptor;
+    method_index: uint16;
+    function_index: uint16;
 }
 
 table EntrypointEntry {
@@ -188,6 +206,7 @@ table CompiledFunction {
     has_recover: bool;
     has_receiver: bool;
     signature_type_descriptor: TypeDescriptor;
+    receiver_methods: [ReceiverMethodEntry];
 }
 
 table InterfaceMethodSet {
@@ -213,6 +232,14 @@ table PackageVariableEntry {
     is_indirect: bool;
 }
 
+// NamedInterfaceEntry describes an interface type the program declares and names in a
+// reflect.TypeOf call, so a service that loads the program can answer for it.
+table NamedInterfaceEntry {
+    package_path: string;
+    name: string;
+    methods: [string];
+}
+
 table CompiledFileSet {
     root: CompiledFunction;
     variable_init_function: CompiledFunction;
@@ -220,6 +247,7 @@ table CompiledFileSet {
     initialisation_functions: [uint16];
     slot_allocation: SlotAllocation;
     package_variables: [PackageVariableEntry];
+    named_interfaces: [NamedInterfaceEntry];
 }
 
 root_type CompiledFileSet;

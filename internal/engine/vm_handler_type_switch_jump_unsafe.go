@@ -42,7 +42,7 @@ func typeSwitchCaseIndex(compiledFunction *program.CompiledFunction, rows []isa.
 	words := layoutTypeWordTable(compiledFunction)
 	sourceWord := (*unsafeReflectValue)(unsafe.Pointer(&source)).typ
 	if source.Type() == runtimeClosureReflectType {
-		signature := closureSignatureType(source)
+		signature := closureDynamicType(source)
 		for row, entry := range rows {
 			typeIndex := int(entry.A)
 			if signature != nil && typeIndex < len(compiledFunction.TypeTable) && compiledFunction.TypeTable[typeIndex] == signature {

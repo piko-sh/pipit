@@ -142,13 +142,13 @@ func (r *RegisterAllocator) Alloc(kind isa.RegisterKind) uint8 {
 				"peak registers: int=%d float=%d string=%d general=%d bool=%d uint=%d complex=%d; "+
 				"recycled pool lengths: int=%d float=%d string=%d general=%d bool=%d uint=%d complex=%d",
 			fault.ErrRegisterOverflow, r.FunctionName, kind, maxRegisterIndex+1,
-			r.peakRegister[isa.RegisterInt], r.peakRegister[isa.RegisterFloat], r.peakRegister[isa.RegisterString],
-			r.peakRegister[isa.RegisterGeneral], r.peakRegister[isa.RegisterBool], r.peakRegister[isa.RegisterUint],
-			r.peakRegister[isa.RegisterComplex],
-			len(r.recycledRegisters[isa.RegisterInt]), len(r.recycledRegisters[isa.RegisterFloat]),
+			r.peakRegister[isa.RegisterInt64], r.peakRegister[isa.RegisterFloat64], r.peakRegister[isa.RegisterString],
+			r.peakRegister[isa.RegisterGeneral], r.peakRegister[isa.RegisterBool], r.peakRegister[isa.RegisterUint64],
+			r.peakRegister[isa.RegisterComplex128],
+			len(r.recycledRegisters[isa.RegisterInt64]), len(r.recycledRegisters[isa.RegisterFloat64]),
 			len(r.recycledRegisters[isa.RegisterString]), len(r.recycledRegisters[isa.RegisterGeneral]),
-			len(r.recycledRegisters[isa.RegisterBool]), len(r.recycledRegisters[isa.RegisterUint]),
-			len(r.recycledRegisters[isa.RegisterComplex]),
+			len(r.recycledRegisters[isa.RegisterBool]), len(r.recycledRegisters[isa.RegisterUint64]),
+			len(r.recycledRegisters[isa.RegisterComplex128]),
 		)
 	}
 	return uint8(register) //nolint:gosec // OverflowErr fails the compile
@@ -627,7 +627,7 @@ func (s *ScopeStack) LookupVar(name string) (program.VarLocation, bool) {
 }
 
 // MarkCaptured marks a variable as captured by a closure, so that subsequent writes to it
-// will Emit isa.SubOpWriteSharedCell.
+// will Emit isa.SubOpSetSharedCell.
 //
 // Takes name (string) which is the variable name to mark.
 func (s *ScopeStack) MarkCaptured(name string) {
@@ -792,8 +792,8 @@ type lexicalScope struct {
 	// allowing restoration on exit.
 	savedSpillSlots [isa.NumRegisterKinds]uint32
 
-	// varRegisterEnd records one past each bank's highest register holding a variable
-	// in this scope.
+	// varRegisterEnd records one past each bank's highest register holding a variable in
+	// this scope.
 	varRegisterEnd [isa.NumRegisterKinds]uint32
 
 	// savedRecycledLengths records the length of each recycled-register free list when this

@@ -117,11 +117,11 @@ select the packages scripts may import.
 
 Failed construction returns an error. If it contains an `IsolatedCleanupError`,
 retain that error and call `Retry(ctx)` with a fresh context to finish cleanup.
-After successful construction, always call `Close`, including after evaluation
+After successful construction, always call `Close(ctx)`, including after evaluation
 errors. If `Close` fails, keep the worker and retry cleanup a limited number of times. Avoid
 launching replacement workers until cleanup completes.
 
-A worker accepts one `Eval(source)` or `EvalFile(source, entrypoint)` submission.
+A worker accepts one `Eval(ctx, source)` or `EvalFile(ctx, source, entrypoint)` submission.
 Repeated use fails. The constructor context governs its lifetime. Results contain
 output within the configured limit and an optional JSON scalar value. Pipit returns
 the result only after the worker exits and cleanup succeeds. `Diagnostics()` contains untrusted

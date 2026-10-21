@@ -64,7 +64,7 @@ func RunEval(ctx context.Context, args []string, streams output.IO) int {
 	}
 
 	interpreter := runner.New(runner.Limits{
-		Timeout: *timeout, Symbols: ExtraSymbols(ctx), Logger: loggerFromContext(ctx),
+		Timeout: *timeout, Symbols: ExtraSymbols(ctx),
 		BytecodeStore: nil, MaxAlloc: 0, MaxCallDepth: 0, MaxOutputSize: 0, CostBudget: 0, MaxGoroutines: 0})
 	stopWatchdog := armExecutionWatchdog(*timeout, streams.Stderr)
 	defer stopWatchdog()

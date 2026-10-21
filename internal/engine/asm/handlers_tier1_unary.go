@@ -23,18 +23,38 @@ import (
 )
 
 // tier1UnaryHandlers returns the tier-1 ASM unary register handlers covering integer NEG,
-// bitwise NOT, and float NEG.
+// bitwise NOT, logical NOT, and float NEG.
 //
 // Returns []HandlerDefinition[BytecodeArchitecturePort] which is the handler definitions
 // for this group.
 func tier1UnaryHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		tier1IntegerUnaryHandler("handlerSubOpNegInt", "NEG",
-			"handlerSubOpNegInt computes ints[B] = -ints[C] for the tier-1 integer-negate sub-op."),
-		tier1IntegerUnaryHandler("handlerSubOpBitNot", "NOT",
-			"handlerSubOpBitNot computes ints[B] = ^ints[C] for the tier-1 bitwise-NOT sub-op."),
-		tier1FloatUnaryHandler("handlerSubOpNegFloat", "NEG",
-			"handlerSubOpNegFloat computes floats[B] = -floats[C] for the tier-1 float-negate sub-op."),
+		tier1IntegerUnaryHandler("handlerNegateInt64", "NEG",
+			"handlerNegateInt64 computes ints[B] = -ints[C] for the tier-1 integer-negate sub-op."),
+		tier1IntegerUnaryHandler("handlerBitNotInt64", "NOT",
+			"handlerBitNotInt64 computes ints[B] = ^ints[C] for the tier-1 bitwise-NOT sub-op."),
+		tier1FloatUnaryHandler("handlerNegateFloat64", "NEG",
+			"handlerNegateFloat64 computes floats[B] = -floats[C] for the tier-1 float-negate sub-op."),
+		logicalNotHandler(),
+	}
+}
+
+// logicalNotHandler builds the tier-1 logical-not handler.
+//
+// Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
+func logicalNotHandler() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
+		Name:      "handlerNotInt64",
+		Comment:   "handlerNotInt64 sets ints[B] to one when ints[C] is zero and to zero otherwise.",
+		FrameSize: frameSizeZero,
+		Flags:     flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			scratches := architecture.ScratchRegisters()
+			architecture.ExtractB(emitter, scratches[0])
+			architecture.ExtractC(emitter, scratches[1])
+			architecture.LogicalNot(emitter, scratches[0], scratches[1])
+			architecture.DispatchNext(emitter)
+		},
 	}
 }
 

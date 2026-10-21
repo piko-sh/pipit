@@ -226,7 +226,7 @@ func loadBytecodeFile(ctx context.Context, path string) (*pipit.Interpreter, *pi
 		return nil, nil, err
 	}
 	interpreter := runner.New(runner.Limits{
-		BytecodeStore: store, Symbols: ExtraSymbols(ctx), Logger: loggerFromContext(ctx),
+		BytecodeStore: store, Symbols: ExtraSymbols(ctx),
 		Timeout: 0, MaxAlloc: 0, MaxCallDepth: 0, MaxOutputSize: 0, CostBudget: 0, MaxGoroutines: 0})
 	compiled, err := pipit.LoadCompiledFromFile(ctx, interpreter, path)
 	if err != nil {

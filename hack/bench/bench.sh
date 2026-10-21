@@ -45,6 +45,12 @@ BENCH_FILTER="."
 # Number of iterations per benchmark.
 BENCH_COUNT=6
 
+# -benchtime value; empty keeps go test's default.
+BENCH_TIME=""
+
+# When true, run only the tests/bench module (the micro suite).
+BENCH_MICRO_ONLY=false
+
 # usage prints the flag reference.
 usage() {
     cat <<'EOF'
@@ -53,6 +59,8 @@ Usage: hack/bench/bench.sh <run|stability> [options]
 Options:
   --filter <regex>   Only benchmarks matching this regex (default: all).
   --count <n>        Iterations per benchmark (default: 6, stability forces 10).
+  --benchtime <t>    Pass -benchtime to go test (for example 1x for a dry run).
+  --micro-only       Skip the root module's engine benchmarks.
   -h, --help         Show this help.
 EOF
 }
@@ -61,6 +69,8 @@ EOF
 # Globals:
 #   BENCH_FILTER - Set from --filter
 #   BENCH_COUNT - Set from --count
+#   BENCH_TIME - Set from --benchtime
+#   BENCH_MICRO_ONLY - Set from --micro-only
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -72,6 +82,16 @@ parse_args() {
             --count)
                 BENCH_COUNT="$2"
                 shift 2
+                ;;
+
+            --benchtime)
+                BENCH_TIME="$2"
+                shift 2
+                ;;
+
+            --micro-only)
+                BENCH_MICRO_ONLY=true
+                shift
                 ;;
 
             -h|--help)
@@ -99,12 +119,16 @@ verify_benchstat() {
 # run_benchmarks runs every benchmark package with the given go test flags.
 # Globals:
 #   BENCH_PACKAGES - Read
+#   BENCH_MICRO_ONLY - Read
 #   PIPIT_ROOT - Read
 # Arguments:
 #   $@ - Flags for go test, after -tags bench
 run_benchmarks() {
     for entry in "${BENCH_PACKAGES[@]}"; do
         local dir="${entry%%|*}"
+        if [[ "$BENCH_MICRO_ONLY" == true && "$dir" != "tests/bench" ]]; then
+            continue
+        fi
         local package="${entry##*|}"
         ( cd "${PIPIT_ROOT}/${dir}" && "${GO}" test -tags bench -run '^$' "$@" "$package" )
     done
@@ -115,7 +139,11 @@ run_benchmarks() {
 #   BENCH_FILTER - Read
 #   BENCH_COUNT - Read
 bench_run() {
-    run_benchmarks -bench "$BENCH_FILTER" -benchmem -count="$BENCH_COUNT"
+    local extra=()
+    if [[ -n "$BENCH_TIME" ]]; then
+        extra+=(-benchtime="$BENCH_TIME")
+    fi
+    run_benchmarks -bench "$BENCH_FILTER" -benchmem -count="$BENCH_COUNT" "${extra[@]}"
 }
 
 # bench_stability measures the run-to-run spread of every benchmark.

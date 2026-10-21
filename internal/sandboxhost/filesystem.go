@@ -30,6 +30,7 @@ import (
 
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/sandboxbroker"
+	"pipit.sh/pipit/internal/sandboxwire"
 	"pipit.sh/pipit/internal/sandboxworker"
 )
 
@@ -115,7 +116,7 @@ func NewIsolatedFilesystemWorker(ctx context.Context, config IsolatedFilesystemC
 		return nil, err
 	}
 	if err != nil {
-		return nil, cleanupOrFail(err, process.Close)
+		return nil, cleanupOrFail(ctx, err, process.Close)
 	}
 	return &IsolatedFilesystemWorker{process: process, used: atomic.Bool{}}, nil
 }
@@ -125,8 +126,8 @@ func NewIsolatedFilesystemWorker(ctx context.Context, config IsolatedFilesystemC
 // Takes source (string) bytes, never a host path.
 //
 // Returns bounded output and a scalar only after both process owners are cleaned up.
-func (worker *IsolatedFilesystemWorker) Eval(source string) (RestrictedResult, error) {
-	return worker.evaluate(sandboxworker.Request{Kind: "expression", Source: source, Entrypoint: ""})
+func (worker *IsolatedFilesystemWorker) Eval(ctx context.Context, source string) (RestrictedResult, error) {
+	return worker.evaluate(ctx, sandboxworker.Request{Kind: "expression", Source: source, Entrypoint: ""})
 }
 
 // EvalFile runs one complete source file and its named entrypoint.
@@ -135,20 +136,20 @@ func (worker *IsolatedFilesystemWorker) Eval(source string) (RestrictedResult, e
 // Takes entrypoint (string) which is the named entrypoint, not a host filename.
 //
 // Returns bounded output and a scalar, or an execution or confinement error.
-func (worker *IsolatedFilesystemWorker) EvalFile(source, entrypoint string) (RestrictedResult, error) {
-	return worker.evaluate(sandboxworker.Request{Kind: "file", Source: source, Entrypoint: entrypoint})
+func (worker *IsolatedFilesystemWorker) EvalFile(ctx context.Context, source, entrypoint string) (RestrictedResult, error) {
+	return worker.evaluate(ctx, sandboxworker.Request{Kind: "file", Source: source, Entrypoint: entrypoint})
 }
 
 // Close permanently prevents submissions and closes both process owners. Resource cleanup
 // may be retried without making the worker reusable.
 //
 // Returns execution or cleanup errors.
-func (worker *IsolatedFilesystemWorker) Close() error {
+func (worker *IsolatedFilesystemWorker) Close(ctx context.Context) error {
 	if worker == nil || worker.process == nil {
 		return nil
 	}
 	worker.used.Store(true)
-	return worker.process.Close()
+	return worker.process.Close(ctx)
 }
 
 // Diagnostics returns bounded, untrusted source-worker stdout and stderr.
@@ -166,13 +167,15 @@ func (worker *IsolatedFilesystemWorker) Diagnostics() string {
 // Takes request (sandboxworker.Request) which is the fixed source request.
 //
 // Returns no result after a protocol, confinement or cleanup failure.
-func (worker *IsolatedFilesystemWorker) evaluate(request sandboxworker.Request) (RestrictedResult, error) {
+func (worker *IsolatedFilesystemWorker) evaluate(ctx context.Context, request sandboxworker.Request) (RestrictedResult, error) {
 	if worker == nil || worker.process == nil || !worker.used.CompareAndSwap(false, true) {
 		return RestrictedResult{}, ErrIsolatedUsed
 	}
-	response, err := worker.process.evaluate(request)
+	response, err := worker.process.evaluate(ctx, request)
 	if err != nil {
-		return RestrictedResult{}, errors.Join(err, worker.process.Close())
+		cleanupCtx, cancel := sandboxwire.CleanupContext(ctx)
+		defer cancel()
+		return RestrictedResult{}, errors.Join(err, worker.process.Close(cleanupCtx))
 	}
 	result := RestrictedResult{Value: response.Value, Output: response.Output, CostUsed: response.CostUsed, OutputTruncated: response.OutputTruncated}
 	if response.Code == "evaluation_failed" {
@@ -188,12 +191,12 @@ type isolatedFilesystemProcess interface {
 	// Takes request (sandboxworker.Request) which is the source submission.
 	//
 	// Returns sandboxworker.Response and any execution error.
-	evaluate(sandboxworker.Request) (sandboxworker.Response, error)
+	evaluate(ctx context.Context, request sandboxworker.Request) (sandboxworker.Response, error)
 
 	// Close terminates both processes and releases native resources.
 	//
 	// Returns error when cleanup fails.
-	Close() error
+	Close(ctx context.Context) error
 
 	// Diagnostics returns bounded, untrusted worker diagnostic text.
 	//

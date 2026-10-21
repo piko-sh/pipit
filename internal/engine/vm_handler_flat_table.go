@@ -16,6 +16,7 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:generate go run gen_spec_names.go
 //go:generate go run gen_opcode_tables.go
 //go:generate go run gen_flat_switch.go
 
@@ -102,9 +103,9 @@ func flatDispatchIndex(instr isa.Instruction) uint {
 	return flatHandlerTier3Base + uint(instr.C)
 }
 
-// handleFlatSubOpTier3Nop is the no-op handler for the tier-3 nop slot.
+// handleNoOperation is the no-op handler for the tier-3 nop slot.
 //
 // Returns OpResult indicating the next execution step.
-func handleFlatSubOpTier3Nop(_ *VM, _ *CallFrame, _ *Registers, _ isa.Instruction) OpResult {
+func handleNoOperation(_ *VM, _ *CallFrame, _ *Registers, _ isa.Instruction) OpResult {
 	return opContinue
 }

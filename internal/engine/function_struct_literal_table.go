@@ -53,7 +53,7 @@ func StructLiteralQualifiesForArena(t reflect.Type) bool {
 // Returns the tier-2 sub-opcode to Emit.
 func StructLiteralAllocationSubOp(t reflect.Type) isa.SubOpcodeTier2 {
 	if StructLiteralQualifiesForArena(t) {
-		return isa.SubOpTier2AllocStructLiteral
+		return isa.SubOpTier2AllocateStructLiteral
 	}
 	return isa.SubOpTier2MakeMap
 }

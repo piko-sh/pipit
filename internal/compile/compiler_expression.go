@@ -43,28 +43,28 @@ var (
 	// exactBasicReflectTypes maps each go/types basic kind to the exact Go reflect.Type,
 	// preserving int vs int64 so boxed values keep their source-level identity.
 	exactBasicReflectTypes = map[types.BasicKind]reflect.Type{
-		types.Bool:          typeFor[bool](),
-		types.Int:           typeFor[int](),
-		types.Int8:          typeFor[int8](),
-		types.Int16:         typeFor[int16](),
-		types.Int32:         typeFor[int32](),
-		types.Int64:         typeFor[int64](),
-		types.Uint:          typeFor[uint](),
-		types.Uint8:         typeFor[uint8](),
-		types.Uint16:        typeFor[uint16](),
-		types.Uint32:        typeFor[uint32](),
-		types.Uint64:        typeFor[uint64](),
-		types.Uintptr:       typeFor[uintptr](),
-		types.Float32:       typeFor[float32](),
-		types.Float64:       typeFor[float64](),
-		types.Complex64:     typeFor[complex64](),
-		types.Complex128:    typeFor[complex128](),
-		types.String:        typeFor[string](),
-		types.UntypedBool:   typeFor[bool](),
-		types.UntypedInt:    typeFor[int](),
-		types.UntypedRune:   typeFor[int32](),
-		types.UntypedFloat:  typeFor[float64](),
-		types.UntypedString: typeFor[string](),
+		types.Bool:          reflect.TypeFor[bool](),
+		types.Int:           reflect.TypeFor[int](),
+		types.Int8:          reflect.TypeFor[int8](),
+		types.Int16:         reflect.TypeFor[int16](),
+		types.Int32:         reflect.TypeFor[int32](),
+		types.Int64:         reflect.TypeFor[int64](),
+		types.Uint:          reflect.TypeFor[uint](),
+		types.Uint8:         reflect.TypeFor[uint8](),
+		types.Uint16:        reflect.TypeFor[uint16](),
+		types.Uint32:        reflect.TypeFor[uint32](),
+		types.Uint64:        reflect.TypeFor[uint64](),
+		types.Uintptr:       reflect.TypeFor[uintptr](),
+		types.Float32:       reflect.TypeFor[float32](),
+		types.Float64:       reflect.TypeFor[float64](),
+		types.Complex64:     reflect.TypeFor[complex64](),
+		types.Complex128:    reflect.TypeFor[complex128](),
+		types.String:        reflect.TypeFor[string](),
+		types.UntypedBool:   reflect.TypeFor[bool](),
+		types.UntypedInt:    reflect.TypeFor[int](),
+		types.UntypedRune:   reflect.TypeFor[int32](),
+		types.UntypedFloat:  reflect.TypeFor[float64](),
+		types.UntypedString: reflect.TypeFor[string](),
 	}
 )
 
@@ -85,16 +85,18 @@ type comparisonOpcodeSet struct {
 	genOp isa.Opcode
 }
 
-// EmitNarrowIntegerTruncation emits isa.OpTruncateNarrow when staticType is a narrow
+// EmitNarrowIntegerTruncation emits isa.OpTruncateToWidth when staticType is a narrow
 // integer, preserving Go's modular wrap semantics.
 //
-// For float32 or complex64 it emits the matching rounding sub-op instead.
+// For float32 or complex64 it emits the matching rounding sub-op instead. A type
+// parameter is narrowed as the type the body being compiled gives it.
 //
 // Takes location (program.VarLocation) which is the register holding the value to
 // potentially truncate.
 // Takes staticType (types.Type) which is the static Go type that determines the bit
 // width.
 func (c *Compiler) EmitNarrowIntegerTruncation(location program.VarLocation, staticType types.Type) {
+	staticType = c.substitutedType(staticType)
 	if subOp, bank, ok := floatNarrowingSubOp(staticType); ok {
 		if location.Kind == bank {
 			program.Emit(c.Function, isa.OpDrillTier1, uint8(subOp), location.Register, location.Register)
@@ -105,10 +107,10 @@ func (c *Compiler) EmitNarrowIntegerTruncation(location program.VarLocation, sta
 	if bitWidth == 0 {
 		return
 	}
-	if location.Kind != isa.RegisterInt && location.Kind != isa.RegisterUint {
+	if location.Kind != isa.RegisterInt64 && location.Kind != isa.RegisterUint64 {
 		return
 	}
-	program.Emit(c.Function, isa.OpTruncateNarrow, location.Register, bitWidth, uint8(location.Kind))
+	program.Emit(c.Function, isa.OpTruncateToWidth, location.Register, bitWidth, uint8(location.Kind))
 }
 
 // compileExpression compiles expression and returns the register location holding the
@@ -120,13 +122,27 @@ func (c *Compiler) EmitNarrowIntegerTruncation(location program.VarLocation, sta
 // Returns the register location holding the result, or an error when the expression
 // nesting limit is exceeded or the form is unsupported.
 func (c *Compiler) compileExpression(ctx context.Context, expression ast.Expr) (program.VarLocation, error) {
+	if destination, retype := c.namedRetypes[expression]; retype {
+		return c.compileRetypedExpression(ctx, expression, destination)
+	}
+	return c.compileExpressionWithoutRetype(ctx, expression)
+}
+
+// compileExpressionWithoutRetype is compileExpression without the implicit conversion to
+// a named composite type that compileRetypedExpression adds.
+//
+// Takes expression (ast.Expr) which is the AST expression to compile.
+//
+// Returns the register location holding the result, or an error when the expression
+// nesting limit is exceeded or the form is unsupported.
+func (c *Compiler) compileExpressionWithoutRetype(ctx context.Context, expression ast.Expr) (program.VarLocation, error) {
 	location, err := c.compileExpressionDispatch(ctx, expression)
 	if err != nil {
 		return location, err
 	}
 	if location.SourceType == nil && location.Kind != isa.RegisterGeneral {
 		if tv, ok := c.Info.Types[expression]; ok && tv.Type != nil {
-			location.SourceType = c.exactReflectTypeForBoxing(c.substitutedType(tv.Type))
+			location.SourceType = c.exactReflectTypeForBoxing(ctx, c.substitutedType(tv.Type))
 		}
 	}
 	return location, nil
@@ -195,10 +211,8 @@ func (c *Compiler) bindInstantiatedFunctionValue(
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, nil
 }
 
-// compileExpressionDispatch is the body of compileExpression: it dispatches on the AST
-// node kind. compileExpression wraps it to stamp the result VarLocation with the
-// expression's exact source-level reflect.Type (used by emitBoxToGeneral to pick
-// isa.OpPackTyped over isa.OpPackInterface).
+// compileExpressionDispatch is the body of compileExpression. It dispatches on the AST
+// node kind.
 //
 // Takes expression (ast.Expr) which is the AST node to compile.
 //
@@ -295,20 +309,23 @@ func (c *Compiler) compileIndexListInstantiation(ctx context.Context, expression
 		fault.ErrCompileUninstantiatedGeneric, types.ExprString(expression))
 }
 
-// exactReflectTypeForBoxing returns the exact reflect.Type for boxing a scalar so that
-// user-declared named types (such as `type Celsius float64`) keep a dynamic type distinct
-// from their underlying kind.
+// exactReflectTypeForBoxing returns the exact reflect.Type for boxing a scalar or a typed
+// slice so that user-declared named types (such as `type Celsius float64` or `type Path
+// []string`) keep a dynamic type distinct from their underlying type.
 //
 // Takes t (types.Type) which is the go/types static type of the value.
 //
 // Returns the exact reflect.Type, or nil when the general-purpose boxing path applies.
-func (c *Compiler) exactReflectTypeForBoxing(t types.Type) reflect.Type {
+func (c *Compiler) exactReflectTypeForBoxing(ctx context.Context, t types.Type) reflect.Type {
 	if t == nil {
 		return nil
 	}
+	if c.isNamedCompositeType(t) {
+		return c.namedCompositeReflectType(ctx, t)
+	}
 	underlying := t.Underlying()
 	if slice, isSlice := types.Unalias(t).(*types.Slice); isSlice {
-		if elem := c.exactReflectTypeForBoxing(slice.Elem()); elem != nil {
+		if elem := c.exactReflectTypeForBoxing(ctx, slice.Elem()); elem != nil {
 			return reflect.SliceOf(elem)
 		}
 		return nil
@@ -318,7 +335,7 @@ func (c *Compiler) exactReflectTypeForBoxing(t types.Type) reflect.Type {
 		return nil
 	}
 	if named, isNamed := types.Unalias(t).(*types.Named); isNamed {
-		if poolType := c.namedScalarBoxType(named); poolType != nil {
+		if poolType := c.namedScalarBoxType(ctx, named); poolType != nil {
 			return poolType
 		}
 	}
@@ -336,14 +353,14 @@ func (c *Compiler) exactReflectTypeForBoxing(t types.Type) reflect.Type {
 //
 // Returns the assigned pool reflect.Type, or nil when the type uses general-purpose
 // boxing.
-func (c *Compiler) namedScalarBoxType(named *types.Named) reflect.Type {
+func (c *Compiler) namedScalarBoxType(ctx context.Context, named *types.Named) reflect.Type {
 	if rt := typemap.ResolveNativeBackedType(named.Obj(), c.symbols); rt != nil {
 		return rt
 	}
 	if rt := typemap.ResolveRegisteredType(named.Obj(), c.symbols); rt != nil {
 		return rt
 	}
-	poolType, exhausted := typemodel.NamedScalarPoolTypeForResult(named)
+	poolType, exhausted := typemodel.NamedScalarPoolTypeForResult(ctx, named)
 	if exhausted {
 		c.recordStickyError(fmt.Errorf("%w: %s", fault.ErrCompileNamedScalarPoolExhausted, named.Obj().Name()))
 	}
@@ -357,7 +374,7 @@ func (c *Compiler) namedScalarBoxType(named *types.Named) reflect.Type {
 //
 // Returns the reflect.Type to match against, or nil when targetType is nil.
 func (c *Compiler) typeAssertReflectType(ctx context.Context, targetType types.Type) reflect.Type {
-	if exact := c.exactReflectTypeForBoxing(targetType); exact != nil {
+	if exact := c.exactReflectTypeForBoxing(ctx, targetType); exact != nil {
 		return exact
 	}
 	return c.TypeToReflect(ctx, targetType)
@@ -365,7 +382,7 @@ func (c *Compiler) typeAssertReflectType(ctx context.Context, targetType types.T
 
 // compileConstant emits a load for a compile-time constant value already folded by
 // go/types. For interface-typed constants the scalar value is boxed through
-// isa.OpPackInterface into the general bank.
+// isa.OpBoxAsInterface into the general bank.
 //
 // Takes tv (types.TypeAndValue) which is the folded type-and-value record from go/types.
 //
@@ -380,7 +397,7 @@ func (c *Compiler) compileConstant(ctx context.Context, tv types.TypeAndValue) (
 			return program.VarLocation{}, err
 		}
 
-		location.SourceType = c.exactReflectTypeForBoxing(tv.Type)
+		location.SourceType = c.exactReflectTypeForBoxing(ctx, tv.Type)
 		return location, nil
 	}
 
@@ -389,12 +406,12 @@ func (c *Compiler) compileConstant(ctx context.Context, tv types.TypeAndValue) (
 	if err != nil {
 		return program.VarLocation{}, err
 	}
-	scalarLocation.SourceType = c.exactReflectTypeForBoxing(tv.Type)
+	scalarLocation.SourceType = c.exactReflectTypeForBoxing(ctx, tv.Type)
 	generalRegister := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
 	if c.emitTypedBox(generalRegister, scalarLocation) {
 		return program.VarLocation{Register: generalRegister, Kind: isa.RegisterGeneral}, nil
 	}
-	program.Emit(c.Function, isa.OpPackInterface, generalRegister, scalarLocation.Register, uint8(scalarLocation.Kind))
+	program.Emit(c.Function, isa.OpBoxAsInterface, generalRegister, scalarLocation.Register, uint8(scalarLocation.Kind))
 	return program.VarLocation{Register: generalRegister, Kind: isa.RegisterGeneral}, nil
 }
 
@@ -410,19 +427,41 @@ func (c *Compiler) emitScalarConstant(_ context.Context, value constant.Value, k
 	switch kind {
 	case isa.RegisterBool:
 		return c.emitBoolScalarConstant(value)
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return c.emitIntScalarConstant(value)
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return c.emitUintScalarConstant(value)
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return c.emitFloatScalarConstant(value)
 	case isa.RegisterString:
 		return c.emitStringScalarConstant(value)
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return c.emitComplexScalarConstant(value)
 	default:
 		return program.VarLocation{}, fmt.Errorf("unsupported constant kind %v for register bank (value: %v)", kind, value)
 	}
+}
+
+// emitLoadBoolConstant loads value into a freshly allocated bool register from the
+// function's bool constant pool.
+//
+// Takes value (bool) which is the constant.
+// Takes position (token.Pos) which is the expression it belongs to, for an error.
+//
+// Returns VarLocation which holds the loaded register's metadata.
+// Returns error when the bool constant pool is exhausted or the index does not fit.
+func (c *Compiler) emitLoadBoolConstant(value bool, position token.Pos) (program.VarLocation, error) {
+	index, err := program.AddBoolConstant(c.Function, value)
+	if err != nil {
+		return program.VarLocation{}, err
+	}
+	operand, err := c.uint8Operand(int(index), "bool constant index", position)
+	if err != nil {
+		return program.VarLocation{}, err
+	}
+	register := c.Scopes.Alloc.Alloc(isa.RegisterBool)
+	program.EmitTier1(c.Function, isa.SubOpLoadBoolConstant, register, operand)
+	return program.VarLocation{Register: register, Kind: isa.RegisterBool}, nil
 }
 
 // emitBoolScalarConstant loads value into a freshly allocated bool register.
@@ -432,13 +471,7 @@ func (c *Compiler) emitScalarConstant(_ context.Context, value constant.Value, k
 // Returns VarLocation which holds the loaded register's metadata.
 // Returns error when the bool constant pool is exhausted.
 func (c *Compiler) emitBoolScalarConstant(value constant.Value) (program.VarLocation, error) {
-	register := c.Scopes.Alloc.Alloc(isa.RegisterBool)
-	index, err := program.AddBoolConstant(c.Function, constant.BoolVal(value))
-	if err != nil {
-		return program.VarLocation{}, err
-	}
-	program.EmitTier1(c.Function, isa.SubOpLoadBoolConst, register, safeconv.MustUintToUint8(uint(index)))
-	return program.VarLocation{Register: register, Kind: isa.RegisterBool}, nil
+	return c.emitLoadBoolConstant(constant.BoolVal(value), token.NoPos)
 }
 
 // emitIntScalarConstant loads value into a freshly allocated int register.
@@ -461,9 +494,9 @@ func (c *Compiler) emitIntScalarConstant(value constant.Value) (program.VarLocat
 	if err != nil {
 		return program.VarLocation{}, err
 	}
-	register := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-	program.EmitWide(c.Function, isa.OpLoadIntConst, register, index)
-	return program.VarLocation{Register: register, Kind: isa.RegisterInt}, nil
+	register := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+	program.EmitWide(c.Function, isa.OpLoadInt64Constant, register, index)
+	return program.VarLocation{Register: register, Kind: isa.RegisterInt64}, nil
 }
 
 // emitUintScalarConstant loads value into a freshly allocated uint register.
@@ -493,9 +526,9 @@ func (c *Compiler) emitUintScalarConstant(value constant.Value) (program.VarLoca
 	if err != nil {
 		return program.VarLocation{}, err
 	}
-	register := c.Scopes.Alloc.Alloc(isa.RegisterUint)
-	program.EmitWide(c.Function, isa.OpLoadUintConst, register, index)
-	return program.VarLocation{Register: register, Kind: isa.RegisterUint}, nil
+	register := c.Scopes.Alloc.Alloc(isa.RegisterUint64)
+	program.EmitWide(c.Function, isa.OpLoadUint64Constant, register, index)
+	return program.VarLocation{Register: register, Kind: isa.RegisterUint64}, nil
 }
 
 // emitFloatScalarConstant loads value into a freshly allocated float register.
@@ -510,9 +543,9 @@ func (c *Compiler) emitFloatScalarConstant(value constant.Value) (program.VarLoc
 	if err != nil {
 		return program.VarLocation{}, err
 	}
-	register := c.Scopes.Alloc.Alloc(isa.RegisterFloat)
-	program.EmitWide(c.Function, isa.OpLoadFloatConst, register, index)
-	return program.VarLocation{Register: register, Kind: isa.RegisterFloat}, nil
+	register := c.Scopes.Alloc.Alloc(isa.RegisterFloat64)
+	program.EmitWide(c.Function, isa.OpLoadFloat64Constant, register, index)
+	return program.VarLocation{Register: register, Kind: isa.RegisterFloat64}, nil
 }
 
 // emitStringScalarConstant loads value into a freshly allocated string register.
@@ -528,7 +561,7 @@ func (c *Compiler) emitStringScalarConstant(value constant.Value) (program.VarLo
 		return program.VarLocation{}, err
 	}
 	register := c.Scopes.Alloc.Alloc(isa.RegisterString)
-	program.EmitWide(c.Function, isa.OpLoadStringConst, register, index)
+	program.EmitWide(c.Function, isa.OpLoadStringConstant, register, index)
 	return program.VarLocation{Register: register, Kind: isa.RegisterString}, nil
 }
 
@@ -545,9 +578,9 @@ func (c *Compiler) emitComplexScalarConstant(value constant.Value) (program.VarL
 	if err != nil {
 		return program.VarLocation{}, err
 	}
-	register := c.Scopes.Alloc.Alloc(isa.RegisterComplex)
-	program.EmitWide(c.Function, isa.OpLoadComplexConst, register, index)
-	return program.VarLocation{Register: register, Kind: isa.RegisterComplex}, nil
+	register := c.Scopes.Alloc.Alloc(isa.RegisterComplex128)
+	program.EmitWide(c.Function, isa.OpLoadComplex128Constant, register, index)
+	return program.VarLocation{Register: register, Kind: isa.RegisterComplex128}, nil
 }
 
 // compileBasicLit compiles a basic literal (number, string, etc.). Reached only when
@@ -575,23 +608,8 @@ func (c *Compiler) compileBasicLit(ctx context.Context, lit *ast.BasicLit) (prog
 // Returns the register location holding the identifier's value, or an error when the
 // identifier is not defined in any scope.
 func (c *Compiler) compileIdent(ctx context.Context, identifier *ast.Ident) (program.VarLocation, error) {
-	if identifier.Name == identTrue {
-		register := c.Scopes.Alloc.Alloc(isa.RegisterBool)
-		index, err := program.AddBoolConstant(c.Function, true)
-		if err != nil {
-			return program.VarLocation{}, err
-		}
-		program.EmitTier1(c.Function, isa.SubOpLoadBoolConst, register, safeconv.MustUintToUint8(uint(index)))
-		return program.VarLocation{Register: register, Kind: isa.RegisterBool}, nil
-	}
-	if identifier.Name == identFalse {
-		register := c.Scopes.Alloc.Alloc(isa.RegisterBool)
-		index, err := program.AddBoolConstant(c.Function, false)
-		if err != nil {
-			return program.VarLocation{}, err
-		}
-		program.EmitTier1(c.Function, isa.SubOpLoadBoolConst, register, safeconv.MustUintToUint8(uint(index)))
-		return program.VarLocation{Register: register, Kind: isa.RegisterBool}, nil
+	if identifier.Name == identTrue || identifier.Name == identFalse {
+		return c.emitLoadBoolConstant(identifier.Name == identTrue, identifier.Pos())
 	}
 	if identifier.Name == identNil {
 		register := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
@@ -612,7 +630,7 @@ func (c *Compiler) compileIdent(ctx context.Context, identifier *ast.Ident) (pro
 
 	if reference, ok := c.upvalueMap[identifier.Name]; ok {
 		dest := c.Scopes.Alloc.Alloc(reference.kind)
-		program.Emit(c.Function, isa.OpGetUpvalue, dest, safeconv.MustIntToUint8(reference.index), uint8(reference.kind))
+		program.Emit(c.Function, isa.OpGetCapturedVariable, dest, safeconv.MustIntToUint8(reference.index), uint8(reference.kind))
 		return program.VarLocation{Register: dest, Kind: reference.kind}, nil
 	}
 
@@ -641,23 +659,21 @@ func (c *Compiler) unboxScalarOperand(_ context.Context, location program.VarLoc
 	}
 	kind := c.kindFor(staticType)
 	switch kind {
-	case isa.RegisterInt, isa.RegisterFloat, isa.RegisterString, isa.RegisterBool, isa.RegisterUint, isa.RegisterComplex:
+	case isa.RegisterInt64, isa.RegisterFloat64, isa.RegisterString, isa.RegisterBool, isa.RegisterUint64, isa.RegisterComplex128:
 		return c.emitUnboxFromGeneral(location.Register, kind), nil
 	default:
 		return location, nil
 	}
 }
 
-// compileBinaryExpression compiles a binary expression, routing logical && and || through
-// short-circuit emitters and matching the interface-vs-nil comparison fast path before
-// the generic Emit path. Applies isa.OpTruncateNarrow when the static type is a narrow
-// integer.
+// compileBinaryExpression compiles a binary expression.
 //
 // Takes expression (*ast.BinaryExpr) which is the binary expression AST node to compile.
 //
-// Returns the register location holding the result, or an error when either operand or
-// the operator cannot be compiled.
+// Returns program.VarLocation which holds the result.
+// Returns error when an operand or the operator cannot be compiled.
 func (c *Compiler) compileBinaryExpression(ctx context.Context, expression *ast.BinaryExpr) (program.VarLocation, error) {
+	c.noteNamedRetypes(expression)
 	if expression.Op == token.LAND {
 		return c.compileShortCircuitAnd(ctx, expression)
 	}
@@ -701,16 +717,16 @@ func (c *Compiler) compileBinaryExpression(ctx context.Context, expression *ast.
 		c.Scopes.RestoreWatermark(afterLeft)
 		c.Scopes.KeepLocation(result)
 	}
-	if t := c.staticTypeOf(expression); t != nil {
+	if t := c.staticTypeOf(expression); t != nil && !typemap.BinaryResultFitsNarrowType(expression.Op, t) {
 		c.EmitNarrowIntegerTruncation(result, t)
 	}
 	return result, nil
 }
 
-// tryCompileInterfaceNilComparison emits isa.SubOpEqInterfaceNil or
-// isa.SubOpNeInterfaceNil when expression is an interface-vs-nil equality comparison,
-// preserving Go's distinction between a nil interface and an interface holding a typed
-// nil. Returns applied=false when the pattern does not match.
+// tryCompileInterfaceNilComparison emits isa.SubOpEqualInterfaceNil or
+// isa.SubOpNotEqualInterfaceNil when expression is an interface-vs-nil equality
+// comparison, preserving Go's distinction between a nil interface and an interface
+// holding a typed nil. Returns applied=false when the pattern does not match.
 //
 // Takes expression (*ast.BinaryExpr) which is the binary expression to inspect for the
 // pattern.
@@ -731,13 +747,13 @@ func (c *Compiler) tryCompileInterfaceNilComparison(ctx context.Context, express
 		return program.VarLocation{}, false, err
 	}
 	c.boxToGeneral(ctx, &location)
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-	subOp := isa.SubOpEqInterfaceNil
+	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+	subOp := isa.SubOpEqualInterfaceNil
 	if expression.Op == token.NEQ {
-		subOp = isa.SubOpNeInterfaceNil
+		subOp = isa.SubOpNotEqualInterfaceNil
 	}
 	program.EmitTier1(c.Function, subOp, dest, location.Register)
-	return program.VarLocation{Register: dest, Kind: isa.RegisterInt}, true, nil
+	return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}, true, nil
 }
 
 // classifyInterfaceNilOperands returns the interface-typed and the nil-literal operand
@@ -850,7 +866,7 @@ func (c *Compiler) compileTypedNilOrExpression(ctx context.Context, expression a
 		return program.VarLocation{}, false, err
 	}
 	register := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.EmitWide(c.Function, isa.OpLoadGeneralConst, register, constIndex)
+	program.EmitWide(c.Function, isa.OpLoadGeneralConstant, register, constIndex)
 	return program.VarLocation{Register: register, Kind: isa.RegisterGeneral}, true, nil
 }
 
@@ -863,7 +879,7 @@ func (c *Compiler) compileTypedNilOrExpression(ctx context.Context, expression a
 func (c *Compiler) compileShiftCountOrExpression(ctx context.Context, expression *ast.BinaryExpr) (program.VarLocation, error) {
 	if expression.Op == token.SHL || expression.Op == token.SHR {
 		if tv, ok := c.Info.Types[expression.Y]; ok && tv.Value != nil {
-			return c.emitScalarConstant(ctx, constant.ToInt(tv.Value), isa.RegisterUint)
+			return c.emitScalarConstant(ctx, constant.ToInt(tv.Value), isa.RegisterUint64)
 		}
 	}
 	return c.compileExpression(ctx, expression.Y)
@@ -893,18 +909,18 @@ func (c *Compiler) compileShortCircuitOr(ctx context.Context, expression *ast.Bi
 	return c.compileShortCircuit(ctx, expression, isa.OpJumpIfTrue)
 }
 
-// compileShortCircuit compiles a boolean expression that skips the right operand when
-// the left determines the result.
+// compileShortCircuit compiles a boolean expression that skips the right operand when the
+// left determines the result.
 //
 // The left-to-result move is emitted even when both registers are the same because
 // range-check fusion depends on that instruction pattern.
 //
 // Takes expression (*ast.BinaryExpr) which is the binary expression to compile.
-// Takes skipOp (isa.Opcode) which is the conditional branch opcode used to skip the
-// right operand.
+// Takes skipOp (isa.Opcode) which is the conditional branch opcode used to skip the right
+// operand.
 //
-// Returns the int register location holding 0 or 1, or an error when either operand
-// fails to compile.
+// Returns the int register location holding 0 or 1, or an error when either operand fails
+// to compile.
 func (c *Compiler) compileShortCircuit(ctx context.Context, expression *ast.BinaryExpr, skipOp isa.Opcode) (program.VarLocation, error) {
 	mark := c.Scopes.Alloc.Snapshot()
 	left, err := c.compileExpression(ctx, expression.X)
@@ -914,9 +930,9 @@ func (c *Compiler) compileShortCircuit(ctx context.Context, expression *ast.Bina
 	left = c.ensureIntForBranch(ctx, left)
 	dest := left.Register
 	if !reusableShortCircuitResult(expression.X, left, mark) {
-		dest = c.Scopes.Alloc.Alloc(isa.RegisterInt)
+		dest = c.Scopes.Alloc.Alloc(isa.RegisterInt64)
 	}
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveInt), dest, left.Register)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveInt64), dest, left.Register)
 	afterLeft := c.Scopes.Alloc.Snapshot()
 	jumpToEnd := program.EmitJump(c.Function, skipOp, dest)
 	right, err := c.compileExpression(ctx, expression.Y)
@@ -924,10 +940,10 @@ func (c *Compiler) compileShortCircuit(ctx context.Context, expression *ast.Bina
 		return program.VarLocation{}, err
 	}
 	right = c.ensureIntForBranch(ctx, right)
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveInt), dest, right.Register)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveInt64), dest, right.Register)
 	program.PatchJump(c.Function, jumpToEnd)
 	c.Scopes.RestoreWatermark(afterLeft)
-	return program.VarLocation{Register: dest, Kind: isa.RegisterInt}, nil
+	return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}, nil
 }
 
 // emitBinaryOp emits the typed instruction for binary operator op, routing arithmetic,
@@ -944,14 +960,17 @@ func (c *Compiler) emitBinaryOp(ctx context.Context, op token.Token, left, right
 }
 
 // emitBinaryOpInto is emitBinaryOp writing an arithmetic or bitwise result into dest when
-// dest is non-nil and of the result's bank; comparisons always take a fresh register.
+// dest is non-nil and of the result's bank.
+//
+// Comparisons always take a fresh register.
 //
 // Takes op (token.Token) which is the binary operator.
 // Takes left (VarLocation) which is the left operand.
 // Takes right (VarLocation) which is the right operand.
 // Takes dest (*program.VarLocation) which is the register to overwrite, or nil.
 //
-// Returns the result location and any error.
+// Returns program.VarLocation which holds the result.
+// Returns error which reports a compilation failure.
 func (c *Compiler) emitBinaryOpInto(ctx context.Context, op token.Token, left, right program.VarLocation, dest *program.VarLocation) (program.VarLocation, error) {
 	switch op {
 	case token.ADD, token.SUB, token.MUL, token.QUO, token.REM:
@@ -962,17 +981,19 @@ func (c *Compiler) emitBinaryOpInto(ctx context.Context, op token.Token, left, r
 		return c.emitCompareOp(ctx, ops.intOp, ops.floatOp, ops.strOp, ops.genOp, left, right)
 
 	case token.AND:
-		return c.emitIntOnlyOp(ctx, isa.OpBitAnd, left, right, dest)
+		return c.emitIntOnlyOp(ctx, isa.OpBitAndInt64, left, right, dest)
 	case token.OR:
-		return c.emitIntOnlyOp(ctx, isa.OpBitOr, left, right, dest)
+		return c.emitIntOnlyOp(ctx, isa.OpBitOrInt64, left, right, dest)
 	case token.XOR:
-		return c.emitIntOnlyOp(ctx, isa.OpBitXor, left, right, dest)
+		return c.emitIntOnlyOp(ctx, isa.OpBitXorInt64, left, right, dest)
 	case token.AND_NOT:
-		return c.emitIntOnlyOp(ctx, isa.OpBitAndNot, left, right, dest)
+		return c.emitIntOnlyOp(ctx, isa.OpBitAndNotInt64, left, right, dest)
 	case token.SHL:
-		return c.emitIntOnlyOp(ctx, isa.OpShiftLeft, left, right, dest)
+		c.emitShiftCountCheck(right)
+		return c.emitIntOnlyOp(ctx, isa.OpShiftLeftInt64, left, right, dest)
 	case token.SHR:
-		return c.emitIntOnlyOp(ctx, isa.OpShiftRight, left, right, dest)
+		c.emitShiftCountCheck(right)
+		return c.emitIntOnlyOp(ctx, isa.OpShiftRightInt64, left, right, dest)
 
 	default:
 		return program.VarLocation{}, fmt.Errorf("unsupported binary operator: %s (left=%v, right=%v)", op, left.Kind, right.Kind)
@@ -990,13 +1011,13 @@ func (c *Compiler) emitBinaryOpInto(ctx context.Context, op token.Token, left, r
 //
 // Returns the int-bank 0/1 result, or an error when the bank is unsupported.
 func (c *Compiler) emitCompareOp(ctx context.Context, intOp, floatOp, strOp, genOp isa.Opcode, left, right program.VarLocation) (program.VarLocation, error) {
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-	destinationLocation := program.VarLocation{Register: dest, Kind: isa.RegisterInt}
+	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+	destinationLocation := program.VarLocation{Register: dest, Kind: isa.RegisterInt64}
 
 	switch left.Kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		c.EmitTyped(ctx, intOp, destinationLocation, left, right)
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		if floatOp == 0 {
 			return program.VarLocation{}, fault.ErrCompileCompareFloatUnsupported
 		}
@@ -1008,9 +1029,9 @@ func (c *Compiler) emitCompareOp(ctx context.Context, intOp, floatOp, strOp, gen
 		c.EmitTyped(ctx, strOp, destinationLocation, left, right)
 	case isa.RegisterBool:
 		c.emitBoolCompare(ctx, intOp, dest, left, right)
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		c.emitUintCompare(ctx, intOp, genOp, dest, left, right)
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		if err := c.emitComplexCompare(ctx, intOp, dest, left, right); err != nil {
 			return program.VarLocation{}, err
 		}
@@ -1051,9 +1072,9 @@ func (c *Compiler) emitStaticComparison(ctx context.Context, op token.Token, ops
 	return c.emitCompareOp(ctx, ops.intOp, ops.floatOp, ops.strOp, ops.genOp, left, right)
 }
 
-// emitStrictInterfaceComparison emits isa.SubOpEqInterfaceStrict or
-// isa.SubOpNeInterfaceStrict for two general-bank operands, with the int destination
-// carried by the trailing extension word.
+// emitStrictInterfaceComparison emits isa.SubOpEqualInterfaceStrict or
+// isa.SubOpNotEqualInterfaceStrict for two general-bank operands, with the int
+// destination carried by the trailing extension word.
 //
 // Takes op (token.Token) which is token.EQL or token.NEQ.
 // Takes left (program.VarLocation) which is the boxed left operand.
@@ -1061,31 +1082,31 @@ func (c *Compiler) emitStaticComparison(ctx context.Context, op token.Token, ops
 //
 // Returns the int register location holding 0 or 1.
 func (c *Compiler) emitStrictInterfaceComparison(op token.Token, left, right program.VarLocation) program.VarLocation {
-	subOp := isa.SubOpEqInterfaceStrict
+	subOp := isa.SubOpEqualInterfaceStrict
 	if op == token.NEQ {
-		subOp = isa.SubOpNeInterfaceStrict
+		subOp = isa.SubOpNotEqualInterfaceStrict
 	}
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
+	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(subOp), left.Register, right.Register)
 	program.EmitExtension(c.Function, uint16(dest), 0)
-	return program.VarLocation{Register: dest, Kind: isa.RegisterInt}
+	return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}
 }
 
-// emitBoolCompare converts both bool operands to int via isa.SubOpBoolToInt in temporary
-// registers and emits the integer comparison into dest.
+// emitBoolCompare converts both bool operands to int via isa.SubOpConvertBoolToInt64 in
+// temporary registers and emits the integer comparison into dest.
 //
 // Takes intOp (isa.Opcode) which is the integer comparison opcode to Emit.
 // Takes dest (uint8) which is the destination int register receiving the 0/1 result.
 // Takes left (program.VarLocation) which is the left bool operand register location.
 // Takes right (program.VarLocation) which is the right bool operand register location.
 func (c *Compiler) emitBoolCompare(_ context.Context, intOp isa.Opcode, dest uint8, left, right program.VarLocation) {
-	leftInt := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-	rightInt := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBoolToInt), leftInt, left.Register)
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBoolToInt), rightInt, right.Register)
+	leftInt := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+	rightInt := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertBoolToInt64), leftInt, left.Register)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertBoolToInt64), rightInt, right.Register)
 	program.Emit(c.Function, intOp, dest, leftInt, rightInt)
-	c.Scopes.Alloc.FreeTemp(isa.RegisterInt, leftInt)
-	c.Scopes.Alloc.FreeTemp(isa.RegisterInt, rightInt)
+	c.Scopes.Alloc.FreeTemp(isa.RegisterInt64, leftInt)
+	c.Scopes.Alloc.FreeTemp(isa.RegisterInt64, rightInt)
 }
 
 // emitUintCompare maps intOp to its uint comparison counterpart and emits it into dest,
@@ -1109,8 +1130,9 @@ func (c *Compiler) emitUintCompare(_ context.Context, intOp, genOp isa.Opcode, d
 	program.Emit(c.Function, uintCmpOp, dest, left.Register, right.Register)
 }
 
-// emitComplexCompare emits isa.OpEqComplex or isa.OpNeComplex into dest. Returns an error
-// for ordering operators because complex numbers support only == and != in Go.
+// emitComplexCompare emits isa.OpEqualComplex128 or isa.OpNotEqualComplex128 into dest.
+// Returns an error for ordering operators because complex numbers support only == and !=
+// in Go.
 //
 // Takes intOp (isa.Opcode) which is the int-bank comparison opcode determining equality
 // or inequality.
@@ -1121,10 +1143,10 @@ func (c *Compiler) emitUintCompare(_ context.Context, intOp, genOp isa.Opcode, d
 // Returns a nil error for == and !=, or an error for ordering operators.
 func (c *Compiler) emitComplexCompare(_ context.Context, intOp isa.Opcode, dest uint8, left, right program.VarLocation) error {
 	switch intOp {
-	case isa.OpEqInt:
-		program.Emit(c.Function, isa.OpEqComplex, dest, left.Register, right.Register)
-	case isa.OpNeInt:
-		program.Emit(c.Function, isa.OpNeComplex, dest, left.Register, right.Register)
+	case isa.OpEqualInt64:
+		program.Emit(c.Function, isa.OpEqualComplex128, dest, left.Register, right.Register)
+	case isa.OpNotEqualInt64:
+		program.Emit(c.Function, isa.OpNotEqualComplex128, dest, left.Register, right.Register)
 	default:
 		return fault.ErrCompileCompareComplexOrdering
 	}
@@ -1160,108 +1182,106 @@ func (c *Compiler) intOnlyDestination(kind isa.RegisterKind, into *program.VarLo
 // Returns the register location holding the result, or an error when the operand banks
 // are unsupported for the operation.
 func (c *Compiler) emitIntOnlyOp(_ context.Context, op isa.Opcode, left, right program.VarLocation, into *program.VarLocation) (program.VarLocation, error) {
-	if left.Kind == isa.RegisterUint {
+	if left.Kind == isa.RegisterUint64 {
 		var uintOp isa.Opcode
 		switch op {
-		case isa.OpBitAnd:
-			uintOp = isa.OpBitAndUint
-		case isa.OpBitOr:
-			uintOp = isa.OpBitOrUint
-		case isa.OpBitXor:
-			uintOp = isa.OpBitXorUint
-		case isa.OpBitAndNot:
-			uintOp = isa.OpBitAndNotUint
-		case isa.OpShiftLeft:
-			uintOp = isa.OpShiftLeftUint
-		case isa.OpShiftRight:
-			uintOp = isa.OpShiftRightUint
+		case isa.OpBitAndInt64:
+			uintOp = isa.OpBitAndUint64
+		case isa.OpBitOrInt64:
+			uintOp = isa.OpBitOrUint64
+		case isa.OpBitXorInt64:
+			uintOp = isa.OpBitXorUint64
+		case isa.OpBitAndNotInt64:
+			uintOp = isa.OpBitAndNotUint64
+		case isa.OpShiftLeftInt64:
+			uintOp = isa.OpShiftLeftUint64
+		case isa.OpShiftRightInt64:
+			uintOp = isa.OpShiftRightUint64
 		default:
 			return program.VarLocation{}, fault.ErrCompileArithUintUnsupported
 		}
-		dest := c.intOnlyDestination(isa.RegisterUint, into)
+		dest := c.intOnlyDestination(isa.RegisterUint64, into)
 		rightRegister := right.Register
-		if right.Kind == isa.RegisterInt {
-			rightRegister = c.Scopes.Alloc.AllocTemp(isa.RegisterUint)
-			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpIntToUint), rightRegister, right.Register)
+		if right.Kind == isa.RegisterInt64 {
+			rightRegister = c.Scopes.Alloc.AllocTemp(isa.RegisterUint64)
+			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertInt64ToUint64), rightRegister, right.Register)
 		}
 		program.Emit(c.Function, uintOp, dest, left.Register, rightRegister)
-		if right.Kind == isa.RegisterInt {
-			c.Scopes.Alloc.FreeTemp(isa.RegisterUint, rightRegister)
+		if right.Kind == isa.RegisterInt64 {
+			c.Scopes.Alloc.FreeTemp(isa.RegisterUint64, rightRegister)
 		}
-		return program.VarLocation{Register: dest, Kind: isa.RegisterUint}, nil
+		return program.VarLocation{Register: dest, Kind: isa.RegisterUint64}, nil
 	}
-	if left.Kind != isa.RegisterInt {
+	if left.Kind != isa.RegisterInt64 {
 		return program.VarLocation{}, fault.ErrCompileBitwiseRequiresInteger
 	}
-	dest := c.intOnlyDestination(isa.RegisterInt, into)
+	dest := c.intOnlyDestination(isa.RegisterInt64, into)
 	rightRegister := right.Register
-	if right.Kind == isa.RegisterUint {
-		rightRegister = c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpUintToInt), rightRegister, right.Register)
+	if right.Kind == isa.RegisterUint64 {
+		rightRegister = c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertUint64ToInt64), rightRegister, right.Register)
 	}
 	program.Emit(c.Function, op, dest, left.Register, rightRegister)
-	if right.Kind == isa.RegisterUint {
-		c.Scopes.Alloc.FreeTemp(isa.RegisterInt, rightRegister)
+	if right.Kind == isa.RegisterUint64 {
+		c.Scopes.Alloc.FreeTemp(isa.RegisterInt64, rightRegister)
 	}
-	return program.VarLocation{Register: dest, Kind: isa.RegisterInt}, nil
+	return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}, nil
 }
 
 // ensureIntRegister converts location to the int bank in place.
 //
 // Takes location (*VarLocation) which is the register to coerce.
 func (c *Compiler) ensureIntRegister(_ context.Context, location *program.VarLocation) {
-	if location.Kind == isa.RegisterInt {
+	if location.Kind == isa.RegisterInt64 {
 		return
 	}
 	switch location.Kind {
-	case isa.RegisterUint:
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpUintToInt), dest, location.Register)
+	case isa.RegisterUint64:
+		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertUint64ToInt64), dest, location.Register)
 		location.Register = dest
-		location.Kind = isa.RegisterInt
+		location.Kind = isa.RegisterInt64
 	case isa.RegisterGeneral:
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveGeneralToInt), dest, location.Register)
+		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpUnboxInt64), dest, location.Register)
 		location.Register = dest
-		location.Kind = isa.RegisterInt
+		location.Kind = isa.RegisterInt64
 	case isa.RegisterBool:
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBoolToInt), dest, location.Register)
+		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertBoolToInt64), dest, location.Register)
 		location.Register = dest
-		location.Kind = isa.RegisterInt
-	case isa.RegisterFloat:
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpFloatToInt), dest, location.Register)
+		location.Kind = isa.RegisterInt64
+	case isa.RegisterFloat64:
+		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertFloat64ToInt64), dest, location.Register)
 		location.Register = dest
-		location.Kind = isa.RegisterInt
+		location.Kind = isa.RegisterInt64
 	default:
 	}
 }
 
 // ensureIntForBranch returns location as an int register suitable for isa.OpJumpIfFalse /
-// isa.OpJumpIfTrue. Bool locations are converted via isa.SubOpBoolToInt; general
-// locations are first unpacked through isa.OpUnpackInterface to a bool and then converted
-// to int.
+// isa.OpJumpIfTrue. Bool locations are converted via isa.SubOpConvertBoolToInt64.
 //
 // Takes location (program.VarLocation) which is the register location to coerce to the
 // int bank.
 //
 // Returns an int-bank register location holding the branch-ready value.
 func (c *Compiler) ensureIntForBranch(_ context.Context, location program.VarLocation) program.VarLocation {
-	if location.Kind == isa.RegisterInt {
+	if location.Kind == isa.RegisterInt64 {
 		return location
 	}
 	if location.Kind == isa.RegisterBool {
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBoolToInt), dest, location.Register)
-		return program.VarLocation{Register: dest, Kind: isa.RegisterInt}
+		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertBoolToInt64), dest, location.Register)
+		return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}
 	}
 	if location.Kind == isa.RegisterGeneral {
 		booleanRegister := c.Scopes.Alloc.Alloc(isa.RegisterBool)
-		program.Emit(c.Function, isa.OpUnpackInterface, booleanRegister, location.Register, uint8(isa.RegisterBool))
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBoolToInt), dest, booleanRegister)
-		return program.VarLocation{Register: dest, Kind: isa.RegisterInt}
+		program.Emit(c.Function, isa.OpUnboxFromInterface, booleanRegister, location.Register, uint8(isa.RegisterBool))
+		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertBoolToInt64), dest, booleanRegister)
+		return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}
 	}
 	return location
 }
@@ -1311,9 +1331,9 @@ func floatNarrowingSubOp(staticType types.Type) (isa.SubOpcode, isa.RegisterKind
 	}
 	switch basic.Kind() {
 	case types.Float32:
-		return isa.SubOpRoundFloat32, isa.RegisterFloat, true
+		return isa.SubOpRoundToFloat32, isa.RegisterFloat64, true
 	case types.Complex64:
-		return isa.SubOpRoundComplex64, isa.RegisterComplex, true
+		return isa.SubOpRoundToComplex64, isa.RegisterComplex128, true
 	default:
 		return 0, 0, false
 	}
@@ -1456,17 +1476,17 @@ func scalarComparableKind(t types.Type) (isa.RegisterKind, bool) {
 func comparisonOpcodes(op token.Token) (comparisonOpcodeSet, bool) {
 	switch op {
 	case token.EQL:
-		return comparisonOpcodeSet{intOp: isa.OpEqInt, floatOp: isa.OpEqFloat, strOp: isa.OpEqString, genOp: isa.OpEqGeneral}, true
+		return comparisonOpcodeSet{intOp: isa.OpEqualInt64, floatOp: isa.OpEqualFloat64, strOp: isa.OpEqualString, genOp: isa.OpEqualGeneral}, true
 	case token.NEQ:
-		return comparisonOpcodeSet{intOp: isa.OpNeInt, floatOp: isa.OpNeFloat, strOp: isa.OpNeString, genOp: isa.OpNeGeneral}, true
+		return comparisonOpcodeSet{intOp: isa.OpNotEqualInt64, floatOp: isa.OpNotEqualFloat64, strOp: isa.OpNotEqualString, genOp: isa.OpNotEqualGeneral}, true
 	case token.LSS:
-		return comparisonOpcodeSet{intOp: isa.OpLtInt, floatOp: isa.OpLtFloat, strOp: isa.OpLtString, genOp: isa.OpLtGeneral}, true
+		return comparisonOpcodeSet{intOp: isa.OpLessThanInt64, floatOp: isa.OpLessThanFloat64, strOp: isa.OpLessThanString, genOp: isa.OpLessThanGeneral}, true
 	case token.LEQ:
-		return comparisonOpcodeSet{intOp: isa.OpLeInt, floatOp: isa.OpLeFloat, strOp: isa.OpLeString, genOp: isa.OpLeGeneral}, true
+		return comparisonOpcodeSet{intOp: isa.OpLessOrEqualInt64, floatOp: isa.OpLessOrEqualFloat64, strOp: isa.OpLessOrEqualString, genOp: isa.OpLessOrEqualGeneral}, true
 	case token.GTR:
-		return comparisonOpcodeSet{intOp: isa.OpGtInt, floatOp: isa.OpGtFloat, strOp: isa.OpGtString, genOp: isa.OpGtGeneral}, true
+		return comparisonOpcodeSet{intOp: isa.OpGreaterThanInt64, floatOp: isa.OpGreaterThanFloat64, strOp: isa.OpGreaterThanString, genOp: isa.OpGreaterThanGeneral}, true
 	case token.GEQ:
-		return comparisonOpcodeSet{intOp: isa.OpGeInt, floatOp: isa.OpGeFloat, strOp: isa.OpGeString, genOp: isa.OpGeGeneral}, true
+		return comparisonOpcodeSet{intOp: isa.OpGreaterOrEqualInt64, floatOp: isa.OpGreaterOrEqualFloat64, strOp: isa.OpGreaterOrEqualString, genOp: isa.OpGreaterOrEqualGeneral}, true
 	default:
 		return comparisonOpcodeSet{}, false
 	}
@@ -1483,13 +1503,13 @@ func scalarKindForConstant(value constant.Value) isa.RegisterKind {
 	case constant.Bool:
 		return isa.RegisterBool
 	case constant.Int:
-		return isa.RegisterInt
+		return isa.RegisterInt64
 	case constant.Float:
-		return isa.RegisterFloat
+		return isa.RegisterFloat64
 	case constant.String:
 		return isa.RegisterString
 	case constant.Complex:
-		return isa.RegisterComplex
+		return isa.RegisterComplex128
 	default:
 		return isa.RegisterGeneral
 	}
@@ -1503,18 +1523,18 @@ func scalarKindForConstant(value constant.Value) isa.RegisterKind {
 // Returns the matching uint opcode and true, or (0, false) when no mapping exists.
 func intToUintCmpOp(intOp isa.Opcode) (isa.Opcode, bool) {
 	switch intOp {
-	case isa.OpEqInt:
-		return isa.OpEqUint, true
-	case isa.OpNeInt:
-		return isa.OpNeUint, true
-	case isa.OpLtInt:
-		return isa.OpLtUint, true
-	case isa.OpLeInt:
-		return isa.OpLeUint, true
-	case isa.OpGtInt:
-		return isa.OpGtUint, true
-	case isa.OpGeInt:
-		return isa.OpGeUint, true
+	case isa.OpEqualInt64:
+		return isa.OpEqualUint64, true
+	case isa.OpNotEqualInt64:
+		return isa.OpNotEqualUint64, true
+	case isa.OpLessThanInt64:
+		return isa.OpLessThanUint64, true
+	case isa.OpLessOrEqualInt64:
+		return isa.OpLessOrEqualUint64, true
+	case isa.OpGreaterThanInt64:
+		return isa.OpGreaterThanUint64, true
+	case isa.OpGreaterOrEqualInt64:
+		return isa.OpGreaterOrEqualUint64, true
 	default:
 		return 0, false
 	}
@@ -1563,8 +1583,8 @@ func canHoldResultOf(right program.VarLocation, kind isa.RegisterKind, afterLeft
 // patterns used by later optimisation passes.
 //
 // Takes expression (*ast.BinaryExpr) which is the operation.
-// Takes mark ([isa.NumRegisterKinds]uint32) which is the allocation state before the
-// left operand was compiled.
+// Takes mark ([isa.NumRegisterKinds]uint32) which is the allocation state before the left
+// operand was compiled.
 // Takes afterLeft ([isa.NumRegisterKinds]uint32) which is the state after it.
 // Takes left (program.VarLocation) which is the left operand.
 // Takes right (program.VarLocation) which is the right operand.

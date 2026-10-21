@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"pipit.sh/pipit/internal/engine/program"
@@ -44,22 +45,11 @@ const (
 	// cancellation checks. A power of two so the remainder check compiles to a bitmask.
 	verifierContextPollInterval = 1024
 
-	// entryStateSlotCount is the per-bank slot count for the entry state. Over-allocating to
-	// 256 (uint8 max + 1) marks every addressable slot defined at entry, eliminating false
-	// positives from undescribed opcodes while still catching inter-opcode contract
-	// violations.
-	entryStateSlotCount = 256
-)
+	// slotWordBits is the number of slots one word of a bank's definedness set covers.
+	slotWordBits = 64
 
-const (
-	// registerSlotUndefined means no instruction along the dataflow path has written to this
-	// slot in this bank. Reads of an undefined slot are verifier errors.
-	registerSlotUndefined registerSlotKind = iota
-
-	// registerSlotDefined means the slot has been written by some earlier instruction. The
-	// verifier does not track the value's static type further than that; banks are
-	// physically separated, so the slot is only ever read as the bank it was written in.
-	registerSlotDefined
+	// slotWords is the number of words that cover the 256 slots a uint8 can address.
+	slotWords = (math.MaxUint8 + 1) / slotWordBits
 )
 
 // verificationError reports a single contract violation found by the verifier. The fields
@@ -140,61 +130,32 @@ func (r *VerificationReport) Err() error {
 	return errors.Join(joined...)
 }
 
-// registerSlotKind describes what bank a register slot was last written as at a given
-// program point. The Compiler partitions register space by bank, so int[5] and general[5]
-// are distinct physical slots; the verifier tracks each independently.
-type registerSlotKind uint8
+// slotSet marks which of a bank's 256 slots are defined, one bit for each.
+type slotSet [slotWords]uint64
 
 // verifierState is the per-bank, per-slot definedness map at a particular program point.
-// The verifier walks the bytecode body updating this state and asserting that read
-// operands target defined slots.
-type verifierState struct {
-	// banks holds the slot-definedness array for each register bank.
-	banks [isa.NumRegisterKinds][]registerSlotKind
-}
-
-// cloneFrom copies the bank slices from source into the receiver. The receiver retains
-// its own backing arrays so subsequent mutations do not leak into source.
 //
-// Takes source (*verifierState) which is the state to copy.
-func (s *verifierState) cloneFrom(source *verifierState) {
-	for bank := range s.banks {
-		need := len(source.banks[bank])
-		if cap(s.banks[bank]) < need {
-			s.banks[bank] = make([]registerSlotKind, need)
-		} else {
-			s.banks[bank] = s.banks[bank][:need]
-			for i := range s.banks[bank] {
-				s.banks[bank][i] = registerSlotUndefined
-			}
-		}
-		copy(s.banks[bank], source.banks[bank])
-	}
+// Each bank tracks its slots separately. A slot is defined once an instruction on the
+// path has written it.
+type verifierState struct {
+	// banks holds the set of defined slots for each register bank.
+	banks [isa.NumRegisterKinds]slotSet
 }
 
-// joinFrom merges source into the receiver using path-intersection semantics: a slot is
-// defined only if both predecessors agree it is defined. Returns true when the receiver
-// changed, signalling the worklist to revisit successors.
+// joinFrom merges source into the receiver using path-intersection semantics, where a
+// slot is defined only if both predecessors agree it is defined.
 //
 // Takes source (*verifierState) which is the predecessor state to merge.
 //
-// Returns true when the receiver's state widened.
+// Returns bool which is true when the receiver changed, so that the worklist revisits its
+// successors.
 func (s *verifierState) joinFrom(source *verifierState) bool {
 	changed := false
 	for bank := range s.banks {
-		sourceLength := len(source.banks[bank])
-		if len(s.banks[bank]) < sourceLength {
-			grown := make([]registerSlotKind, sourceLength)
-			copy(grown, s.banks[bank])
-			s.banks[bank] = grown
-		}
-		for i, sourceKind := range source.banks[bank] {
-			if i >= len(s.banks[bank]) {
-				break
-			}
-			merged := joinSlotKind(s.banks[bank][i], sourceKind)
-			if merged != s.banks[bank][i] {
-				s.banks[bank][i] = merged
+		for word, defined := range s.banks[bank] {
+			merged := defined & source.banks[bank][word]
+			if merged != defined {
+				s.banks[bank][word] = merged
 				changed = true
 			}
 		}
@@ -210,12 +171,7 @@ func (s *verifierState) markDefined(bank isa.RegisterKind, slot uint8) {
 	if int(bank) >= len(s.banks) {
 		return
 	}
-	if int(slot) >= len(s.banks[bank]) {
-		grown := make([]registerSlotKind, int(slot)+1)
-		copy(grown, s.banks[bank])
-		s.banks[bank] = grown
-	}
-	s.banks[bank][slot] = registerSlotDefined
+	s.banks[bank][slot/slotWordBits] |= 1 << (slot % slotWordBits)
 }
 
 // isDefined reports whether bank[slot] has been written at this program point.
@@ -228,10 +184,51 @@ func (s *verifierState) isDefined(bank isa.RegisterKind, slot uint8) bool {
 	if int(bank) >= len(s.banks) {
 		return false
 	}
-	if int(slot) >= len(s.banks[bank]) {
-		return false
+	return s.banks[bank][slot/slotWordBits]&(1<<(slot%slotWordBits)) != 0
+}
+
+// markAllDefined records every slot of every bank as written.
+func (s *verifierState) markAllDefined() {
+	for bank := range s.banks {
+		for word := range s.banks[bank] {
+			s.banks[bank][word] = math.MaxUint64
+		}
 	}
-	return s.banks[bank][slot] == registerSlotDefined
+}
+
+// verifierEntries holds the entry state of every program counter a block starts at.
+type verifierEntries struct {
+	// index maps a program counter to one more than its place in states, zero for a program
+	// counter no block has reached.
+	index []int
+
+	// states holds the entry states in the order they were first reached.
+	states []verifierState
+}
+
+// join merges state into the entry state of pc, which it becomes when pc is reached for
+// the first time.
+//
+// Takes pc (int) which is the program counter a block starts at.
+// Takes state (*verifierState) which is the state at the end of a block that leads there.
+//
+// Returns bool which is true when pc is newly reached or its entry state changed.
+func (e *verifierEntries) join(pc int, state *verifierState) bool {
+	if place := e.index[pc]; place != 0 {
+		return e.states[place-1].joinFrom(state)
+	}
+	e.states = append(e.states, *state)
+	e.index[pc] = len(e.states)
+	return true
+}
+
+// at returns the entry state of a program counter that join() has reached.
+//
+// Takes pc (int) which is the program counter.
+//
+// Returns *verifierState which is the entry state.
+func (e *verifierEntries) at(pc int) *verifierState {
+	return &e.states[e.index[pc]-1]
 }
 
 // readCheckContext bundles the values shared across all three operand-position read
@@ -288,17 +285,15 @@ func RunFunctionVerifier(ctx context.Context, compiledFunction *program.Compiled
 		return nil
 	}
 
-	entryStates := make([]verifierState, len(body))
-	visited := make([]bool, len(body))
-
-	entryStates[0].cloneFrom(new(initialEntryState()))
-	visited[0] = true
+	entries := verifierEntries{index: make([]int, len(body)), states: nil}
+	entries.join(0, new(initialEntryState()))
 
 	jumpTargets := compiledFunction.BuildJumpTargets(body)
 	iterationCap := verifierIterationCapFor(len(body))
 
 	worklist := []int{0}
 	iterations := 0
+	var current verifierState
 	for len(worklist) > 0 {
 		if iterations >= iterationCap {
 			return fmt.Errorf("verifier: %s: %w", compiledFunction.Name, errVerifierIterationLimitExceeded)
@@ -313,27 +308,12 @@ func RunFunctionVerifier(ctx context.Context, compiledFunction *program.Compiled
 		pc := worklist[len(worklist)-1]
 		worklist = worklist[:len(worklist)-1]
 
-		current := verifierState{banks: [isa.NumRegisterKinds][]registerSlotKind{}}
-		current.cloneFrom(&entryStates[pc])
+		current = *entries.at(pc)
 
 		next := walkBlock(compiledFunction, body, pc, jumpTargets, &current, report)
-		worklist = enqueueVerifierSuccessors(next, len(body), &current, entryStates, visited, worklist)
+		worklist = enqueueVerifierSuccessors(next, &current, &entries, worklist)
 	}
 	return nil
-}
-
-// joinSlotKind merges two slot kinds at a CFG merge point. A slot is only defined when
-// both predecessors define it; any disagreement widens to undefined.
-//
-// Takes a (registerSlotKind) which is the first predecessor's slot kind.
-// Takes b (registerSlotKind) which is the second predecessor's slot kind.
-//
-// Returns the merged slot kind.
-func joinSlotKind(a, b registerSlotKind) registerSlotKind {
-	if a == registerSlotDefined && b == registerSlotDefined {
-		return registerSlotDefined
-	}
-	return registerSlotUndefined
 }
 
 // verifyOneFunction verifies a single program.CompiledFunction and recurses into its
@@ -377,51 +357,35 @@ func verifierIterationCapFor(bodyLength int) int {
 	return iterationCap
 }
 
-// enqueueVerifierSuccessors merges each successor PC's state into the per-PC entry state
-// and appends to the worklist when the state changed (or the successor is first reached).
+// enqueueVerifierSuccessors merges state into successor entries and queues those that
+// change.
 //
 // Takes successors ([]int) which are the next PCs produced by walking the current block.
-// Takes bodyLength (int) which is used to validate successor bounds.
 // Takes current (*verifierState) which is the joined state at the end of the current
 // block.
-// Takes entryStates ([]verifierState) which records each PC's joined entry state.
-// Takes visited ([]bool) which tracks whether each PC has been seeded.
+// Takes entries (*verifierEntries) which records each reached PC's joined entry state.
 // Takes worklist ([]int) which is the pending worklist receiving newly reachable
 // successors.
 //
 // Returns the updated worklist slice.
-func enqueueVerifierSuccessors(successors []int, bodyLength int, current *verifierState, entryStates []verifierState, visited []bool, worklist []int) []int {
+func enqueueVerifierSuccessors(successors []int, current *verifierState, entries *verifierEntries, worklist []int) []int {
 	for _, succ := range successors {
-		if succ < 0 || succ >= bodyLength {
+		if succ < 0 || succ >= len(entries.index) {
 			continue
 		}
-		if !visited[succ] {
-			entryStates[succ].cloneFrom(current)
-			visited[succ] = true
-			worklist = append(worklist, succ)
-			continue
-		}
-		if entryStates[succ].joinFrom(current) {
+		if entries.join(succ, current) {
 			worklist = append(worklist, succ)
 		}
 	}
 	return worklist
 }
 
-// initialEntryState builds the verifier's view of the function entry, marking every
-// addressable register slot in every bank as defined. This permissiveness keeps the
-// verifier silent on entry-state uncertainties; the verifier still flags contract
-// violations within the body.
+// initialEntryState marks every addressable register slot as defined.
 //
 // Returns a verifierState with all addressable slots marked defined.
 func initialEntryState() verifierState {
-	state := verifierState{banks: [isa.NumRegisterKinds][]registerSlotKind{}}
-	for bank := isa.RegisterKind(0); int(bank) < isa.NumRegisterKinds; bank++ {
-		state.banks[bank] = make([]registerSlotKind, entryStateSlotCount)
-		for slot := range state.banks[bank] {
-			state.banks[bank][slot] = registerSlotDefined
-		}
-	}
+	var state verifierState
+	state.markAllDefined()
 	return state
 }
 
@@ -478,14 +442,15 @@ func walkBlock(compiledFunction *program.CompiledFunction, body []isa.Instructio
 	return nil
 }
 
-// skipExtensionWords returns the first program counter at or after pc that is not OpExt.
+// skipExtensionWords returns the first program counter at or after pc that is not
+// OpExtension.
 //
 // Takes body ([]isa.Instruction) which is the instruction stream.
 // Takes pc (int) which is the first word after the owning operation.
 //
 // Returns the program counter of the next instruction.
 func skipExtensionWords(body []isa.Instruction, pc int) int {
-	for pc < len(body) && body[pc].Op == isa.OpExt {
+	for pc < len(body) && body[pc].Op == isa.OpExtension {
 		pc++
 	}
 	return pc
@@ -571,17 +536,12 @@ func applyOneWrite(writes bool, role isa.OperandRole, slot uint8, current *verif
 
 // applyOpaqueWrites widens state when an opcode lacks a described shape.
 //
-// The verifier widens by marking every known slot in every bank as defined whenever an
-// undescribed opcode runs. This trades false negatives (the verifier may miss a real bug
-// hiding behind an undescribed opcode) for zero false positives.
+// Every slot is marked as defined, so the verifier may miss invalid reads after this
+// point.
 //
 // Takes current (*verifierState) which is mutated.
 func applyOpaqueWrites(current *verifierState) {
-	for bank := isa.RegisterKind(0); int(bank) < isa.NumRegisterKinds; bank++ {
-		for slot := range len(current.banks[bank]) {
-			current.banks[bank][slot] = registerSlotDefined
-		}
-	}
+	current.markAllDefined()
 }
 
 // terminatorSuccessors returns the successor PCs for an instruction that terminates a
@@ -613,7 +573,7 @@ func terminatorSuccessors(body []isa.Instruction, pc int, instr isa.Instruction)
 // Takes body ([]instruction) which is the full instruction stream.
 // Takes pc (int) which is the branch's PC.
 // Takes fallthroughPC (int) which is the fallthrough successor PC (already accounting for
-// any isa.OpExt that follows).
+// any isa.OpExtension that follows).
 //
 // Returns the list of successor PCs.
 func controlFlowSuccessors(body []isa.Instruction, pc int, fallthroughPC int) []int {

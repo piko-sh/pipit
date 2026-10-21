@@ -88,8 +88,9 @@ type DebugSessionEvent struct {
 }
 
 // debugConditionEvaluator evaluates a breakpoint condition in the paused thread's
-// innermost frame. It runs on the VM's goroutine with the session mutex released.
-type debugConditionEvaluator func(thread *DebugThread, breakpoint *DebugBreakpoint) (bool, error)
+// innermost frame, under the execution's context. It runs on the VM's goroutine with the
+// session mutex released.
+type debugConditionEvaluator func(ctx context.Context, thread *DebugThread, breakpoint *DebugBreakpoint) (bool, error)
 
 // DebugSession is the engine side of a debugger, holding the breakpoint table, the
 // registry of live debugged VMs, and the stop-the-world barrier they park on. One session

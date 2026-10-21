@@ -31,8 +31,8 @@ func newAppendInPlaceFrame(t *testing.T, elementRegister uint8) (*VM, *CallFrame
 	t.Helper()
 	builder := newBytecodeBuilder()
 	builder.numRegisters = wideRegCounts(8)
-	builder.body = append(builder.body, isa.NewTier1Instruction(isa.SubOpAppendUintInPlace, 1, 2))
-	builder.body = append(builder.body, isa.NewInstruction(isa.OpExt, elementRegister, 0, 0))
+	builder.body = append(builder.body, isa.NewTier1Instruction(isa.SubOpAppendUint64WideInPlace, 1, 2))
+	builder.body = append(builder.body, isa.NewInstruction(isa.OpExtension, elementRegister, 0, 0))
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
 
 	vm, frame, registers := newFramedVM(t, builder.build())
@@ -40,7 +40,7 @@ func newAppendInPlaceFrame(t *testing.T, elementRegister uint8) (*VM, *CallFrame
 	return vm, frame, registers
 }
 
-func TestAppendUintInPlaceGrowsThroughTheFallbackForHeapSlices(t *testing.T) {
+func TestAppendUint64WideInPlaceGrowsThroughTheFallbackForHeapSlices(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -89,26 +89,26 @@ func TestAppendUintInPlaceGrowsThroughTheFallbackForHeapSlices(t *testing.T) {
 			registers.General[2] = reflect.ValueOf(tt.slice)
 			registers.Uints[3] = tt.element
 
-			require.Equal(t, opContinue, handleSubOpAppendUintInPlace(vm, frame, registers, op(0, 1, 2)))
+			require.Equal(t, opContinue, handleAppendUint64WideInPlace(vm, frame, registers, op(0, 1, 2)))
 			tt.check(t, registers.General[1])
 		})
 	}
 }
 
-func TestAppendUintInPlaceSeedsFromAnInvalidSlice(t *testing.T) {
+func TestAppendUint64WideInPlaceSeedsFromAnInvalidSlice(t *testing.T) {
 	t.Parallel()
 
 	vm, frame, registers := newAppendInPlaceFrame(t, 3)
 	registers.Uints[3] = 7
 
-	require.Equal(t, opContinue, handleSubOpAppendUintInPlace(vm, frame, registers, op(0, 1, 2)))
+	require.Equal(t, opContinue, handleAppendUint64WideInPlace(vm, frame, registers, op(0, 1, 2)))
 
 	require.Equal(t, 1, registers.General[1].Len(),
 		"an invalid source starts a fresh one-element slice rather than faulting")
 	require.Equal(t, uint64(7), registers.General[1].Index(0).Uint())
 }
 
-func TestAppendUintInPlaceRefusesPastTheAllocationCap(t *testing.T) {
+func TestAppendUint64WideInPlaceRefusesPastTheAllocationCap(t *testing.T) {
 	t.Parallel()
 
 	vm, frame, registers := newAppendInPlaceFrame(t, 3)
@@ -116,13 +116,13 @@ func TestAppendUintInPlaceRefusesPastTheAllocationCap(t *testing.T) {
 	registers.General[2] = reflect.ValueOf([]uint64{1, 2})
 	registers.Uints[3] = 3
 
-	got := handleSubOpAppendUintInPlace(vm, frame, registers, op(0, 1, 2))
+	got := handleAppendUint64WideInPlace(vm, frame, registers, op(0, 1, 2))
 
 	require.Equal(t, opPanicError, got)
 	require.Error(t, vm.evalError)
 }
 
-func TestAppendUintGrowFallbackConvertsToTheElementType(t *testing.T) {
+func TestAppendUint64WideGrowFallbackConvertsToTheElementType(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -159,7 +159,7 @@ func TestAppendUintGrowFallbackConvertsToTheElementType(t *testing.T) {
 			t.Parallel()
 			registers := standardRegisters()
 
-			got := handleSubOpAppendUintGrowFallback(&registers, op(0, 1, 0), reflect.ValueOf(tt.slice), tt.element)
+			got := handleAppendUint64WideGrowFallback(&registers, op(0, 1, 0), reflect.ValueOf(tt.slice), tt.element)
 
 			require.Equal(t, opContinue, got)
 			require.Equal(t, 2, registers.General[1].Len())
@@ -168,12 +168,12 @@ func TestAppendUintGrowFallbackConvertsToTheElementType(t *testing.T) {
 	}
 }
 
-func TestAppendUintFallbackInvalidStartsAByteSlice(t *testing.T) {
+func TestAppendUint64WideFallbackInvalidStartsAByteSlice(t *testing.T) {
 	t.Parallel()
 
 	registers := standardRegisters()
 
-	got := handleSubOpAppendUintFallbackInvalid(&registers, op(0, 1, 0), 7)
+	got := handleAppendUint64WideFallbackInvalid(&registers, op(0, 1, 0), 7)
 
 	require.Equal(t, opContinue, got)
 	require.Equal(t, 1, registers.General[1].Len())

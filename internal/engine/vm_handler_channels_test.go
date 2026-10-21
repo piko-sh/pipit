@@ -33,14 +33,14 @@ type namedIntChannel chan int
 
 func newCancelledVM(t *testing.T) *VM {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	vm := NewVM(ctx, NewGlobalStore(), symtab.NewSymbolRegistry(nil))
 	t.Cleanup(vm.ReleaseArena)
 	return vm
 }
 
-func TestChannelSendDeliversEveryBankKind(t *testing.T) {
+func TestSendToChannelDeliversEveryBankKind(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -53,14 +53,14 @@ func TestChannelSendDeliversEveryBankKind(t *testing.T) {
 		{
 			name:    "an int channel takes its value from the int bank",
 			channel: make(chan int, 1),
-			kind:    isa.RegisterInt,
+			kind:    isa.RegisterInt64,
 			load:    func(r *Registers) { r.Ints[1] = 42 },
 			want:    42,
 		},
 		{
 			name:    "an int64 channel takes its value from the int bank unwidened",
 			channel: make(chan int64, 1),
-			kind:    isa.RegisterInt,
+			kind:    isa.RegisterInt64,
 			load:    func(r *Registers) { r.Ints[1] = -7 },
 			want:    int64(-7),
 		},
@@ -81,21 +81,21 @@ func TestChannelSendDeliversEveryBankKind(t *testing.T) {
 		{
 			name:    "a float64 channel takes its value from the float bank",
 			channel: make(chan float64, 1),
-			kind:    isa.RegisterFloat,
+			kind:    isa.RegisterFloat64,
 			load:    func(r *Registers) { r.Floats[1] = 2.5 },
 			want:    2.5,
 		},
 		{
 			name:    "a uint channel has no typed handle and falls to the reflect path",
 			channel: make(chan uint32, 1),
-			kind:    isa.RegisterUint,
+			kind:    isa.RegisterUint64,
 			load:    func(r *Registers) { r.Uints[1] = 9 },
 			want:    uint32(9),
 		},
 		{
 			name:    "a named channel type defeats the typed handle assertion",
 			channel: namedIntChannel(make(chan int, 1)),
-			kind:    isa.RegisterInt,
+			kind:    isa.RegisterInt64,
 			load:    func(r *Registers) { r.Ints[1] = 11 },
 			want:    11,
 		},
@@ -116,7 +116,7 @@ func TestChannelSendDeliversEveryBankKind(t *testing.T) {
 			registers.General[0] = reflect.ValueOf(tt.channel)
 			tt.load(registers)
 
-			got := HandleChannelSend(vm, frame, registers, op(0, 1, uint8(tt.kind)))
+			got := handleSendToChannel(vm, frame, registers, op(0, 1, uint8(tt.kind)))
 			require.Equal(t, opContinue, got, "a send into free buffer space never leaves the dispatch loop")
 
 			received, ok := reflect.ValueOf(tt.channel).TryRecv()
@@ -126,7 +126,7 @@ func TestChannelSendDeliversEveryBankKind(t *testing.T) {
 	}
 }
 
-func TestChannelSendRefusesBrokenChannels(t *testing.T) {
+func TestSendToChannelRefusesBrokenChannels(t *testing.T) {
 	t.Parallel()
 
 	t.Run("a send on a closed channel surfaces as an interpreted panic", func(t *testing.T) {
@@ -138,7 +138,7 @@ func TestChannelSendRefusesBrokenChannels(t *testing.T) {
 		registers.General[0] = reflect.ValueOf(channel)
 		registers.Ints[1] = 1
 
-		got := HandleChannelSend(vm, frame, registers, op(0, 1, uint8(isa.RegisterInt)))
+		got := handleSendToChannel(vm, frame, registers, op(0, 1, uint8(isa.RegisterInt64)))
 		requireRuntimePanic(t, vm, got, "send on closed channel")
 	})
 
@@ -147,12 +147,12 @@ func TestChannelSendRefusesBrokenChannels(t *testing.T) {
 
 		vm, frame, registers := newStandardVM(t)
 		require.Panics(t, func() {
-			HandleChannelSend(vm, frame, registers, op(0, 1, uint8(isa.RegisterInt)))
+			handleSendToChannel(vm, frame, registers, op(0, 1, uint8(isa.RegisterInt64)))
 		}, "an unset general register is an invariant break, not a runtime fault")
 	})
 }
 
-func TestChannelSendOnFullChannelParksUntilCancelled(t *testing.T) {
+func TestSendToChannelOnFullChannelParksUntilCancelled(t *testing.T) {
 	t.Parallel()
 
 	vm := newCancelledVM(t)
@@ -169,13 +169,13 @@ func TestChannelSendOnFullChannelParksUntilCancelled(t *testing.T) {
 	registers.General[0] = reflect.ValueOf(channel)
 	registers.Ints[1] = 1
 
-	got := HandleChannelSend(vm, frame, registers, op(0, 1, uint8(isa.RegisterInt)))
+	got := handleSendToChannel(vm, frame, registers, op(0, 1, uint8(isa.RegisterInt64)))
 	require.Equal(t, opPanicError, got, "a send that can never complete must abort rather than deadlock")
 	require.Error(t, vm.evalError, "the cancellation must surface as the evaluation error")
 	require.Equal(t, uint32(1), vm.Cancelled.Load(), "the cancelled flag must agree with the surfaced error")
 }
 
-func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
+func TestReceiveFromChannelWritesValueAndCommaOk(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -189,7 +189,7 @@ func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
 		{
 			name:    "a buffered int arrives in the int bank",
 			channel: make(chan int, 1),
-			kind:    isa.RegisterInt,
+			kind:    isa.RegisterInt64,
 			fill:    func(c any) { c.(chan int) <- 5 },
 			wantOk:  1,
 			inspect: func(t *testing.T, r *Registers) {
@@ -200,7 +200,7 @@ func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
 		{
 			name:    "a buffered int64 arrives in the int bank",
 			channel: make(chan int64, 1),
-			kind:    isa.RegisterInt,
+			kind:    isa.RegisterInt64,
 			fill:    func(c any) { c.(chan int64) <- -5 },
 			wantOk:  1,
 			inspect: func(t *testing.T, r *Registers) {
@@ -233,7 +233,7 @@ func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
 		{
 			name:    "a buffered float64 arrives in the float bank",
 			channel: make(chan float64, 1),
-			kind:    isa.RegisterFloat,
+			kind:    isa.RegisterFloat64,
 			fill:    func(c any) { c.(chan float64) <- 1.25 },
 			wantOk:  1,
 			inspect: func(t *testing.T, r *Registers) {
@@ -244,7 +244,7 @@ func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
 		{
 			name:    "a closed int channel yields the zero value with a false comma-ok",
 			channel: make(chan int, 1),
-			kind:    isa.RegisterInt,
+			kind:    isa.RegisterInt64,
 			fill:    func(c any) { close(c.(chan int)) },
 			wantOk:  0,
 			inspect: func(t *testing.T, r *Registers) {
@@ -266,7 +266,7 @@ func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
 		{
 			name:    "a named channel type falls to the reflect receive",
 			channel: namedIntChannel(make(chan int, 1)),
-			kind:    isa.RegisterInt,
+			kind:    isa.RegisterInt64,
 			fill:    func(c any) { c.(namedIntChannel) <- 8 },
 			wantOk:  1,
 			inspect: func(t *testing.T, r *Registers) {
@@ -295,7 +295,7 @@ func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
 			registers.General[0] = reflect.ValueOf(tt.channel)
 			tt.fill(tt.channel)
 
-			got := handleChannelReceive(vm, frame, registers, op(0, 2, 0))
+			got := handleReceiveFromChannelBody(vm, frame, registers, op(0, 2, 0))
 			require.Equal(t, opContinue, got, "a receive that completes immediately never leaves the dispatch loop")
 			require.Equal(t, 2, frame.ProgramCounter, "the extension word must be stepped over exactly once")
 			require.Equal(t, tt.wantOk, registers.Ints[2], "the comma-ok flag lands in the int bank")
@@ -304,15 +304,15 @@ func TestChannelReceiveWritesValueAndCommaOk(t *testing.T) {
 	}
 }
 
-func TestChannelReceiveRefusesBrokenChannels(t *testing.T) {
+func TestReceiveFromChannelRefusesBrokenChannels(t *testing.T) {
 	t.Parallel()
 
 	t.Run("an invalid channel register panics through the register guard", func(t *testing.T) {
 		t.Parallel()
 
-		vm, frame, registers := newExtWordFrame(t, op(3, uint8(isa.RegisterInt), 0))
+		vm, frame, registers := newExtWordFrame(t, op(3, uint8(isa.RegisterInt64), 0))
 		require.Panics(t, func() {
-			handleChannelReceive(vm, frame, registers, op(0, 2, 0))
+			handleReceiveFromChannelBody(vm, frame, registers, op(0, 2, 0))
 		}, "an unset general register is an invariant break, not a runtime fault")
 	})
 
@@ -322,7 +322,7 @@ func TestChannelReceiveRefusesBrokenChannels(t *testing.T) {
 		vm := newCancelledVM(t)
 		builder := newBytecodeBuilder()
 		builder.numRegisters = wideRegCounts(4)
-		builder.Emit(isa.OpExt, 3, uint8(isa.RegisterInt), 0)
+		builder.Emit(isa.OpExtension, 3, uint8(isa.RegisterInt64), 0)
 		builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
 		compiledFunction := builder.build()
 		vm.prepareForExecution(compiledFunction)
@@ -331,13 +331,13 @@ func TestChannelReceiveRefusesBrokenChannels(t *testing.T) {
 		registers := &frame.Registers
 		registers.General[0] = reflect.ValueOf(make(chan int))
 
-		got := handleChannelReceive(vm, frame, registers, op(0, 2, 0))
+		got := handleReceiveFromChannelBody(vm, frame, registers, op(0, 2, 0))
 		require.Equal(t, opPanicError, got, "a receive that can never complete must abort rather than deadlock")
 		require.Error(t, vm.evalError)
 	})
 }
 
-func TestChannelCloseEndsTheChannelOnce(t *testing.T) {
+func TestCloseChannelEndsTheChannelOnce(t *testing.T) {
 	t.Parallel()
 
 	t.Run("closing an open channel makes a later receive report not-ok", func(t *testing.T) {
@@ -347,7 +347,7 @@ func TestChannelCloseEndsTheChannelOnce(t *testing.T) {
 		channel := make(chan int, 1)
 		registers.General[0] = reflect.ValueOf(channel)
 
-		got := handleChannelClose(vm, frame, registers, op(0, 0, 0))
+		got := handleCloseChannelBody(vm, frame, registers, op(0, 0, 0))
 		require.Equal(t, opContinue, got, "closing an open channel is not a fault")
 
 		_, ok := <-channel
@@ -362,7 +362,7 @@ func TestChannelCloseEndsTheChannelOnce(t *testing.T) {
 		close(channel)
 		registers.General[0] = reflect.ValueOf(channel)
 
-		got := handleChannelClose(vm, frame, registers, op(0, 0, 0))
+		got := handleCloseChannelBody(vm, frame, registers, op(0, 0, 0))
 		requireRuntimePanic(t, vm, got, "close of closed channel")
 	})
 
@@ -371,7 +371,7 @@ func TestChannelCloseEndsTheChannelOnce(t *testing.T) {
 
 		vm, frame, registers := newStandardVM(t)
 		require.Panics(t, func() {
-			handleChannelClose(vm, frame, registers, op(0, 0, 0))
+			handleCloseChannelBody(vm, frame, registers, op(0, 0, 0))
 		}, "an unset general register is an invariant break, not a runtime fault")
 	})
 }
@@ -433,8 +433,8 @@ func TestTypedChannelKindGuardsRefuseMismatchedBanks(t *testing.T) {
 		sourceKind isa.RegisterKind
 		want       bool
 	}{
-		{name: "the matching bank reaches the typed send", sourceKind: isa.RegisterInt, want: true},
-		{name: "a float source is refused for an int channel", sourceKind: isa.RegisterFloat, want: false},
+		{name: "the matching bank reaches the typed send", sourceKind: isa.RegisterInt64, want: true},
+		{name: "a float source is refused for an int channel", sourceKind: isa.RegisterFloat64, want: false},
 		{name: "a string source is refused for an int channel", sourceKind: isa.RegisterString, want: false},
 	}
 

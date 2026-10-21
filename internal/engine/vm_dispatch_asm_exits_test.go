@@ -91,8 +91,8 @@ func TestDispatchExitHandlersRunTheirOwnInstruction(t *testing.T) {
 			},
 		},
 		{
-			name: "a map index", exit: (*VM).processExitMapIndex,
-			instruction: isa.NewInstruction(isa.OpMapIndex, 0, 1, 2),
+			name: "a map index", exit: (*VM).processExitGetMap,
+			instruction: isa.NewInstruction(isa.OpGetMap, 0, 1, 2),
 			load: func(r *Registers, _ *recordHolder) {
 				r.General[1] = reflect.ValueOf(map[string]int{"a": 5})
 				r.General[2] = reflect.ValueOf("a")
@@ -132,8 +132,8 @@ func TestTier0StructFieldDispatchExitsReadAndWriteTheirBank(t *testing.T) {
 		inspect     func(*testing.T, *Registers, *wideFields)
 	}{
 		{
-			name: "an int read", exit: (*VM).processExitGetStructFieldIntT0,
-			instruction: isa.NewInstruction(isa.OpGetStructFieldIntT0, 0, 1, 0),
+			name: "an int read", exit: (*VM).processExitGetStructFieldInt64,
+			instruction: isa.NewInstruction(isa.OpGetStructFieldInt64, 0, 1, 0),
 			load:        func(r *Registers, w *wideFields) { w.Signed = 42; r.General[1] = reflect.ValueOf(w) },
 			inspect: func(t *testing.T, r *Registers, _ *wideFields) {
 				t.Helper()
@@ -141,8 +141,8 @@ func TestTier0StructFieldDispatchExitsReadAndWriteTheirBank(t *testing.T) {
 			},
 		},
 		{
-			name: "a uint read", exit: (*VM).processExitGetStructFieldUintT0,
-			instruction: isa.NewInstruction(isa.OpGetStructFieldUint, 0, 1, 1),
+			name: "a uint read", exit: (*VM).processExitGetStructFieldUint64,
+			instruction: isa.NewInstruction(isa.OpGetStructFieldUint64, 0, 1, 1),
 			load:        func(r *Registers, w *wideFields) { w.Unsigned = 7; r.General[1] = reflect.ValueOf(w) },
 			inspect: func(t *testing.T, r *Registers, _ *wideFields) {
 				t.Helper()
@@ -150,8 +150,8 @@ func TestTier0StructFieldDispatchExitsReadAndWriteTheirBank(t *testing.T) {
 			},
 		},
 		{
-			name: "a float read", exit: (*VM).processExitGetStructFieldFloatT0,
-			instruction: isa.NewInstruction(isa.OpGetStructFieldFloat, 0, 1, 2),
+			name: "a float read", exit: (*VM).processExitGetStructFieldFloat64,
+			instruction: isa.NewInstruction(isa.OpGetStructFieldFloat64, 0, 1, 2),
 			load:        func(r *Registers, w *wideFields) { w.Ratio = 1.5; r.General[1] = reflect.ValueOf(w) },
 			inspect: func(t *testing.T, r *Registers, _ *wideFields) {
 				t.Helper()
@@ -159,7 +159,7 @@ func TestTier0StructFieldDispatchExitsReadAndWriteTheirBank(t *testing.T) {
 			},
 		},
 		{
-			name: "a bool read", exit: (*VM).processExitGetStructFieldBoolT0,
+			name: "a bool read", exit: (*VM).processExitGetStructFieldBool,
 			instruction: isa.NewInstruction(isa.OpGetStructFieldBool, 0, 1, 3),
 			load:        func(r *Registers, w *wideFields) { w.Flag = true; r.General[1] = reflect.ValueOf(w) },
 			inspect: func(t *testing.T, r *Registers, _ *wideFields) {
@@ -168,7 +168,7 @@ func TestTier0StructFieldDispatchExitsReadAndWriteTheirBank(t *testing.T) {
 			},
 		},
 		{
-			name: "a general read", exit: (*VM).processExitGetStructFieldGeneralT0,
+			name: "a general read", exit: (*VM).processExitGetStructFieldGeneral,
 			instruction: isa.NewInstruction(isa.OpGetStructFieldGeneral, 0, 1, 4),
 			load:        func(r *Registers, w *wideFields) { w.Label = "read"; r.General[1] = reflect.ValueOf(w) },
 			inspect: func(t *testing.T, r *Registers, _ *wideFields) {
@@ -177,8 +177,8 @@ func TestTier0StructFieldDispatchExitsReadAndWriteTheirBank(t *testing.T) {
 			},
 		},
 		{
-			name: "an int write", exit: (*VM).processExitSetStructFieldIntT0,
-			instruction: isa.NewInstruction(isa.OpSetStructFieldIntT0, 1, 2, 0),
+			name: "an int write", exit: (*VM).processExitSetStructFieldInt64,
+			instruction: isa.NewInstruction(isa.OpSetStructFieldInt64, 1, 2, 0),
 			load:        func(r *Registers, w *wideFields) { r.General[1] = reflect.ValueOf(w); r.Ints[2] = 11 },
 			inspect: func(t *testing.T, _ *Registers, w *wideFields) {
 				t.Helper()
@@ -186,8 +186,8 @@ func TestTier0StructFieldDispatchExitsReadAndWriteTheirBank(t *testing.T) {
 			},
 		},
 		{
-			name: "a uint write", exit: (*VM).processExitSetStructFieldUintT0,
-			instruction: isa.NewInstruction(isa.OpSetStructFieldUint, 1, 2, 1),
+			name: "a uint write", exit: (*VM).processExitSetStructFieldUint64,
+			instruction: isa.NewInstruction(isa.OpSetStructFieldUint64, 1, 2, 1),
 			load:        func(r *Registers, w *wideFields) { r.General[1] = reflect.ValueOf(w); r.Uints[2] = 12 },
 			inspect: func(t *testing.T, _ *Registers, w *wideFields) {
 				t.Helper()
@@ -195,8 +195,8 @@ func TestTier0StructFieldDispatchExitsReadAndWriteTheirBank(t *testing.T) {
 			},
 		},
 		{
-			name: "a float write", exit: (*VM).processExitSetStructFieldFloatT0,
-			instruction: isa.NewInstruction(isa.OpSetStructFieldFloat, 1, 2, 2),
+			name: "a float write", exit: (*VM).processExitSetStructFieldFloat64,
+			instruction: isa.NewInstruction(isa.OpSetStructFieldFloat64, 1, 2, 2),
 			load:        func(r *Registers, w *wideFields) { r.General[1] = reflect.ValueOf(w); r.Floats[2] = 2.5 },
 			inspect: func(t *testing.T, _ *Registers, w *wideFields) {
 				t.Helper()
@@ -204,7 +204,7 @@ func TestTier0StructFieldDispatchExitsReadAndWriteTheirBank(t *testing.T) {
 			},
 		},
 		{
-			name: "a bool write", exit: (*VM).processExitSetStructFieldBoolT0,
+			name: "a bool write", exit: (*VM).processExitSetStructFieldBool,
 			instruction: isa.NewInstruction(isa.OpSetStructFieldBool, 1, 2, 3),
 			load:        func(r *Registers, w *wideFields) { r.General[1] = reflect.ValueOf(w); r.Bools[2] = true },
 			inspect: func(t *testing.T, _ *Registers, w *wideFields) {
@@ -213,7 +213,7 @@ func TestTier0StructFieldDispatchExitsReadAndWriteTheirBank(t *testing.T) {
 			},
 		},
 		{
-			name: "a general write", exit: (*VM).processExitSetStructFieldGeneralT0,
+			name: "a general write", exit: (*VM).processExitSetStructFieldGeneral,
 			instruction: isa.NewInstruction(isa.OpSetStructFieldGeneral, 1, 2, 4),
 			load: func(r *Registers, w *wideFields) {
 				r.General[1] = reflect.ValueOf(w)
@@ -261,11 +261,11 @@ func TestAppendDispatchExitsGrowTheirSlice(t *testing.T) {
 	t.Run("the byte append exit", func(t *testing.T) {
 		t.Parallel()
 
-		vm, frame, registers, context := newDispatchExitFrame(t, isa.NewInstruction(isa.OpAppendByteFast, 0, 1, 2))
+		vm, frame, registers, context := newDispatchExitFrame(t, isa.NewInstruction(isa.OpAppendByte, 0, 1, 2))
 		registers.General[1] = reflect.ValueOf([]byte{1})
 		registers.Uints[2] = 2
 
-		_, action, err := vm.processExitAppendByteFast(frame, registers, context)
+		_, action, err := vm.processExitAppendByte(frame, registers, context)
 		require.NoError(t, err)
 		require.Equal(t, loopContinue, action)
 		require.Equal(t, []byte{1, 2}, registers.General[0].Interface())
@@ -281,8 +281,8 @@ func TestNilTestDispatchExitsTakeTheirBranch(t *testing.T) {
 		opcode isa.Opcode
 		value  reflect.Value
 	}{
-		{name: "jump when the value is not nil", exit: (*VM).processExitTestNilJumpFalse, opcode: isa.OpTestNilJumpFalse, value: reflect.ValueOf(3)},
-		{name: "jump when the value is nil", exit: (*VM).processExitTestNilJumpTrue, opcode: isa.OpTestNilJumpTrue, value: reflect.Value{}},
+		{name: "jump when the value is not nil", exit: (*VM).processExitJumpIfNotNil, opcode: isa.OpJumpIfNotNil, value: reflect.ValueOf(3)},
+		{name: "jump when the value is nil", exit: (*VM).processExitJumpIfNil, opcode: isa.OpJumpIfNil, value: reflect.Value{}},
 	}
 
 	for _, tt := range tests {

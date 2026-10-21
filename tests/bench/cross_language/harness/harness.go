@@ -89,7 +89,7 @@ type suiteOutcome struct {
 // -v` output.
 func (suite *Suite) Run(testingHandle *testing.T) {
 	testingHandle.Helper()
-	ctx := context.Background()
+	ctx := testingHandle.Context()
 
 	suite.checkRequiredRunners(ctx, testingHandle)
 
@@ -114,7 +114,6 @@ func (suite *Suite) Run(testingHandle *testing.T) {
 // runBenchmark checks a benchmark's sources, then runs it on every runner that supports
 // it, recording an unavailable runner as skipped.
 //
-// Takes ctx (context.Context) which bounds the runs.
 // Takes testingHandle (*testing.T) which is the benchmark's subtest.
 // Takes spec (BenchSpec) which is the benchmark.
 // Takes outcome (*suiteOutcome) which receives the results.
@@ -139,7 +138,6 @@ func (suite *Suite) runBenchmark(ctx context.Context, testingHandle *testing.T, 
 
 // runModes measures one benchmark on one runner in every configured mode.
 //
-// Takes ctx (context.Context) which bounds the runs.
 // Takes testingHandle (*testing.T) which is the runner's subtest.
 // Takes runner (Runner) which runs the benchmark.
 // Takes spec (BenchSpec) which is the benchmark.
@@ -273,7 +271,7 @@ func Load(testingHandle *testing.T, benchmarksDirectory string) *Suite {
 		Config:              config,
 		Specs:               specs,
 		Runners:             runners,
-		hostInfo:            collectHostInfo(config),
+		hostInfo:            collectHostInfo(testingHandle.Context(), config),
 	}
 }
 
@@ -414,7 +412,7 @@ func buildRunners(config SuiteConfig, benchmarksDirectory string) []Runner {
 // Takes config (SuiteConfig) which says whether Python runs on the host.
 //
 // Returns HostInfo which describes the host.
-func collectHostInfo(config SuiteConfig) HostInfo {
+func collectHostInfo(ctx context.Context, config SuiteConfig) HostInfo {
 	info := HostInfo{
 		OS:               runtime.GOOS,
 		Arch:             runtime.GOARCH,
@@ -430,9 +428,9 @@ func collectHostInfo(config SuiteConfig) HostInfo {
 	}
 	if config.UseHostPython {
 		info.CPythonImage = "host"
-		info.CPythonVersion = PythonVersionString(context.Background(), "python3")
+		info.CPythonVersion = PythonVersionString(ctx, "python3")
 		info.PyPyImage = "host"
-		info.PyPyVersion = PythonVersionString(context.Background(), "pypy3")
+		info.PyPyVersion = PythonVersionString(ctx, "pypy3")
 	} else {
 		info.CPythonImage = config.CPythonImage
 		info.PyPyImage = config.PyPyImage

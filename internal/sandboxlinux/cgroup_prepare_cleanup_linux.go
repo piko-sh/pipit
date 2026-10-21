@@ -24,6 +24,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 // prepareCleanup verifies retained directory ownership and terminates admitted tasks.
@@ -70,12 +72,12 @@ func (group *Group) closeHandles() error {
 // Takes preparationErr (error) which is the preparation error from group setup.
 //
 // Returns the prepared group, nil after successful rollback, or a cleanup-only owner.
-func finishGroupPreparation(group *Group, preparationErr error) (*Group, error) {
+func finishGroupPreparation(ctx context.Context, group *Group, preparationErr error) (*Group, error) {
 	if preparationErr == nil {
 		return group, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), groupSetupCleanupTimeout)
+	ctx, cancel := sandboxwire.CleanupContext(ctx)
 	defer cancel()
 	if cleanupErr := group.closeGroup(ctx); cleanupErr != nil {
 		return group, errors.Join(preparationErr, cleanupErr)

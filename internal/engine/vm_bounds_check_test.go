@@ -35,10 +35,10 @@ func newBoundsCheckFrame(t *testing.T) *CallFrame {
 	compiledFunction := &program.CompiledFunction{
 		Name: "TestFunc",
 		Body: []isa.Instruction{
-			isa.NewInstruction(isa.OpNop, 0, 0, 0),
-			isa.NewInstruction(isa.OpNop, 0, 0, 0),
-			isa.NewInstruction(isa.OpNop, 0, 0, 0),
-			isa.NewInstruction(isa.OpNop, 0, 0, 0),
+			isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
+			isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
+			isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
+			isa.NewInstruction(isa.OpNoOperation, 0, 0, 0),
 		},
 	}
 	return &CallFrame{
@@ -117,7 +117,7 @@ func TestVMCallSiteDiagnostic_RendersArgsAndReturns(t *testing.T) {
 	frame := newBoundsCheckFrame(t)
 	site := &program.CallSite{
 		Arguments: []program.VarLocation{
-			{Register: 1, Kind: isa.RegisterInt},
+			{Register: 1, Kind: isa.RegisterInt64},
 			{Register: 2, Kind: isa.RegisterString},
 		},
 		Returns: []program.VarLocation{
@@ -140,7 +140,7 @@ func TestVMPanicInvalidRegister_PanicsWithDetail(t *testing.T) {
 	t.Parallel()
 	frame := newBoundsCheckFrame(t)
 	registers := &Registers{General: make([]reflect.Value, 4)}
-	inst := isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	inst := isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 
 	defer func() {
 		recovered := recover()
@@ -160,7 +160,7 @@ func TestVMPanicNotStruct_PanicsWithDetail(t *testing.T) {
 	t.Parallel()
 	frame := newBoundsCheckFrame(t)
 	registers := &Registers{General: make([]reflect.Value, 4)}
-	inst := isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	inst := isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 
 	defer func() {
 		recovered := recover()
@@ -174,7 +174,7 @@ func TestVMPanicFieldIndex_PanicsWithDetail(t *testing.T) {
 	t.Parallel()
 	frame := newBoundsCheckFrame(t)
 	registers := &Registers{General: make([]reflect.Value, 4)}
-	inst := isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	inst := isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 
 	structType := reflect.TypeOf(struct{ A int }{})
 
@@ -190,7 +190,7 @@ func TestVMPanicTypeMismatch_PanicsWithDetail(t *testing.T) {
 	t.Parallel()
 	frame := newBoundsCheckFrame(t)
 	registers := &Registers{General: make([]reflect.Value, 4)}
-	inst := isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	inst := isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 
 	defer func() {
 		recovered := recover()

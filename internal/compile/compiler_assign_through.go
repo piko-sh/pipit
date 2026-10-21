@@ -71,16 +71,16 @@ func (c *Compiler) tryCompileStructIntoCollection(ctx context.Context, leftHandS
 	if err != nil {
 		return program.VarLocation{}, true, err
 	}
-	if indexLocation.Kind != isa.RegisterInt {
+	if indexLocation.Kind != isa.RegisterInt64 {
 		c.noteLoweringRefused(ctx, loweringTableAssign, loweringStructIntoCollection, "index-kind", "kind", indexLocation.Kind.String())
 		return program.VarLocation{}, false, nil
 	}
 
 	destination := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
 	c.setDebugPosition(ctx, indexExpression.Lbrack)
-	program.Emit(c.Function, isa.OpIndex, destination, collectionLocation.Register, indexLocation.Register)
+	program.Emit(c.Function, isa.OpGetElement, destination, collectionLocation.Register, indexLocation.Register)
 
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2SetZero), destination)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2SetZeroGeneral), destination)
 
 	for i, element := range compositeLiteral.Elts {
 		watermark := c.Scopes.Alloc.Snapshot()
@@ -127,15 +127,15 @@ func (c *Compiler) structIntoCollectionShape(ctx context.Context, indexExpressio
 	}
 }
 
-// tryCompileStarAppendByteFast detects `*p = append(*p, b)` where p is a `*[]byte` and
-// emits the fused isa.SubOpStarAppendByteFast opcode.
+// tryCompileAppendByteViaPointer detects `*p = append(*p, b)` where p is a `*[]byte` and
+// emits the fused isa.SubOpAppendByteViaPointer opcode.
 //
 // Takes leftHandSide (ast.Expr) which is the assignment target.
 // Takes rightHandSide (ast.Expr) which is the value expression.
 //
 // Returns the destination location and true when the fusion fired, or (zero, false, nil)
 // for non-matching shapes.
-func (c *Compiler) tryCompileStarAppendByteFast(ctx context.Context, leftHandSide ast.Expr, rightHandSide ast.Expr) (program.VarLocation, bool, error) {
+func (c *Compiler) tryCompileAppendByteViaPointer(ctx context.Context, leftHandSide ast.Expr, rightHandSide ast.Expr) (program.VarLocation, bool, error) {
 	starLHS, callRHS, ok := matchStarAppendByteShape(leftHandSide, rightHandSide)
 	if !ok {
 		return program.VarLocation{}, false, nil
@@ -146,7 +146,7 @@ func (c *Compiler) tryCompileStarAppendByteFast(ctx context.Context, leftHandSid
 	if !c.checkStarAppendByteSliceType(starLHS) {
 		return program.VarLocation{}, false, nil
 	}
-	return c.emitStarAppendByteFast(ctx, starLHS, callRHS)
+	return c.emitAppendByteViaPointer(ctx, starLHS, callRHS)
 }
 
 // matchStarAppendByteIdentities verifies that the first append argument is *p with the
@@ -197,7 +197,7 @@ func (c *Compiler) checkStarAppendByteSliceType(starLHS *ast.StarExpr) bool {
 	return elementName == "byte" || elementName == "uint8"
 }
 
-// emitStarAppendByteFast compiles the operands and emits the fused star-append-byte
+// emitAppendByteViaPointer compiles the operands and emits the fused star-append-byte
 // super-instruction.
 //
 // Takes starLHS (*ast.StarExpr) which is the LHS star expression of the assignment.
@@ -205,7 +205,7 @@ func (c *Compiler) checkStarAppendByteSliceType(starLHS *ast.StarExpr) bool {
 //
 // Returns the pointer location holding the appended slice and true when the fast path was
 // emitted, or an error when sub-expression compilation fails.
-func (c *Compiler) emitStarAppendByteFast(ctx context.Context, starLHS *ast.StarExpr, callRHS *ast.CallExpr) (program.VarLocation, bool, error) {
+func (c *Compiler) emitAppendByteViaPointer(ctx context.Context, starLHS *ast.StarExpr, callRHS *ast.CallExpr) (program.VarLocation, bool, error) {
 	pointerLocation, err := c.compileExpression(ctx, starLHS.X)
 	if err != nil {
 		return program.VarLocation{}, true, err
@@ -218,17 +218,17 @@ func (c *Compiler) emitStarAppendByteFast(ctx context.Context, starLHS *ast.Star
 		return program.VarLocation{}, true, err
 	}
 	if callRHS.Ellipsis != token.NoPos {
-		return c.emitStarAppendByteSpread(ctx, callRHS, pointerLocation, valueLocation)
+		return c.emitAppendSpreadByteViaPointer(ctx, callRHS, pointerLocation, valueLocation)
 	}
-	if valueLocation.Kind != isa.RegisterUint {
+	if valueLocation.Kind != isa.RegisterUint64 {
 		return program.VarLocation{}, false, nil
 	}
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpStarAppendByteFast), pointerLocation.Register, valueLocation.Register)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpAppendByteViaPointer), pointerLocation.Register, valueLocation.Register)
 	return pointerLocation, true, nil
 }
 
-// emitStarAppendByteSpread emits the spread (`append(*p, source...)`) variant, validating
-// the source slice's element type is byte.
+// emitAppendSpreadByteViaPointer emits the spread (`append(*p, source...)`) variant,
+// validating the source slice's element type is byte.
 //
 // Takes callRHS (*ast.CallExpr) which is the RHS append call expression.
 // Takes pointerLocation (VarLocation) which holds the destination pointer.
@@ -236,7 +236,9 @@ func (c *Compiler) emitStarAppendByteFast(ctx context.Context, starLHS *ast.Star
 //
 // Returns the pointer location after the appended store, true when the spread fast path
 // was emitted, or an error when value boxing fails.
-func (c *Compiler) emitStarAppendByteSpread(ctx context.Context, callRHS *ast.CallExpr, pointerLocation program.VarLocation, valueLocation program.VarLocation) (program.VarLocation, bool, error) {
+func (c *Compiler) emitAppendSpreadByteViaPointer(
+	ctx context.Context, callRHS *ast.CallExpr, pointerLocation program.VarLocation, valueLocation program.VarLocation,
+) (program.VarLocation, bool, error) {
 	valueType, ok := c.Info.Types[callRHS.Args[1]]
 	if !ok || valueType.Type == nil {
 		return program.VarLocation{}, false, nil
@@ -250,7 +252,7 @@ func (c *Compiler) emitStarAppendByteSpread(ctx context.Context, callRHS *ast.Ca
 		return program.VarLocation{}, false, nil
 	}
 	c.boxToGeneralTemp(ctx, &valueLocation)
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpStarAppendByteSpread), pointerLocation.Register, valueLocation.Register)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpAppendSpreadByteViaPointer), pointerLocation.Register, valueLocation.Register)
 	return pointerLocation, true, nil
 }
 

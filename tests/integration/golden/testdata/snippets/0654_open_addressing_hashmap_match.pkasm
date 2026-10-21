@@ -4,8 +4,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function newHashTable
-;   registers: int=1 general=2
-;   dispatch:  asm=10 shim=4 exit=0 go=1
+;   registers: int64=1 general=2
+;   dispatch:  asm=10 shim=5 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (general)
 ; ═════════════════════════════════════════════════════════════
@@ -13,61 +13,56 @@
 ; constants:
 ;   ints:    [0]=64
 
-0000 G 2:MAKE_MAP                   0  12   0
-0001   0:EXT                        0   0   0
-0002 A 1:LOAD_INT_CONST_SMALL      75   0  64    ; ints[0] = 64
-0003 S 0:MAKE_SLICE                 1   0   0
-0004   0:EXT                        1   0   0
-0005 A 0:SET_STRUCT_FIELD_GENERAL_T0   0   1   0
-0006 A 1:LOAD_INT_CONST_SMALL      75   0  64    ; ints[0] = 64
-0007 S 0:MAKE_SLICE                 1   0   0
-0008   0:EXT                        2   0   0
-0009 A 0:SET_STRUCT_FIELD_GENERAL_T0   0   1   1
-0010 A 1:LOAD_INT_CONST_SMALL      75   0  64    ; ints[0] = 64
-0011 S 0:MAKE_SLICE                 1   0   0
-0012   0:EXT                        3   0   0
-0013 A 0:SET_STRUCT_FIELD_GENERAL_T0   0   1   2
-0014 A 1:LOAD_INT_CONST_SMALL      75   0  64    ; ints[0] = 64
-0015 A 0:SET_STRUCT_FIELD_INT_T0    0   0   3
-0016 S 0:ADDR                       1   0   0
-0017 A 0:MOVE_GENERAL               0   1   0
-0018 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 2:MAKE_MAP                                             0  12   0
+0001   0:EXTENSION                                            0   0   0
+0002 A 1:LOAD_INT64_IMMEDIATE                                75   0  64    ; ints[0] = 64
+0003 S 0:MAKE_SLICE                                           1   0   0
+0004   0:EXTENSION                                            1   0   0
+0005 A 0:SET_STRUCT_FIELD_GENERAL                             0   1   0
+0006 A 1:LOAD_INT64_IMMEDIATE                                75   0  64    ; ints[0] = 64
+0007 S 0:MAKE_SLICE                                           1   0   0
+0008   0:EXTENSION                                            2   0   0
+0009 A 0:SET_STRUCT_FIELD_GENERAL                             0   1   1
+0010 A 1:LOAD_INT64_IMMEDIATE                                75   0  64    ; ints[0] = 64
+0011 S 0:MAKE_SLICE                                           1   0   0
+0012   0:EXTENSION                                            3   0   0
+0013 A 0:SET_STRUCT_FIELD_GENERAL                             0   1   2
+0014 A 1:LOAD_INT64_IMMEDIATE                                75   0  64    ; ints[0] = 64
+0015 A 0:SET_STRUCT_FIELD_INT64                               0   0   3
+0016 S 0:ADDRESS                                              1   0   0
+0017 A 0:MOVE_GENERAL                                         0   1   0
+0018 A 2:RETURN                                               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function fnv1a32
-;   registers: int=3 string=1 uint=5
-;   dispatch:  asm=15 shim=0 exit=0 go=0
+;   registers: int64=5 string=1 uint64=5
+;   dispatch:  asm=10 shim=0 exit=0 go=0
 ;   params:    (string)
-;   returns:   (uint)
+;   returns:   (uint64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=0
 ;   uints:   [0]=2166136261  [1]=16777619  [2]=4294967295
 
-0000 A 0:LOAD_UINT_CONST            0   0   0
-0001 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0002 A 0:LOAD_UINT_CONST            4   1   0    ; LICM hoist of PC 8
-0003 A 1:LEN_STRING_LT_JUMP_FALSE  78   0   0
-0004   0:EXT                       11   0   0
-0005 A 0:STRING_INDEX               2   0   0
-0006 A 0:TRUNCATE_NARROW            2  32   5
-0007 A 0:BIT_XOR_UINT               3   0   2
-0008 A 1:MOVE_UINT                 39   0   3
-0009 A 0:MUL_UINT                   2   0   4
-0010 A 0:TRUNCATE_NARROW            2  32   5
-0011 A 1:BIT_AND_UINT_CONST        98   2   2
-0012   0:EXT                        2   0   0
-0013 A 1:MOVE_UINT                 39   0   2
-0014 A 2:TIER2_INC_INT              0   1   0
-0015 A 1:JUMP                      74 243 255    ; goto -13
-0016 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 0:LOAD_UINT64_CONSTANT                                 0   0   0
+0001 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0002 A 1:LESS_THAN_LENGTH_STRING_THEN_JUMP_IF_FALSE          78   0   0
+0003   0:EXTENSION                                            7   0   0
+0004 A 0:LOAD_UINT64_CONSTANT                                 4   1   0    ; LICM hoist of PC 8
+0005 A 1:LENGTH_STRING                                       65   3   0    ; LICM hoist of PC 9
+0006 A 0:GET_STRING_BYTE                                      1   0   0
+0007 A 0:BIT_XOR_UINT64                                       0   0   1
+0008 A 0:MULTIPLY_UINT32                                      0   0   4
+0009 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN              77   0   3
+0010   0:EXTENSION                                          251 255   0
+0011 A 2:RETURN                                               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function hashTable.put
-;   registers: int=8 string=2 general=1 uint=7 sliceInt=1 sliceString=1 sliceByte=1
-;   dispatch:  asm=45 shim=0 exit=2 go=14
-;   params:    (general, string, int)
+;   registers: int64=9 string=2 general=1 uint64=7 sliceInt64=1 sliceString=1 sliceByte=1
+;   dispatch:  asm=47 shim=9 exit=2 go=0
+;   params:    (general, string, int64)
 ;   returns:   (none)
 ; ═════════════════════════════════════════════════════════════
 
@@ -75,92 +70,92 @@
 ;   ints:    [0]=10  [1]=7  [2]=1  [3]=-1  [4]=0
 ;   uints:   [0]=0  [1]=1  [2]=2
 
-0000 A 0:GET_STRUCT_FIELD_INT_T0    1   0   0
-0001 A 0:MUL_INT_CONST              3   1   0    ; const = 10
-0002 A 0:GET_STRUCT_FIELD_INT_T0    4   0   1
-0003 A 0:MUL_INT_CONST              6   4   1    ; const = 7
-0004 A 1:GE_INT_JUMP_FALSE        119   3   6
-0005   0:EXT                        1   0   0
-0006 A 1:CALL                     128   0   0    ; call (site 0)
-0007 A 1:CALL_SCALAR              134   1   0
-0008 A 0:GET_STRUCT_FIELD_INT_T0    1   0   1
-0009 A 0:SUB_INT_CONST              3   1   2    ; const = 1
-0010 G 1:INT_TO_UINT               55   1   3
-0011 A 0:TRUNCATE_NARROW            1  32   5
-0012 A 0:BIT_AND_UINT               2   0   1
-0013 G 1:UINT_TO_INT               56   1   2
-0014 A 0:LOAD_INT_CONST             2   3   0    ; ints[2] = -1
-0015 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
-0016   0:EXT                        2   0   0
-0017 A 1:SLICE_GET_BYTE_DIRECT    112   2   0
-0018   0:EXT                        1   0   0
-0019 A 1:EQ_UINT_CONST_JUMP_FALSE 150   2   0
-0020   0:EXT                       31   0   0
-0021 G 3:TIER3_NOP                  0   0   0
-0022 A 1:GE_INT_CONST_JUMP_FALSE  126   2   4
-0023   0:EXT                       14   0   0
-0024 G 1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
-0025   0:EXT                        3   0   0
-0026 X 1:SLICE_SET_STRING_DIRECT   24   0   2
-0027   0:EXT                        0   0   0
-0028 G 1:GET_STRUCT_FIELD_SLICE_INT 190   0   0
-0029   0:EXT                        4   0   0
-0030 A 0:SLICE_SET_INT_DIRECT       0   2   0
-0031 A 1:LOAD_UINT_CONST_SMALL     99   3   1    ; uints[3] = 1
-0032 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
-0033   0:EXT                        2   0   0
-0034 A 1:SLICE_SET_BYTE_DIRECT    113   0   2
-0035   0:EXT                        3   0   0
-0036 A 1:INC_STRUCT_FIELD_INT     107   0   5
-0037 A 3:TIER3_RETURN_VOID          0   0   1
-0038 G 1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
-0039   0:EXT                        3   0   0
-0040 X 1:SLICE_SET_STRING_DIRECT   24   0   1
-0041   0:EXT                        0   0   0
-0042 G 1:GET_STRUCT_FIELD_SLICE_INT 190   0   0
-0043   0:EXT                        4   0   0
-0044 A 0:SLICE_SET_INT_DIRECT       0   1   0
-0045 A 1:LOAD_UINT_CONST_SMALL     99   3   1    ; uints[3] = 1
-0046 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
-0047   0:EXT                        2   0   0
-0048 A 1:SLICE_SET_BYTE_DIRECT    113   0   1
-0049   0:EXT                        3   0   0
-0050 A 1:INC_STRUCT_FIELD_INT     107   0   5
-0051 A 1:INC_STRUCT_FIELD_INT     107   0   0
-0052 A 3:TIER3_RETURN_VOID          0   0   1
-0053 A 1:LOAD_UINT_CONST_SMALL     99   5   1    ; uints[5] = 1
-0054 A 0:EQ_UINT                    4   2   5
-0055 A 0:JUMP_IF_FALSE              4   5   0    ; if ints[4] == 0 goto +5
-0056 G 1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
-0057   0:EXT                        3   0   0
-0058 A 1:SLICE_GET_STRING_DIRECT   23   1   0
-0059   0:EXT                        1   0   0
-0060 A 0:EQ_STRING                  4   1   0
-0061 A 0:JUMP_IF_FALSE              4   4   0    ; if ints[4] == 0 goto +4
-0062 G 1:GET_STRUCT_FIELD_SLICE_INT 190   0   0
-0063   0:EXT                        4   0   0
-0064 A 0:SLICE_SET_INT_DIRECT       0   1   0
-0065 A 3:TIER3_RETURN_VOID          0   0   1
-0066 A 1:LOAD_UINT_CONST_SMALL     99   6   2    ; uints[6] = 2
-0067 A 0:EQ_UINT                    4   2   6
-0068 A 0:JUMP_IF_FALSE              4   2   0    ; if ints[4] == 0 goto +2
-0069 A 1:LOAD_INT_CONST_SMALL      75   5   0    ; ints[5] = 0
-0070 A 0:LT_INT                     4   2   5
-0071 A 0:JUMP_IF_FALSE              4   1   0    ; if ints[4] == 0 goto +1
-0072 A 1:MOVE_INT                  35   2   1
-0073 A 0:ADD_INT_CONST              4   1   2    ; const = 1
-0074 G 1:INT_TO_UINT               55   3   4
-0075 A 0:TRUNCATE_NARROW            3  32   5
-0076 A 0:BIT_AND_UINT               4   3   1
-0077 G 1:UINT_TO_INT               56   1   4
-0078 A 1:JUMP                      74 192 255    ; goto -64
+0000 A 0:GET_STRUCT_FIELD_INT64                               1   0   0
+0001 A 0:MULTIPLY_INT64_CONSTANT                              3   1   0    ; const = 10
+0002 A 0:GET_STRUCT_FIELD_INT64                               4   0   1
+0003 A 0:MULTIPLY_INT64_CONSTANT                              6   4   1    ; const = 7
+0004 A 1:GREATER_OR_EQUAL_INT64_THEN_JUMP_IF_FALSE          119   3   6
+0005   0:EXTENSION                                            1   0   0
+0006 A 1:CALL                                               128   0   0    ; call (site 0)
+0007 A 1:CALL_SCALAR                                        134   1   0
+0008 A 0:GET_STRUCT_FIELD_INT64                               1   0   1
+0009 A 0:SUBTRACT_INT64_CONSTANT                              3   1   2    ; const = 1
+0010 A 1:CONVERT_INT64_TO_UINT64                             55   1   3
+0011 A 0:TRUNCATE_TO_WIDTH                                    1  32   5
+0012 A 0:BIT_AND_UINT64                                       2   0   1
+0013 A 1:CONVERT_UINT64_TO_INT64                             56   1   2
+0014 A 0:LOAD_INT64_CONSTANT                                  2   3   0    ; ints[2] = -1
+0015 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   0   0    ; LICM hoist of PC 15
+0016   0:EXTENSION                                            2   0   0    ; LICM hoist of PC 16
+0017 S 1:GET_STRUCT_FIELD_SLICE_STRING                      193   0   0    ; LICM hoist of PC 59
+0018   0:EXTENSION                                            3   0   0    ; LICM hoist of PC 59
+0019 A 1:LOAD_UINT64_IMMEDIATE                               99   5   1    ; LICM hoist of PC 57
+0020 A 1:LOAD_UINT64_IMMEDIATE                               99   6   2    ; LICM hoist of PC 67
+0021 A 1:LOAD_INT64_IMMEDIATE                                75   8   0    ; LICM hoist of PC 69
+0022 A 1:GET_SLICE_BYTE_ELEMENT                             112   2   0
+0023   0:EXTENSION                                            1   0   0
+0024 A 1:EQUAL_UINT64_IMMEDIATE_THEN_JUMP_IF_FALSE          150   2   0
+0025   0:EXTENSION                                           31   0   0
+0026 A 3:NO_OPERATION                                         0   0   0
+0027 A 1:GREATER_OR_EQUAL_INT64_CONSTANT_THEN_JUMP_IF_FALSE 126   2   4
+0028   0:EXTENSION                                           14   0   0
+0029 S 1:GET_STRUCT_FIELD_SLICE_STRING                      193   0   0
+0030   0:EXTENSION                                            3   0   0
+0031 X 1:SET_SLICE_STRING_ELEMENT                            24   0   2
+0032   0:EXTENSION                                            0   0   0
+0033 S 1:GET_STRUCT_FIELD_SLICE_INT64                       190   0   0
+0034   0:EXTENSION                                            4   0   0
+0035 A 0:SET_SLICE_INT64_ELEMENT                              0   2   0
+0036 A 1:LOAD_UINT64_IMMEDIATE                               99   3   1    ; uints[3] = 1
+0037 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   0   0
+0038   0:EXTENSION                                            2   0   0
+0039 A 1:SET_SLICE_BYTE_ELEMENT                             113   0   2
+0040   0:EXTENSION                                            3   0   0
+0041 A 1:INCREMENT_STRUCT_FIELD_INT64                       107   0   5
+0042 A 3:RETURN_VOID                                          0   0   1
+0043 S 1:GET_STRUCT_FIELD_SLICE_STRING                      193   0   0
+0044   0:EXTENSION                                            3   0   0
+0045 X 1:SET_SLICE_STRING_ELEMENT                            24   0   1
+0046   0:EXTENSION                                            0   0   0
+0047 S 1:GET_STRUCT_FIELD_SLICE_INT64                       190   0   0
+0048   0:EXTENSION                                            4   0   0
+0049 A 0:SET_SLICE_INT64_ELEMENT                              0   1   0
+0050 A 1:LOAD_UINT64_IMMEDIATE                               99   3   1    ; uints[3] = 1
+0051 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   0   0
+0052   0:EXTENSION                                            2   0   0
+0053 A 1:SET_SLICE_BYTE_ELEMENT                             113   0   1
+0054   0:EXTENSION                                            3   0   0
+0055 A 1:INCREMENT_STRUCT_FIELD_INT64                       107   0   5
+0056 A 1:INCREMENT_STRUCT_FIELD_INT64                       107   0   0
+0057 A 3:RETURN_VOID                                          0   0   1
+0058 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221   2   5
+0059   0:EXTENSION                                            8   0   0
+0060 A 1:GET_SLICE_STRING_ELEMENT                            23   1   0
+0061   0:EXTENSION                                            1   0   0
+0062 A 0:EQUAL_STRING                                         4   1   0
+0063 A 0:JUMP_IF_FALSE                                        4   4   0    ; if ints[4] == 0 goto +4
+0064 S 1:GET_STRUCT_FIELD_SLICE_INT64                       190   0   0
+0065   0:EXTENSION                                            4   0   0
+0066 A 0:SET_SLICE_INT64_ELEMENT                              0   1   0
+0067 A 3:RETURN_VOID                                          0   0   1
+0068 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221   2   6
+0069   0:EXTENSION                                            3   0   0
+0070 A 1:LESS_THAN_INT64_THEN_JUMP_IF_FALSE                 116   2   8
+0071   0:EXTENSION                                            1   0   0
+0072 A 1:MOVE_INT64                                          35   2   1
+0073 A 0:ADD_INT64_CONSTANT                                   4   1   2    ; const = 1
+0074 A 1:CONVERT_INT64_TO_UINT64                             55   3   4
+0075 A 0:TRUNCATE_TO_WIDTH                                    3  32   5
+0076 A 0:BIT_AND_UINT64                                       4   3   1
+0077 A 1:CONVERT_UINT64_TO_INT64                             56   1   4
+0078 A 1:JUMP                                                74 199 255    ; goto -57
 
 ; ═════════════════════════════════════════════════════════════
 ; function hashTable.get
-;   registers: int=5 string=2 general=1 bool=2 uint=7 sliceInt=1 sliceString=1 sliceByte=2
-;   dispatch:  asm=49 shim=0 exit=0 go=13
+;   registers: int64=5 string=2 general=1 bool=2 uint64=8 sliceInt64=1 sliceString=1 sliceByte=2
+;   dispatch:  asm=30 shim=5 exit=0 go=0
 ;   params:    (general, string)
-;   returns:   (int, bool)
+;   returns:   (int64, bool)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
@@ -168,86 +163,58 @@
 ;   bools:   [0]=true  [1]=false
 ;   uints:   [0]=0  [1]=1
 
-0000 A 1:CALL_SCALAR              134   0   0
-0001 A 0:GET_STRUCT_FIELD_INT_T0    0   0   0
-0002 A 0:SUB_INT_CONST              2   0   0    ; const = 1
-0003 G 1:INT_TO_UINT               55   1   2
-0004 A 0:TRUNCATE_NARROW            1  32   5
-0005 A 0:BIT_AND_UINT               2   0   1
-0006 G 1:UINT_TO_INT               56   0   2
-0007 A 1:LOAD_UINT_CONST_SMALL     99   3   0    ; LICM hoist of PC 12
-0008 A 1:LOAD_UINT_CONST_SMALL     99   6   1    ; LICM hoist of PC 18
-0009 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
-0010   0:EXT                        1   0   0
-0011 A 1:SLICE_GET_BYTE_DIRECT    112   2   0
-0012   0:EXT                        0   0   0
-0013 A 0:NE_UINT                    1   2   3
-0014 A 0:JUMP_IF_FALSE              1  55   0    ; if ints[1] == 0 goto +55
-0015 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   1   0
-0016   0:EXT                        1   0   0
-0017 A 1:SLICE_GET_BYTE_DIRECT    112   4   1
-0018   0:EXT                        0   0   0
-0019 A 0:EQ_UINT                    3   4   6
-0020 A 0:JUMP_IF_FALSE              3   5   0    ; if ints[3] == 0 goto +5
-0021 G 1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
-0022   0:EXT                        2   0   0
-0023 A 1:SLICE_GET_STRING_DIRECT   23   1   0
-0024   0:EXT                        0   0   0
-0025 A 0:EQ_STRING                  3   1   0
-0026 A 0:JUMP_IF_FALSE              3   7   0    ; if ints[3] == 0 goto +7
-0027 G 1:GET_STRUCT_FIELD_SLICE_INT 190   0   0
-0028   0:EXT                        3   0   0
-0029 A 0:SLICE_GET_INT_DIRECT       2   0   0
-0030 A 1:LOAD_BOOL_CONST          138   1   0    ; bools[1] = true
-0031 A 1:MOVE_INT                  35   0   2
-0032 A 1:MOVE_BOOL                 38   0   1
-0033 A 2:TIER2_RETURN               0  10   2    ; 2 values
-0034 A 0:ADD_INT_CONST              3   0   0    ; const = 1
-0035 G 1:INT_TO_UINT               55   4   3
-0036 A 0:TRUNCATE_NARROW            4  32   5
-0037 A 0:BIT_AND_UINT               5   4   1
-0038 G 1:UINT_TO_INT               56   4   5
-0039 A 1:MOVE_INT                  35   0   4
-0040 A 1:SLICE_GET_BYTE_DIRECT    112   2   0    ; loop reuses slice chain at PC 9
-0041   0:EXT                        0   0   0
-0042 A 0:NE_UINT                    1   2   3
-0043 A 0:JUMP_IF_FALSE              1  26   0    ; if ints[1] == 0 goto +26
-0044 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   1   0
-0045   0:EXT                        1   0   0
-0046 A 1:SLICE_GET_BYTE_DIRECT    112   4   1
-0047   0:EXT                        0   0   0
-0048 A 0:EQ_UINT                    3   4   6
-0049 A 0:JUMP_IF_FALSE              3   5   0    ; if ints[3] == 0 goto +5
-0050 G 1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
-0051   0:EXT                        2   0   0
-0052 A 1:SLICE_GET_STRING_DIRECT   23   1   0
-0053   0:EXT                        0   0   0
-0054 A 0:EQ_STRING                  3   1   0
-0055 A 0:JUMP_IF_FALSE              3   7   0    ; if ints[3] == 0 goto +7
-0056 G 1:GET_STRUCT_FIELD_SLICE_INT 190   0   0
-0057   0:EXT                        3   0   0
-0058 A 0:SLICE_GET_INT_DIRECT       2   0   0
-0059 A 1:LOAD_BOOL_CONST          138   1   0    ; bools[1] = true
-0060 A 1:MOVE_INT                  35   0   2
-0061 A 1:MOVE_BOOL                 38   0   1
-0062 A 2:TIER2_RETURN               0  10   2    ; 2 values
-0063 A 0:ADD_INT_CONST              3   0   0    ; const = 1
-0064 G 1:INT_TO_UINT               55   4   3
-0065 A 0:TRUNCATE_NARROW            4  32   5
-0066 A 0:BIT_AND_UINT               5   4   1
-0067 G 1:UINT_TO_INT               56   4   5
-0068 A 1:MOVE_INT                  35   0   4
-0069 A 1:JUMP                      74 226 255    ; goto -30
-0070 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0071 A 1:LOAD_BOOL_CONST          138   1   1    ; bools[1] = false
-0072 A 1:MOVE_INT                  35   0   1
-0073 A 1:MOVE_BOOL                 38   0   1
-0074 A 2:TIER2_RETURN               0  10   2    ; 2 values
+0000 A 1:CALL_SCALAR                                        134   0   0
+0001 A 0:GET_STRUCT_FIELD_INT64                               0   0   0
+0002 A 0:SUBTRACT_INT64_CONSTANT                              2   0   0    ; const = 1
+0003 A 1:CONVERT_INT64_TO_UINT64                             55   1   2
+0004 A 0:TRUNCATE_TO_WIDTH                                    1  32   5
+0005 A 0:BIT_AND_UINT64                                       2   0   1
+0006 A 1:CONVERT_UINT64_TO_INT64                             56   0   2
+0007 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   0   0
+0008   0:EXTENSION                                            1   0   0
+0009 A 1:GET_SLICE_BYTE_ELEMENT                             112   2   0
+0010   0:EXTENSION                                            0   0   0
+0011 A 1:LOAD_UINT64_IMMEDIATE                               99   3   0    ; uints[3] = 0
+0012 A 1:NOT_EQUAL_UINT64_THEN_JUMP_IF_FALSE                222   2   3
+0013   0:EXTENSION                                           30   0   0
+0014 S 1:GET_STRUCT_FIELD_SLICE_STRING                      193   0   0    ; LICM hoist of PC 23
+0015   0:EXTENSION                                            2   0   0    ; LICM hoist of PC 23
+0016 A 1:LOAD_UINT64_IMMEDIATE                               99   6   1    ; LICM hoist of PC 21
+0017 A 1:LOAD_UINT64_IMMEDIATE                               99   7   0    ; LICM hoist of PC 41
+0018 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   1   0
+0019   0:EXTENSION                                            1   0   0
+0020 A 1:GET_SLICE_BYTE_ELEMENT                             112   4   1
+0021   0:EXTENSION                                            0   0   0
+0022 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221   4   6
+0023   0:EXTENSION                                            9   0   0
+0024 A 1:GET_SLICE_STRING_ELEMENT                            23   1   0
+0025   0:EXTENSION                                            0   0   0
+0026 A 0:EQUAL_STRING                                         3   1   0
+0027 A 0:JUMP_IF_FALSE                                        3   5   0    ; if ints[3] == 0 goto +5
+0028 S 1:GET_STRUCT_FIELD_SLICE_INT64                       190   0   0
+0029   0:EXTENSION                                            3   0   0
+0030 A 0:GET_SLICE_INT64_ELEMENT                              0   0   0
+0031 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = true
+0032 A 2:RETURN                                               0  10   2    ; 2 values
+0033 A 0:ADD_INT64_CONSTANT                                   3   0   0    ; const = 1
+0034 A 1:CONVERT_INT64_TO_UINT64                             55   4   3
+0035 A 0:TRUNCATE_TO_WIDTH                                    4  32   5
+0036 A 0:BIT_AND_UINT64                                       5   4   1
+0037 A 1:CONVERT_UINT64_TO_INT64                             56   0   5
+0038 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   1   0
+0039   0:EXTENSION                                            1   0   0
+0040 A 1:GET_SLICE_BYTE_ELEMENT                             112   4   1
+0041   0:EXTENSION                                            0   0   0
+0042 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221   4   7
+0043   0:EXTENSION                                          230 255   0
+0044 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0045 A 1:LOAD_BOOL_CONSTANT                                 138   0   1    ; bools[0] = false
+0046 A 2:RETURN                                               0  10   2    ; 2 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function hashTable.deleteKey
-;   registers: int=5 string=2 general=1 bool=1 uint=7 sliceString=1 sliceByte=2
-;   dispatch:  asm=27 shim=0 exit=0 go=8
+;   registers: int64=5 string=2 general=1 bool=1 uint64=8 sliceString=1 sliceByte=2
+;   dispatch:  asm=31 shim=5 exit=0 go=0
 ;   params:    (general, string)
 ;   returns:   (bool)
 ; ═════════════════════════════════════════════════════════════
@@ -257,111 +224,156 @@
 ;   bools:   [0]=true  [1]=false
 ;   uints:   [0]=0  [1]=1  [2]=2
 
-0000 A 1:CALL_SCALAR              134   0   0
-0001 A 0:GET_STRUCT_FIELD_INT_T0    0   0   0
-0002 A 0:SUB_INT_CONST              2   0   0    ; const = 1
-0003 G 1:INT_TO_UINT               55   1   2
-0004 A 0:TRUNCATE_NARROW            1  32   5
-0005 A 0:BIT_AND_UINT               2   0   1
-0006 G 1:UINT_TO_INT               56   0   2
-0007 A 1:LOAD_UINT_CONST_SMALL     99   3   0    ; LICM hoist of PC 12
-0008 A 1:LOAD_UINT_CONST_SMALL     99   6   1    ; LICM hoist of PC 18
-0009 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
-0010   0:EXT                        1   0   0
-0011 A 1:SLICE_GET_BYTE_DIRECT    112   2   0
-0012   0:EXT                        0   0   0
-0013 A 0:NE_UINT                    1   2   3
-0014 A 0:JUMP_IF_FALSE              1  26   0    ; if ints[1] == 0 goto +26
-0015 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   1   0
-0016   0:EXT                        1   0   0
-0017 A 1:SLICE_GET_BYTE_DIRECT    112   4   1
-0018   0:EXT                        0   0   0
-0019 A 0:EQ_UINT                    3   4   6
-0020 A 0:JUMP_IF_FALSE              3   5   0    ; if ints[3] == 0 goto +5
-0021 G 1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
-0022   0:EXT                        2   0   0
-0023 A 1:SLICE_GET_STRING_DIRECT   23   1   0
-0024   0:EXT                        0   0   0
-0025 A 0:EQ_STRING                  3   1   0
-0026 A 0:JUMP_IF_FALSE              3   8   0    ; if ints[3] == 0 goto +8
-0027 A 1:LOAD_UINT_CONST_SMALL     99   4   2    ; uints[4] = 2
-0028 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   1   0
-0029   0:EXT                        1   0   0
-0030 A 1:SLICE_SET_BYTE_DIRECT    113   1   0
-0031   0:EXT                        4   0   0
-0032 A 1:DEC_STRUCT_FIELD_INT     108   0   3
-0033 A 1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
-0034 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0035 A 0:ADD_INT_CONST              3   0   0    ; const = 1
-0036 G 1:INT_TO_UINT               55   4   3
-0037 A 0:TRUNCATE_NARROW            4  32   5
-0038 A 0:BIT_AND_UINT               5   4   1
-0039 G 1:UINT_TO_INT               56   0   5
-0040 A 1:JUMP                      74 224 255    ; goto -32
-0041 A 1:LOAD_BOOL_CONST          138   0   1    ; bools[0] = false
-0042 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 1:CALL_SCALAR                                        134   0   0
+0001 A 0:GET_STRUCT_FIELD_INT64                               0   0   0
+0002 A 0:SUBTRACT_INT64_CONSTANT                              2   0   0    ; const = 1
+0003 A 1:CONVERT_INT64_TO_UINT64                             55   1   2
+0004 A 0:TRUNCATE_TO_WIDTH                                    1  32   5
+0005 A 0:BIT_AND_UINT64                                       2   0   1
+0006 A 1:CONVERT_UINT64_TO_INT64                             56   0   2
+0007 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   0   0
+0008   0:EXTENSION                                            1   0   0
+0009 A 1:GET_SLICE_BYTE_ELEMENT                             112   2   0
+0010   0:EXTENSION                                            0   0   0
+0011 A 1:LOAD_UINT64_IMMEDIATE                               99   3   0    ; uints[3] = 0
+0012 A 1:NOT_EQUAL_UINT64_THEN_JUMP_IF_FALSE                222   2   3
+0013   0:EXTENSION                                           33   0   0
+0014 S 1:GET_STRUCT_FIELD_SLICE_STRING                      193   0   0    ; LICM hoist of PC 23
+0015   0:EXTENSION                                            2   0   0    ; LICM hoist of PC 23
+0016 A 1:LOAD_UINT64_IMMEDIATE                               99   6   1    ; LICM hoist of PC 21
+0017 A 1:LOAD_UINT64_IMMEDIATE                               99   7   0    ; LICM hoist of PC 44
+0018 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   1   0
+0019   0:EXTENSION                                            1   0   0
+0020 A 1:GET_SLICE_BYTE_ELEMENT                             112   4   1
+0021   0:EXTENSION                                            0   0   0
+0022 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221   4   6
+0023   0:EXTENSION                                           12   0   0
+0024 A 1:GET_SLICE_STRING_ELEMENT                            23   1   0
+0025   0:EXTENSION                                            0   0   0
+0026 A 0:EQUAL_STRING                                         3   1   0
+0027 A 0:JUMP_IF_FALSE                                        3   8   0    ; if ints[3] == 0 goto +8
+0028 A 1:LOAD_UINT64_IMMEDIATE                               99   4   2    ; uints[4] = 2
+0029 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   1   0
+0030   0:EXTENSION                                            1   0   0
+0031 A 1:SET_SLICE_BYTE_ELEMENT                             113   1   0
+0032   0:EXTENSION                                            4   0   0
+0033 A 1:DECREMENT_STRUCT_FIELD_INT64                       108   0   3
+0034 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = true
+0035 A 2:RETURN                                               0  10   1    ; 1 values
+0036 A 0:ADD_INT64_CONSTANT                                   3   0   0    ; const = 1
+0037 A 1:CONVERT_INT64_TO_UINT64                             55   4   3
+0038 A 0:TRUNCATE_TO_WIDTH                                    4  32   5
+0039 A 0:BIT_AND_UINT64                                       5   4   1
+0040 A 1:CONVERT_UINT64_TO_INT64                             56   0   5
+0041 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   1   0
+0042   0:EXTENSION                                            1   0   0
+0043 A 1:GET_SLICE_BYTE_ELEMENT                             112   4   1
+0044   0:EXTENSION                                            0   0   0
+0045 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221   4   7
+0046   0:EXTENSION                                          227 255   0
+0047 A 1:LOAD_BOOL_CONSTANT                                 138   0   1    ; bools[0] = false
+0048 A 2:RETURN                                               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function hashTable.grow
-;   registers: int=4 string=1 general=6 uint=2 sliceInt=1 sliceString=1 sliceByte=1
-;   dispatch:  asm=23 shim=6 exit=0 go=6
+;   registers: int64=9 string=1 general=5 uint64=9 sliceInt64=2 sliceString=2 sliceByte=3
+;   dispatch:  asm=45 shim=15 exit=1 go=0
 ;   params:    (general)
 ;   returns:   (none)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
-;   ints:    [0]=2  [1]=0
+;   ints:    [0]=2  [1]=0  [2]=1
 ;   uints:   [0]=1
 
-0000 G 1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
-0001   0:EXT                        0   0   0
-0002 G 1:BOX_SLICE_STRING         162   1   0
-0003 G 1:GET_STRUCT_FIELD_SLICE_INT 190   0   0
-0004   0:EXT                        1   0   0
-0005 A 1:BOX_SLICE_INT             34   2   0
-0006 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
-0007   0:EXT                        2   0   0
-0008 G 1:BOX_SLICE_BYTE           148   3   0
-0009 A 0:GET_STRUCT_FIELD_INT_T0    0   0   3
-0010 A 0:MUL_INT_CONST              2   0   0    ; const = 2
-0011 A 0:SET_STRUCT_FIELD_INT_T0    0   2   3
-0012 A 0:MOVE_GENERAL               4   0   0
-0013 A 0:GET_STRUCT_FIELD_INT_T0    1   0   3
-0014 S 0:MAKE_SLICE                 5   1   1
-0015   0:EXT                        1   0   0
-0016 A 0:SET_STRUCT_FIELD_GENERAL_T0   4   5   0
-0017 A 0:MOVE_GENERAL               4   0   0
-0018 A 0:GET_STRUCT_FIELD_INT_T0    1   0   3
-0019 S 0:MAKE_SLICE                 5   1   1
-0020   0:EXT                        2   0   0
-0021 A 0:SET_STRUCT_FIELD_GENERAL_T0   4   5   1
-0022 A 0:MOVE_GENERAL               4   0   0
-0023 A 0:GET_STRUCT_FIELD_INT_T0    1   0   3
-0024 S 0:MAKE_SLICE                 5   1   1
-0025   0:EXT                        3   0   0
-0026 A 0:SET_STRUCT_FIELD_GENERAL_T0   4   5   2
-0027 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0028 A 0:SET_STRUCT_FIELD_INT_T0    0   1   4
-0029 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0030 A 0:SET_STRUCT_FIELD_INT_T0    0   1   5
-0031 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0032 A 1:LT_INT_JUMP_FALSE        116   1   0
-0033   0:EXT                        9   0   0
-0034 S 0:SLICE_GET_UINT             0   3   1
-0035 A 1:EQ_UINT_CONST_JUMP_FALSE 150   0   1
-0036   0:EXT                        3   0   0
-0037 G 3:TIER3_NOP                  0   0   0
-0038 S 0:SLICE_GET_STRING           0   1   1
-0039 S 0:SLICE_GET_INT              3   2   1
-0040 A 1:CALL                     128   0   0    ; call (site 0)
-0041 A 2:TIER2_INC_INT              0   1   1
-0042 A 1:JUMP                      74 245 255    ; goto -11
+0000 S 1:GET_STRUCT_FIELD_SLICE_STRING                      193   0   0
+0001   0:EXTENSION                                            0   0   0
+0002 S 1:BOX_SLICE_STRING                                   162   1   0
+0003 S 1:GET_STRUCT_FIELD_SLICE_INT64                       190   0   0
+0004   0:EXTENSION                                            1   0   0
+0005 A 1:BOX_SLICE_INT64                                     34   2   0
+0006 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   0   0
+0007   0:EXTENSION                                            2   0   0
+0008 S 1:BOX_SLICE_BYTE                                     148   3   0
+0009 A 0:GET_STRUCT_FIELD_INT64                               0   0   3
+0010 A 0:MULTIPLY_INT64_CONSTANT                              2   0   0    ; const = 2
+0011 A 0:SET_STRUCT_FIELD_INT64                               0   2   3
+0012 A 0:GET_STRUCT_FIELD_INT64                               1   0   3
+0013 S 0:MAKE_SLICE                                           4   1   1
+0014   0:EXTENSION                                            1   0   0
+0015 A 0:SET_STRUCT_FIELD_GENERAL                             0   4   0
+0016 A 0:GET_STRUCT_FIELD_INT64                               1   0   3
+0017 S 0:MAKE_SLICE                                           4   1   1
+0018   0:EXTENSION                                            2   0   0
+0019 A 0:SET_STRUCT_FIELD_GENERAL                             0   4   1
+0020 A 0:GET_STRUCT_FIELD_INT64                               1   0   3
+0021 S 0:MAKE_SLICE                                           4   1   1
+0022   0:EXTENSION                                            3   0   0
+0023 A 0:SET_STRUCT_FIELD_GENERAL                             0   4   2
+0024 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0025 A 0:SET_STRUCT_FIELD_INT64                               0   1   4
+0026 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0027 A 0:SET_STRUCT_FIELD_INT64                               0   1   5
+0028 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0029 A 1:LESS_THAN_INT64_THEN_JUMP_IF_FALSE                 116   1   0
+0030   0:EXTENSION                                           50   0   0
+0031 S 1:UNBOX_SLICE_BYTE                                   160   0   3    ; LICM hoist of PC 31
+0032 A 1:GET_SLICE_BYTE_ELEMENT                             112   0   0
+0033   0:EXTENSION                                            1   0   0
+0034 A 1:EQUAL_UINT64_IMMEDIATE_THEN_JUMP_IF_FALSE          150   0   1
+0035   0:EXTENSION                                           42   0   0
+0036 A 3:NO_OPERATION                                         0   0   0
+0037 S 0:GET_ELEMENT_STRING                                   0   1   1
+0038 A 0:GET_ELEMENT_INT64                                    3   2   1
+0039 A 1:CALL_SCALAR                                        134   1   0    ; inlined body of function 6 called at PC 39
+0040 A 0:GET_STRUCT_FIELD_INT64                               4   0   3
+0041 A 0:SUBTRACT_INT64_CONSTANT                              6   4   2    ; const = 1
+0042 A 1:CONVERT_INT64_TO_UINT64                             55   3   6
+0043 A 0:TRUNCATE_TO_WIDTH                                    3  32   5
+0044 A 0:BIT_AND_UINT64                                       4   2   3
+0045 A 1:CONVERT_UINT64_TO_INT64                             56   4   4
+0046 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   1   0
+0047   0:EXTENSION                                            2   0   0
+0048 A 1:GET_SLICE_BYTE_ELEMENT                             112   4   1
+0049   0:EXTENSION                                            4   0   0
+0050 A 1:LOAD_UINT64_IMMEDIATE                               99   5   0    ; uints[5] = 0
+0051 A 1:NOT_EQUAL_UINT64_THEN_JUMP_IF_FALSE                222   4   5
+0052   0:EXTENSION                                           12   0   0
+0053 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   2   0
+0054   0:EXTENSION                                            2   0   0
+0055 A 1:LOAD_UINT64_IMMEDIATE                               99   8   0    ; LICM hoist of PC 62
+0056 A 0:ADD_INT64_CONSTANT                                   7   4   2    ; const = 1
+0057 A 1:CONVERT_INT64_TO_UINT64                             55   6   7
+0058 A 0:TRUNCATE_TO_WIDTH                                    6  32   5
+0059 A 0:BIT_AND_UINT64                                       7   6   3
+0060 A 1:CONVERT_UINT64_TO_INT64                             56   4   7
+0061 A 1:GET_SLICE_BYTE_ELEMENT                             112   6   2
+0062   0:EXTENSION                                            4   0   0
+0063 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221   6   8
+0064   0:EXTENSION                                          247 255   0
+0065 S 1:GET_STRUCT_FIELD_SLICE_STRING                      193   1   0
+0066   0:EXTENSION                                            0   0   0
+0067 X 1:SET_SLICE_STRING_ELEMENT                            24   1   4
+0068   0:EXTENSION                                            0   0   0
+0069 S 1:GET_STRUCT_FIELD_SLICE_INT64                       190   1   0
+0070   0:EXTENSION                                            1   0   0
+0071 A 0:SET_SLICE_INT64_ELEMENT                              1   4   3
+0072 A 1:LOAD_UINT64_IMMEDIATE                               99   4   1    ; uints[4] = 1
+0073 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   1   0
+0074   0:EXTENSION                                            2   0   0
+0075 A 1:SET_SLICE_BYTE_ELEMENT                             113   1   4
+0076   0:EXTENSION                                            4   0   0
+0077 A 1:INCREMENT_STRUCT_FIELD_INT64                       107   0   4
+0078 A 1:INCREMENT_STRUCT_FIELD_INT64                       107   0   5
+0079 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN              77   1   0
+0080   0:EXTENSION                                          207 255   0
+0081 A 3:RETURN_VOID                                          0   0   1
 
 ; ═════════════════════════════════════════════════════════════
 ; function hashTable.insertNoGrow
-;   registers: int=6 string=1 general=1 uint=6 sliceInt=1 sliceString=1 sliceByte=1
-;   dispatch:  asm=24 shim=0 exit=1 go=10
-;   params:    (general, string, int)
+;   registers: int64=6 string=1 general=1 uint64=7 sliceInt64=1 sliceString=1 sliceByte=2
+;   dispatch:  asm=24 shim=5 exit=1 go=0
+;   params:    (general, string, int64)
 ;   returns:   (none)
 ; ═════════════════════════════════════════════════════════════
 
@@ -369,55 +381,53 @@
 ;   ints:    [0]=1
 ;   uints:   [0]=0  [1]=1
 
-0000 A 1:CALL_SCALAR              134   0   0
-0001 A 0:GET_STRUCT_FIELD_INT_T0    1   0   0
-0002 A 0:SUB_INT_CONST              3   1   0    ; const = 1
-0003 G 1:INT_TO_UINT               55   1   3
-0004 A 0:TRUNCATE_NARROW            1  32   5
-0005 A 0:BIT_AND_UINT               2   0   1
-0006 G 1:UINT_TO_INT               56   1   2
-0007 A 1:LOAD_UINT_CONST_SMALL     99   3   0    ; LICM hoist of PC 11
-0008 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
-0009   0:EXT                        1   0   0
-0010 A 1:SLICE_GET_BYTE_DIRECT    112   2   0
-0011   0:EXT                        1   0   0
-0012 A 0:NE_UINT                    2   2   3
-0013 A 0:JUMP_IF_FALSE              2  15   0    ; if ints[2] == 0 goto +15
-0014 A 0:ADD_INT_CONST              4   1   0    ; const = 1
-0015 G 1:INT_TO_UINT               55   4   4
-0016 A 0:TRUNCATE_NARROW            4  32   5
-0017 A 0:BIT_AND_UINT               5   4   1
-0018 G 1:UINT_TO_INT               56   1   5
-0019 A 1:SLICE_GET_BYTE_DIRECT    112   2   0    ; loop reuses slice chain at PC 8
-0020   0:EXT                        1   0   0
-0021 A 0:NE_UINT                    2   2   3
-0022 A 0:JUMP_IF_FALSE              2   6   0    ; if ints[2] == 0 goto +6
-0023 A 0:ADD_INT_CONST              4   1   0    ; const = 1
-0024 G 1:INT_TO_UINT               55   4   4
-0025 A 0:TRUNCATE_NARROW            4  32   5
-0026 A 0:BIT_AND_UINT               5   4   1
-0027 G 1:UINT_TO_INT               56   1   5
-0028 A 1:JUMP                      74 246 255    ; goto -10
-0029 G 1:GET_STRUCT_FIELD_SLICE_STRING 193   0   0
-0030   0:EXT                        2   0   0
-0031 X 1:SLICE_SET_STRING_DIRECT   24   0   1
-0032   0:EXT                        0   0   0
-0033 G 1:GET_STRUCT_FIELD_SLICE_INT 190   0   0
-0034   0:EXT                        3   0   0
-0035 A 0:SLICE_SET_INT_DIRECT       0   1   0
-0036 A 1:LOAD_UINT_CONST_SMALL     99   2   1    ; uints[2] = 1
-0037 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
-0038   0:EXT                        1   0   0
-0039 A 1:SLICE_SET_BYTE_DIRECT    113   0   1
-0040   0:EXT                        2   0   0
-0041 A 1:INC_STRUCT_FIELD_INT     107   0   4
-0042 A 1:INC_STRUCT_FIELD_INT     107   0   5
+0000 A 1:CALL_SCALAR                                        134   0   0
+0001 A 0:GET_STRUCT_FIELD_INT64                               1   0   0
+0002 A 0:SUBTRACT_INT64_CONSTANT                              3   1   0    ; const = 1
+0003 A 1:CONVERT_INT64_TO_UINT64                             55   1   3
+0004 A 0:TRUNCATE_TO_WIDTH                                    1  32   5
+0005 A 0:BIT_AND_UINT64                                       2   0   1
+0006 A 1:CONVERT_UINT64_TO_INT64                             56   1   2
+0007 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   0   0
+0008   0:EXTENSION                                            1   0   0
+0009 A 1:GET_SLICE_BYTE_ELEMENT                             112   2   0
+0010   0:EXTENSION                                            1   0   0
+0011 A 1:LOAD_UINT64_IMMEDIATE                               99   3   0    ; uints[3] = 0
+0012 A 1:NOT_EQUAL_UINT64_THEN_JUMP_IF_FALSE                222   2   3
+0013   0:EXTENSION                                           12   0   0
+0014 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   1   0    ; LICM hoist of PC 21
+0015   0:EXTENSION                                            1   0   0    ; LICM hoist of PC 22
+0016 A 1:LOAD_UINT64_IMMEDIATE                               99   6   0    ; LICM hoist of PC 23
+0017 A 0:ADD_INT64_CONSTANT                                   4   1   0    ; const = 1
+0018 A 1:CONVERT_INT64_TO_UINT64                             55   4   4
+0019 A 0:TRUNCATE_TO_WIDTH                                    4  32   5
+0020 A 0:BIT_AND_UINT64                                       5   4   1
+0021 A 1:CONVERT_UINT64_TO_INT64                             56   1   5
+0022 A 1:GET_SLICE_BYTE_ELEMENT                             112   4   1
+0023   0:EXTENSION                                            1   0   0
+0024 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221   4   6
+0025   0:EXTENSION                                          247 255   0
+0026 S 1:GET_STRUCT_FIELD_SLICE_STRING                      193   0   0
+0027   0:EXTENSION                                            2   0   0
+0028 X 1:SET_SLICE_STRING_ELEMENT                            24   0   1
+0029   0:EXTENSION                                            0   0   0
+0030 S 1:GET_STRUCT_FIELD_SLICE_INT64                       190   0   0
+0031   0:EXTENSION                                            3   0   0
+0032 A 0:SET_SLICE_INT64_ELEMENT                              0   1   0
+0033 A 1:LOAD_UINT64_IMMEDIATE                               99   2   1    ; uints[2] = 1
+0034 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   0   0
+0035   0:EXTENSION                                            1   0   0
+0036 A 1:SET_SLICE_BYTE_ELEMENT                             113   0   1
+0037   0:EXTENSION                                            2   0   0
+0038 A 1:INCREMENT_STRUCT_FIELD_INT64                       107   0   4
+0039 A 1:INCREMENT_STRUCT_FIELD_INT64                       107   0   5
+0040 A 3:RETURN_VOID                                          0   0   1
 
 ; ═════════════════════════════════════════════════════════════
 ; function generateKey
-;   registers: int=3 string=1 general=2 uint=6
-;   dispatch:  asm=15 shim=4 exit=0 go=0
-;   params:    (uint)
+;   registers: int64=5 string=1 general=2 uint64=7
+;   dispatch:  asm=13 shim=3 exit=0 go=0
+;   params:    (uint64)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
 
@@ -425,84 +435,347 @@
 ;   ints:    [0]=11  [1]=0
 ;   uints:   [0]=97  [1]=26
 
-0000 S 0:LOAD_GENERAL_CONST         0   0   0
-0001 S 0:DEREF                      0   0   1
-0002 A 1:LOAD_INT_CONST_SMALL      75   0  11    ; ints[0] = 11
-0003 A 1:LOAD_UINT_CONST_SMALL     99   4  26    ; LICM hoist of PC 7
-0004 A 1:LOAD_UINT_CONST_SMALL     99   5  26    ; LICM hoist of PC 12
-0005 A 1:GE_INT_CONST_JUMP_FALSE  126   0   1
-0006   0:EXT                       10   0   0
-0007 A 1:LOAD_UINT_CONST_SMALL     99   2  97    ; uints[2] = 97
-0008 A 0:REM_UINT                   3   0   4
-0009 A 0:TRUNCATE_NARROW            3  32   5
-0010 A 0:ADD_UINT32                 2   2   3
-0011 A 0:TRUNCATE_NARROW            2   8   5
-0012 S 0:SLICE_SET_UINT             0   0   2
-0013 A 0:DIV_UINT                   0   0   5
-0014 A 0:TRUNCATE_NARROW            0  32   5
-0015 A 2:TIER2_DEC_INT              0   2   0
-0016 A 1:JUMP                      74 244 255    ; goto -12
-0017 S 1:SLICE_OP                 141   1   0
-0018   0:EXT                        0   0   0
-0019 A 1:BYTES_TO_STRING           11   0   1
-0020 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 0:LOAD_GENERAL_CONSTANT                                0   0   0
+0001 S 0:DEREFERENCE                                          0   0   1
+0002 A 1:LOAD_INT64_IMMEDIATE                                75   0  11    ; ints[0] = 11
+0003 A 1:GREATER_OR_EQUAL_INT64_CONSTANT_THEN_JUMP_IF_FALSE 126   0   1
+0004   0:EXTENSION                                           10   0   0
+0005 A 1:LOAD_UINT64_IMMEDIATE                               99   4  97    ; LICM hoist of PC 7
+0006 A 1:LOAD_UINT64_IMMEDIATE                               99   5  26    ; LICM hoist of PC 5
+0007 A 1:LOAD_UINT64_IMMEDIATE                               99   6  26    ; LICM hoist of PC 10
+0008 A 0:REMAINDER_UINT64                                     3   0   5
+0009 A 0:ADD_UINT64                                           2   4   3
+0010 A 0:SET_ELEMENT_UINT64                                   0   0   2
+0011 A 0:DIVIDE_UINT64                                        0   0   6
+0012 A 2:DECREMENT_INT64                                      0   2   0
+0013 A 1:LESS_THAN_INT64_CONSTANT_THEN_JUMP_IF_FALSE        123   0   1
+0014   0:EXTENSION                                          249 255   0
+0015 S 1:SLICE_GENERAL                                      141   1   0
+0016   0:EXTENSION                                            0   0   0
+0017 A 1:CONVERT_BYTES_TO_STRING                             11   0   1
+0018 A 2:RETURN                                               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=5 string=1 general=1 bool=1 uint=8
-;   dispatch:  asm=40 shim=0 exit=0 go=2
+;   registers: int64=34 string=5 general=7 bool=4 uint64=42 sliceInt64=4 sliceString=5 sliceByte=8
+;   dispatch:  asm=191 shim=39 exit=3 go=0
 ;   params:    (none)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
-;   ints:    [0]=0  [1]=70  [2]=100000
+;   ints:    [0]=0  [1]=70  [2]=100000  [3]=10  [4]=7  [5]=1  [6]=-1  [7]=2
+;   bools:   [0]=true  [1]=false
 ;   uints:   [0]=3735928559  [1]=1664525  [2]=1013904223  [3]=4294967295  [4]=28  [5]=15  [6]=4  [7]=32767  [8]=8  [9]=14
 
-0000 A 1:CALL                     128   0   0    ; call (site 0)
-0001 A 0:LOAD_UINT_CONST            0   0   0
-0002 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0003 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0004 A 0:LOAD_UINT_CONST            5   1   0    ; LICM hoist of PC 9
-0005 A 1:LOAD_UINT_CONST_SMALL     99   6  28    ; LICM hoist of PC 16
-0006 A 1:LOAD_UINT_CONST_SMALL     99   7   4    ; LICM hoist of PC 20
-0007 A 1:LT_INT_CONST_JUMP_FALSE  123   1   1
-0008   0:EXT                       34   0   0
-0009 A 0:MUL_UINT                   2   0   5
-0010 A 0:TRUNCATE_NARROW            2  32   5
-0011 A 1:ADD_UINT_CONST            96   2   2
-0012   0:EXT                        2   0   0
-0013 A 0:TRUNCATE_NARROW            2  32   5
-0014 A 1:BIT_AND_UINT_CONST        98   2   2
-0015   0:EXT                        3   0   0
-0016 A 1:MOVE_UINT                 39   0   2
-0017 A 0:SHIFT_RIGHT_UINT           2   0   6
-0018 A 1:BIT_AND_UINT_CONST        98   2   2
-0019   0:EXT                        5   0   0
-0020 A 1:MOVE_UINT                 39   1   2
-0021 A 0:SHIFT_RIGHT_UINT           3   0   7
-0022 A 1:BIT_AND_UINT_CONST        98   3   3
-0023   0:EXT                        7   0   0
-0024 A 1:MOVE_UINT                 39   2   3
-0025 A 1:CALL_SCALAR              134   1   0
-0026 A 1:LOAD_UINT_CONST_SMALL     99   3   8    ; uints[3] = 8
-0027 A 0:LT_UINT                    4   1   3
-0028 A 0:JUMP_IF_FALSE              4   3   0    ; if ints[4] == 0 goto +3
-0029 G 1:UINT_TO_INT               56   4   0
-0030 A 1:CALL                     128   2   0    ; call (site 2)
-0031 A 1:JUMP                      74   9   0    ; goto 9
-0032 A 1:LOAD_UINT_CONST_SMALL     99   3  14    ; uints[3] = 14
-0033 A 0:LT_UINT                    4   1   3
-0034 A 0:JUMP_IF_FALSE              4   5   0    ; if ints[4] == 0 goto +5
-0035 A 1:CALL                     128   3   0    ; call (site 3)
-0036 G 1:BOOL_TO_INT               53   4   0
-0037 A 0:JUMP_IF_FALSE              4   3   0    ; if ints[4] == 0 goto +3
-0038 A 2:TIER2_INC_INT              0   1   0
-0039 A 1:JUMP                      74   1   0    ; goto 1
-0040 A 1:CALL                     128   4   0    ; call (site 4)
-0041 A 2:TIER2_INC_INT              0   1   1
-0042 A 1:JUMP                      74 220 255    ; goto -36
-0043 A 0:GET_STRUCT_FIELD_INT_T0    1   0   0
-0044 A 0:MUL_INT_CONST              3   1   2    ; const = 100000
-0045 A 0:ADD_INT                    0   3   0
-0046 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 2:MAKE_MAP                                             0  12   0    ; inlined body of function 0 called at PC 0
+0001   0:EXTENSION                                            0   0   0
+0002 A 1:LOAD_INT64_IMMEDIATE                                75   6  64    ; ints[6] = 64
+0003 S 0:MAKE_SLICE                                           2   6   6
+0004   0:EXTENSION                                            1   0   0
+0005 A 0:SET_STRUCT_FIELD_GENERAL                             0   2   1
+0006 A 1:LOAD_INT64_IMMEDIATE                                75   6  64    ; ints[6] = 64
+0007 S 0:MAKE_SLICE                                           2   6   6
+0008   0:EXTENSION                                            2   0   0
+0009 A 0:SET_STRUCT_FIELD_GENERAL                             0   2   2
+0010 A 1:LOAD_INT64_IMMEDIATE                                75   6  64    ; ints[6] = 64
+0011 S 0:MAKE_SLICE                                           2   6   6
+0012   0:EXTENSION                                            3   0   0
+0013 A 0:SET_STRUCT_FIELD_GENERAL                             0   2   3
+0014 A 1:LOAD_INT64_IMMEDIATE                                75   6  64    ; ints[6] = 64
+0015 A 0:SET_STRUCT_FIELD_INT64                               0   6   4
+0016 S 0:ADDRESS                                              2   0   0
+0017 A 0:MOVE_GENERAL                                         0   2   0
+0018 A 0:LOAD_UINT64_CONSTANT                                 0   0   0
+0019 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0020 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0021 A 1:LESS_THAN_INT64_CONSTANT_THEN_JUMP_IF_FALSE        123   1   1
+0022   0:EXTENSION                                          122   0   0
+0023 A 0:LOAD_UINT64_CONSTANT                                35   1   0    ; LICM hoist of PC 27
+0024 A 1:LOAD_UINT64_IMMEDIATE                               99  36  28    ; LICM hoist of PC 31
+0025 A 1:LOAD_UINT64_IMMEDIATE                               99  37   4    ; LICM hoist of PC 34
+0026 A 1:LOAD_UINT64_IMMEDIATE                               99  38   8    ; LICM hoist of PC 37
+0027 A 1:LOAD_UINT64_IMMEDIATE                               99  39  14    ; LICM hoist of PC 42
+0028 A 0:MULTIPLY_UINT32                                      0   0  35
+0029 A 1:ADD_UINT32_CONSTANT                                219   0   0
+0030   0:EXTENSION                                            2   0   0
+0031 A 0:SHIFT_RIGHT_UINT64                                   1   0  36
+0032 A 1:BIT_AND_UINT64_CONSTANT                             98   1   1
+0033   0:EXTENSION                                            5   0   0
+0034 A 0:SHIFT_RIGHT_UINT64                                   2   0  37
+0035 A 1:BIT_AND_UINT64_CONSTANT                             98   2   2
+0036   0:EXTENSION                                            7   0   0
+0037 A 1:CALL_SCALAR                                        134   1   0
+0038 A 0:LESS_THAN_UINT64                                     4   1  38
+0039 A 0:JUMP_IF_FALSE                                        4   3   0    ; if ints[4] == 0 goto +3
+0040 A 1:CONVERT_UINT64_TO_INT64                             56   4   0
+0041 A 1:JUMP                                                74 109   0    ; goto 109
+0042 A 1:JUMP                                                74 100   0    ; goto 100
+0043 A 0:LESS_THAN_UINT64                                     4   1  39
+0044 A 0:JUMP_IF_FALSE                                        4  50   0    ; if ints[4] == 0 goto +50
+0045 A 1:CALL_SCALAR                                        134   7   0    ; inlined body of function 3 called at PC 45
+0046 A 0:GET_STRUCT_FIELD_INT64                               4   0   4
+0047 A 0:SUBTRACT_INT64_CONSTANT                             16   4   5    ; const = 1
+0048 A 1:CONVERT_INT64_TO_UINT64                             55  11  16
+0049 A 0:TRUNCATE_TO_WIDTH                                   11  32   5
+0050 A 0:BIT_AND_UINT64                                      12  10  11
+0051 A 1:CONVERT_UINT64_TO_INT64                             56   4  12
+0052 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   1   0
+0053   0:EXTENSION                                            3   0   0
+0054 A 1:GET_SLICE_BYTE_ELEMENT                             112  12   1
+0055   0:EXTENSION                                            4   0   0
+0056 A 1:LOAD_UINT64_IMMEDIATE                               99  13   0    ; uints[13] = 0
+0057 A 1:NOT_EQUAL_UINT64_THEN_JUMP_IF_FALSE                222  12  13
+0058   0:EXTENSION                                           30   0   0
+0059 S 1:GET_STRUCT_FIELD_SLICE_STRING                      193   1   0
+0060   0:EXTENSION                                            1   0   0
+0061 A 1:LOAD_UINT64_IMMEDIATE                               99  31   1    ; LICM hoist of PC 66
+0062 A 1:LOAD_UINT64_IMMEDIATE                               99  32   0    ; LICM hoist of PC 86
+0063 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   2   0
+0064   0:EXTENSION                                            3   0   0
+0065 A 1:GET_SLICE_BYTE_ELEMENT                             112  14   2
+0066   0:EXTENSION                                            4   0   0
+0067 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221  14  31
+0068   0:EXTENSION                                            9   0   0
+0069 A 1:GET_SLICE_STRING_ELEMENT                            23   2   1
+0070   0:EXTENSION                                            4   0   0
+0071 A 0:EQUAL_STRING                                        17   2   0
+0072 A 0:JUMP_IF_FALSE                                       17   5   0    ; if ints[17] == 0 goto +5
+0073 S 1:GET_STRUCT_FIELD_SLICE_INT64                       190   1   0
+0074   0:EXTENSION                                            2   0   0
+0075 A 0:GET_SLICE_INT64_ELEMENT                              4   1   4
+0076 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = true
+0077 A 1:JUMP                                                74  13   0    ; goto 13
+0078 A 0:ADD_INT64_CONSTANT                                  17   4   5    ; const = 1
+0079 A 1:CONVERT_INT64_TO_UINT64                             55  14  17
+0080 A 0:TRUNCATE_TO_WIDTH                                   14  32   5
+0081 A 0:BIT_AND_UINT64                                      15  14  11
+0082 A 1:CONVERT_UINT64_TO_INT64                             56   4  15
+0083 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   2   0
+0084   0:EXTENSION                                            3   0   0
+0085 A 1:GET_SLICE_BYTE_ELEMENT                             112  14   2
+0086   0:EXTENSION                                            4   0   0
+0087 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221  14  32
+0088   0:EXTENSION                                          230 255   0
+0089 A 1:LOAD_INT64_IMMEDIATE                                75   4   0    ; ints[4] = 0
+0090 A 1:LOAD_BOOL_CONSTANT                                 138   0   1    ; bools[0] = false
+0091 A 2:JUMP_IF_FALSE_BOOL                                   0  20   0
+0092   0:EXTENSION                                           50   0   0
+0093 A 2:INCREMENT_INT64                                      0   1   0
+0094 A 1:JUMP                                                74  48   0    ; goto 48
+0095 A 1:CALL_SCALAR                                        134   8   0    ; inlined body of function 4 called at PC 95
+0096 A 0:GET_STRUCT_FIELD_INT64                              19   0   4
+0097 A 0:SUBTRACT_INT64_CONSTANT                             21  19   5    ; const = 1
+0098 A 1:CONVERT_INT64_TO_UINT64                             55  17  21
+0099 A 0:TRUNCATE_TO_WIDTH                                   17  32   5
+0100 A 0:BIT_AND_UINT64                                      18  16  17
+0101 A 1:CONVERT_UINT64_TO_INT64                             56  19  18
+0102 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   3   0
+0103   0:EXTENSION                                            3   0   0
+0104 A 1:GET_SLICE_BYTE_ELEMENT                             112  18   3
+0105   0:EXTENSION                                           19   0   0
+0106 A 1:LOAD_UINT64_IMMEDIATE                               99  19   0    ; uints[19] = 0
+0107 A 1:NOT_EQUAL_UINT64_THEN_JUMP_IF_FALSE                222  18  19
+0108   0:EXTENSION                                           33   0   0
+0109 S 1:GET_STRUCT_FIELD_SLICE_STRING                      193   2   0
+0110   0:EXTENSION                                            1   0   0
+0111 A 1:LOAD_UINT64_IMMEDIATE                               99  33   1    ; LICM hoist of PC 116
+0112 A 1:LOAD_UINT64_IMMEDIATE                               99  34   0    ; LICM hoist of PC 139
+0113 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   4   0
+0114   0:EXTENSION                                            3   0   0
+0115 A 1:GET_SLICE_BYTE_ELEMENT                             112  20   4
+0116   0:EXTENSION                                           19   0   0
+0117 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221  20  33
+0118   0:EXTENSION                                           12   0   0
+0119 A 1:GET_SLICE_STRING_ELEMENT                            23   3   2
+0120   0:EXTENSION                                           19   0   0
+0121 A 0:EQUAL_STRING                                        22   3   0
+0122 A 0:JUMP_IF_FALSE                                       22   8   0    ; if ints[22] == 0 goto +8
+0123 A 1:LOAD_UINT64_IMMEDIATE                               99  20   2    ; uints[20] = 2
+0124 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   4   0
+0125   0:EXTENSION                                            3   0   0
+0126 A 1:SET_SLICE_BYTE_ELEMENT                             113   4  19
+0127   0:EXTENSION                                           20   0   0
+0128 A 1:DECREMENT_STRUCT_FIELD_INT64                       108   0   0
+0129 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = true
+0130 A 1:JUMP                                                74  12   0    ; goto 12
+0131 A 0:ADD_INT64_CONSTANT                                  22  19   5    ; const = 1
+0132 A 1:CONVERT_INT64_TO_UINT64                             55  20  22
+0133 A 0:TRUNCATE_TO_WIDTH                                   20  32   5
+0134 A 0:BIT_AND_UINT64                                      21  20  17
+0135 A 1:CONVERT_UINT64_TO_INT64                             56  19  21
+0136 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   4   0
+0137   0:EXTENSION                                            3   0   0
+0138 A 1:GET_SLICE_BYTE_ELEMENT                             112  20   4
+0139   0:EXTENSION                                           19   0   0
+0140 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221  20  34
+0141   0:EXTENSION                                          227 255   0
+0142 A 1:LOAD_BOOL_CONSTANT                                 138   0   1    ; bools[0] = false
+0143 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN_CONSTANT    215   1   1
+0144   0:EXTENSION                                          139 255   0
+0145 A 0:GET_STRUCT_FIELD_INT64                               1   0   0
+0146 A 0:MULTIPLY_INT64_CONSTANT_THEN_ADD                     0   1   2    ; const = 100000
+0147   0:EXTENSION                                            0   0   0
+0148 A 2:RETURN                                               0  10   1    ; 1 values
+0149 A 1:JUMP                                                74 161   0    ; goto 161
+0150 A 1:JUMP                                                74 160   0    ; goto 160
+0151 A 0:GET_STRUCT_FIELD_INT64                               7   0   5    ; inlined body of function 2 called at PC 41
+0152 A 0:MULTIPLY_INT64_CONSTANT                              9   7   3    ; const = 10
+0153 A 0:GET_STRUCT_FIELD_INT64                              10   0   4
+0154 A 0:MULTIPLY_INT64_CONSTANT                             12  10   4    ; const = 7
+0155 A 1:GREATER_OR_EQUAL_INT64_THEN_JUMP_IF_FALSE          119   9  12
+0156   0:EXTENSION                                           81   0   0
+0157 S 1:GET_STRUCT_FIELD_SLICE_STRING                      193   3   0    ; inlined body of function 5 called at PC 157
+0158   0:EXTENSION                                            1   0   0
+0159 S 1:BOX_SLICE_STRING                                   162   3   3
+0160 S 1:GET_STRUCT_FIELD_SLICE_INT64                       190   2   0
+0161   0:EXTENSION                                            2   0   0
+0162 A 1:BOX_SLICE_INT64                                     34   4   2
+0163 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   5   0
+0164   0:EXTENSION                                            3   0   0
+0165 S 1:BOX_SLICE_BYTE                                     148   5   5
+0166 A 0:GET_STRUCT_FIELD_INT64                              24   0   4
+0167 A 0:MULTIPLY_INT64_CONSTANT                             26  24   7    ; const = 2
+0168 A 0:SET_STRUCT_FIELD_INT64                               0  26   4
+0169 A 0:GET_STRUCT_FIELD_INT64                              25   0   4
+0170 S 0:MAKE_SLICE                                           6  25  25
+0171   0:EXTENSION                                            1   0   0
+0172 A 0:SET_STRUCT_FIELD_GENERAL                             0   6   1
+0173 A 0:GET_STRUCT_FIELD_INT64                              25   0   4
+0174 S 0:MAKE_SLICE                                           6  25  25
+0175   0:EXTENSION                                            2   0   0
+0176 A 0:SET_STRUCT_FIELD_GENERAL                             0   6   2
+0177 A 0:GET_STRUCT_FIELD_INT64                              25   0   4
+0178 S 0:MAKE_SLICE                                           6  25  25
+0179   0:EXTENSION                                            3   0   0
+0180 A 0:SET_STRUCT_FIELD_GENERAL                             0   6   3
+0181 A 1:LOAD_INT64_IMMEDIATE                                75  25   0    ; ints[25] = 0
+0182 A 0:SET_STRUCT_FIELD_INT64                               0  25   0
+0183 A 1:LOAD_INT64_IMMEDIATE                                75  25   0    ; ints[25] = 0
+0184 A 0:SET_STRUCT_FIELD_INT64                               0  25   5
+0185 A 1:LOAD_INT64_IMMEDIATE                                75  25   0    ; ints[25] = 0
+0186 A 1:LESS_THAN_INT64_THEN_JUMP_IF_FALSE                 116  25  24
+0187   0:EXTENSION                                           50   0   0
+0188 S 1:UNBOX_SLICE_BYTE                                   160   5   5    ; LICM hoist of PC 188
+0189 A 1:GET_SLICE_BYTE_ELEMENT                             112  22   5
+0190   0:EXTENSION                                           25   0   0
+0191 A 1:EQUAL_UINT64_IMMEDIATE_THEN_JUMP_IF_FALSE          150  22   1
+0192   0:EXTENSION                                           42   0   0
+0193 A 3:NO_OPERATION                                         0   0   0
+0194 S 0:GET_ELEMENT_STRING                                   4   3  25
+0195 A 0:GET_ELEMENT_INT64                                   27   4  25
+0196 A 1:CALL_SCALAR                                        134   9   0
+0197 A 0:GET_STRUCT_FIELD_INT64                              28   0   4
+0198 A 0:SUBTRACT_INT64_CONSTANT                             30  28   5    ; const = 1
+0199 A 1:CONVERT_INT64_TO_UINT64                             55  25  30
+0200 A 0:TRUNCATE_TO_WIDTH                                   25  32   5
+0201 A 0:BIT_AND_UINT64                                      26  24  25
+0202 A 1:CONVERT_UINT64_TO_INT64                             56  28  26
+0203 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   6   0
+0204   0:EXTENSION                                            3   0   0
+0205 A 1:GET_SLICE_BYTE_ELEMENT                             112  26   6
+0206   0:EXTENSION                                           28   0   0
+0207 A 1:LOAD_UINT64_IMMEDIATE                               99  27   0    ; uints[27] = 0
+0208 A 1:NOT_EQUAL_UINT64_THEN_JUMP_IF_FALSE                222  26  27
+0209   0:EXTENSION                                           12   0   0
+0210 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   7   0
+0211   0:EXTENSION                                            3   0   0
+0212 A 1:LOAD_UINT64_IMMEDIATE                               99  30   0    ; LICM hoist of PC 219
+0213 A 0:ADD_INT64_CONSTANT                                  31  28   5    ; const = 1
+0214 A 1:CONVERT_INT64_TO_UINT64                             55  28  31
+0215 A 0:TRUNCATE_TO_WIDTH                                   28  32   5
+0216 A 0:BIT_AND_UINT64                                      29  28  25
+0217 A 1:CONVERT_UINT64_TO_INT64                             56  28  29
+0218 A 1:GET_SLICE_BYTE_ELEMENT                             112  28   7
+0219   0:EXTENSION                                           28   0   0
+0220 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221  28  30
+0221   0:EXTENSION                                          247 255   0
+0222 S 1:GET_STRUCT_FIELD_SLICE_STRING                      193   4   0
+0223   0:EXTENSION                                            1   0   0
+0224 X 1:SET_SLICE_STRING_ELEMENT                            24   4  28
+0225   0:EXTENSION                                            4   0   0
+0226 S 1:GET_STRUCT_FIELD_SLICE_INT64                       190   3   0
+0227   0:EXTENSION                                            2   0   0
+0228 A 0:SET_SLICE_INT64_ELEMENT                              3  28  27
+0229 A 1:LOAD_UINT64_IMMEDIATE                               99  26   1    ; uints[26] = 1
+0230 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   6   0
+0231   0:EXTENSION                                            3   0   0
+0232 A 1:SET_SLICE_BYTE_ELEMENT                             113   6  28
+0233   0:EXTENSION                                           26   0   0
+0234 A 1:INCREMENT_STRUCT_FIELD_INT64                       107   0   0
+0235 A 1:INCREMENT_STRUCT_FIELD_INT64                       107   0   5
+0236 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN              77  25  24
+0237   0:EXTENSION                                          207 255   0
+0238 A 1:CALL_SCALAR                                        134   6   0
+0239 A 0:GET_STRUCT_FIELD_INT64                               7   0   4
+0240 A 0:SUBTRACT_INT64_CONSTANT                              9   7   5    ; const = 1
+0241 A 1:CONVERT_INT64_TO_UINT64                             55   6   9
+0242 A 0:TRUNCATE_TO_WIDTH                                    6  32   5
+0243 A 0:BIT_AND_UINT64                                       7   5   6
+0244 A 1:CONVERT_UINT64_TO_INT64                             56   7   7
+0245 A 0:LOAD_INT64_CONSTANT                                  8   6   0    ; ints[8] = -1
+0246 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   0   0
+0247   0:EXTENSION                                            3   0   0
+0248 S 1:GET_STRUCT_FIELD_SLICE_STRING                      193   0   0
+0249   0:EXTENSION                                            1   0   0
+0250 A 1:LOAD_UINT64_IMMEDIATE                               99  40   1    ; LICM hoist of PC 288
+0251 A 1:LOAD_UINT64_IMMEDIATE                               99  41   2    ; LICM hoist of PC 298
+0252 A 1:LOAD_INT64_IMMEDIATE                                75  33   0    ; LICM hoist of PC 300
+0253 A 1:GET_SLICE_BYTE_ELEMENT                             112   7   0
+0254   0:EXTENSION                                            7   0   0
+0255 A 1:EQUAL_UINT64_IMMEDIATE_THEN_JUMP_IF_FALSE          150   7   0
+0256   0:EXTENSION                                           31   0   0
+0257 A 3:NO_OPERATION                                         0   0   0
+0258 A 1:GREATER_OR_EQUAL_INT64_CONSTANT_THEN_JUMP_IF_FALSE 126   8   0
+0259   0:EXTENSION                                           14   0   0
+0260 S 1:GET_STRUCT_FIELD_SLICE_STRING                      193   0   0
+0261   0:EXTENSION                                            1   0   0
+0262 X 1:SET_SLICE_STRING_ELEMENT                            24   0   8
+0263   0:EXTENSION                                            0   0   0
+0264 S 1:GET_STRUCT_FIELD_SLICE_INT64                       190   0   0
+0265   0:EXTENSION                                            2   0   0
+0266 A 0:SET_SLICE_INT64_ELEMENT                              0   8   4
+0267 A 1:LOAD_UINT64_IMMEDIATE                               99   8   1    ; uints[8] = 1
+0268 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   0   0
+0269   0:EXTENSION                                            3   0   0
+0270 A 1:SET_SLICE_BYTE_ELEMENT                             113   0   8
+0271   0:EXTENSION                                            8   0   0
+0272 A 1:INCREMENT_STRUCT_FIELD_INT64                       107   0   0
+0273 A 1:JUMP                                                74 125 255    ; goto -131
+0274 S 1:GET_STRUCT_FIELD_SLICE_STRING                      193   0   0
+0275   0:EXTENSION                                            1   0   0
+0276 X 1:SET_SLICE_STRING_ELEMENT                            24   0   7
+0277   0:EXTENSION                                            0   0   0
+0278 S 1:GET_STRUCT_FIELD_SLICE_INT64                       190   0   0
+0279   0:EXTENSION                                            2   0   0
+0280 A 0:SET_SLICE_INT64_ELEMENT                              0   7   4
+0281 A 1:LOAD_UINT64_IMMEDIATE                               99   8   1    ; uints[8] = 1
+0282 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   0   0
+0283   0:EXTENSION                                            3   0   0
+0284 A 1:SET_SLICE_BYTE_ELEMENT                             113   0   7
+0285   0:EXTENSION                                            8   0   0
+0286 A 1:INCREMENT_STRUCT_FIELD_INT64                       107   0   0
+0287 A 1:INCREMENT_STRUCT_FIELD_INT64                       107   0   5
+0288 A 1:JUMP                                                74 110 255    ; goto -146
+0289 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221   7  40
+0290   0:EXTENSION                                            8   0   0
+0291 A 1:GET_SLICE_STRING_ELEMENT                            23   1   0
+0292   0:EXTENSION                                            7   0   0
+0293 A 0:EQUAL_STRING                                        10   1   0
+0294 A 0:JUMP_IF_FALSE                                       10   4   0    ; if ints[10] == 0 goto +4
+0295 S 1:GET_STRUCT_FIELD_SLICE_INT64                       190   0   0
+0296   0:EXTENSION                                            2   0   0
+0297 A 0:SET_SLICE_INT64_ELEMENT                              0   7   4
+0298 A 1:JUMP                                                74 100 255    ; goto -156
+0299 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221   7  41
+0300   0:EXTENSION                                            3   0   0
+0301 A 1:LESS_THAN_INT64_THEN_JUMP_IF_FALSE                 116   8  33
+0302   0:EXTENSION                                            1   0   0
+0303 A 1:MOVE_INT64                                          35   8   7
+0304 A 0:ADD_INT64_CONSTANT                                  10   7   5    ; const = 1
+0305 A 1:CONVERT_INT64_TO_UINT64                             55   8  10
+0306 A 0:TRUNCATE_TO_WIDTH                                    8  32   5
+0307 A 0:BIT_AND_UINT64                                       9   8   6
+0308 A 1:CONVERT_UINT64_TO_INT64                             56   7   9
+0309 A 1:JUMP                                                74 199 255    ; goto -57
+0310 A 1:JUMP                                                74  88 255    ; goto -168

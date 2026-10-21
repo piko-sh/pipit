@@ -401,11 +401,11 @@ func TestRegisterAllocatorRestorePanicsOnInvalidSnapshot(t *testing.T) {
 
 	allocator := &scope.RegisterAllocator{FunctionName: "testFunc"}
 	for range 5 {
-		allocator.Alloc(isa.RegisterInt)
+		allocator.Alloc(isa.RegisterInt64)
 	}
 
 	var invalidSnapshot [isa.NumRegisterKinds]uint32
-	invalidSnapshot[isa.RegisterInt] = 10
+	invalidSnapshot[isa.RegisterInt64] = 10
 
 	defer func() {
 		recovered := recover()

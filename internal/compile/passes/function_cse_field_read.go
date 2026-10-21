@@ -392,15 +392,15 @@ func findGetAfterGeneralFieldSet(compiledFunction *program.CompiledFunction, bod
 // isGeneralBankMatchingRead reports whether op reads the value last written by
 // isa.OpSetStructFieldGeneral.
 //
-// isa.OpGetStructFieldGeneral matches directly; the cycle-broken raw-pointer
+// isa.OpGetStructFieldGeneral matches directly. The cycle-broken raw-pointer
 // specialisation also reads the eface header that isa.OpSetStructFieldGeneral writes, so
 // it matches too.
 //
 // Takes op (opcode) which is the candidate read opcode to classify.
 //
-// Returns true for isa.OpGetStructFieldGeneral or isa.OpGetStructFieldRawPointerT0.
+// Returns true for isa.OpGetStructFieldGeneral or isa.OpGetStructFieldRawPointer.
 func isGeneralBankMatchingRead(op isa.Opcode) bool {
-	return op == isa.OpGetStructFieldGeneral || op == isa.OpGetStructFieldRawPointerT0
+	return op == isa.OpGetStructFieldGeneral || op == isa.OpGetStructFieldRawPointer
 }
 
 // isTier0StructFieldRead reports whether op is one of the single-word struct-field read
@@ -411,10 +411,10 @@ func isGeneralBankMatchingRead(op isa.Opcode) bool {
 // Returns true for any recognised single-word struct-field read opcode.
 func isTier0StructFieldRead(op isa.Opcode) bool {
 	switch op {
-	case isa.OpGetStructFieldGeneral, isa.OpGetStructFieldRawPointerT0,
-		isa.OpGetStructFieldIntT0, isa.OpGetStructFieldUint,
-		isa.OpGetStructFieldFloat, isa.OpGetStructFieldBool,
-		isa.OpGetField, isa.OpGetFieldInt:
+	case isa.OpGetStructFieldGeneral, isa.OpGetStructFieldRawPointer,
+		isa.OpGetStructFieldInt64, isa.OpGetStructFieldUint64,
+		isa.OpGetStructFieldFloat64, isa.OpGetStructFieldBool,
+		isa.OpGetField, isa.OpGetFieldInt64:
 		return true
 	default:
 	}
@@ -430,15 +430,15 @@ func isTier0StructFieldRead(op isa.Opcode) bool {
 // Returns the destination bank role; isa.RoleNone for unrecognised opcodes.
 func tier0FieldReadDestRole(op isa.Opcode) isa.OperandRole {
 	switch op {
-	case isa.OpGetStructFieldIntT0, isa.OpGetFieldInt:
+	case isa.OpGetStructFieldInt64, isa.OpGetFieldInt64:
 		return isa.RoleRegInt
-	case isa.OpGetStructFieldUint:
+	case isa.OpGetStructFieldUint64:
 		return isa.RoleRegUint
-	case isa.OpGetStructFieldFloat:
+	case isa.OpGetStructFieldFloat64:
 		return isa.RoleRegFloat
 	case isa.OpGetStructFieldBool:
 		return isa.RoleRegBool
-	case isa.OpGetStructFieldGeneral, isa.OpGetStructFieldRawPointerT0, isa.OpGetField:
+	case isa.OpGetStructFieldGeneral, isa.OpGetStructFieldRawPointer, isa.OpGetField:
 		return isa.RoleRegGeneral
 	default:
 	}
@@ -456,19 +456,19 @@ func tier0FieldReadDestRole(op isa.Opcode) isa.OperandRole {
 // Returns the rewritten instruction.
 func emitMoveForTier0ReadOp(readOp isa.Opcode, destination, source uint8) isa.Instruction {
 	switch readOp {
-	case isa.OpGetStructFieldGeneral, isa.OpGetStructFieldRawPointerT0, isa.OpGetField:
+	case isa.OpGetStructFieldGeneral, isa.OpGetStructFieldRawPointer, isa.OpGetField:
 		return isa.NewInstruction(isa.OpMoveGeneral, destination, source, engine.MoveGeneralModeAlias)
-	case isa.OpGetStructFieldIntT0, isa.OpGetFieldInt:
-		return isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpMoveInt), destination, source)
-	case isa.OpGetStructFieldUint:
-		return isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpMoveUint), destination, source)
-	case isa.OpGetStructFieldFloat:
-		return isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpMoveFloat), destination, source)
+	case isa.OpGetStructFieldInt64, isa.OpGetFieldInt64:
+		return isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpMoveInt64), destination, source)
+	case isa.OpGetStructFieldUint64:
+		return isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpMoveUint64), destination, source)
+	case isa.OpGetStructFieldFloat64:
+		return isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpMoveFloat64), destination, source)
 	case isa.OpGetStructFieldBool:
 		return isa.NewInstruction(isa.OpDrillTier1, uint8(isa.SubOpMoveBool), destination, source)
 	default:
 	}
-	return isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	return isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 }
 
 // findRedundantTier0StructFieldRead scans forward from a tier-0 read at firstIdx for a
@@ -540,17 +540,17 @@ func detectAliasingMove(inst isa.Instruction, bank isa.OperandRole) (newAlias, s
 // Returns true when sub is the same-bank move sub-op for bank.
 func subOpMatchesBankMove(sub isa.SubOpcode, bank isa.OperandRole) bool {
 	switch sub {
-	case isa.SubOpMoveInt:
+	case isa.SubOpMoveInt64:
 		return bank == isa.RoleRegInt
-	case isa.SubOpMoveUint:
+	case isa.SubOpMoveUint64:
 		return bank == isa.RoleRegUint
-	case isa.SubOpMoveFloat:
+	case isa.SubOpMoveFloat64:
 		return bank == isa.RoleRegFloat
 	case isa.SubOpMoveBool:
 		return bank == isa.RoleRegBool
 	case isa.SubOpMoveString:
 		return bank == isa.RoleRegString
-	case isa.SubOpMoveComplex:
+	case isa.SubOpMoveComplex128:
 		return bank == isa.RoleRegComplex
 	default:
 	}
@@ -558,8 +558,9 @@ func subOpMatchesBankMove(sub isa.SubOpcode, bank isa.OperandRole) bool {
 }
 
 // isTier1StructFieldReadAt reports whether body[i] is the umbrella word of a tier-1
-// struct-field read with a following isa.OpExt layout extension. The CSE pass only
-// considers tier-1 reads when both words are present and the next word is an isa.OpExt.
+// struct-field read with a following isa.OpExtension layout extension. The CSE pass only
+// considers tier-1 reads when both words are present and the next word is an
+// isa.OpExtension.
 //
 // Takes body ([]instruction) which is the function's instruction stream.
 // Takes i (int) which is the candidate umbrella-word index.
@@ -572,7 +573,7 @@ func isTier1StructFieldReadAt(body []isa.Instruction, i int) bool {
 	if body[i].Op != isa.OpDrillTier1 {
 		return false
 	}
-	if body[i+1].Op != isa.OpExt {
+	if body[i+1].Op != isa.OpExtension {
 		return false
 	}
 	return isTier1StructFieldReadSubOp(isa.SubOpcode(body[i].A))
@@ -586,9 +587,9 @@ func isTier1StructFieldReadAt(body []isa.Instruction, i int) bool {
 // Returns true for any subOpGetStructFieldX read sub-op.
 func isTier1StructFieldReadSubOp(sub isa.SubOpcode) bool {
 	switch sub {
-	case isa.SubOpGetStructFieldInt, isa.SubOpGetStructFieldUint,
-		isa.SubOpGetStructFieldFloat, isa.SubOpGetStructFieldBool,
-		isa.SubOpGetStructFieldString:
+	case isa.SubOpGetStructFieldInt64Wide, isa.SubOpGetStructFieldUint64Wide,
+		isa.SubOpGetStructFieldFloat64Wide, isa.SubOpGetStructFieldBoolWide,
+		isa.SubOpGetStructFieldStringWide:
 		return true
 	default:
 	}
@@ -603,15 +604,15 @@ func isTier1StructFieldReadSubOp(sub isa.SubOpcode) bool {
 // Returns the destination bank role; isa.RoleNone for unrecognised sub-ops.
 func tier1FieldReadDestRole(sub isa.SubOpcode) isa.OperandRole {
 	switch sub {
-	case isa.SubOpGetStructFieldInt:
+	case isa.SubOpGetStructFieldInt64Wide:
 		return isa.RoleRegInt
-	case isa.SubOpGetStructFieldUint:
+	case isa.SubOpGetStructFieldUint64Wide:
 		return isa.RoleRegUint
-	case isa.SubOpGetStructFieldFloat:
+	case isa.SubOpGetStructFieldFloat64Wide:
 		return isa.RoleRegFloat
-	case isa.SubOpGetStructFieldBool:
+	case isa.SubOpGetStructFieldBoolWide:
 		return isa.RoleRegBool
-	case isa.SubOpGetStructFieldString:
+	case isa.SubOpGetStructFieldStringWide:
 		return isa.RoleRegString
 	default:
 	}
@@ -627,15 +628,15 @@ func tier1FieldReadDestRole(sub isa.SubOpcode) isa.OperandRole {
 // sub-ops.
 func tier1ReadToMoveSubOp(sub isa.SubOpcode) (isa.SubOpcode, bool) {
 	switch sub {
-	case isa.SubOpGetStructFieldInt:
-		return isa.SubOpMoveInt, true
-	case isa.SubOpGetStructFieldUint:
-		return isa.SubOpMoveUint, true
-	case isa.SubOpGetStructFieldFloat:
-		return isa.SubOpMoveFloat, true
-	case isa.SubOpGetStructFieldBool:
+	case isa.SubOpGetStructFieldInt64Wide:
+		return isa.SubOpMoveInt64, true
+	case isa.SubOpGetStructFieldUint64Wide:
+		return isa.SubOpMoveUint64, true
+	case isa.SubOpGetStructFieldFloat64Wide:
+		return isa.SubOpMoveFloat64, true
+	case isa.SubOpGetStructFieldBoolWide:
 		return isa.SubOpMoveBool, true
-	case isa.SubOpGetStructFieldString:
+	case isa.SubOpGetStructFieldStringWide:
 		return isa.SubOpMoveString, true
 	default:
 	}
@@ -643,7 +644,8 @@ func tier1ReadToMoveSubOp(sub isa.SubOpcode) (isa.SubOpcode, bool) {
 }
 
 // findRedundantTier1StructFieldRead scans forward from a two-word tier-1 read at firstIdx
-// for a matching read with identical sub-opcode, receiver, and 16-bit EXT layout index.
+// for a matching read with identical sub-opcode, receiver, and 16-bit EXTENSION layout
+// index.
 //
 // Takes compiledFunction (*CompiledFunction) which carries alias info.
 // Takes body ([]instruction) which is the function's instruction stream.
@@ -710,8 +712,8 @@ func matchesTier1Read(body []isa.Instruction, j int, sub isa.SubOpcode, receiver
 }
 
 // rewriteTier1ReadAsMove replaces the tier-1 read at matchIdx with the corresponding
-// same-bank tier-1 move, and nops out the trailing isa.OpExt word that carries the read's
-// layout index.
+// same-bank tier-1 move, and nops out the trailing isa.OpExtension word that carries the
+// read's layout index.
 //
 // Takes body ([]instruction) which is the function's instruction stream.
 // Takes matchIdx (int) which is the umbrella-word index of the matched read.
@@ -724,7 +726,7 @@ func rewriteTier1ReadAsMove(body []isa.Instruction, matchIdx int, priorReadDest 
 		return
 	}
 	body[matchIdx] = isa.NewInstruction(isa.OpDrillTier1, uint8(moveSub), matchedReadDest, priorReadDest)
-	body[matchIdx+1] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+	body[matchIdx+1] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 }
 
 // structFieldReadScanBlocksAt is the alias-aware scan-blocker check.
@@ -799,17 +801,17 @@ func structFieldWriteWithKnownReceiverDistinct(compiledFunction *program.Compile
 // Returns the receiver register and true on success; (0, false) otherwise.
 func structFieldWriteReceiver(inst isa.Instruction) (uint8, bool) {
 	switch inst.Op {
-	case isa.OpSetStructFieldGeneral, isa.OpSetStructFieldIntT0, isa.OpSetStructFieldUint,
-		isa.OpSetStructFieldFloat, isa.OpSetStructFieldBool,
-		isa.OpSwapStructFieldsGeneralT0, isa.OpSetField:
+	case isa.OpSetStructFieldGeneral, isa.OpSetStructFieldInt64, isa.OpSetStructFieldUint64,
+		isa.OpSetStructFieldFloat64, isa.OpSetStructFieldBool,
+		isa.OpSwapStructFieldsGeneral, isa.OpSetField:
 		return inst.A, true
 	case isa.OpDrillTier1:
 		switch isa.SubOpcode(inst.A) {
-		case isa.SubOpSetStructFieldInt, isa.SubOpSetStructFieldUint,
-			isa.SubOpSetStructFieldFloat, isa.SubOpSetStructFieldBool,
-			isa.SubOpSetStructFieldString,
-			isa.SubOpIncStructFieldInt, isa.SubOpDecStructFieldInt,
-			isa.SubOpIncStructFieldUint, isa.SubOpDecStructFieldUint:
+		case isa.SubOpSetStructFieldInt64Wide, isa.SubOpSetStructFieldUint64Wide,
+			isa.SubOpSetStructFieldFloat64Wide, isa.SubOpSetStructFieldBoolWide,
+			isa.SubOpSetStructFieldStringWide,
+			isa.SubOpIncrementStructFieldInt64, isa.SubOpDecrementStructFieldInt64,
+			isa.SubOpIncrementStructFieldUint64, isa.SubOpDecrementStructFieldUint64:
 			return inst.B, true
 		default:
 		}
@@ -954,7 +956,7 @@ func operandWriteMatchesBank(inst isa.Instruction, pos int, observed, bank isa.O
 // Returns the resolved bank and true on success, or (RoleNone, false) when unresolvable.
 func resolveDynamicWriteBank(inst isa.Instruction, pos int) (isa.OperandRole, bool) {
 	switch inst.Op {
-	case isa.OpTruncateNarrow:
+	case isa.OpTruncateToWidth:
 		if pos != 0 {
 			return isa.RoleNone, false
 		}
@@ -989,42 +991,42 @@ func resolveDynamicWriteBank(inst isa.Instruction, pos int) (isa.OperandRole, bo
 //nolint:revive // identical-switch-branches: sub-op families kept as separate rows
 func resolveTier1WriteBank(sub isa.SubOpcode) (isa.OperandRole, bool) {
 	switch sub {
-	case isa.SubOpMoveInt, isa.SubOpMoveGeneralToInt:
+	case isa.SubOpMoveInt64, isa.SubOpUnboxInt64:
 		return isa.RoleRegInt, true
-	case isa.SubOpMoveUint:
+	case isa.SubOpMoveUint64:
 		return isa.RoleRegUint, true
-	case isa.SubOpMoveFloat, isa.SubOpMoveGeneralToFloat:
+	case isa.SubOpMoveFloat64, isa.SubOpUnboxFloat64:
 		return isa.RoleRegFloat, true
 	case isa.SubOpMoveBool:
 		return isa.RoleRegBool, true
-	case isa.SubOpMoveString, isa.SubOpMoveGeneralToString:
+	case isa.SubOpMoveString, isa.SubOpUnboxString:
 		return isa.RoleRegString, true
-	case isa.SubOpMoveComplex:
+	case isa.SubOpMoveComplex128:
 		return isa.RoleRegComplex, true
-	case isa.SubOpMoveIntToGeneral, isa.SubOpMoveFloatToGeneral,
-		isa.SubOpMoveStringToGeneral:
+	case isa.SubOpBoxInt64, isa.SubOpBoxFloat64,
+		isa.SubOpBoxString:
 		return isa.RoleRegGeneral, true
-	case isa.SubOpGetStructFieldInt:
+	case isa.SubOpGetStructFieldInt64Wide:
 		return isa.RoleRegInt, true
-	case isa.SubOpGetStructFieldUint:
+	case isa.SubOpGetStructFieldUint64Wide:
 		return isa.RoleRegUint, true
-	case isa.SubOpGetStructFieldFloat:
+	case isa.SubOpGetStructFieldFloat64Wide:
 		return isa.RoleRegFloat, true
-	case isa.SubOpGetStructFieldBool:
+	case isa.SubOpGetStructFieldBoolWide:
 		return isa.RoleRegBool, true
-	case isa.SubOpGetStructFieldString:
+	case isa.SubOpGetStructFieldStringWide:
 		return isa.RoleRegString, true
-	case isa.SubOpIncStructFieldInt, isa.SubOpDecStructFieldInt:
+	case isa.SubOpIncrementStructFieldInt64, isa.SubOpDecrementStructFieldInt64:
 		return isa.RoleRegInt, true
-	case isa.SubOpIncStructFieldUint, isa.SubOpDecStructFieldUint:
+	case isa.SubOpIncrementStructFieldUint64, isa.SubOpDecrementStructFieldUint64:
 		return isa.RoleRegUint, true
-	case isa.SubOpLen, isa.SubOpLenString,
-		isa.SubOpLenSliceIntDirect, isa.SubOpLenSliceFloatDirect,
-		isa.SubOpLenSliceStringDirect, isa.SubOpLenSliceBoolDirect,
-		isa.SubOpLenSliceUintDirect, isa.SubOpLenSliceByteDirect,
-		isa.SubOpCapSliceIntDirect, isa.SubOpCapSliceFloatDirect,
-		isa.SubOpCapSliceStringDirect, isa.SubOpCapSliceBoolDirect,
-		isa.SubOpCapSliceUintDirect, isa.SubOpCapSliceByteDirect:
+	case isa.SubOpLengthGeneral, isa.SubOpLengthString,
+		isa.SubOpLengthSliceInt64, isa.SubOpLengthSliceFloat64,
+		isa.SubOpLengthSliceString, isa.SubOpLengthSliceBool,
+		isa.SubOpLengthSliceUint64, isa.SubOpLengthSliceByte,
+		isa.SubOpCapacitySliceInt64, isa.SubOpCapacitySliceFloat64,
+		isa.SubOpCapacitySliceString, isa.SubOpCapacitySliceBool,
+		isa.SubOpCapacitySliceUint64, isa.SubOpCapacitySliceByte:
 		return isa.RoleRegInt, true
 	default:
 	}

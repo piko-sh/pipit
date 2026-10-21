@@ -6,7 +6,7 @@ type Slug string
 
 type Post struct {
 	Title, Description, Summary, Image, Series, URL, Byline, Label, Extra string
-	Order                                                               int
+	Order                                                                 int
 }
 
 func run() string {

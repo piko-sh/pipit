@@ -70,7 +70,7 @@ func main() {}
 `,
 			entrypoint: "run",
 			want:       int64(60),
-			expectOp:   "SLICE_INDEX_STRUCT_FIELD_INT",
+			expectOp:   "GET_ELEMENT_FIELD_INT64",
 		},
 		{
 			name: "float_field_via_index",
@@ -97,7 +97,7 @@ func main() {}
 `,
 			entrypoint: "run",
 			want:       float64(7.5),
-			expectOp:   "SLICE_INDEX_STRUCT_FIELD_FLOAT",
+			expectOp:   "GET_ELEMENT_FIELD_FLOAT64",
 		},
 		{
 			name: "bool_field_via_index",
@@ -130,7 +130,7 @@ func main() {}
 `,
 			entrypoint: "run",
 			want:       int64(2),
-			expectOp:   "SLICE_INDEX_STRUCT_FIELD_BOOL",
+			expectOp:   "GET_ELEMENT_FIELD_BOOL",
 		},
 		{
 			name: "string_field_via_index",
@@ -153,7 +153,7 @@ func main() {}
 `,
 			entrypoint: "run",
 			want:       "alpha",
-			expectOp:   "SLICE_INDEX_STRUCT_FIELD_STRING",
+			expectOp:   "GET_ELEMENT_FIELD_STRING",
 		},
 		{
 			name: "uint_field_via_index",
@@ -179,7 +179,7 @@ func main() {}
 `,
 			entrypoint: "run",
 			want:       uint64(7),
-			expectOp:   "SLICE_INDEX_STRUCT_FIELD_UINT",
+			expectOp:   "GET_ELEMENT_FIELD_UINT64",
 		},
 		{
 			name: "cycle_broken_self_referential_slice_falls_back",
@@ -206,7 +206,7 @@ func main() {}
 			entrypoint: "run",
 			want:       "alpha",
 
-			expectOp: "SLICE_INDEX_STRUCT_FIELD_STRING",
+			expectOp: "GET_ELEMENT_FIELD_STRING",
 		},
 	}
 

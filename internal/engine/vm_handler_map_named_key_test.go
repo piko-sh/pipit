@@ -78,9 +78,9 @@ func TestMapLookupStringKeyGeneralNamedKey(t *testing.T) {
 		handler  opcodeHandler
 		reportOk bool
 	}{
-		{name: "index", handler: handleMapGetStringGeneral, reportOk: false},
-		{name: "comma-ok", handler: handleMapIndexOkStringGeneral, reportOk: true},
-		{name: "comma-ok jump", handler: handleMapIndexOkJumpIfFalseStringGeneral, reportOk: true},
+		{name: "index", handler: handleGetMapStringGeneral, reportOk: false},
+		{name: "comma-ok", handler: handleGetMapStringGeneralOk, reportOk: true},
+		{name: "comma-ok jump", handler: handleGetMapStringGeneralOkThenJumpIfFalse, reportOk: true},
 	}
 	keys := []struct {
 		name    string

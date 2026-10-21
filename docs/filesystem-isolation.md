@@ -59,7 +59,7 @@ Expected output is `"hello from the broker"`, a JSON string.
 For embedding, `IsolatedFilesystemConfig` combines the worker policy with
 `BrokerPath`, `BrokerSHA256`, and `Roots`. Each `FilesystemRoot` has a `Name`,
 absolute `HostPath`, and `Rights` bitmask. A config holds at most 64 roots. Pass it to
-`NewIsolatedFilesystemWorker(ctx, config)` and call `EvalFile(source, "answer")` with the script
+`NewIsolatedFilesystemWorker(ctx, config)` and call `EvalFile(ctx, source, "answer")` with the script
 contents.
 Follow the [constructor-error and cleanup rules](isolated-execution.md#embed-a-worker).
 The worker accepts one submission.

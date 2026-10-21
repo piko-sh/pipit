@@ -4,8 +4,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=9 string=5 general=4 bool=4
-;   dispatch:  asm=15 shim=4 exit=0 go=6
+;   registers: int64=9 string=5 general=4 bool=4
+;   dispatch:  asm=17 shim=4 exit=0 go=4
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -15,29 +15,29 @@
 ;   strings: [0]="ncpu_positive=%t;goos_nonempty=%t;goa..."  [1]="go"
 ;   bools:   [0]=true
 
-0000 S 0:LOAD_GENERAL_CONST         0   0   0
-0001 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "ncpu_positive=%t;goos_nonempty=%t;goa..."
-0002 S 0:LOAD_GENERAL_CONST         1   1   0
-0003 G 1:CALL_NATIVE              130   0   0    ; call native general[1] (site 0)
-0004 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0005 A 0:GT_INT                     2   0   1
-0006 G 1:INT_TO_BOOL               54   0   2
-0007 A 1:LOAD_BOOL_CONST          138   1   0    ; bools[1] = true
-0008 A 1:LOAD_BOOL_CONST          138   2   0    ; bools[2] = true
-0009 S 0:LOAD_GENERAL_CONST         2   2   0
-0010 G 1:CALL_NATIVE              130   1   0    ; call native general[2] (site 1)
-0011 A 1:LEN_STRING                65   3   1
-0012 A 1:LOAD_INT_CONST_SMALL      75   4   2    ; ints[4] = 2
-0013 A 0:GE_INT                     6   3   4
-0014 A 0:JUMP_IF_FALSE              6   7   0    ; if ints[6] == 0 goto +7
-0015 S 0:LOAD_GENERAL_CONST         3   3   0
-0016 G 1:CALL_NATIVE              130   2   0    ; call native general[3] (site 2)
-0017 A 1:LOAD_INT_CONST_SMALL      75   7   2    ; ints[7] = 2
-0018 A 0:SLICE_STRING               3   2   2
-0019   0:EXT                        0   7   0
-0020 A 0:LOAD_STRING_CONST          4   1   0    ; strings[4] = "go"
-0021 A 0:EQ_STRING                  6   3   4
-0022 G 1:INT_TO_BOOL               54   3   6
-0023 G 1:CALL_NATIVE              130   3   0    ; call native general[0] (site 3)
-0024 A 1:MOVE_STRING               37   0   2
-0025 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 0:LOAD_GENERAL_CONSTANT                                0   0   0
+0001 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "ncpu_positive=%t;goos_nonempty=%t;goa..."
+0002 S 0:LOAD_GENERAL_CONSTANT                                1   1   0
+0003 G 1:CALL_NATIVE                                        130   0   0    ; call native general[1] (site 0)
+0004 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0005 A 0:GREATER_THAN_INT64                                   2   0   1
+0006 A 1:CONVERT_INT64_TO_BOOL                               54   0   2
+0007 A 1:LOAD_BOOL_CONSTANT                                 138   1   0    ; bools[1] = true
+0008 A 1:LOAD_BOOL_CONSTANT                                 138   2   0    ; bools[2] = true
+0009 S 0:LOAD_GENERAL_CONSTANT                                2   2   0
+0010 G 1:CALL_NATIVE                                        130   1   0    ; call native general[2] (site 1)
+0011 A 1:LENGTH_STRING                                       65   3   1
+0012 A 1:LOAD_INT64_IMMEDIATE                                75   4   2    ; ints[4] = 2
+0013 A 0:GREATER_OR_EQUAL_INT64                               6   3   4
+0014 A 0:JUMP_IF_FALSE                                        6   7   0    ; if ints[6] == 0 goto +7
+0015 S 0:LOAD_GENERAL_CONSTANT                                3   3   0
+0016 G 1:CALL_NATIVE                                        130   2   0    ; call native general[3] (site 2)
+0017 A 1:LOAD_INT64_IMMEDIATE                                75   7   2    ; ints[7] = 2
+0018 A 0:SLICE_STRING                                         3   2   2
+0019   0:EXTENSION                                            0   7   0
+0020 A 0:LOAD_STRING_CONSTANT                                 4   1   0    ; strings[4] = "go"
+0021 A 0:EQUAL_STRING                                         6   3   4
+0022 A 1:CONVERT_INT64_TO_BOOL                               54   3   6
+0023 G 1:CALL_NATIVE                                        130   3   0    ; call native general[0] (site 3)
+0024 A 1:MOVE_STRING                                         37   0   2
+0025 A 2:RETURN                                               0  10   1    ; 1 values

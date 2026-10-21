@@ -19,6 +19,7 @@
 package passes
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -27,234 +28,43 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-func compareJumpBody(cmpOp, jumpOp isa.Opcode, cond uint8, fallThrough, taken []isa.Instruction) []isa.Instruction {
-	lo, hi := jumpOffset(int16(len(fallThrough)))
-	body := []isa.Instruction{
-		mk(cmpOp, cond, 1, 2),
-		mk(jumpOp, cond, lo, hi),
-	}
-	body = append(body, fallThrough...)
-	return append(body, taken...)
-}
-
-func returnVoid() isa.Instruction {
-	return isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid)
-}
-
-func TestFuseCompareRegJumpVariants(t *testing.T) {
+func TestAnIntConstantLoadIsNotFusedIntoAnUnsignedComparison(t *testing.T) {
 	t.Parallel()
-	const cond = 3
-	cases := []struct {
-		name  string
-		cmpOp isa.Opcode
-		fused isa.SubOpcode
-	}{
-		{name: "lt", cmpOp: isa.OpLtInt, fused: isa.SubOpLtIntJumpFalse},
-		{name: "le", cmpOp: isa.OpLeInt, fused: isa.SubOpLeIntJumpFalse},
-		{name: "gt", cmpOp: isa.OpGtInt, fused: isa.SubOpGtIntJumpFalse},
-		{name: "ge", cmpOp: isa.OpGeInt, fused: isa.SubOpGeIntJumpFalse},
-		{name: "eq", cmpOp: isa.OpEqInt, fused: isa.SubOpEqIntJumpFalse},
-		{name: "ne", cmpOp: isa.OpNeInt, fused: isa.SubOpNeIntJumpFalse},
-	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Parallel()
-			body := compareJumpBody(testCase.cmpOp, isa.OpJumpIfFalse, cond,
-				[]isa.Instruction{mk(isa.OpLoadIntConst, cond, 0, 0)},
-				[]isa.Instruction{returnVoid()})
-			before, ok := program.JumpTargetAt(body, 1)
-			require.True(t, ok)
-			compiledFunction := &program.CompiledFunction{Body: body}
+	const condition = 3
+	body := append([]isa.Instruction{isa.NewTier1Instruction(isa.SubOpLoadInt64Immediate, 2, 9)},
+		compareJumpBody(isa.OpEqualUint64, isa.OpJumpIfFalse, condition,
+			[]isa.Instruction{mk(isa.OpLoadInt64Constant, condition, 0, 0)}, []isa.Instruction{returnVoid()})...)
+	want := slices.Clone(body)
+	compiledFunction := &program.CompiledFunction{Body: body, IntConstants: []int64{0}}
 
-			require.True(t, FuseCompareRegJump(compiledFunction, body, 0, len(body), program.JumpTargetsOf(body)))
-
-			require.Equal(t, isa.NewTier1Instruction(testCase.fused, 1, 2), body[0])
-			require.Equal(t, isa.OpExt, body[1].Op)
-			after, ok := program.JumpTargetAt(body, 0)
-			require.True(t, ok)
-			require.Equal(t, before, after, "the fused branch lands where the original did")
-		})
-	}
+	require.False(t, FuseThreeInstrPatterns(compiledFunction, body, 0, len(body), program.JumpTargetsOf(body)),
+		"the load fills int register 2 and the comparison reads uint register 2")
+	require.Equal(t, want, body)
 }
 
-func TestFuseCompareRegJumpLiveness(t *testing.T) {
-	t.Parallel()
-	const (
-		cond      = 3
-		other     = 5
-		siteIndex = 0
-	)
-	intLocation := func(register uint8) program.VarLocation {
-		return program.VarLocation{Register: register, Kind: isa.RegisterInt}
-	}
-	call := isa.NewTier1Instruction(isa.SubOpCall, siteIndex, 0)
-	builtin := isa.NewTier1Instruction(isa.SubOpCallBuiltin, 0, 1)
-	writeCond := mk(isa.OpLoadIntConst, cond, 0, 0)
-	readCond := mk(isa.OpAddInt, other, cond, 1)
-
-	cases := []struct {
-		name        string
-		jumpOp      isa.Opcode
-		fallThrough []isa.Instruction
-		taken       []isa.Instruction
-		site        program.CallSite
-		resultKinds []isa.RegisterKind
-		jumpTargets map[int]bool
-		fused       bool
-	}{
-		{name: "written on the fall-through and returned on the taken edge", fallThrough: []isa.Instruction{writeCond}, taken: []isa.Instruction{returnVoid()}, fused: true},
-		{name: "overwritten on both edges", fallThrough: []isa.Instruction{mk(isa.OpAddInt, cond, 1, 2)}, taken: []isa.Instruction{writeCond}, fused: true},
-		{name: "both edges fall off the end of the body", fallThrough: []isa.Instruction{mk(isa.OpNop, 0, 0, 0)}, taken: []isa.Instruction{mk(isa.OpNop, 0, 0, 0)}, fused: true},
-		{name: "read on the fall-through", fallThrough: []isa.Instruction{readCond}, taken: []isa.Instruction{returnVoid()}, fused: false},
-		{name: "read on the taken edge", fallThrough: []isa.Instruction{writeCond}, taken: []isa.Instruction{readCond}, fused: false},
-		{name: "read through a jump on the taken edge", fallThrough: []isa.Instruction{writeCond}, taken: []isa.Instruction{jumpForward(1), returnVoid(), readCond}, fused: false},
-		{name: "the branch word is a jump target", fallThrough: []isa.Instruction{writeCond}, taken: []isa.Instruction{returnVoid()}, jumpTargets: map[int]bool{1: true}, fused: false},
-		{name: "jump-if-true is not a fusable branch", jumpOp: isa.OpJumpIfTrue, fallThrough: []isa.Instruction{writeCond}, taken: []isa.Instruction{returnVoid()}, fused: false},
-		{name: "the condition is a result slot", fallThrough: []isa.Instruction{writeCond}, taken: []isa.Instruction{returnVoid()}, resultKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterInt, isa.RegisterInt, isa.RegisterInt}, fused: false},
-		{name: "a result-slot condition overwritten on both edges", fallThrough: []isa.Instruction{writeCond}, taken: []isa.Instruction{writeCond}, resultKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterInt, isa.RegisterInt, isa.RegisterInt}, fused: true},
-		{name: "a call passes the condition as an int argument", fallThrough: []isa.Instruction{call, writeCond}, taken: []isa.Instruction{returnVoid()}, site: program.CallSite{Arguments: []program.VarLocation{intLocation(cond)}}, fused: false},
-		{name: "a call writes the condition as its int result", fallThrough: []isa.Instruction{call}, taken: []isa.Instruction{returnVoid()}, site: program.CallSite{Returns: []program.VarLocation{intLocation(cond)}}, fused: true},
-		{name: "a call passing an unrelated int neither reads nor writes it", fallThrough: []isa.Instruction{call, readCond}, taken: []isa.Instruction{returnVoid()}, site: program.CallSite{Arguments: []program.VarLocation{intLocation(other)}}, fused: false},
-		{name: "a builtin call reads the condition through its argument word", fallThrough: []isa.Instruction{builtin, mk(isa.OpExt, cond, uint8(isa.RegisterInt), 0), writeCond}, taken: []isa.Instruction{returnVoid()}, fused: false},
-		{name: "a builtin call reading a general register with the same number is not a read", fallThrough: []isa.Instruction{builtin, mk(isa.OpExt, cond, uint8(isa.RegisterGeneral), 0), writeCond}, taken: []isa.Instruction{returnVoid()}, fused: true},
-		{name: "a bare extension word naming the condition is a read", fallThrough: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpMakeSliceInt, other, 1), mk(isa.OpExt, cond, 0, 0), writeCond}, taken: []isa.Instruction{returnVoid()}, fused: false},
-		{name: "a deferred call passing the condition as an int argument", fallThrough: []isa.Instruction{mk(isa.OpDefer, other, 1, 0), mk(isa.OpExt, 0, cond, uint8(isa.RegisterInt)), writeCond}, taken: []isa.Instruction{returnVoid()}, fused: false},
-		{name: "a deferred call passing a string register with the same number", fallThrough: []isa.Instruction{mk(isa.OpDefer, other, 1, 0), mk(isa.OpExt, 0, cond, uint8(isa.RegisterString)), writeCond}, taken: []isa.Instruction{returnVoid()}, fused: true},
-		{name: "an extension immediate equal to the condition is not a read", fallThrough: []isa.Instruction{mk(isa.OpPackTyped, other, 1, 0), mk(isa.OpExt, cond, 0, 0), writeCond}, taken: []isa.Instruction{returnVoid()}, fused: true},
-		{name: "slice bounds flags equal to the condition are not a read", fallThrough: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSliceOp, other, 1), mk(isa.OpExt, isa.SliceLowBoundFlag|isa.SliceHighBoundFlag, 4, 5), writeCond}, taken: []isa.Instruction{returnVoid()}, fused: true},
-		{name: "a slice low bound naming the condition is a read", fallThrough: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpSliceOp, other, 1), mk(isa.OpExt, isa.SliceLowBoundFlag, cond, 0), writeCond}, taken: []isa.Instruction{returnVoid()}, fused: false},
-		{name: "a channel receive into the condition ends the search as a write", fallThrough: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpChannelReceive, 1, other), mk(isa.OpExt, cond, uint8(isa.RegisterInt), 0), readCond}, taken: []isa.Instruction{returnVoid()}, fused: true},
-		{name: "a channel receive into a string register with the same number is neither", fallThrough: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpChannelReceive, 1, other), mk(isa.OpExt, cond, uint8(isa.RegisterString), 0), readCond}, taken: []isa.Instruction{returnVoid()}, fused: false},
-		{name: "a range step writing the condition as its int key ends the search", fallThrough: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpRangeNext, 1, other), mk(isa.OpExt, 1, cond, uint8(isa.RegisterInt)), mk(isa.OpExt, 0, 0, 0), readCond}, taken: []isa.Instruction{returnVoid()}, fused: true},
-		{name: "an unrecorded extension layout is read conservatively", fallThrough: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpAppendInt, other, 1), mk(isa.OpExt, 0, cond, 0), writeCond}, taken: []isa.Instruction{returnVoid()}, fused: false},
-	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Parallel()
-			jumpOp := testCase.jumpOp
-			if jumpOp == 0 {
-				jumpOp = isa.OpJumpIfFalse
-			}
-			body := compareJumpBody(isa.OpLtInt, jumpOp, cond, testCase.fallThrough, testCase.taken)
-			compiledFunction := &program.CompiledFunction{
-				Body:        body,
-				CallSites:   []program.CallSite{testCase.site},
-				ResultKinds: testCase.resultKinds,
-			}
-			jumpTargets := testCase.jumpTargets
-			if jumpTargets == nil {
-				jumpTargets = program.JumpTargetsOf(body)
-			}
-			original := append([]isa.Instruction(nil), body...)
-
-			fused := FuseCompareRegJump(compiledFunction, body, 0, len(body), jumpTargets)
-
-			require.Equal(t, testCase.fused, fused)
-			if !fused {
-				require.Equal(t, original, body, "a refused fusion leaves the body untouched")
-			}
-		})
-	}
-}
-
-func jumpForward(words int16) isa.Instruction {
-	lo, hi := jumpOffset(words)
-	return isa.NewTier1Instruction(isa.SubOpJump, lo, hi)
-}
-
-func TestFuseCompareRegJumpFollowsLoopBackEdge(t *testing.T) {
-	t.Parallel()
-	const cond = 3
-	exitLo, exitHi := jumpOffset(2)
-	backLo, backHi := jumpOffset(-4)
-	body := []isa.Instruction{
-		mk(isa.OpLtInt, cond, 1, 2),
-		mk(isa.OpJumpIfFalse, cond, exitLo, exitHi),
-		isa.NewTier2Instruction(isa.SubOpTier2IncInt, 1),
-		isa.NewTier1Instruction(isa.SubOpJump, backLo, backHi),
-		returnVoid(),
-	}
-	compiledFunction := &program.CompiledFunction{Body: body}
-
-	require.True(t, FuseCompareRegJump(compiledFunction, body, 0, len(body), program.JumpTargetsOf(body)))
-
-	target, ok := program.JumpTargetAt(body, 0)
-	require.True(t, ok)
-	require.Equal(t, 4, target)
-}
-
-func TestFuseCompareConstJumpLiveness(t *testing.T) {
-	t.Parallel()
-	const (
-		cond     = 3
-		constant = 4
-		other    = 5
-	)
-	cases := []struct {
-		name        string
-		fallThrough []isa.Instruction
-		taken       []isa.Instruction
-		fused       bool
-	}{
-		{name: "both registers dead", fallThrough: []isa.Instruction{mk(isa.OpLoadIntConst, cond, 0, 0), mk(isa.OpLoadIntConst, constant, 0, 0)}, taken: []isa.Instruction{returnVoid()}, fused: true},
-		{name: "condition read after the branch", fallThrough: []isa.Instruction{mk(isa.OpAddInt, other, cond, 1), mk(isa.OpLoadIntConst, constant, 0, 0)}, taken: []isa.Instruction{returnVoid()}, fused: false},
-		{name: "loaded constant read after the branch", fallThrough: []isa.Instruction{mk(isa.OpLoadIntConst, cond, 0, 0), mk(isa.OpAddInt, other, constant, 1)}, taken: []isa.Instruction{returnVoid()}, fused: false},
-		{name: "loaded constant read on the taken edge", fallThrough: []isa.Instruction{mk(isa.OpLoadIntConst, cond, 0, 0), mk(isa.OpLoadIntConst, constant, 0, 0)}, taken: []isa.Instruction{mk(isa.OpAddInt, other, constant, 1)}, fused: false},
-	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Parallel()
-			lo, hi := jumpOffset(int16(len(testCase.fallThrough)))
-			body := []isa.Instruction{
-				mk(isa.OpLoadIntConst, constant, 0, 0),
-				mk(isa.OpLtInt, cond, 1, constant),
-				mk(isa.OpJumpIfFalse, cond, lo, hi),
-			}
-			body = append(body, testCase.fallThrough...)
-			body = append(body, testCase.taken...)
-			before, ok := program.JumpTargetAt(body, 2)
-			require.True(t, ok)
-			compiledFunction := &program.CompiledFunction{Body: body, IntConstants: []int64{0}}
-
-			fused := FuseThreeInstrPatterns(compiledFunction, body, 0, len(body), program.JumpTargetsOf(body))
-
-			require.Equal(t, testCase.fused, fused)
-			if !fused {
-				return
-			}
-			require.Equal(t, isa.NewTier1Instruction(isa.SubOpLtIntConstJumpFalse, 1, 0), body[0])
-			require.Equal(t, isa.OpExt, body[1].Op)
-			require.Equal(t, isa.OpNop, body[2].Op)
-			after, ok := program.JumpTargetAt(body, 0)
-			require.True(t, ok)
-			require.Equal(t, before, after, "the fused branch lands where the original did")
-		})
-	}
-}
-
-func TestFuseMapIndexOkJumpFalseLandsWhereTheOriginalDid(t *testing.T) {
+func TestFuseGetMapOkThenJumpIfFalseLandsWhereTheOriginalDid(t *testing.T) {
 	t.Parallel()
 	const okRegister = 6
 	cases := []struct {
 		source isa.Opcode
 		fused  isa.Opcode
 	}{
-		{source: isa.OpMapIndexOkIntInt, fused: isa.OpMapIndexOkJumpIfFalseIntInt},
-		{source: isa.OpMapIndexOkStringInt, fused: isa.OpMapIndexOkJumpIfFalseStringInt},
-		{source: isa.OpMapIndexOkStringString, fused: isa.OpMapIndexOkJumpIfFalseStringString},
-		{source: isa.OpMapIndexOkIntString, fused: isa.OpMapIndexOkJumpIfFalseIntString},
-		{source: isa.OpMapIndexOkIntGeneral, fused: isa.OpMapIndexOkJumpIfFalseIntGeneral},
-		{source: isa.OpMapIndexOkStringGeneral, fused: isa.OpMapIndexOkJumpIfFalseStringGeneral},
+		{source: isa.OpGetMapInt64Int64Ok, fused: isa.OpGetMapInt64Int64OkThenJumpIfFalse},
+		{source: isa.OpGetMapStringInt64Ok, fused: isa.OpGetMapStringInt64OkThenJumpIfFalse},
+		{source: isa.OpGetMapStringStringOk, fused: isa.OpGetMapStringStringOkThenJumpIfFalse},
+		{source: isa.OpGetMapInt64StringOk, fused: isa.OpGetMapInt64StringOkThenJumpIfFalse},
+		{source: isa.OpGetMapInt64GeneralOk, fused: isa.OpGetMapInt64GeneralOkThenJumpIfFalse},
+		{source: isa.OpGetMapStringGeneralOk, fused: isa.OpGetMapStringGeneralOkThenJumpIfFalse},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.fused.String(), func(t *testing.T) {
 			t.Parallel()
-			lo, hi := jumpOffset(2)
+			low, high := jumpOffset(2)
 			body := []isa.Instruction{
 				mk(testCase.source, 1, 2, 3),
-				mk(isa.OpExt, okRegister, 0, 0),
-				mk(isa.OpJumpIfFalse, okRegister, lo, hi),
-				mk(isa.OpNop, 0, 0, 0),
+				mk(isa.OpExtension, okRegister, 0, 0),
+				mk(isa.OpJumpIfFalse, okRegister, low, high),
+				mk(isa.OpNoOperation, 0, 0, 0),
 				returnVoid(),
 				returnVoid(),
 			}
@@ -278,10 +88,10 @@ func TestCountIncomingJumpsSeesFusedForms(t *testing.T) {
 	fusedLo, fusedHi := jumpOffset(1)
 	wordLo, wordHi := jumpOffset(-2)
 	body := []isa.Instruction{
-		isa.NewTier1Instruction(isa.SubOpLtIntJumpFalse, 1, 2),
-		mk(isa.OpExt, fusedLo, fusedHi, 0),
-		mk(isa.OpNop, 0, 0, 0),
-		mk(isa.OpNop, 0, 0, 0),
+		isa.NewTier1Instruction(isa.SubOpLessThanInt64ThenJumpIfFalse, 1, 2),
+		mk(isa.OpExtension, fusedLo, fusedHi, 0),
+		mk(isa.OpNoOperation, 0, 0, 0),
+		mk(isa.OpNoOperation, 0, 0, 0),
 		mk(isa.OpJumpIfFalse, 5, wordLo, wordHi),
 	}
 	for _, source := range []int{0, 4} {
@@ -296,10 +106,10 @@ func TestCountIncomingJumpsSeesFusedForms(t *testing.T) {
 
 	mapLo, mapHi := jumpOffset(1)
 	withMapBranch := []isa.Instruction{
-		mk(isa.OpMapIndexOkJumpIfFalseIntInt, 1, 2, 3),
-		mk(isa.OpExt, 6, mapLo, mapHi),
-		mk(isa.OpNop, 0, 0, 0),
-		mk(isa.OpNop, 0, 0, 0),
+		mk(isa.OpGetMapInt64Int64OkThenJumpIfFalse, 1, 2, 3),
+		mk(isa.OpExtension, 6, mapLo, mapHi),
+		mk(isa.OpNoOperation, 0, 0, 0),
+		mk(isa.OpNoOperation, 0, 0, 0),
 	}
 	require.Equal(t, 1, countIncomingJumps(nil, withMapBranch, 3, -1), "a fused map-index-ok branch is an incoming jump")
 }

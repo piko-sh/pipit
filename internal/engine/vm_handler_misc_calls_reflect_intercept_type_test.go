@@ -57,7 +57,7 @@ func TestInterceptReflectTypeNumFieldHidesTheSentinel(t *testing.T) {
 			t.Parallel()
 
 			_, _, registers := newStandardVM(t)
-			site := reflectInterceptSite(isa.RegisterInt, program.VarLocation{Kind: isa.RegisterInt, Register: 0})
+			site := reflectInterceptSite(isa.RegisterInt64, program.VarLocation{Kind: isa.RegisterInt64, Register: 0})
 
 			got, handled := interceptReflectTypeNumField(registers, site, tt.reflectType)
 			require.Equal(t, opContinue, got)
@@ -78,7 +78,7 @@ func TestInterceptReflectTypeFieldAnswersFromTheUserFields(t *testing.T) {
 		t.Parallel()
 
 		vm, _, registers := newStandardVM(t)
-		site := reflectInterceptSite(isa.RegisterInt, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
+		site := reflectInterceptSite(isa.RegisterInt64, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
 		registers.Ints[2] = 0
 
 		got, handled := interceptReflectTypeField(vm, registers, site, script)
@@ -94,7 +94,7 @@ func TestInterceptReflectTypeFieldAnswersFromTheUserFields(t *testing.T) {
 		t.Parallel()
 
 		vm, _, registers := newStandardVM(t)
-		site := reflectInterceptSite(isa.RegisterInt, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
+		site := reflectInterceptSite(isa.RegisterInt64, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
 		registers.Ints[2] = 1
 
 		_, handled := interceptReflectTypeField(vm, registers, site, script)
@@ -106,7 +106,7 @@ func TestInterceptReflectTypeFieldAnswersFromTheUserFields(t *testing.T) {
 		t.Parallel()
 
 		vm, _, registers := newStandardVM(t)
-		site := reflectInterceptSite(isa.RegisterInt, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
+		site := reflectInterceptSite(isa.RegisterInt64, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
 		registers.Ints[2] = -1
 
 		_, handled := interceptReflectTypeField(vm, registers, site, script)
@@ -118,7 +118,7 @@ func TestInterceptReflectTypeFieldAnswersFromTheUserFields(t *testing.T) {
 		t.Parallel()
 
 		vm, _, registers := newStandardVM(t)
-		site := reflectInterceptSite(isa.RegisterInt, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
+		site := reflectInterceptSite(isa.RegisterInt64, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
 
 		_, handled := interceptReflectTypeField(vm, registers, site, reflect.TypeFor[identityNone]())
 		require.False(t, handled)
@@ -128,7 +128,7 @@ func TestInterceptReflectTypeFieldAnswersFromTheUserFields(t *testing.T) {
 		t.Parallel()
 
 		vm, _, registers := newStandardVM(t)
-		site := reflectInterceptSite(isa.RegisterInt, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
+		site := reflectInterceptSite(isa.RegisterInt64, program.VarLocation{Kind: isa.RegisterGeneral, Register: 0})
 
 		_, handled := interceptReflectTypeField(vm, registers, site, reflect.TypeFor[int]())
 		require.False(t, handled)
@@ -229,7 +229,7 @@ func TestInterceptReflectTypeNameSubstitutesTheSourceName(t *testing.T) {
 			t.Parallel()
 
 			_, _, registers := newStandardVM(t)
-			site := reflectInterceptSite(isa.RegisterInt, program.VarLocation{Kind: isa.RegisterString, Register: 0})
+			site := reflectInterceptSite(isa.RegisterInt64, program.VarLocation{Kind: isa.RegisterString, Register: 0})
 
 			got, handled := interceptReflectTypeName(registers, site, tt.reflectType)
 			require.Equal(t, opContinue, got)
@@ -262,7 +262,7 @@ func TestInterceptReflectTypeStringRendersTheQualifiedName(t *testing.T) {
 			t.Parallel()
 
 			_, _, registers := newStandardVM(t)
-			site := reflectInterceptSite(isa.RegisterInt, program.VarLocation{Kind: isa.RegisterString, Register: 0})
+			site := reflectInterceptSite(isa.RegisterInt64, program.VarLocation{Kind: isa.RegisterString, Register: 0})
 
 			got, handled := interceptReflectTypeString(registers, site, tt.reflectType)
 			require.Equal(t, opContinue, got)
@@ -297,7 +297,7 @@ func TestInterceptReflectTypePkgPathNamesTheQualifier(t *testing.T) {
 			t.Parallel()
 
 			_, _, registers := newStandardVM(t)
-			site := reflectInterceptSite(isa.RegisterInt, program.VarLocation{Kind: isa.RegisterString, Register: 0})
+			site := reflectInterceptSite(isa.RegisterInt64, program.VarLocation{Kind: isa.RegisterString, Register: 0})
 
 			got, handled := interceptReflectTypePkgPath(registers, site, tt.reflectType)
 			require.Equal(t, opContinue, got)
@@ -334,7 +334,7 @@ func TestTryInterceptPipitReflectTypeMethodRoutesByName(t *testing.T) {
 			t.Parallel()
 
 			vm, _, registers := newStandardVM(t)
-			site := reflectInterceptSite(isa.RegisterInt,
+			site := reflectInterceptSite(isa.RegisterInt64,
 				program.VarLocation{Kind: isa.RegisterString, Register: 0},
 			)
 

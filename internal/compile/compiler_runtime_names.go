@@ -60,38 +60,20 @@ func (c *Compiler) runtimeFunctionName(declaration *ast.FuncDecl) string {
 	return qualifier + "." + receiver + "." + name
 }
 
-// bodyInspectsCallStack reports whether a function body refers to one of the call-stack
-// inspection functions, as a call or as a function value.
+// refersToCallStackInspector reports whether node is a selector naming one of the
+// call-stack inspection functions, as a call or as a function value.
 //
-// Takes info (*types.Info) which resolves selector uses; nil is treated as inspecting,
-// the conservative answer.
-// Takes body (*ast.BlockStmt) which is the body to scan.
+// Takes info (*types.Info) which resolves selector uses.
+// Takes node (ast.Node) which is the node to test.
 //
-// Returns bool which is true when the body reads the call stack.
-func bodyInspectsCallStack(info *types.Info, body *ast.BlockStmt) bool {
-	if body == nil {
+// Returns bool which is true when node names such a function.
+func refersToCallStackInspector(info *types.Info, node ast.Node) bool {
+	selector, ok := node.(*ast.SelectorExpr)
+	if !ok {
 		return false
 	}
-	if info == nil {
-		return true
-	}
-	found := false
-	ast.Inspect(body, func(node ast.Node) bool {
-		if found {
-			return false
-		}
-		selector, ok := node.(*ast.SelectorExpr)
-		if !ok {
-			return true
-		}
-		function, ok := info.Uses[selector.Sel].(*types.Func)
-		if ok && function.Pkg() != nil && callStackInspectors[function.Pkg().Path()][function.Name()] {
-			found = true
-			return false
-		}
-		return true
-	})
-	return found
+	function, ok := info.Uses[selector.Sel].(*types.Func)
+	return ok && function.Pkg() != nil && callStackInspectors[function.Pkg().Path()][function.Name()]
 }
 
 // receiverDeclarationName reads the base type name out of a receiver expression, noting a

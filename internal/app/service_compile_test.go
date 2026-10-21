@@ -33,18 +33,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/compile/passes"
+	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/symtab"
+	"pipit.sh/pipit/internal/verify"
 )
 
 type typedProvider struct {
 	exports  symtab.SymbolExports
 	packages map[string]*types.Package
 }
-
-func (p typedProvider) Exports() symtab.SymbolExports { return p.exports }
-
-func (p typedProvider) TypesPackages() map[string]*types.Package { return p.packages }
 
 const registerPressurePrelude = `package main
 
@@ -60,6 +59,21 @@ func (a *Arena) GetNode() *Node { return &Node{} }
 func (a *Arena) GetChildSlice(n int) (int, []*Node) { return n, make([]*Node, 0, n) }
 
 `
+
+type layoutHost struct {
+	A int
+	B string
+	C string
+	N bool
+}
+
+type layoutProvider struct {
+	fields func(pkg *types.Package) []*types.Var
+}
+
+func (p typedProvider) Exports() symtab.SymbolExports { return p.exports }
+
+func (p typedProvider) TypesPackages() map[string]*types.Package { return p.packages }
 
 func TestBuildImportAliasMap_DefaultAlias(t *testing.T) {
 	t.Parallel()
@@ -1170,4 +1184,421 @@ func manyConstants(n int) string {
 		arguments[index] = fmt.Sprintf("%d", index)
 	}
 	return strings.Join(arguments, ", ")
+}
+
+func (layoutProvider) Exports() symtab.SymbolExports {
+	return symtab.SymbolExports{"layouthost": {
+		"T":    reflect.ValueOf((*layoutHost)(nil)),
+		"Make": reflect.ValueOf(func() *layoutHost { return &layoutHost{} }),
+	}}
+}
+
+func (p layoutProvider) TypesPackages() map[string]*types.Package {
+	pkg := types.NewPackage("layouthost", "layouthost")
+	named := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "T", nil), types.NewStruct(p.fields(pkg), nil), nil)
+	pkg.Scope().Insert(named.Obj())
+	result := types.NewTuple(types.NewVar(token.NoPos, pkg, "", types.NewPointer(named)))
+	pkg.Scope().Insert(types.NewFunc(token.NoPos, pkg, "Make", types.NewSignatureType(nil, nil, nil, nil, result, false)))
+	pkg.MarkComplete()
+	return map[string]*types.Package{"layouthost": pkg}
+}
+
+func layoutField(pkg *types.Package, name string, kind types.BasicKind) *types.Var {
+	return types.NewField(token.NoPos, pkg, name, types.Typ[kind], false)
+}
+
+func staleLayoutProvider() layoutProvider {
+	return layoutProvider{fields: func(pkg *types.Package) []*types.Var {
+		return []*types.Var{layoutField(pkg, "A", types.Int), layoutField(pkg, "N", types.String),
+			layoutField(pkg, "B", types.String), layoutField(pkg, "C", types.String)}
+	}}
+}
+
+func TestBridgePackageExportsReturnsARejectedTypesPackage(t *testing.T) {
+	service := NewService()
+	stale := staleLayoutProvider()
+	result := &packageCompileResult{
+		functionTable:       map[string]uint16{},
+		globalVariables:     nil,
+		info:                &types.Info{Defs: map[*ast.Ident]types.Object{}},
+		typesPackage:        stale.TypesPackages()["layouthost"],
+		rootFunction:        program.NewNamedFunction("<root>"),
+		initFunctionIndices: nil,
+		exportedVars:        []packageVarExport{{reflectType: reflect.TypeFor[*layoutHost](), storage: reflect.ValueOf((*layoutHost)(nil)), name: "T"}},
+	}
+	err := service.bridgePackageExports("layouthost", result)
+	require.ErrorIs(t, err, symtab.ErrTypesPackageLayout)
+	require.ErrorIs(t, err, fault.ErrCompilation)
+	require.ErrorContains(t, err, `"layouthost"`)
+	require.Empty(t, service.pendingVarBridges, "a rejected package bridges no variables")
+}
+
+func TestStaleTypesPackageLayoutIsRejected(t *testing.T) {
+	const source = `package main
+
+import "layouthost"
+
+func Run() *layouthost.T {
+	v := layouthost.Make()
+	v.B = "to-B"
+	return v
+}
+`
+	stale := staleLayoutProvider()
+	registry := symtab.NewSymbolRegistry(stale.Exports())
+	err := registry.RegisterTypesPackage("layouthost", stale.TypesPackages()["layouthost"])
+	require.ErrorIs(t, err, symtab.ErrTypesPackageLayout)
+	require.ErrorContains(t, err, "layouthost.T: field 1 is N in the export data, B natively")
+	_, err = registry.Import(t.Context(), "layouthost")
+	require.ErrorIs(t, err, symtab.ErrTypesPackageLayout, "a rejected package is not synthesised from reflect instead")
+
+	service := NewService()
+	require.ErrorIs(t, service.UseSymbolProviders(stale), symtab.ErrTypesPackageLayout)
+	_, err = service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "types package layout disagrees with the native type")
+	require.ErrorContains(t, err, "make generate-selfhost-symbols")
+
+	offset := layoutProvider{fields: func(pkg *types.Package) []*types.Var {
+		return []*types.Var{layoutField(pkg, "A", types.Int32), layoutField(pkg, "B", types.String),
+			layoutField(pkg, "C", types.String), layoutField(pkg, "N", types.Bool)}
+	}}
+	err = symtab.NewSymbolRegistry(offset.Exports()).RegisterTypesPackage("layouthost", offset.TypesPackages()["layouthost"])
+	require.ErrorIs(t, err, symtab.ErrTypesPackageLayout)
+	require.ErrorContains(t, err, "field 0 (A): kind int32 in the export data, int natively")
+
+	current := layoutProvider{fields: func(pkg *types.Package) []*types.Var {
+		return []*types.Var{layoutField(pkg, "A", types.Int), layoutField(pkg, "B", types.String),
+			layoutField(pkg, "C", types.String), layoutField(pkg, "N", types.Bool)}
+	}}
+	service = NewService()
+	require.NoError(t, service.UseSymbolProviders(current))
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": source})
+	require.NoError(t, err)
+	result, err := service.ExecuteEntrypoint(t.Context(), compiled, "Run")
+	require.NoError(t, err)
+	host, ok := result.(*layoutHost)
+	require.True(t, ok)
+	require.Equal(t, layoutHost{B: "to-B"}, *host)
+}
+
+type compileCorpusProgram struct {
+	name   string
+	source string
+	want   int64
+}
+
+var compileCorpus = []compileCorpusProgram{
+	{name: "inlined leaves of every kind", want: 117, source: `package main
+
+func addInt(a, b int) int { return a + b }
+func addFloat(a, b float64) float64 { return a + b }
+func joinText(a, b string) string { return a + b }
+func both(a, b bool) bool { return a && b }
+func addUint(a, b uint) uint { return a + b }
+func addComplex(a, b complex128) complex128 { return a + b }
+func first(values []int) int { return values[0] }
+func twice(f func(int) int, x int) int { return f(f(x)) }
+
+func run() int {
+	total := 0
+	for index := range 10 {
+		total = addInt(total, index)
+	}
+	length := len(joinText("ab", "cd"))
+	if both(true, length == 4) {
+		total += int(addFloat(1.5, 2.5))
+	}
+	total += int(addUint(3, 4)) + int(real(addComplex(1+2i, 3+4i)))
+	total += first([]int{9, 8}) + twice(func(x int) int { return x * 2 }, 12)
+	return total
+}
+`},
+	{name: "locals escaping into closures, the heap and results", want: 61, source: `package main
+
+type box struct{ value int }
+
+func newBox(value int) *box {
+	local := box{value: value}
+	return &local
+}
+
+func counter() func() int {
+	count := 0
+	return func() int {
+		count++
+		return count
+	}
+}
+
+func run() int {
+	next := counter()
+	next()
+	next()
+	values := make([]int, 0, 4)
+	for index := range 4 {
+		values = append(values, index*index)
+	}
+	pointer := &values[3]
+	*pointer += 1
+	sum := 0
+	for _, value := range values {
+		sum += value
+	}
+	captured := 0
+	func() { captured = sum }()
+	return next() + newBox(40).value + captured + len(values) - 1
+}
+`},
+	{name: "loops the optimisers rewrite", want: 5704, source: `package main
+
+type point struct{ x, y int32 }
+
+var table = []int{1, 2, 3, 4, 5, 6, 7, 8}
+
+func run() int {
+	points := []point{{1, 2}, {3, 4}, {5, 6}}
+	scale := point{2, 3}
+	var narrow int32
+	for index := range 100 {
+		for _, current := range points {
+			narrow += current.x*scale.x + current.y*scale.y + int32(index&1)
+		}
+	}
+	total := 0
+	for index := 0; index < len(table); index++ {
+		total += table[index] * table[index]
+	}
+	for _, character := range "héllo" {
+		total += len(string(character))
+	}
+	var small int8 = 100
+	small += 100
+	return int(narrow) + total + int(small)
+}
+`},
+	{name: "appends, maps and self-recursion", want: 96, source: `package main
+
+func fibonacci(n int) int {
+	if n < 2 {
+		return n
+	}
+	return fibonacci(n-1) + fibonacci(n-2)
+}
+
+func run() int {
+	words := map[string]int{}
+	for _, word := range []string{"a", "b", "a", "c", "a"} {
+		words[word]++
+	}
+	buffer := []byte{}
+	for index := range 5 {
+		buffer = append(buffer, byte('a'+index))
+	}
+	buffer = buffer[:len(buffer)-1]
+	total := fibonacci(10) + words["a"] + len(buffer) + len(words)
+	if total > 60 && total != 61 {
+		total++
+	}
+	switch {
+	case total < 10:
+		total = 0
+	case total >= 60:
+		total += 30
+	}
+	return total
+}
+`},
+
+	{name: "inlined methods over typed slices", want: 148, source: `package main
+
+type vector struct{ x, y float64 }
+
+func (v vector) dot(other vector) float64 { return v.x*other.x + v.y*other.y }
+
+func (v *vector) scale(factor float64) { v.x *= factor; v.y *= factor }
+
+type counter struct{ hits []int }
+
+func (c *counter) note(index int) { c.hits[index]++ }
+
+func sumInts(values []int) int {
+	total := 0
+	for _, value := range values {
+		total += value
+	}
+	return total
+}
+
+func maxFloat(values []float64) float64 {
+	best := values[0]
+	for _, value := range values[1:] {
+		if value > best {
+			best = value
+		}
+	}
+	return best
+}
+
+func flags(values []bool) int {
+	count := 0
+	for _, value := range values {
+		if value {
+			count++
+		}
+	}
+	return count
+}
+
+func label(values []string) string { return values[len(values)-1] }
+
+func run() int {
+	first := vector{1, 2}
+	second := vector{3, 4}
+	total := 0.0
+	for range 10 {
+		total += first.dot(second)
+	}
+	first.scale(2)
+	tally := &counter{hits: make([]int, 3)}
+	for index := range 9 {
+		tally.note(index % 3)
+	}
+	ints := []int{4, 5, 6}
+	floats := []float64{1.5, 7.25, 3}
+	bools := []bool{true, false, true}
+	words := []string{"a", "bb", "ccc"}
+	return int(total) + int(first.x) + sumInts(tally.hits) + sumInts(ints) + int(maxFloat(floats)) + flags(bools) + len(label(words))
+}
+`},
+	{name: "type switches, channels, copies and generic specialisations", want: 25, source: `package main
+
+func pick[T int | float64](values []T, index int) T { return values[index] }
+
+func describe(value any) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case string:
+		return len(typed)
+	case []int:
+		return len(typed)
+	default:
+		return -1
+	}
+}
+
+func run() int {
+	var buffer = make([]int, 4)
+	var copied = make([]int, 2)
+	copiedCount := copy(copied, buffer)
+	results := make(chan int, 2)
+	done := make(chan bool)
+	go func() {
+		for index := range 3 {
+			select {
+			case results <- index + 1:
+			default:
+			}
+		}
+		done <- true
+	}()
+	<-done
+	total := 0
+	for len(results) > 0 {
+		total += <-results
+	}
+	ints := []int{1, 2, 3}
+	floats := []float64{0.5, 1.5}
+	total += pick(ints, 2) + int(pick(floats, 1)) + copiedCount
+	total += describe(7) + describe("four") + describe(ints) + describe(2.5)
+	var holder any = ints
+	if values, ok := holder.([]int); ok {
+		total += len(values)
+	}
+	return total
+}
+`},
+	{name: "inlined callees that write their parameters", want: 97, source: `package main
+
+type pair struct{ left, right int }
+
+func bumpInt(x int) int { x++; return x }
+
+func halveFloat(x float64) float64 { x /= 2; return x }
+
+func shoutText(x string) string { x += "!"; return x }
+
+func flipBool(x bool) bool { x = !x; return x }
+
+func growUint(x uint) uint { x += 3; return x }
+
+func narrow(x int32) int32 { x++; x--; x++; return x }
+
+func boxed() any { return pair{1, 2} }
+
+func adder(base int) func(int) int { return func(x int) int { return x + base } }
+
+func swap(p pair) pair { p.left, p.right = p.right, p.left; return p }
+
+func countdown(n int) int {
+	if n <= 0 {
+		return 0
+	}
+	return 1 + countdown(n-1)
+}
+
+func run() int {
+	total := 0
+	for index := range 4 {
+		total += bumpInt(index)
+		total += int(halveFloat(float64(index) * 4))
+		total += len(shoutText("hi"))
+		if flipBool(index%2 == 0) {
+			total++
+		}
+		total += int(growUint(uint(index)))
+		total += int(narrow(int32(index)))
+	}
+	if value, ok := boxed().(pair); ok {
+		total += value.left + value.right
+	}
+	total += adder(10)(5) + swap(pair{3, 9}).left + countdown(6)
+	return total
+}
+`},
+}
+
+func TestTheCompileCorpusComputesWhatGoComputesWithAndWithoutOptimisations(t *testing.T) {
+	t.Parallel()
+	settings := map[string]passes.Options{"every optimisation": passes.DefaultOptions(), "no optimisation": {}}
+	for setting, options := range settings {
+		for _, corpusProgram := range compileCorpus {
+			t.Run(setting+"/"+corpusProgram.name, func(t *testing.T) {
+				t.Parallel()
+				require.Equal(t, corpusProgram.want, runCompileCorpusProgram(t, options, corpusProgram))
+			})
+		}
+	}
+}
+
+func runCompileCorpusProgram(t *testing.T, options passes.Options, corpusProgram compileCorpusProgram) int64 {
+	t.Helper()
+	service := NewService(WithOptimisations(options))
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": corpusProgram.source})
+	require.NoError(t, err)
+	_, err = verify.VerifyBytecode(t.Context(), compiled.Root())
+	require.NoError(t, err, "the bytecode verifies")
+	require.NoError(t, verify.VerifyOperandBounds(t.Context(), compiled.Root()))
+	value, err := service.ExecuteEntrypoint(t.Context(), compiled, "run")
+	require.NoError(t, err)
+	switch result := value.(type) {
+	case int64:
+		return result
+	case int:
+		return int64(result)
+	default:
+		require.Failf(t, "run returns an int", "got %T", value)
+		return 0
+	}
 }

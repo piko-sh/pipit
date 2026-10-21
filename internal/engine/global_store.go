@@ -19,19 +19,24 @@
 package engine
 
 import (
+	"fmt"
+	"math"
 	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
 
-	"pipit.sh/pipit/internal/engine/program"
-	"pipit.sh/pipit/internal/symtab/typemodel"
-
 	"piko.sh/safeconv"
+	"pipit.sh/pipit/internal/engine/program"
+	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
+	"pipit.sh/pipit/internal/symtab/typemodel"
 )
 
 const (
+	// maxGlobalSlotsPerKind is the most slots one bank may hold.
+	maxGlobalSlotsPerKind = math.MaxUint16
+
 	// externalMethodsInitialCapacity is the starting size for the lazy-allocated
 	// externalMethods map. Sized for typical small method tables; the map grows naturally
 	// past this.
@@ -51,9 +56,11 @@ type GlobalStore struct {
 	// error so the goroutine panic propagates instead of being silently swallowed.
 	goroutinePanic atomic.Pointer[GoroutinePanicInfo]
 
-	// goroutinePanicSignal is closed exactly once by the panic-CAS winner. Shared-mode
-	// blocking operations select on it so a parked goroutine wakes when a sibling panics
-	// instead of deadlocking.
+	// goroutinePanicSignal is closed exactly once by the panic-CAS winner.
+	//
+	// Shared-mode blocking operations select on it so a parked goroutine wakes when a
+	// sibling panics instead of deadlocking. Guarded by panicMu, with goroutinePanic's
+	// transitions.
 	goroutinePanicSignal chan struct{}
 
 	// externalMethods registers methods from packages compiled in separate
@@ -89,6 +96,10 @@ type GlobalStore struct {
 	// ints holds all package-level int64 global variables.
 	ints []int64
 
+	// panicMu serialises recording, taking and resetting the goroutine panic, so the signal
+	// a panic closes is always the one its record goes with.
+	panicMu sync.Mutex
+
 	// mu guards concurrent access to all fields when shared is true.
 	mu sync.RWMutex
 
@@ -106,7 +117,7 @@ type GlobalStore struct {
 
 	// shared toggles the locked vs fast-path mode for this store. False until any VM
 	// launches its first goroutine, toggled true once and never reset.
-	shared atomic.Bool
+	shared sharedFlag
 
 	// dispatchDepth counts active pipit recover-boundary frames. MakeFunc closure wrappers
 	// consult it before re-panicking and swallow the panic when zero to protect the host
@@ -118,8 +129,32 @@ type GlobalStore struct {
 	// without bound.
 	adapterDepth atomic.Int32
 
+	// finalisersClosed is set by CloseFinalisers, after which the guest finalisers and
+	// cleanups this store's programs registered no longer run.
+	finalisersClosed atomic.Bool
+
 	// nextGoroutineID numbers goroutine VMs for stack dumps; the root VM is 1.
 	nextGoroutineID atomic.Uint64
+}
+
+// GoroutinePanicInfo describes a panic captured from a spawned goroutine that the parent
+// VM has not yet observed.
+type GoroutinePanicInfo struct {
+	// value is the panic value as it was thrown.
+	value any
+
+	// stack is the captured stack trace from the panicking goroutine.
+	stack string
+}
+
+// externalMethodEntry locates a method body across CompileProgram batches.
+type externalMethodEntry struct {
+	// rootFunction is the source package's compiled root, used by boundMethodVM to pick the
+	// right functions slice.
+	rootFunction *program.CompiledFunction
+
+	// methodIndex is the method's position in rootFunction.functions.
+	methodIndex uint16
 }
 
 // NewGlobalStore creates an empty global variable store.
@@ -130,8 +165,10 @@ func NewGlobalStore() *GlobalStore {
 		interpretedChannels:  nil,
 		channelsMu:           sync.Mutex{},
 		goroutinePanicSignal: make(chan struct{}),
+		panicMu:              sync.Mutex{},
 		goroutinePanic:       atomic.Pointer[GoroutinePanicInfo]{},
 		adapterDepth:         atomic.Int32{},
+		finalisersClosed:     atomic.Bool{},
 		externalMethods:      nil,
 		userNamedInterfaces:  nil,
 		uints:                nil,
@@ -144,7 +181,7 @@ func NewGlobalStore() *GlobalStore {
 		mu:                   sync.RWMutex{},
 		externalMethodsMu:    sync.RWMutex{},
 		interpreterLock:      sync.Mutex{},
-		shared:               atomic.Bool{},
+		shared:               sharedFlag{},
 		dispatchDepth:        atomic.Int32{},
 		nextGoroutineID:      atomic.Uint64{},
 		callStack:            newCallStackRegistry(),
@@ -195,37 +232,98 @@ func (g *GlobalStore) ReserveSlots(alloc program.SlotAllocation) program.SlotAll
 		g.mu.Lock()
 		defer g.mu.Unlock()
 	}
-	bases := program.SlotAllocation{
-		safeconv.MustIntToUint16(len(g.ints)),
-		safeconv.MustIntToUint16(len(g.floats)),
-		safeconv.MustIntToUint16(len(g.Strings)),
-		safeconv.MustIntToUint16(len(g.general)),
-		safeconv.MustIntToUint16(len(g.bools)),
-		safeconv.MustIntToUint16(len(g.uints)),
-		safeconv.MustIntToUint16(len(g.complexes)),
+	return g.reserveSlotsLocked(alloc)
+}
+
+// TryReserveSlots grows each bank by the counts in alloc, as ReserveSlots does, unless a
+// bank would pass maxGlobalSlotsPerKind, in which case nothing is reserved.
+//
+// The check and the growth happen under one lock, so a compile allocating slots while a
+// load reserves them cannot overflow a bank.
+//
+// Takes alloc (SlotAllocation) which is the per-kind slot count to add.
+//
+// Returns SlotAllocation which is the pre-grow lengths (base indices).
+// Returns error which wraps fault.ErrGlobalSlotsExhausted, naming the kind, when a bank
+// would pass the limit.
+//
+// Safe for concurrent use by multiple goroutines.
+func (g *GlobalStore) TryReserveSlots(alloc program.SlotAllocation) (program.SlotAllocation, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	lengths := g.bankLengthsLocked()
+	for kind, length := range lengths {
+		if length+int(alloc[kind]) > maxGlobalSlotsPerKind {
+			return program.SlotAllocation{}, fmt.Errorf("%w: %d %s slots in use and %d requested, limit %d",
+				fault.ErrGlobalSlotsExhausted, length, isa.RegisterKind(kind), alloc[kind], maxGlobalSlotsPerKind)
+		}
 	}
-	if n := int(alloc[isa.RegisterInt]); n > 0 {
-		g.ints = append(g.ints, make([]int64, n)...)
+	return g.reserveSlotsLocked(alloc), nil
+}
+
+// TruncateSlots shortens each bank to the length lengths gives it, clearing the slots it
+// drops so they hold no references.
+//
+// Takes lengths (SlotAllocation) which is the length to keep per kind.
+//
+// Safe for concurrent use by multiple goroutines.
+func (g *GlobalStore) TruncateSlots(lengths program.SlotAllocation) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.ints = truncateBank(g.ints, lengths[isa.RegisterInt64])
+	g.floats = truncateBank(g.floats, lengths[isa.RegisterFloat64])
+	g.Strings = truncateBank(g.Strings, lengths[isa.RegisterString])
+	g.general = truncateBank(g.general, lengths[isa.RegisterGeneral])
+	g.bools = truncateBank(g.bools, lengths[isa.RegisterBool])
+	g.uints = truncateBank(g.uints, lengths[isa.RegisterUint64])
+	g.complexes = truncateBank(g.complexes, lengths[isa.RegisterComplex128])
+}
+
+// ZeroSlots writes the zero value into count slots of kind's bank from start, so a freed
+// region is reused as a fresh reservation would be. Slots past the bank's end are
+// ignored.
+//
+// Takes kind (isa.RegisterKind) which selects the bank.
+// Takes start (int) which is the first slot.
+// Takes count (int) which is the number of slots.
+//
+// Returns error which wraps errGlobalSlotRange for a kind with no bank or a negative
+// range.
+//
+// Safe for concurrent use by multiple goroutines.
+func (g *GlobalStore) ZeroSlots(kind isa.RegisterKind, start, count int) error {
+	if start < 0 || count < 0 {
+		return fmt.Errorf("%w: slots %d to %d", errGlobalSlotRange, start, start+count)
 	}
-	if n := int(alloc[isa.RegisterFloat]); n > 0 {
-		g.floats = append(g.floats, make([]float64, n)...)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	switch kind {
+	case isa.RegisterInt64:
+		clear(bankRange(g.ints, start, count))
+	case isa.RegisterFloat64:
+		clear(bankRange(g.floats, start, count))
+	case isa.RegisterString:
+		clear(bankRange(g.Strings, start, count))
+	case isa.RegisterGeneral:
+		clear(bankRange(g.general, start, count))
+	case isa.RegisterBool:
+		clear(bankRange(g.bools, start, count))
+	case isa.RegisterUint64:
+		clear(bankRange(g.uints, start, count))
+	case isa.RegisterComplex128:
+		clear(bankRange(g.complexes, start, count))
+	default:
+		return fmt.Errorf("%w: register kind %d has no global bank", errGlobalSlotRange, kind)
 	}
-	if n := int(alloc[isa.RegisterString]); n > 0 {
-		g.Strings = append(g.Strings, make([]string, n)...)
-	}
-	if n := int(alloc[isa.RegisterGeneral]); n > 0 {
-		g.general = append(g.general, make([]reflect.Value, n)...)
-	}
-	if n := int(alloc[isa.RegisterBool]); n > 0 {
-		g.bools = append(g.bools, make([]bool, n)...)
-	}
-	if n := int(alloc[isa.RegisterUint]); n > 0 {
-		g.uints = append(g.uints, make([]uint64, n)...)
-	}
-	if n := int(alloc[isa.RegisterComplex]); n > 0 {
-		g.complexes = append(g.complexes, make([]complex128, n)...)
-	}
-	return bases
+	return nil
+}
+
+// SetComplex writes a complex128 global variable.
+//
+// Takes index (int) which is the variable to write.
+// Takes v (complex128) which is the new value.
+func (g *GlobalStore) SetComplex(index int, v complex128) {
+	g.setComplex(index, v)
 }
 
 // AllocInt allocates a new int64 global variable and returns its index.
@@ -378,6 +476,9 @@ func (g *GlobalStore) GetString(index int) string {
 //
 // Safe for concurrent use by multiple goroutines.
 func (g *GlobalStore) SetString(index int, v string) {
+	if storeCensusBuilt {
+		censusNoteGlobalStore(g, reflect.ValueOf(v))
+	}
 	if !g.shared.Load() {
 		g.Strings[index] = v
 		return
@@ -411,6 +512,9 @@ func (g *GlobalStore) GetGeneral(index int) reflect.Value {
 //
 // Safe for concurrent use by multiple goroutines.
 func (g *GlobalStore) SetGeneral(index int, v reflect.Value) {
+	if storeCensusBuilt {
+		censusNoteGlobalStore(g, v)
+	}
 	if !g.shared.Load() {
 		g.general[index] = v
 		return
@@ -533,18 +637,13 @@ func (g *GlobalStore) AllocComplex(initial complex128) int {
 
 // RegisterExternalMethod publishes a method entry for cross-package use.
 //
-// Publishes a single (typeName, methodName) -> (rootFunction, methodIndex) entry so
-// adapters in OTHER CompileProgram batches can dispatch to the method body. Called from
-// Service.bridgePackageExports for each entry in the just-compiled package's methodTable.
-// Re-registration overrides the previous owner, matching Go's last-write-wins semantics
-// if two packages declare a same-named type with the same method (rare outside test
-// fixtures).
+// Re-registration overrides the previous owner.
 //
 // Takes key (string) which is "TypeName.MethodName".
 // Takes rootFunction (*CompiledFunction) which owns the method body.
 // Takes methodIndex (uint16) which is the function's slot in rootFunction.functions.
 //
-// Concurrency: takes g.externalMethodsMu in write mode.
+// Safe for concurrent use. It takes g.externalMethodsMu in write mode.
 func (g *GlobalStore) RegisterExternalMethod(key string, rootFunction *program.CompiledFunction, methodIndex uint16) {
 	if g == nil || rootFunction == nil || key == "" {
 		return
@@ -585,6 +684,17 @@ func (g *GlobalStore) RegisterUserNamedInterface(qualifiedName string, pipit *ty
 	g.userNamedInterfaces[qualifiedName] = pipit
 }
 
+// UserNamedInterface returns the identity registered for a named interface declared in
+// user code, for a service recording the interfaces a program's bytecode must carry.
+//
+// Takes qualifiedName (string) which is "pkg.Iface".
+//
+// Returns *typemodel.Type which is the registered identity on hit.
+// Returns bool which reports whether an entry was found.
+func (g *GlobalStore) UserNamedInterface(qualifiedName string) (*typemodel.Type, bool) {
+	return g.lookupUserNamedInterface(qualifiedName)
+}
+
 // SnapshotVarAs reads a global slot and wraps it in a reflect.Value, converting numeric
 // banks back to the caller's declared Go type. Returns a zero value and false when the
 // slot is out of range.
@@ -605,9 +715,9 @@ func (g *GlobalStore) SnapshotVarAs(slot program.GlobalVariableInfo, targetType 
 		return reflect.Value{}, false
 	}
 	switch slot.Kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return reflect.ValueOf(g.GetInt(slot.Index)).Convert(targetType), true
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return reflect.ValueOf(g.GetFloat(slot.Index)).Convert(targetType), true
 	case isa.RegisterString:
 		return reflect.ValueOf(g.GetString(slot.Index)).Convert(targetType), true
@@ -615,9 +725,9 @@ func (g *GlobalStore) SnapshotVarAs(slot program.GlobalVariableInfo, targetType 
 		return snapshotGeneralSlotAs(g.GetGeneral(slot.Index), targetType), true
 	case isa.RegisterBool:
 		return reflect.ValueOf(g.GetBool(slot.Index)), true
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return reflect.ValueOf(g.GetUint(slot.Index)).Convert(targetType), true
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return reflect.ValueOf(g.getComplex(slot.Index)).Convert(targetType), true
 	default:
 	}
@@ -647,9 +757,9 @@ func (g *GlobalStore) SnapshotVar(slot program.GlobalVariableInfo) (reflect.Valu
 		return reflect.Value{}, false
 	}
 	switch slot.Kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return reflect.ValueOf(g.GetInt(slot.Index)), true
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return reflect.ValueOf(g.GetFloat(slot.Index)), true
 	case isa.RegisterString:
 		return reflect.ValueOf(g.GetString(slot.Index)), true
@@ -657,9 +767,9 @@ func (g *GlobalStore) SnapshotVar(slot program.GlobalVariableInfo) (reflect.Valu
 		return g.GetGeneral(slot.Index), true
 	case isa.RegisterBool:
 		return reflect.ValueOf(g.GetBool(slot.Index)), true
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return reflect.ValueOf(g.GetUint(slot.Index)), true
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return reflect.ValueOf(g.getComplex(slot.Index)), true
 	default:
 		return reflect.Value{}, false
@@ -679,8 +789,68 @@ func (g *GlobalStore) Reset() {
 	g.uints = g.uints[:0]
 	g.complexes = g.complexes[:0]
 	g.shared.Store(false)
+	g.panicMu.Lock()
 	g.goroutinePanic.Store(nil)
 	g.goroutinePanicSignal = make(chan struct{})
+	g.panicMu.Unlock()
+}
+
+// reserveSlotsLocked grows each bank by the counts in alloc.
+//
+// Takes alloc (SlotAllocation) which is the per-kind slot count to add.
+//
+// Returns SlotAllocation which is the pre-grow lengths (base indices).
+//
+// Called with g.mu held, or on the single-threaded fast path.
+func (g *GlobalStore) reserveSlotsLocked(alloc program.SlotAllocation) program.SlotAllocation {
+	bases := program.SlotAllocation{
+		safeconv.MustIntToUint16(len(g.ints)),
+		safeconv.MustIntToUint16(len(g.floats)),
+		safeconv.MustIntToUint16(len(g.Strings)),
+		safeconv.MustIntToUint16(len(g.general)),
+		safeconv.MustIntToUint16(len(g.bools)),
+		safeconv.MustIntToUint16(len(g.uints)),
+		safeconv.MustIntToUint16(len(g.complexes)),
+	}
+	if n := int(alloc[isa.RegisterInt64]); n > 0 {
+		g.ints = append(g.ints, make([]int64, n)...)
+	}
+	if n := int(alloc[isa.RegisterFloat64]); n > 0 {
+		g.floats = append(g.floats, make([]float64, n)...)
+	}
+	if n := int(alloc[isa.RegisterString]); n > 0 {
+		g.Strings = append(g.Strings, make([]string, n)...)
+	}
+	if n := int(alloc[isa.RegisterGeneral]); n > 0 {
+		g.general = append(g.general, make([]reflect.Value, n)...)
+	}
+	if n := int(alloc[isa.RegisterBool]); n > 0 {
+		g.bools = append(g.bools, make([]bool, n)...)
+	}
+	if n := int(alloc[isa.RegisterUint64]); n > 0 {
+		g.uints = append(g.uints, make([]uint64, n)...)
+	}
+	if n := int(alloc[isa.RegisterComplex128]); n > 0 {
+		g.complexes = append(g.complexes, make([]complex128, n)...)
+	}
+	return bases
+}
+
+// bankLengthsLocked returns every bank's length, indexed by register kind.
+//
+// Returns [program.NumGlobalRegisterKinds]int which holds the lengths.
+//
+// Called with g.mu held.
+func (g *GlobalStore) bankLengthsLocked() [program.NumGlobalRegisterKinds]int {
+	var lengths [program.NumGlobalRegisterKinds]int
+	lengths[isa.RegisterInt64] = len(g.ints)
+	lengths[isa.RegisterFloat64] = len(g.floats)
+	lengths[isa.RegisterString] = len(g.Strings)
+	lengths[isa.RegisterGeneral] = len(g.general)
+	lengths[isa.RegisterBool] = len(g.bools)
+	lengths[isa.RegisterUint64] = len(g.uints)
+	lengths[isa.RegisterComplex128] = len(g.complexes)
+	return lengths
 }
 
 // materialise replaces globals that the callbacks identify as arena-backed with
@@ -769,6 +939,25 @@ func (g *GlobalStore) lookupExternalMethod(key string) (externalMethodEntry, boo
 	return entry, ok
 }
 
+// lookupExternalMethodOf is lookupExternalMethod for the key "typeName.methodName", which
+// it does not build as a string (lookupMethodKey).
+//
+// Takes typeName (string) which is the receiver's type name.
+// Takes methodName (string) which is the method name.
+//
+// Returns externalMethodEntry which is the registered entry on hit.
+// Returns bool which reports whether a matching entry was found.
+//
+// Concurrent access takes g.externalMethodsMu in read mode.
+func (g *GlobalStore) lookupExternalMethodOf(typeName, methodName string) (externalMethodEntry, bool) {
+	if g == nil {
+		return externalMethodEntry{}, false
+	}
+	g.externalMethodsMu.RLock()
+	defer g.externalMethodsMu.RUnlock()
+	return lookupMethodKey(g.externalMethods, typeName, methodName)
+}
+
 // lookupUserNamedInterface returns the symtab.Type identity for a name.
 //
 // Called by the reflect.TypeOf intercept to decide whether to wrap a *interface{} result.
@@ -803,9 +992,9 @@ func (g *GlobalStore) indexInBank(slot program.GlobalVariableInfo) bool {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	switch slot.Kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return slot.Index >= 0 && slot.Index < len(g.ints)
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return slot.Index >= 0 && slot.Index < len(g.floats)
 	case isa.RegisterString:
 		return slot.Index >= 0 && slot.Index < len(g.Strings)
@@ -813,9 +1002,9 @@ func (g *GlobalStore) indexInBank(slot program.GlobalVariableInfo) bool {
 		return slot.Index >= 0 && slot.Index < len(g.general)
 	case isa.RegisterBool:
 		return slot.Index >= 0 && slot.Index < len(g.bools)
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return slot.Index >= 0 && slot.Index < len(g.uints)
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return slot.Index >= 0 && slot.Index < len(g.complexes)
 	default:
 	}
@@ -829,9 +1018,30 @@ func (g *GlobalStore) indexInBank(slot program.GlobalVariableInfo) bool {
 // Takes value (any) which is the panic value as it was thrown.
 // Takes stack (string) which is the captured stack trace, or empty when unavailable.
 func (g *GlobalStore) recordGoroutinePanic(value any, stack string) {
+	g.panicMu.Lock()
+	defer g.panicMu.Unlock()
 	if g.goroutinePanic.CompareAndSwap(nil, &GoroutinePanicInfo{value: value, stack: stack}) {
 		close(g.goroutinePanicSignal)
 	}
+}
+
+// takeGoroutinePanic returns the recorded goroutine panic and clears it, with a fresh
+// signal, so the store's next execution does not inherit a panic an earlier execution's
+// goroutine raised. The store outlives executions (a service's globals, a session's
+// state), and a panic left behind would fail every later execution on it.
+//
+// Returns *GoroutinePanicInfo which is the cleared panic, or nil when none was recorded.
+func (g *GlobalStore) takeGoroutinePanic() *GoroutinePanicInfo {
+	if g.goroutinePanic.Load() == nil {
+		return nil
+	}
+	g.panicMu.Lock()
+	defer g.panicMu.Unlock()
+	info := g.goroutinePanic.Swap(nil)
+	if info != nil {
+		g.goroutinePanicSignal = make(chan struct{})
+	}
+	return info
 }
 
 // goroutinePanicWakeChan returns the channel a blocking operation should select on to
@@ -843,6 +1053,8 @@ func (g *GlobalStore) goroutinePanicWakeChan() <-chan struct{} {
 	if !g.shared.Load() {
 		return nil
 	}
+	g.panicMu.Lock()
+	defer g.panicMu.Unlock()
 	return g.goroutinePanicSignal
 }
 
@@ -870,30 +1082,10 @@ func (g *GlobalStore) snapshotIndirectVarAs(slot program.GlobalVariableInfo, tar
 	return snapshotGeneralSlotAs(pointee, targetType), true
 }
 
-// GoroutinePanicInfo describes a panic captured from a spawned goroutine that the parent
-// VM has not yet observed.
-type GoroutinePanicInfo struct {
-	// value is the panic value as it was thrown.
-	value any
-
-	// stack is the captured stack trace from the panicking goroutine.
-	stack string
-}
-
 // Value returns the panic value as it was thrown.
 //
 // Returns any which is the panic value.
 func (g *GoroutinePanicInfo) Value() any { return g.value }
-
-// externalMethodEntry locates a method body across CompileProgram batches.
-type externalMethodEntry struct {
-	// rootFunction is the source package's compiled root, used by boundMethodVM to pick the
-	// right functions slice.
-	rootFunction *program.CompiledFunction
-
-	// methodIndex is the method's position in rootFunction.functions.
-	methodIndex uint16
-}
 
 // snapshotGeneralSlotAs coerces a general-bank value into targetType.
 //
@@ -912,4 +1104,33 @@ func snapshotGeneralSlotAs(value reflect.Value, targetType reflect.Type) reflect
 		return value.Convert(targetType)
 	}
 	return value
+}
+
+// truncateBank shortens bank to length, clearing the elements it drops.
+//
+// Takes bank ([]T) which is the bank.
+// Takes length (uint16) which is the length to keep.
+//
+// Returns []T which is the shortened bank, or bank when it is no longer than length.
+func truncateBank[T any](bank []T, length uint16) []T {
+	keep := int(length)
+	if keep >= len(bank) {
+		return bank
+	}
+	clear(bank[keep:])
+	return bank[:keep]
+}
+
+// bankRange returns the part of bank from start for count elements that the bank holds.
+//
+// Takes bank ([]T) which is the bank.
+// Takes start (int) which is the first element. It is not negative.
+// Takes count (int) which is the number of elements. It is not negative.
+//
+// Returns []T which is the range, empty when start is past the end.
+func bankRange[T any](bank []T, start, count int) []T {
+	if start >= len(bank) {
+		return nil
+	}
+	return bank[start:min(len(bank), start+count)]
 }

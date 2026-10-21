@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +16,11 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
-	"context"
 	"crypto/sha256"
 	"errors"
 	"os"
@@ -46,7 +45,7 @@ func TestWorkerImageExplicitStore(t *testing.T) {
 	if err := os.WriteFile(source, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	image, err := PrepareWorkerImageInStore(context.Background(), source, sha256.Sum256(data), store)
+	image, err := PrepareWorkerImageInStore(t.Context(), source, sha256.Sum256(data), store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,10 +63,10 @@ func TestWorkerImageExplicitStore(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if image, err := PrepareWorkerImageInStore(context.Background(), source, sha256.Sum256(data), store); image != nil || !errors.Is(err, sandboxbroker.ErrClosed) {
+	if image, err := PrepareWorkerImageInStore(t.Context(), source, sha256.Sum256(data), store); image != nil || !errors.Is(err, sandboxbroker.ErrClosed) {
 		t.Fatal("closed store fell back to temporary storage:", err)
 	}
-	if image, err := PrepareWorkerImageInStore(context.Background(), source, sha256.Sum256(data), nil); image != nil || !errors.Is(err, ErrInvalidWorker) {
+	if image, err := PrepareWorkerImageInStore(t.Context(), source, sha256.Sum256(data), nil); image != nil || !errors.Is(err, ErrInvalidWorker) {
 		t.Fatal("missing explicit store accepted:", err)
 	}
 }

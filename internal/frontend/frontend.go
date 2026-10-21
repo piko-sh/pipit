@@ -73,6 +73,8 @@ func NewTypesInfo() *types.Info {
 		Uses:       make(map[*ast.Ident]types.Object),
 		Instances:  make(map[*ast.Ident]types.Instance),
 		Selections: make(map[*ast.SelectorExpr]*types.Selection),
+
+		FileVersions: make(map[*ast.File]string),
 	}
 }
 

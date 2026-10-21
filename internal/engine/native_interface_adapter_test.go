@@ -25,6 +25,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type pipitErrorsAsTestErr struct{ code int }
+
+type pipitErrorsAsWrappedErr struct{ inner error }
+
 func TestPipitErrorAdapterImplementsErrorInterface(t *testing.T) {
 	t.Parallel()
 
@@ -96,13 +100,10 @@ func TestTryBuildInterfaceAdapterHandlesNilVM(t *testing.T) {
 		"a nil VM must short-circuit the adapter check rather than panic")
 }
 
-type pipitErrorsAsTestErr struct{ code int }
-
 func (e *pipitErrorsAsTestErr) Error() string { return "test-err" }
 
-type pipitErrorsAsWrappedErr struct{ inner error }
-
 func (e *pipitErrorsAsWrappedErr) Error() string { return "wrapped" }
+
 func (e *pipitErrorsAsWrappedErr) Unwrap() error { return e.inner }
 
 func TestPipitErrorsAsDirectMatch(t *testing.T) {
@@ -217,4 +218,17 @@ func TestEveryAdapterUnwrapsToItsValue(t *testing.T) {
 		unwrapped := unwrapAdapterUnderlying(reflect.ValueOf(adapter))
 		require.Equal(t, value.Interface(), unwrapped.Interface(), name)
 	}
+}
+
+func TestPointerReceiverForCopiesAnArenaScalarBox(t *testing.T) {
+	t.Parallel()
+
+	arena := NewRegisterArena()
+	boxed := boxInt64ToGeneral(arena, 1000)
+	shared := boxed
+	receiver := pointerReceiverFor(boxed)
+	require.Equal(t, reflect.Pointer, receiver.Kind())
+	receiver.Elem().SetInt(5)
+	require.Equal(t, int64(1000), shared.Int(),
+		"a pointer receiver for a boxed scalar must address a copy: other registers share the box")
 }

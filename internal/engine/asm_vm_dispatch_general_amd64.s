@@ -25,8 +25,716 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerSliceIndexStructFieldFloat sets floats[A] = slice(general[B])[ints[C]].field(layout[ext]) for float64 leaves; other shapes fall back to handlerPathBShimSliceIndexStructFieldFloat.
-TEXT ·handlerSliceIndexStructFieldFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerGetGlobal loads the package variable B (shifted by the function's global base) of kind C into bank(C)[A] for the int, float, bool, uint and general banks of an unshared store, a general one under the write-barrier guard. Other kinds and shapes fall back to handlerPathBShimGetGlobal.
+TEXT ·handlerGetGlobal(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    CTX_GLOBALS(R15), SI
+	TESTQ   SI, SI
+	JZ      global_shim
+	CMPB    GS_SHARED(SI), $0
+	JNE     global_shim
+	MOVQ    DX, CX
+	SHRQ    $24, CX
+	MOVBLZX CL, CX
+	XORQ    AX, AX
+	MOVQ    CTX_CURRENT_FRAME(R15), DI
+	MOVQ    CF_FUNCTION(DI), DI
+	TESTQ   DI, DI
+	JZ      global_slot
+	MOVQ    FN_GLOBAL_BASES(DI), DI
+	TESTQ   DI, DI
+	JZ      global_slot
+	CMPQ    CX, $REGKIND_UINT
+	JA      global_shim
+	MOVWLZX (DI)(CX*2), AX
+global_slot:
+	MOVQ    DX, BX
+	SHRQ    $16, BX
+	MOVBLZX BL, BX
+	ADDQ    AX, BX
+	MOVQ    DX, AX
+	SHRQ    $8, AX
+	MOVBLZX AL, AX
+	CMPQ    CX, $REGKIND_INT
+	JNE     global_not_int
+	CMPQ    BX, (GS_INTS+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_INTS(SI), DI
+	MOVQ    (DI)(BX*8), CX
+	MOVQ    CX, (R8)(AX*8)
+	JMP     global_done
+global_not_int:
+	CMPQ    CX, $REGKIND_UINT
+	JNE     global_not_uint
+	CMPQ    BX, (GS_UINTS+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_UINTS(SI), DI
+	MOVQ    (DI)(BX*8), CX
+	MOVQ    CTX_UINTS_BASE(R15), DI
+	MOVQ    CX, (DI)(AX*8)
+	JMP     global_done
+global_not_uint:
+	CMPQ    CX, $REGKIND_FLOAT
+	JNE     global_not_float
+	CMPQ    BX, (GS_FLOATS+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_FLOATS(SI), DI
+	MOVQ    (DI)(BX*8), CX
+	MOVQ    CX, (R9)(AX*8)
+	JMP     global_done
+global_not_float:
+	CMPQ    CX, $REGKIND_BOOL
+	JNE     global_not_bool
+	CMPQ    BX, (GS_BOOLS+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_BOOLS(SI), DI
+	MOVBLZX (DI)(BX*1), CX
+	MOVQ    CTX_BOOLS_BASE(R15), DI
+	MOVB    CL, (DI)(AX*1)
+	JMP     global_done
+global_not_bool:
+	CMPQ    CX, $REGKIND_GENERAL
+	JNE     global_shim
+	CMPQ    BX, (GS_GENERAL+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_GENERAL(SI), DI
+	CMPB    runtime·writeBarrier(SB), $0
+	JNE     global_shim
+	LEAQ    (BX)(BX*2), BX
+	LEAQ    (DI)(BX*8), SI
+	LEAQ    (AX)(AX*2), AX
+	MOVQ    CTX_GENERALS_BASE(R15), DI
+	LEAQ    (DI)(AX*8), DI
+	MOVQ    0(SI), CX
+	MOVQ    CX, 0(DI)
+	MOVQ    8(SI), CX
+	MOVQ    CX, 8(DI)
+	MOVQ    16(SI), CX
+	MOVQ    CX, 16(DI)
+	JMP     global_done
+global_done:
+	DISPATCH_NEXT()
+global_shim:
+	JMP     ·handlerPathBShimGetGlobal(SB)
+
+// handlerGetGlobalWide loads the package variable whose index is in the extension word (shifted by the function's global base) of kind C into bank(C)[B], as handlerGetGlobal does.
+TEXT ·handlerGetGlobalWide(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    CTX_GLOBALS(R15), SI
+	TESTQ   SI, SI
+	JZ      global_shim
+	CMPB    GS_SHARED(SI), $0
+	JNE     global_shim
+	MOVQ    DX, CX
+	SHRQ    $24, CX
+	MOVBLZX CL, CX
+	XORQ    AX, AX
+	MOVQ    CTX_CURRENT_FRAME(R15), DI
+	MOVQ    CF_FUNCTION(DI), DI
+	TESTQ   DI, DI
+	JZ      global_slot
+	MOVQ    FN_GLOBAL_BASES(DI), DI
+	TESTQ   DI, DI
+	JZ      global_slot
+	CMPQ    CX, $REGKIND_UINT
+	JA      global_shim
+	MOVWLZX (DI)(CX*2), AX
+global_slot:
+	MOVL    (R12)(R14*4), BX
+	SHRQ    $8, BX
+	MOVWLZX BX, BX
+	ADDQ    AX, BX
+	MOVQ    DX, AX
+	SHRQ    $16, AX
+	MOVBLZX AL, AX
+	CMPQ    CX, $REGKIND_INT
+	JNE     global_not_int
+	CMPQ    BX, (GS_INTS+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_INTS(SI), DI
+	MOVQ    (DI)(BX*8), CX
+	MOVQ    CX, (R8)(AX*8)
+	JMP     global_done
+global_not_int:
+	CMPQ    CX, $REGKIND_UINT
+	JNE     global_not_uint
+	CMPQ    BX, (GS_UINTS+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_UINTS(SI), DI
+	MOVQ    (DI)(BX*8), CX
+	MOVQ    CTX_UINTS_BASE(R15), DI
+	MOVQ    CX, (DI)(AX*8)
+	JMP     global_done
+global_not_uint:
+	CMPQ    CX, $REGKIND_FLOAT
+	JNE     global_not_float
+	CMPQ    BX, (GS_FLOATS+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_FLOATS(SI), DI
+	MOVQ    (DI)(BX*8), CX
+	MOVQ    CX, (R9)(AX*8)
+	JMP     global_done
+global_not_float:
+	CMPQ    CX, $REGKIND_BOOL
+	JNE     global_not_bool
+	CMPQ    BX, (GS_BOOLS+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_BOOLS(SI), DI
+	MOVBLZX (DI)(BX*1), CX
+	MOVQ    CTX_BOOLS_BASE(R15), DI
+	MOVB    CL, (DI)(AX*1)
+	JMP     global_done
+global_not_bool:
+	CMPQ    CX, $REGKIND_GENERAL
+	JNE     global_shim
+	CMPQ    BX, (GS_GENERAL+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_GENERAL(SI), DI
+	CMPB    runtime·writeBarrier(SB), $0
+	JNE     global_shim
+	LEAQ    (BX)(BX*2), BX
+	LEAQ    (DI)(BX*8), SI
+	LEAQ    (AX)(AX*2), AX
+	MOVQ    CTX_GENERALS_BASE(R15), DI
+	LEAQ    (DI)(AX*8), DI
+	MOVQ    0(SI), CX
+	MOVQ    CX, 0(DI)
+	MOVQ    8(SI), CX
+	MOVQ    CX, 8(DI)
+	MOVQ    16(SI), CX
+	MOVQ    CX, 16(DI)
+	JMP     global_done
+global_done:
+	INCQ    R14
+	DISPATCH_NEXT()
+global_shim:
+	JMP     ·handlerPathBShimGetGlobalWide(SB)
+
+// handlerSetGlobal stores bank(C)[A] into the package variable B (shifted by the function's global base) of kind C, for the int, uint, float and bool banks of an unshared store.
+TEXT ·handlerSetGlobal(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    CTX_GLOBALS(R15), SI
+	TESTQ   SI, SI
+	JZ      global_shim
+	CMPB    GS_SHARED(SI), $0
+	JNE     global_shim
+	MOVQ    DX, CX
+	SHRQ    $24, CX
+	MOVBLZX CL, CX
+	XORQ    AX, AX
+	MOVQ    CTX_CURRENT_FRAME(R15), DI
+	MOVQ    CF_FUNCTION(DI), DI
+	TESTQ   DI, DI
+	JZ      global_slot
+	MOVQ    FN_GLOBAL_BASES(DI), DI
+	TESTQ   DI, DI
+	JZ      global_slot
+	CMPQ    CX, $REGKIND_UINT
+	JA      global_shim
+	MOVWLZX (DI)(CX*2), AX
+global_slot:
+	MOVQ    DX, BX
+	SHRQ    $16, BX
+	MOVBLZX BL, BX
+	ADDQ    AX, BX
+	MOVQ    DX, AX
+	SHRQ    $8, AX
+	MOVBLZX AL, AX
+	CMPQ    CX, $REGKIND_INT
+	JNE     global_not_int
+	CMPQ    BX, (GS_INTS+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_INTS(SI), DI
+	MOVQ    (R8)(AX*8), CX
+	MOVQ    CX, (DI)(BX*8)
+	JMP     global_done
+global_not_int:
+	CMPQ    CX, $REGKIND_UINT
+	JNE     global_not_uint
+	CMPQ    BX, (GS_UINTS+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_UINTS(SI), DI
+	MOVQ    CTX_UINTS_BASE(R15), CX
+	MOVQ    (CX)(AX*8), CX
+	MOVQ    CX, (DI)(BX*8)
+	JMP     global_done
+global_not_uint:
+	CMPQ    CX, $REGKIND_FLOAT
+	JNE     global_not_float
+	CMPQ    BX, (GS_FLOATS+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_FLOATS(SI), DI
+	MOVQ    (R9)(AX*8), CX
+	MOVQ    CX, (DI)(BX*8)
+	JMP     global_done
+global_not_float:
+	CMPQ    CX, $REGKIND_BOOL
+	JNE     global_shim
+	CMPQ    BX, (GS_BOOLS+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_BOOLS(SI), DI
+	MOVQ    CTX_BOOLS_BASE(R15), CX
+	MOVBLZX (CX)(AX*1), CX
+	MOVB    CL, (DI)(BX*1)
+	JMP     global_done
+global_done:
+	DISPATCH_NEXT()
+global_shim:
+	JMP     ·handlerPathBShimSetGlobal(SB)
+
+// handlerSetGlobalWide stores bank(C)[B] into the package variable whose index is in the extension word, as handlerSetGlobal does.
+TEXT ·handlerSetGlobalWide(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    CTX_GLOBALS(R15), SI
+	TESTQ   SI, SI
+	JZ      global_shim
+	CMPB    GS_SHARED(SI), $0
+	JNE     global_shim
+	MOVQ    DX, CX
+	SHRQ    $24, CX
+	MOVBLZX CL, CX
+	XORQ    AX, AX
+	MOVQ    CTX_CURRENT_FRAME(R15), DI
+	MOVQ    CF_FUNCTION(DI), DI
+	TESTQ   DI, DI
+	JZ      global_slot
+	MOVQ    FN_GLOBAL_BASES(DI), DI
+	TESTQ   DI, DI
+	JZ      global_slot
+	CMPQ    CX, $REGKIND_UINT
+	JA      global_shim
+	MOVWLZX (DI)(CX*2), AX
+global_slot:
+	MOVL    (R12)(R14*4), BX
+	SHRQ    $8, BX
+	MOVWLZX BX, BX
+	ADDQ    AX, BX
+	MOVQ    DX, AX
+	SHRQ    $16, AX
+	MOVBLZX AL, AX
+	CMPQ    CX, $REGKIND_INT
+	JNE     global_not_int
+	CMPQ    BX, (GS_INTS+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_INTS(SI), DI
+	MOVQ    (R8)(AX*8), CX
+	MOVQ    CX, (DI)(BX*8)
+	JMP     global_done
+global_not_int:
+	CMPQ    CX, $REGKIND_UINT
+	JNE     global_not_uint
+	CMPQ    BX, (GS_UINTS+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_UINTS(SI), DI
+	MOVQ    CTX_UINTS_BASE(R15), CX
+	MOVQ    (CX)(AX*8), CX
+	MOVQ    CX, (DI)(BX*8)
+	JMP     global_done
+global_not_uint:
+	CMPQ    CX, $REGKIND_FLOAT
+	JNE     global_not_float
+	CMPQ    BX, (GS_FLOATS+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_FLOATS(SI), DI
+	MOVQ    (R9)(AX*8), CX
+	MOVQ    CX, (DI)(BX*8)
+	JMP     global_done
+global_not_float:
+	CMPQ    CX, $REGKIND_BOOL
+	JNE     global_shim
+	CMPQ    BX, (GS_BOOLS+8)(SI)
+	JAE     global_shim
+	MOVQ    GS_BOOLS(SI), DI
+	MOVQ    CTX_BOOLS_BASE(R15), CX
+	MOVBLZX (CX)(AX*1), CX
+	MOVB    CL, (DI)(BX*1)
+	JMP     global_done
+global_done:
+	INCQ    R14
+	DISPATCH_NEXT()
+global_shim:
+	JMP     ·handlerPathBShimSetGlobalWide(SB)
+
+// handlerGetElementInt64 sets ints[A] = general[B][ints[C]] for an integer element of a slice, array or array pointer whose shape the typed element cache's front slot holds. Other shapes fall back to handlerPathBShimGetElementInt64.
+TEXT ·handlerGetElementInt64(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $16, AX
+	MOVBLZX AL, AX
+	MOVQ    CTX_GENERALS_BASE(R15), DI
+	LEAQ    (AX)(AX*2), AX
+	LEAQ    (DI)(AX*8), DI
+	MOVQ    0(DI), SI
+	TESTQ   SI, SI
+	JZ      element_shim
+	MOVQ    $TES_HASH_MULTIPLIER, AX
+	IMULQ   SI, AX
+	SHRQ    $TES_SLOT_SHIFT, AX
+	LEAQ    ·typedElementShapes(SB), BX
+	MOVQ    (BX)(AX*8), BX
+	TESTQ   BX, BX
+	JZ      element_shim
+	CMPQ    TES_COLLECTION_TYPE(BX), SI
+	JNE     element_shim
+	MOVBLZX TES_ELEMENT_KIND(BX), AX
+	SUBQ    $REFLECT_INT, AX
+	CMPQ    AX, $(REFLECT_UINTPTR-REFLECT_INT)
+	JA      element_shim
+
+	MOVQ    8(DI), SI
+	TESTQ   SI, SI
+	JZ      element_shim
+	MOVQ    16(DI), DI
+	MOVBLZX TES_CONTAINER(BX), AX
+	CMPQ    AX, $TES_CONTAINER_SLICE
+	JNE     element_not_slice
+	TESTQ   $FLAG_INDIR, DI
+	JZ      element_shim
+	MOVQ    8(SI), AX
+	MOVQ    0(SI), SI
+	JMP     element_data
+element_not_slice:
+	CMPQ    AX, $TES_CONTAINER_ARRAY
+	JNE     element_not_array
+	TESTQ   $FLAG_INDIR, DI
+	JZ      element_shim
+	JMP     element_array_length
+element_not_array:
+	CMPQ    AX, $TES_CONTAINER_ARRAY_POINTER
+	JNE     element_shim
+	TESTQ   $FLAG_INDIR, DI
+	JZ      element_array_length
+	MOVQ    0(SI), SI
+element_array_length:
+	MOVQ    TES_ARRAY_LENGTH(BX), AX
+element_data:
+	TESTQ   SI, SI
+	JZ      element_shim
+
+	MOVQ    DX, CX
+	SHRQ    $24, CX
+	MOVBLZX CL, CX
+	MOVQ    (R8)(CX*8), CX
+	CMPQ    CX, AX
+	JAE     element_shim
+	MOVQ    TES_ELEMENT_SIZE(BX), AX
+	CMPB    TES_ELEMENT_KIND(BX), $REFLECT_INT64
+	JA      element_unsigned
+element_signed:
+	CMPQ    AX, $8
+	JNE     element_signed_4
+	MOVQ    (SI)(CX*8), CX
+	JMP     element_result
+element_signed_4:
+	CMPQ    AX, $4
+	JNE     element_signed_2
+	MOVLQSX (SI)(CX*4), CX
+	JMP     element_result
+element_signed_2:
+	CMPQ    AX, $2
+	JNE     element_signed_1
+	MOVWQSX (SI)(CX*2), CX
+	JMP     element_result
+element_signed_1:
+	MOVBQSX (SI)(CX*1), CX
+	JMP     element_result
+element_unsigned:
+	CMPQ    AX, $8
+	JNE     element_unsigned_4
+	MOVQ    (SI)(CX*8), CX
+	JMP     element_result
+element_unsigned_4:
+	CMPQ    AX, $4
+	JNE     element_unsigned_2
+	MOVL    (SI)(CX*4), CX
+	JMP     element_result
+element_unsigned_2:
+	CMPQ    AX, $2
+	JNE     element_unsigned_1
+	MOVWQZX (SI)(CX*2), CX
+	JMP     element_result
+element_unsigned_1:
+	MOVBQZX (SI)(CX*1), CX
+element_result:
+	MOVQ    DX, AX
+	SHRQ    $8, AX
+	MOVBLZX AL, AX
+	MOVQ    CX, (R8)(AX*8)
+	DISPATCH_NEXT()
+element_shim:
+	JMP     ·handlerPathBShimGetElementInt64(SB)
+
+// handlerGetElementUint64 sets uints[A] = general[B][ints[C]] for an unsigned element of a slice, array or array pointer whose shape the typed element cache's front slot holds. Other shapes fall back to handlerPathBShimGetElementUint64.
+TEXT ·handlerGetElementUint64(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $16, AX
+	MOVBLZX AL, AX
+	MOVQ    CTX_GENERALS_BASE(R15), DI
+	LEAQ    (AX)(AX*2), AX
+	LEAQ    (DI)(AX*8), DI
+	MOVQ    0(DI), SI
+	TESTQ   SI, SI
+	JZ      element_shim
+	MOVQ    $TES_HASH_MULTIPLIER, AX
+	IMULQ   SI, AX
+	SHRQ    $TES_SLOT_SHIFT, AX
+	LEAQ    ·typedElementShapes(SB), BX
+	MOVQ    (BX)(AX*8), BX
+	TESTQ   BX, BX
+	JZ      element_shim
+	CMPQ    TES_COLLECTION_TYPE(BX), SI
+	JNE     element_shim
+	MOVBLZX TES_ELEMENT_KIND(BX), AX
+	SUBQ    $REFLECT_UINT, AX
+	CMPQ    AX, $(REFLECT_UINTPTR-REFLECT_UINT)
+	JA      element_shim
+
+	MOVQ    8(DI), SI
+	TESTQ   SI, SI
+	JZ      element_shim
+	MOVQ    16(DI), DI
+	MOVBLZX TES_CONTAINER(BX), AX
+	CMPQ    AX, $TES_CONTAINER_SLICE
+	JNE     element_not_slice
+	TESTQ   $FLAG_INDIR, DI
+	JZ      element_shim
+	MOVQ    8(SI), AX
+	MOVQ    0(SI), SI
+	JMP     element_data
+element_not_slice:
+	CMPQ    AX, $TES_CONTAINER_ARRAY
+	JNE     element_not_array
+	TESTQ   $FLAG_INDIR, DI
+	JZ      element_shim
+	JMP     element_array_length
+element_not_array:
+	CMPQ    AX, $TES_CONTAINER_ARRAY_POINTER
+	JNE     element_shim
+	TESTQ   $FLAG_INDIR, DI
+	JZ      element_array_length
+	MOVQ    0(SI), SI
+element_array_length:
+	MOVQ    TES_ARRAY_LENGTH(BX), AX
+element_data:
+	TESTQ   SI, SI
+	JZ      element_shim
+
+	MOVQ    DX, CX
+	SHRQ    $24, CX
+	MOVBLZX CL, CX
+	MOVQ    (R8)(CX*8), CX
+	CMPQ    CX, AX
+	JAE     element_shim
+	MOVQ    TES_ELEMENT_SIZE(BX), AX
+element_unsigned:
+	CMPQ    AX, $8
+	JNE     element_unsigned_4
+	MOVQ    (SI)(CX*8), CX
+	JMP     element_result
+element_unsigned_4:
+	CMPQ    AX, $4
+	JNE     element_unsigned_2
+	MOVL    (SI)(CX*4), CX
+	JMP     element_result
+element_unsigned_2:
+	CMPQ    AX, $2
+	JNE     element_unsigned_1
+	MOVWQZX (SI)(CX*2), CX
+	JMP     element_result
+element_unsigned_1:
+	MOVBQZX (SI)(CX*1), CX
+element_result:
+	MOVQ    DX, AX
+	SHRQ    $8, AX
+	MOVBLZX AL, AX
+	MOVQ    CTX_UINTS_BASE(R15), DI
+	MOVQ    CX, (DI)(AX*8)
+	DISPATCH_NEXT()
+element_shim:
+	JMP     ·handlerPathBShimGetElementUint64(SB)
+
+// handlerSetElementInt64 stores ints[C] into integer element ints[B] of the slice, array or array pointer in general[A] whose shape the typed element cache's front slot holds.
+TEXT ·handlerSetElementInt64(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $8, AX
+	MOVBLZX AL, AX
+	MOVQ    CTX_GENERALS_BASE(R15), DI
+	LEAQ    (AX)(AX*2), AX
+	LEAQ    (DI)(AX*8), DI
+	MOVQ    0(DI), SI
+	TESTQ   SI, SI
+	JZ      element_shim
+	MOVQ    $TES_HASH_MULTIPLIER, AX
+	IMULQ   SI, AX
+	SHRQ    $TES_SLOT_SHIFT, AX
+	LEAQ    ·typedElementShapes(SB), BX
+	MOVQ    (BX)(AX*8), BX
+	TESTQ   BX, BX
+	JZ      element_shim
+	CMPQ    TES_COLLECTION_TYPE(BX), SI
+	JNE     element_shim
+	MOVBLZX TES_ELEMENT_KIND(BX), AX
+	SUBQ    $REFLECT_INT, AX
+	CMPQ    AX, $(REFLECT_UINTPTR-REFLECT_INT)
+	JA      element_shim
+
+	MOVQ    8(DI), SI
+	TESTQ   SI, SI
+	JZ      element_shim
+	MOVQ    16(DI), DI
+	TESTQ   $FLAG_RO, DI
+	JNZ     element_shim
+	MOVBLZX TES_CONTAINER(BX), AX
+	CMPQ    AX, $TES_CONTAINER_SLICE
+	JNE     element_not_slice
+	TESTQ   $FLAG_INDIR, DI
+	JZ      element_shim
+	MOVQ    8(SI), AX
+	MOVQ    0(SI), SI
+	JMP     element_data
+element_not_slice:
+	CMPQ    AX, $TES_CONTAINER_ARRAY
+	JNE     element_not_array
+	TESTQ   $FLAG_INDIR, DI
+	JZ      element_shim
+	TESTQ   $FLAG_ADDR, DI
+	JZ      element_shim
+	JMP     element_array_length
+element_not_array:
+	CMPQ    AX, $TES_CONTAINER_ARRAY_POINTER
+	JNE     element_shim
+	TESTQ   $FLAG_INDIR, DI
+	JZ      element_array_length
+	MOVQ    0(SI), SI
+element_array_length:
+	MOVQ    TES_ARRAY_LENGTH(BX), AX
+element_data:
+	TESTQ   SI, SI
+	JZ      element_shim
+
+	MOVQ    DX, CX
+	SHRQ    $16, CX
+	MOVBLZX CL, CX
+	MOVQ    (R8)(CX*8), CX
+	CMPQ    CX, AX
+	JAE     element_shim
+	MOVQ    TES_ELEMENT_SIZE(BX), AX
+	MOVQ    DX, BX
+	SHRQ    $24, BX
+	MOVBLZX BL, BX
+	MOVQ    (R8)(BX*8), BX
+store:
+	CMPQ    AX, $8
+	JNE     store_4
+	MOVQ    BX, (SI)(CX*8)
+	JMP     store_done
+store_4:
+	CMPQ    AX, $4
+	JNE     store_2
+	MOVL    BX, (SI)(CX*4)
+	JMP     store_done
+store_2:
+	CMPQ    AX, $2
+	JNE     store_1
+	MOVW    BX, (SI)(CX*2)
+	JMP     store_done
+store_1:
+	MOVB    BL, (SI)(CX*1)
+store_done:
+	DISPATCH_NEXT()
+element_shim:
+	JMP     ·handlerPathBShimSetElementInt64(SB)
+
+// handlerSetElementUint64 stores uints[C] into unsigned element ints[B] of the slice, array or array pointer in general[A] whose shape the typed element cache's front slot holds.
+TEXT ·handlerSetElementUint64(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $8, AX
+	MOVBLZX AL, AX
+	MOVQ    CTX_GENERALS_BASE(R15), DI
+	LEAQ    (AX)(AX*2), AX
+	LEAQ    (DI)(AX*8), DI
+	MOVQ    0(DI), SI
+	TESTQ   SI, SI
+	JZ      element_shim
+	MOVQ    $TES_HASH_MULTIPLIER, AX
+	IMULQ   SI, AX
+	SHRQ    $TES_SLOT_SHIFT, AX
+	LEAQ    ·typedElementShapes(SB), BX
+	MOVQ    (BX)(AX*8), BX
+	TESTQ   BX, BX
+	JZ      element_shim
+	CMPQ    TES_COLLECTION_TYPE(BX), SI
+	JNE     element_shim
+	MOVBLZX TES_ELEMENT_KIND(BX), AX
+	SUBQ    $REFLECT_UINT, AX
+	CMPQ    AX, $(REFLECT_UINTPTR-REFLECT_UINT)
+	JA      element_shim
+
+	MOVQ    8(DI), SI
+	TESTQ   SI, SI
+	JZ      element_shim
+	MOVQ    16(DI), DI
+	TESTQ   $FLAG_RO, DI
+	JNZ     element_shim
+	MOVBLZX TES_CONTAINER(BX), AX
+	CMPQ    AX, $TES_CONTAINER_SLICE
+	JNE     element_not_slice
+	TESTQ   $FLAG_INDIR, DI
+	JZ      element_shim
+	MOVQ    8(SI), AX
+	MOVQ    0(SI), SI
+	JMP     element_data
+element_not_slice:
+	CMPQ    AX, $TES_CONTAINER_ARRAY
+	JNE     element_not_array
+	TESTQ   $FLAG_INDIR, DI
+	JZ      element_shim
+	TESTQ   $FLAG_ADDR, DI
+	JZ      element_shim
+	JMP     element_array_length
+element_not_array:
+	CMPQ    AX, $TES_CONTAINER_ARRAY_POINTER
+	JNE     element_shim
+	TESTQ   $FLAG_INDIR, DI
+	JZ      element_array_length
+	MOVQ    0(SI), SI
+element_array_length:
+	MOVQ    TES_ARRAY_LENGTH(BX), AX
+element_data:
+	TESTQ   SI, SI
+	JZ      element_shim
+
+	MOVQ    DX, CX
+	SHRQ    $16, CX
+	MOVBLZX CL, CX
+	MOVQ    (R8)(CX*8), CX
+	CMPQ    CX, AX
+	JAE     element_shim
+	MOVQ    TES_ELEMENT_SIZE(BX), AX
+	MOVQ    DX, BX
+	SHRQ    $24, BX
+	MOVBLZX BL, BX
+	MOVQ    CTX_UINTS_BASE(R15), DI
+	MOVQ    (DI)(BX*8), BX
+store:
+	CMPQ    AX, $8
+	JNE     store_4
+	MOVQ    BX, (SI)(CX*8)
+	JMP     store_done
+store_4:
+	CMPQ    AX, $4
+	JNE     store_2
+	MOVL    BX, (SI)(CX*4)
+	JMP     store_done
+store_2:
+	CMPQ    AX, $2
+	JNE     store_1
+	MOVW    BX, (SI)(CX*2)
+	JMP     store_done
+store_1:
+	MOVB    BL, (SI)(CX*1)
+store_done:
+	DISPATCH_NEXT()
+element_shim:
+	JMP     ·handlerPathBShimSetElementUint64(SB)
+
+// handlerGetElementFieldFloat64 sets floats[A] = slice(general[B])[ints[C]].field(layout[ext]) for float64 leaves. Other shapes fall back to handlerPathBShimGetElementFieldFloat64.
+TEXT ·handlerGetElementFieldFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVL    (R12)(R14*4), BX
 	SHRQ    $8, BX
 	MOVWLZX BX, BX
@@ -35,13 +743,13 @@ TEXT ·handlerSliceIndexStructFieldFloat(SB), NOSPLIT|NOFRAME, $0
 	ADDQ    CTX_CSTACK_BASE(R15), AX
 	MOVQ    CF_FUNCTION(AX), AX
 	CMPQ    BX, FN_STRUCT_LAYOUT_TABLE_LEN(AX)
-	JAE     sif_shim
+	JAE     element_field_shim
 	MOVQ    FN_STRUCT_LAYOUT_TABLE(AX), SI
 	SHLQ    $4, BX
 	ADDQ    BX, SI
 	MOVBLZX OFF_LAYOUT_KIND(SI), CX
 	CMPQ    CX, $14
-	JNE     sif_shim
+	JNE     element_field_shim
 	MOVQ    DX, BX
 	SHRQ    $16, BX
 	MOVBLZX BL, BX
@@ -50,31 +758,31 @@ TEXT ·handlerSliceIndexStructFieldFloat(SB), NOSPLIT|NOFRAME, $0
 	LEAQ    (DI)(CX*8), DI
 	MOVQ    0(DI), CX
 	TESTQ   CX, CX
-	JZ      sif_shim
+	JZ      element_field_shim
 	MOVQ    16(DI), BX
-	ANDQ    $0x1F, BX
-	CMPQ    BX, $23
-	JNE     sif_shim
+	ANDQ    $FLAG_KIND_MASK, BX
+	CMPQ    BX, $REFLECT_SLICE
+	JNE     element_field_shim
 	MOVQ    8(DI), DI
 	MOVQ    48(CX), CX
 	MOVWLZX OFF_LAYOUT_TYPE_INDEX(SI), BX
 	CMPQ    BX, FN_TYPE_TABLE_LEN(AX)
-	JAE     sif_shim
+	JAE     element_field_shim
 	MOVQ    FN_TYPE_TABLE(AX), AX
 	SHLQ    $4, BX
 	ADDQ    BX, AX
 	CMPQ    CX, 8(AX)
-	JNE     sif_shim
+	JNE     element_field_shim
 	MOVQ    0(CX), AX
 	MOVQ    DX, BX
 	SHRQ    $24, BX
 	MOVQ    (R8)(BX*8), BX
 	CMPQ    BX, 8(DI)
-	JAE     sif_shim
+	JAE     element_field_shim
 	IMULQ   BX, AX
 	MOVQ    (DI), DI
 	TESTQ   DI, DI
-	JZ      sif_shim
+	JZ      element_field_shim
 	ADDQ    AX, DI
 	MOVLQZX OFF_LAYOUT_OFFSET(SI), CX
 	ADDQ    CX, DI
@@ -85,11 +793,11 @@ TEXT ·handlerSliceIndexStructFieldFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CX, (R9)(AX*8)
 	INCQ    R14
 	DISPATCH_NEXT()
-sif_shim:
-	JMP     ·handlerPathBShimSliceIndexStructFieldFloat(SB)
+element_field_shim:
+	JMP     ·handlerPathBShimGetElementFieldFloat64(SB)
 
-// handlerSliceIndexStructFieldInt sets ints[A] = slice(general[B])[ints[C]].field(layout[ext]) for full-width int leaves; other shapes fall back to handlerPathBShimSliceIndexStructFieldInt.
-TEXT ·handlerSliceIndexStructFieldInt(SB), NOSPLIT|NOFRAME, $0
+// handlerGetElementFieldInt64 sets ints[A] = slice(general[B])[ints[C]].field(layout[ext]) for full-width int leaves. Other shapes fall back to handlerPathBShimGetElementFieldInt64.
+TEXT ·handlerGetElementFieldInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVL    (R12)(R14*4), BX
 	SHRQ    $8, BX
 	MOVWLZX BX, BX
@@ -98,16 +806,16 @@ TEXT ·handlerSliceIndexStructFieldInt(SB), NOSPLIT|NOFRAME, $0
 	ADDQ    CTX_CSTACK_BASE(R15), AX
 	MOVQ    CF_FUNCTION(AX), AX
 	CMPQ    BX, FN_STRUCT_LAYOUT_TABLE_LEN(AX)
-	JAE     sif_shim
+	JAE     element_field_shim
 	MOVQ    FN_STRUCT_LAYOUT_TABLE(AX), SI
 	SHLQ    $4, BX
 	ADDQ    BX, SI
 	MOVBLZX OFF_LAYOUT_KIND(SI), CX
 	CMPQ    CX, $2
-	JE      sif_kind_ok
+	JE      element_field_kind_ok
 	CMPQ    CX, $6
-	JNE     sif_shim
-sif_kind_ok:
+	JNE     element_field_shim
+element_field_kind_ok:
 	MOVQ    DX, BX
 	SHRQ    $16, BX
 	MOVBLZX BL, BX
@@ -116,31 +824,31 @@ sif_kind_ok:
 	LEAQ    (DI)(CX*8), DI
 	MOVQ    0(DI), CX
 	TESTQ   CX, CX
-	JZ      sif_shim
+	JZ      element_field_shim
 	MOVQ    16(DI), BX
-	ANDQ    $0x1F, BX
-	CMPQ    BX, $23
-	JNE     sif_shim
+	ANDQ    $FLAG_KIND_MASK, BX
+	CMPQ    BX, $REFLECT_SLICE
+	JNE     element_field_shim
 	MOVQ    8(DI), DI
 	MOVQ    48(CX), CX
 	MOVWLZX OFF_LAYOUT_TYPE_INDEX(SI), BX
 	CMPQ    BX, FN_TYPE_TABLE_LEN(AX)
-	JAE     sif_shim
+	JAE     element_field_shim
 	MOVQ    FN_TYPE_TABLE(AX), AX
 	SHLQ    $4, BX
 	ADDQ    BX, AX
 	CMPQ    CX, 8(AX)
-	JNE     sif_shim
+	JNE     element_field_shim
 	MOVQ    0(CX), AX
 	MOVQ    DX, BX
 	SHRQ    $24, BX
 	MOVQ    (R8)(BX*8), BX
 	CMPQ    BX, 8(DI)
-	JAE     sif_shim
+	JAE     element_field_shim
 	IMULQ   BX, AX
 	MOVQ    (DI), DI
 	TESTQ   DI, DI
-	JZ      sif_shim
+	JZ      element_field_shim
 	ADDQ    AX, DI
 	MOVLQZX OFF_LAYOUT_OFFSET(SI), CX
 	ADDQ    CX, DI
@@ -151,11 +859,140 @@ sif_kind_ok:
 	MOVQ    CX, (R8)(AX*8)
 	INCQ    R14
 	DISPATCH_NEXT()
-sif_shim:
-	JMP     ·handlerPathBShimSliceIndexStructFieldInt(SB)
+element_field_shim:
+	JMP     ·handlerPathBShimGetElementFieldInt64(SB)
 
-// handlerDerefSliceGetInt sets ints[A] = (*general[B])[ints[C]] with a live bounds check; unsupported shapes and range panics fall back to handlerPathBShimDerefSliceGetInt.
-TEXT ·handlerDerefSliceGetInt(SB), NOSPLIT|NOFRAME, $0
+// handlerSetElementFieldInt64 stores ints[A] into slice(general[B])[ints[C]].field(layout[ext]) for full-width int fields.
+TEXT ·handlerSetElementFieldInt64(SB), NOSPLIT|NOFRAME, $0
+	MOVL    (R12)(R14*4), BX
+	SHRQ    $8, BX
+	MOVWLZX BX, BX
+	MOVQ    CTX_FRAME_POINTER(R15), AX
+	IMULQ   $CALLFRAME_SIZE, AX
+	ADDQ    CTX_CSTACK_BASE(R15), AX
+	MOVQ    CF_FUNCTION(AX), AX
+	CMPQ    BX, FN_STRUCT_LAYOUT_TABLE_LEN(AX)
+	JAE     element_field_shim
+	MOVQ    FN_STRUCT_LAYOUT_TABLE(AX), SI
+	SHLQ    $4, BX
+	ADDQ    BX, SI
+	MOVBLZX OFF_LAYOUT_KIND(SI), CX
+	CMPQ    CX, $2
+	JE      element_field_kind_ok
+	CMPQ    CX, $6
+	JNE     element_field_shim
+element_field_kind_ok:
+	MOVQ    DX, BX
+	SHRQ    $16, BX
+	MOVBLZX BL, BX
+	MOVQ    CTX_GENERALS_BASE(R15), DI
+	LEAQ    (BX)(BX*2), CX
+	LEAQ    (DI)(CX*8), DI
+	MOVQ    0(DI), CX
+	TESTQ   CX, CX
+	JZ      element_field_shim
+	MOVQ    16(DI), BX
+	ANDQ    $FLAG_KIND_MASK, BX
+	CMPQ    BX, $REFLECT_SLICE
+	JNE     element_field_shim
+	MOVQ    8(DI), DI
+	MOVQ    48(CX), CX
+	MOVWLZX OFF_LAYOUT_TYPE_INDEX(SI), BX
+	CMPQ    BX, FN_TYPE_TABLE_LEN(AX)
+	JAE     element_field_shim
+	MOVQ    FN_TYPE_TABLE(AX), AX
+	SHLQ    $4, BX
+	ADDQ    BX, AX
+	CMPQ    CX, 8(AX)
+	JNE     element_field_shim
+	MOVQ    0(CX), AX
+	MOVQ    DX, BX
+	SHRQ    $24, BX
+	MOVQ    (R8)(BX*8), BX
+	CMPQ    BX, 8(DI)
+	JAE     element_field_shim
+	IMULQ   BX, AX
+	MOVQ    (DI), DI
+	TESTQ   DI, DI
+	JZ      element_field_shim
+	ADDQ    AX, DI
+	MOVLQZX OFF_LAYOUT_OFFSET(SI), CX
+	ADDQ    CX, DI
+	MOVQ    DX, AX
+	SHRQ    $8, AX
+	MOVBLZX AL, AX
+	MOVQ    (R8)(AX*8), CX
+	MOVQ    CX, (DI)
+	INCQ    R14
+	DISPATCH_NEXT()
+element_field_shim:
+	JMP     ·handlerPathBShimSetElementFieldInt64(SB)
+
+// handlerSetElementFieldFloat64 stores floats[A] into slice(general[B])[ints[C]].field(layout[ext]) for float64 fields.
+TEXT ·handlerSetElementFieldFloat64(SB), NOSPLIT|NOFRAME, $0
+	MOVL    (R12)(R14*4), BX
+	SHRQ    $8, BX
+	MOVWLZX BX, BX
+	MOVQ    CTX_FRAME_POINTER(R15), AX
+	IMULQ   $CALLFRAME_SIZE, AX
+	ADDQ    CTX_CSTACK_BASE(R15), AX
+	MOVQ    CF_FUNCTION(AX), AX
+	CMPQ    BX, FN_STRUCT_LAYOUT_TABLE_LEN(AX)
+	JAE     element_field_shim
+	MOVQ    FN_STRUCT_LAYOUT_TABLE(AX), SI
+	SHLQ    $4, BX
+	ADDQ    BX, SI
+	MOVBLZX OFF_LAYOUT_KIND(SI), CX
+	CMPQ    CX, $14
+	JNE     element_field_shim
+	MOVQ    DX, BX
+	SHRQ    $16, BX
+	MOVBLZX BL, BX
+	MOVQ    CTX_GENERALS_BASE(R15), DI
+	LEAQ    (BX)(BX*2), CX
+	LEAQ    (DI)(CX*8), DI
+	MOVQ    0(DI), CX
+	TESTQ   CX, CX
+	JZ      element_field_shim
+	MOVQ    16(DI), BX
+	ANDQ    $FLAG_KIND_MASK, BX
+	CMPQ    BX, $REFLECT_SLICE
+	JNE     element_field_shim
+	MOVQ    8(DI), DI
+	MOVQ    48(CX), CX
+	MOVWLZX OFF_LAYOUT_TYPE_INDEX(SI), BX
+	CMPQ    BX, FN_TYPE_TABLE_LEN(AX)
+	JAE     element_field_shim
+	MOVQ    FN_TYPE_TABLE(AX), AX
+	SHLQ    $4, BX
+	ADDQ    BX, AX
+	CMPQ    CX, 8(AX)
+	JNE     element_field_shim
+	MOVQ    0(CX), AX
+	MOVQ    DX, BX
+	SHRQ    $24, BX
+	MOVQ    (R8)(BX*8), BX
+	CMPQ    BX, 8(DI)
+	JAE     element_field_shim
+	IMULQ   BX, AX
+	MOVQ    (DI), DI
+	TESTQ   DI, DI
+	JZ      element_field_shim
+	ADDQ    AX, DI
+	MOVLQZX OFF_LAYOUT_OFFSET(SI), CX
+	ADDQ    CX, DI
+	MOVQ    DX, AX
+	SHRQ    $8, AX
+	MOVBLZX AL, AX
+	MOVQ    (R9)(AX*8), CX
+	MOVQ    CX, (DI)
+	INCQ    R14
+	DISPATCH_NEXT()
+element_field_shim:
+	JMP     ·handlerPathBShimSetElementFieldFloat64(SB)
+
+// handlerGetElementInt64ViaPointer sets ints[A] = (*general[B])[ints[C]] with a live bounds check. Unsupported shapes and range panics fall back to handlerPathBShimGetElementInt64ViaPointer.
+TEXT ·handlerGetElementInt64ViaPointer(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -191,10 +1028,10 @@ ds_direct:
 	MOVQ    CX, (R8)(AX*8)
 	DISPATCH_NEXT()
 ds_shim:
-	JMP     ·handlerPathBShimDerefSliceGetInt(SB)
+	JMP     ·handlerPathBShimGetElementInt64ViaPointer(SB)
 
-// handlerDerefSliceSetInt sets (*general[A])[ints[B]] = ints[C] with a live bounds check; unsupported shapes and range panics fall back to handlerPathBShimDerefSliceSetInt.
-TEXT ·handlerDerefSliceSetInt(SB), NOSPLIT|NOFRAME, $0
+// handlerSetElementInt64ViaPointer sets (*general[A])[ints[B]] = ints[C] with a live bounds check. Unsupported shapes and range panics fall back to handlerPathBShimSetElementInt64ViaPointer.
+TEXT ·handlerSetElementInt64ViaPointer(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -229,10 +1066,10 @@ ds_direct:
 	MOVQ    CX, (SI)(BX*8)
 	DISPATCH_NEXT()
 ds_shim:
-	JMP     ·handlerPathBShimDerefSliceSetInt(SB)
+	JMP     ·handlerPathBShimSetElementInt64ViaPointer(SB)
 
-// handlerGetStructFieldGeneralT0 reads a plain pointer-kind struct field into general[A] under the write-barrier guard; other field kinds and receiver shapes fall back to handlerPathBShimGetStructFieldGeneralT0.
-TEXT ·handlerGetStructFieldGeneralT0(SB), NOSPLIT|NOFRAME, $0
+// handlerGetStructFieldGeneral reads a plain pointer-kind struct field into general[A] under the write-barrier guard. Other field kinds and receiver shapes fall back to handlerPathBShimGetStructFieldGeneral.
+TEXT ·handlerGetStructFieldGeneral(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     sf_shim
 	MOVQ    DX, BX
@@ -345,10 +1182,10 @@ gp_ptr_field:
 	MOVQ    $22, 16(DI)
 	JMP     gp_done
 sf_shim:
-	JMP     ·handlerPathBShimGetStructFieldGeneralT0(SB)
+	JMP     ·handlerPathBShimGetStructFieldGeneral(SB)
 
-// handlerSetStructFieldGeneralT0 stores general[B] into a plain pointer-kind or cycle-broken any field of receiver general[A] under the write-barrier guard; other field kinds, value kinds and receiver shapes fall back to handlerPathBShimSetStructFieldGeneralT0.
-TEXT ·handlerSetStructFieldGeneralT0(SB), NOSPLIT|NOFRAME, $0
+// handlerSetStructFieldGeneral stores general[B] into a pointer or any field of general[A] when the store can skip the barrier. It skips it for a nil pointer, or a pointer while the arena's epoch is revoked and local-blind. Every other store falls back to handlerPathBShimSetStructFieldGeneral and its store barrier.
+TEXT ·handlerSetStructFieldGeneral(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     sf_shim
 	MOVQ    DX, BX
@@ -429,11 +1266,32 @@ ssp_have_base:
 	JZ      ss_ptr_store
 	MOVQ    (AX), AX
 ss_ptr_store:
+	TESTQ   AX, AX
+	JZ      ss_ptr_write
+	MOVQ    CTX_ARENA_ROUTE_STATE(R15), SI
+	TESTQ   SI, SI
+	JZ      sf_shim
+	CMPB    ROUTE_LOCAL_BLIND(SI), $0
+	JE      sf_shim
+	TESTQ   $FLAG_RO, CX
+	JNZ     sf_shim
+	MOVQ    CTX_FRAME_POINTER(R15), CX
+	IMULQ   $CALLFRAME_SIZE, CX
+	ADDQ    CTX_CSTACK_BASE(R15), CX
+	MOVQ    CF_FUNCTION(CX), CX
+	CMPQ    FN_FIELD_STORE_GRANTS(CX), $0
+	JNE     sf_shim
+	INCQ    ROUTE_NOTE_SEQ(SI)
+	CMPB    ·licenceCounting(SB), $0
+	JE      ss_ptr_write
+	INCQ    ROUTE_NOTES_UNTRACED(SI)
+	INCQ    ROUTE_NOTES_BLIND(SI)
+ss_ptr_write:
 	MOVQ    AX, (DI)
 	JMP     ss_done
 ss_ptr_nil:
 	XORQ    AX, AX
-	JMP     ss_ptr_store
+	JMP     ss_ptr_write
 ss_flags:
 	CMPQ    CX, $LAYOUT_FLAG_CYCLE_BROKEN
 	JNE     sf_shim
@@ -520,19 +1378,42 @@ ss_iface_data:
 	JZ      ss_iface_store
 	MOVQ    (BX), BX
 ss_iface_store:
+	TESTQ   BX, BX
+	JZ      ss_iface_write
+	CMPQ    SI, $22
+	JNE     sf_shim
+	MOVQ    CTX_ARENA_ROUTE_STATE(R15), SI
+	TESTQ   SI, SI
+	JZ      sf_shim
+	CMPB    ROUTE_LOCAL_BLIND(SI), $0
+	JE      sf_shim
+	TESTQ   $FLAG_RO, CX
+	JNZ     sf_shim
+	MOVQ    CTX_FRAME_POINTER(R15), CX
+	IMULQ   $CALLFRAME_SIZE, CX
+	ADDQ    CTX_CSTACK_BASE(R15), CX
+	MOVQ    CF_FUNCTION(CX), CX
+	CMPQ    FN_FIELD_STORE_GRANTS(CX), $0
+	JNE     sf_shim
+	INCQ    ROUTE_NOTE_SEQ(SI)
+	CMPB    ·licenceCounting(SB), $0
+	JE      ss_iface_write
+	INCQ    ROUTE_NOTES_UNTRACED(SI)
+	INCQ    ROUTE_NOTES_BLIND(SI)
+ss_iface_write:
 	MOVQ    AX, (DI)
 	MOVQ    BX, 8(DI)
 	JMP     ss_done
 ss_iface_nil:
 	XORQ    BX, BX
-	JMP     ss_iface_store
+	JMP     ss_iface_write
 ss_done:
 	DISPATCH_NEXT()
 sf_shim:
-	JMP     ·handlerPathBShimSetStructFieldGeneralT0(SB)
+	JMP     ·handlerPathBShimSetStructFieldGeneral(SB)
 
-// handlerGetStructFieldRawPointerT0 re-wraps the cycle-broken eface field at layout[C] through receiver[B] into a direct pointer value in general[A] under the write-barrier guard.
-TEXT ·handlerGetStructFieldRawPointerT0(SB), NOSPLIT|NOFRAME, $0
+// handlerGetStructFieldRawPointer re-wraps the cycle-broken eface field at layout[C] through receiver[B] into a direct pointer value in general[A] under the write-barrier guard.
+TEXT ·handlerGetStructFieldRawPointer(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     rp_shim
 	MOVQ    DX, BX
@@ -605,10 +1486,10 @@ rp_store_zero:
 rp_done:
 	DISPATCH_NEXT()
 rp_shim:
-	JMP     ·handlerPathBShimGetStructFieldRawPointerT0(SB)
+	JMP     ·handlerPathBShimGetStructFieldRawPointer(SB)
 
-// handlerEqGeneral sets ints[A] = (general[B] == general[C]) for invalid pairs, differing type words, and pointer-identity kinds; other shapes fall back to handlerPathBShimEqGeneral.
-TEXT ·handlerEqGeneral(SB), NOSPLIT|NOFRAME, $0
+// handlerEqualGeneral sets ints[A] = (general[B] == general[C]) for invalid pairs, differing type words, and pointer-identity kinds. Other shapes fall back to handlerPathBShimEqualGeneral.
+TEXT ·handlerEqualGeneral(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $16, BX
 	MOVBLZX BL, BX
@@ -673,9 +1554,9 @@ eqg_store:
 	MOVQ    CX, (R8)(AX*8)
 	DISPATCH_NEXT()
 eqg_shim:
-	JMP     ·handlerPathBShimEqGeneral(SB)
+	JMP     ·handlerPathBShimEqualGeneral(SB)
 
-// handlerMoveGeneral copies general[B] to general[A] for alias mode under the write-barrier guard; other modes and marking phases fall back to handlerPathBShimMoveGeneral.
+// handlerMoveGeneral copies general[B] to general[A] for alias mode under the write-barrier guard. Other modes and marking phases fall back to handlerPathBShimMoveGeneral.
 TEXT ·handlerMoveGeneral(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, CX
 	SHRQ    $24, CX
@@ -704,8 +1585,8 @@ TEXT ·handlerMoveGeneral(SB), NOSPLIT|NOFRAME, $0
 mg_shim:
 	JMP     ·handlerPathBShimMoveGeneral(SB)
 
-// handlerTestNilJumpTrue jumps by signed offset B|C<<8 when general[A] is invalid or a nil value of a nilable kind.
-TEXT ·handlerTestNilJumpTrue(SB), NOSPLIT|NOFRAME, $0
+// handlerJumpIfNil jumps by signed offset B|C<<8 when general[A] is invalid or a nil value of a nilable kind.
+TEXT ·handlerJumpIfNil(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -751,8 +1632,8 @@ tnj_take:
 tnj_skip:
 	DISPATCH_NEXT()
 
-// handlerTestNilJumpFalse jumps by signed offset B|C<<8 when general[A] is valid and non-nil.
-TEXT ·handlerTestNilJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerJumpIfNotNil jumps by signed offset B|C<<8 when general[A] is valid and non-nil.
+TEXT ·handlerJumpIfNotNil(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX

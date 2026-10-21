@@ -218,3 +218,28 @@ func TestCompilableForHostFollowsTheInterpreter(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveScriptRefusesALocalImportThatLeavesTheModule(t *testing.T) {
+	t.Parallel()
+	root := writeLocalModuleFixture(t)
+	outside := t.TempDir()
+	require.Equal(t, filepath.Dir(root), filepath.Dir(outside), "both fixtures share a parent directory")
+	outsidePackage := filepath.Join(outside, "pkg")
+	require.NoError(t, os.MkdirAll(outsidePackage, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(outsidePackage, "pkg.go"), []byte("package pkg\n\nconst Leaked = \"outside-module-source\"\n"), 0o600))
+
+	escapes := []string{
+		"example.com/app/../" + filepath.Base(outside) + "/pkg",
+		"example.com/app/lib/../../" + filepath.Base(outside) + "/pkg",
+		"example.com/app/./lib",
+		"example.com/app//lib",
+	}
+	for _, importPath := range escapes {
+		script := filepath.Join(root, "escape.go")
+		source := "package main\n\nimport _ \"" + importPath + "\"\n\nfunc main() {}\n"
+		require.NoError(t, os.WriteFile(script, []byte(source), 0o600))
+
+		_, err := ResolveScript(t.Context(), script, ScriptResolverOptions{})
+		require.ErrorIs(t, err, errLocalImportPathInvalid, "ungated resolution refuses %s", importPath)
+	}
+}

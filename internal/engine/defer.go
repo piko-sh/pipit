@@ -41,7 +41,7 @@ func (vm *VM) runDefers() {
 }
 
 // runFrameSimpleDefer executes the trivial-defer slot armed on this frame and clears it.
-// Used by handleReturn / handleReturnVoid / unwindFrame on the fast path that avoids
+// Used by handleReturnBody / handleReturnVoid / unwindFrame on the fast path that avoids
 // appending to the global deferStack.
 //
 // The classifier guarantees the deferred call body cannot call recover(), so the slot
@@ -167,7 +167,7 @@ func (vm *VM) recordUnwoundFrame(frame *CallFrame) {
 	if frame.Function == nil {
 		return
 	}
-	vm.panicUnwound = append(vm.panicUnwound, unwoundFrame{function: frame.Function, pc: frameInstructionIndex(frame)})
+	vm.panicUnwound = append(vm.panicUnwound, unwoundFrame{function: frame.Function, programCounter: frameInstructionIndex(frame)})
 }
 
 // runRemainingDefers drains every deferred call above base.

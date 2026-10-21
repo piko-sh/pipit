@@ -21,6 +21,7 @@ package schema
 import (
 	_ "embed"
 	"errors"
+	"slices"
 
 	"pipit.sh/pipit/internal/fbs"
 )
@@ -32,7 +33,10 @@ const (
 	// BytecodeFormatVersion is the major bytecode format version mixed into SchemaHash. Must
 	// equal engine.BytecodeVersionMajor; a cross-package test enforces this. Bump both when
 	// the opcode encoding or descriptor numbering changes.
-	BytecodeFormatVersion uint16 = 12
+	BytecodeFormatVersion uint16 = 13
+
+	// BytecodeFormatRevision is the additive bytecode revision mixed into SchemaHash.
+	BytecodeFormatRevision uint16 = 1
 )
 
 var (
@@ -44,12 +48,11 @@ var (
 	//go:embed bytecode.fbs
 	schemaContent []byte
 
-	// schemaHash is the SHA-256 hash of bytecode.fbs plus BytecodeFormatVersion, computed at
-	// init time. It changes whenever the schema file is modified or the opcode encoding
-	// version is bumped, so the persisted-bytecode cache invalidates automatically on
-	// either.
-	schemaHash = fbs.ComputeSchemaHash(append(append([]byte(nil), schemaContent...),
-		byte(BytecodeFormatVersion>>8), byte(BytecodeFormatVersion)))
+	// schemaHash is the SHA-256 hash of bytecode.fbs plus BytecodeFormatVersion and
+	// BytecodeFormatRevision, computed at init time.
+	schemaHash = fbs.ComputeSchemaHash(append(slices.Clone(schemaContent),
+		byte(BytecodeFormatVersion>>8), byte(BytecodeFormatVersion),
+		byte(BytecodeFormatRevision>>8), byte(BytecodeFormatRevision)))
 )
 
 // PackInto writes the schema hash and payload into destination.

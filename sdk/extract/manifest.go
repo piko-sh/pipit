@@ -24,6 +24,7 @@ import (
 	"go/parser"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -43,6 +44,10 @@ var (
 	// errManifestEmptyImportPath is returned when a package mapping node supplies an empty
 	// import path.
 	errManifestEmptyImportPath = errors.New("empty import path")
+
+	// errManifestVariantNotBuildTag is returned when a types_export_variants entry is not a
+	// single build tag.
+	errManifestVariantNotBuildTag = errors.New("is not a build tag")
 )
 
 // FunctionConfig holds per-function type overrides for generic dispatch wrapper
@@ -117,6 +122,46 @@ type PackageConfig struct {
 	ValueTypes []string
 }
 
+// buildTagPattern matches one build tag, as a types export variant must be.
+var buildTagPattern = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
+
+// Manifest describes which packages to extract and where to write the generated symbol
+// files.
+type Manifest struct {
+	// Package is the Go package name for the generated files.
+	Package string `yaml:"package"`
+
+	// Output is the directory path for generated files, relative to the repository root.
+	Output string `yaml:"output"`
+
+	// LinkImportPath overrides the import path generated files use for the link sentinels.
+	// Empty selects the public default.
+	LinkImportPath string `yaml:"link_import_path"`
+
+	// Packages lists the packages to extract. Supports both simple strings and objects with
+	// generic configuration.
+	Packages []PackageConfig `yaml:"-"`
+
+	// TypesExportVariants lists build tags whose builds lay the extracted types out
+	// differently (the safe build, say).
+	TypesExportVariants []string `yaml:"-"`
+}
+
+var (
+	// knownPackageConfigKeys is the allow-list of recognised keys in a per-package config
+	// mapping, so typos surface as errors rather than being silently dropped.
+	knownPackageConfigKeys = map[string]struct{}{
+		"functions":         {},
+		"generic_functions": {},
+		"generic_types":     {},
+		"build_tag":         {},
+		"element_types":     {},
+		"key_types":         {},
+		"value_types":       {},
+		"generic_fallback":  {},
+	}
+)
+
 // IsGeneric returns true if the package has generic type configuration.
 //
 // Returns true when any element types, key types, per-function overrides, or explicit
@@ -159,24 +204,6 @@ func (packageConfig PackageConfig) TypesForFunc(name string) (elemTypes, keyType
 	return elemTypes, keyTypes, valTypes
 }
 
-// Manifest describes which packages to extract and where to write the generated symbol
-// files.
-type Manifest struct {
-	// Package is the Go package name for the generated files.
-	Package string `yaml:"package"`
-
-	// Output is the directory path for generated files, relative to the repository root.
-	Output string `yaml:"output"`
-
-	// LinkImportPath overrides the import path generated files use for the link sentinels.
-	// Empty selects the public default.
-	LinkImportPath string `yaml:"link_import_path"`
-
-	// Packages lists the packages to extract. Supports both simple strings and objects with
-	// generic configuration.
-	Packages []PackageConfig `yaml:"-"`
-}
-
 // UnmarshalYAML implements custom YAML parsing to support mixed package list formats:
 // simple strings and maps with generic config.
 //
@@ -188,6 +215,7 @@ func (manifest *Manifest) UnmarshalYAML(value *yaml.Node) error {
 		Package        string    `yaml:"package"`
 		Output         string    `yaml:"output"`
 		LinkImportPath string    `yaml:"link_import_path"`
+		Variants       []string  `yaml:"types_export_variants"`
 		Packages       yaml.Node `yaml:"packages"`
 	}
 	if err := value.Decode(&raw); err != nil {
@@ -196,6 +224,12 @@ func (manifest *Manifest) UnmarshalYAML(value *yaml.Node) error {
 	manifest.Package = raw.Package
 	manifest.Output = raw.Output
 	manifest.LinkImportPath = raw.LinkImportPath
+	for _, variant := range raw.Variants {
+		if !buildTagPattern.MatchString(variant) {
+			return fmt.Errorf("types_export_variants: %q %w", variant, errManifestVariantNotBuildTag)
+		}
+	}
+	manifest.TypesExportVariants = raw.Variants
 
 	if raw.Packages.Kind != yaml.SequenceNode {
 		return errors.New("'packages' must be a sequence")
@@ -312,21 +346,6 @@ func parseManifest(path string, data []byte) (*Manifest, error) {
 
 	return &manifest, nil
 }
-
-var (
-	// knownPackageConfigKeys is the allow-list of recognised keys in a per-package config
-	// mapping, so typos surface as errors rather than being silently dropped.
-	knownPackageConfigKeys = map[string]struct{}{
-		"functions":         {},
-		"generic_functions": {},
-		"generic_types":     {},
-		"build_tag":         {},
-		"element_types":     {},
-		"key_types":         {},
-		"value_types":       {},
-		"generic_fallback":  {},
-	}
-)
 
 // parseGenericPackageNode parses a YAML node into a PackageConfig.
 //

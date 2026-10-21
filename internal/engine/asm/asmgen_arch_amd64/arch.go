@@ -45,6 +45,12 @@ const (
 	// of the dispatch file.
 	labelBoundsFail = "bounds_fail"
 
+	// labelByteRunOfTwo skips the extension words of a two-store byte run.
+	labelByteRunOfTwo = "run_of_two"
+
+	// labelByteRunOfThree skips the third extension word of a byte run.
+	labelByteRunOfThree = "run_of_three"
+
 	// labelWriteBarrierFallback is the out-of-line tail a write-barrier guard jumps to while
 	// the barrier is on.
 	labelWriteBarrierFallback = "wb_fallback"
@@ -78,7 +84,7 @@ var (
 // table.
 type JumpTableEntry struct {
 	// Name is the Plan-9 ASM symbol name of the handler (without the leading middle dot).
-	// Example: "handlerAddInt".
+	// For example, "handlerAddInt64".
 	Name string
 
 	// TableSymbol identifies which dispatch table the handler is installed into.
@@ -110,10 +116,10 @@ func (*BytecodeAMD64Arch) DivisionByZeroExit(e *asmgen.Emitter) {
 	e.Instruction(asmamd64.InstructionDivByZeroExitMacro)
 }
 
-// EmitTruncateNarrow implements BytecodeArchitecturePort.
+// EmitTruncateToWidth implements BytecodeArchitecturePort.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-func (*BytecodeAMD64Arch) EmitTruncateNarrow(e *asmgen.Emitter) {
+func (*BytecodeAMD64Arch) EmitTruncateToWidth(e *asmgen.Emitter) {
 	e.IndentedComment("Extract A (register index) into AX.")
 	inst(e, asmamd64.OperationMove64Bits, "DX, AX")
 	inst(e, asmamd64.OperationShiftRight64Bits, "$8, AX")
@@ -341,106 +347,20 @@ func (*BytecodeAMD64Arch) EmitTypedSliceFloatGet(e *asmgen.Emitter, contextOffse
 	emitTypedSliceTailAMD64(e)
 }
 
-// EmitSliceIndexStructFieldScalar implements BytecodeArchPort. It emits a tier-0 fast
-// path for dest[A] = slice(general[B])[ints[C]].field(layout[ext]), including an
-// element-type identity check that guards the compile-time layout against the runtime
-// element type.
+// EmitElementInt64ViaPointerAccess implements BytecodeArchPort.
 //
-// Takes e (*asmgen.Emitter) which receives the emitted instructions.
-// Takes kindA (string) which is the primary accepted layout Kind byte immediate.
-// Takes kindB (string) which is the secondary accepted layout Kind byte immediate.
-// Takes destIsFloat (bool) which selects the float bank destination over ints.
-// Takes shimSymbol (string) which is the fallback shim handler name.
-//
-//nolint:revive // function-length: one handler listing; registers stay live end to end
-func (*BytecodeAMD64Arch) EmitSliceIndexStructFieldScalar(e *asmgen.Emitter, kindA, kindB string, destIsFloat bool, shimSymbol string) {
-	inst(e, asmamd64.OperationMove32Bits, "(R12)(R14*4), BX")
-	inst(e, asmamd64.OperationShiftRight64Bits, "$8, BX")
-	inst(e, asmamd64.OperationMove16To32BitsZeroExtended, "BX, BX")
-	inst(e, asmamd64.OperationMove64Bits, "CTX_FRAME_POINTER(R15), AX")
-	inst(e, asmamd64.OperationSignedMultiply64Bits, "$CALLFRAME_SIZE, AX")
-	inst(e, asmamd64.OperationAdd64Bits, "CTX_CSTACK_BASE(R15), AX")
-	inst(e, asmamd64.OperationMove64Bits, "CF_FUNCTION(AX), AX")
-	inst(e, asmamd64.OperationCompare64Bits, "BX, FN_STRUCT_LAYOUT_TABLE_LEN(AX)")
-	inst(e, asmamd64.OperationJumpIfAboveOrEqual, "sif_shim")
-	inst(e, asmamd64.OperationMove64Bits, "FN_STRUCT_LAYOUT_TABLE(AX), SI")
-	inst(e, asmamd64.OperationShiftLeft64Bits, "$4, BX")
-	inst(e, asmamd64.OperationAdd64Bits, "BX, SI")
-	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "OFF_LAYOUT_KIND(SI), CX")
-	inst(e, asmamd64.OperationCompare64Bits, "CX, "+kindA)
-	if kindB != "" {
-		inst(e, asmamd64.OperationJumpIfEqual, "sif_kind_ok")
-		inst(e, asmamd64.OperationCompare64Bits, "CX, "+kindB)
-	}
-	inst(e, asmamd64.OperationJumpIfNotEqual, "sif_shim")
-	if kindB != "" {
-		e.Label("sif_kind_ok")
-	}
-	inst(e, asmamd64.OperationMove64Bits, "DX, BX")
-	inst(e, asmamd64.OperationShiftRight64Bits, "$16, BX")
-	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "BL, BX")
-	inst(e, asmamd64.OperationMove64Bits, "CTX_GENERALS_BASE(R15), DI")
-	inst(e, asmamd64.OperationLoadEffectiveAddress64Bits, "(BX)(BX*2), CX")
-	inst(e, asmamd64.OperationLoadEffectiveAddress64Bits, "(DI)(CX*8), DI")
-	inst(e, asmamd64.OperationMove64Bits, "0(DI), CX")
-	inst(e, asmamd64.OperationTest64Bits, "CX, CX")
-	inst(e, asmamd64.OperationJumpIfZero, "sif_shim")
-	inst(e, asmamd64.OperationMove64Bits, "16(DI), BX")
-	inst(e, asmamd64.OperationBitwiseAnd64Bits, "$0x1F, BX")
-	inst(e, asmamd64.OperationCompare64Bits, "BX, $23")
-	inst(e, asmamd64.OperationJumpIfNotEqual, "sif_shim")
-	inst(e, asmamd64.OperationMove64Bits, "8(DI), DI")
-	inst(e, asmamd64.OperationMove64Bits, "48(CX), CX")
-	inst(e, asmamd64.OperationMove16To32BitsZeroExtended, "OFF_LAYOUT_TYPE_INDEX(SI), BX")
-	inst(e, asmamd64.OperationCompare64Bits, "BX, FN_TYPE_TABLE_LEN(AX)")
-	inst(e, asmamd64.OperationJumpIfAboveOrEqual, "sif_shim")
-	inst(e, asmamd64.OperationMove64Bits, "FN_TYPE_TABLE(AX), AX")
-	inst(e, asmamd64.OperationShiftLeft64Bits, "$4, BX")
-	inst(e, asmamd64.OperationAdd64Bits, "BX, AX")
-	inst(e, asmamd64.OperationCompare64Bits, "CX, 8(AX)")
-	inst(e, asmamd64.OperationJumpIfNotEqual, "sif_shim")
-	inst(e, asmamd64.OperationMove64Bits, "0(CX), AX")
-	inst(e, asmamd64.OperationMove64Bits, "DX, BX")
-	inst(e, asmamd64.OperationShiftRight64Bits, "$24, BX")
-	inst(e, asmamd64.OperationMove64Bits, "(R8)(BX*8), BX")
-	inst(e, asmamd64.OperationCompare64Bits, "BX, 8(DI)")
-	inst(e, asmamd64.OperationJumpIfAboveOrEqual, "sif_shim")
-	inst(e, asmamd64.OperationSignedMultiply64Bits, "BX, AX")
-	inst(e, asmamd64.OperationMove64Bits, "(DI), DI")
-	inst(e, asmamd64.OperationTest64Bits, "DI, DI")
-	inst(e, asmamd64.OperationJumpIfZero, "sif_shim")
-	inst(e, asmamd64.OperationAdd64Bits, "AX, DI")
-	inst(e, asmamd64.OperationMove32To64BitsZeroExtended, "OFF_LAYOUT_OFFSET(SI), CX")
-	inst(e, asmamd64.OperationAdd64Bits, "CX, DI")
-	inst(e, asmamd64.OperationMove64Bits, "(DI), CX")
-	inst(e, asmamd64.OperationMove64Bits, "DX, AX")
-	inst(e, asmamd64.OperationShiftRight64Bits, "$8, AX")
-	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "AL, AX")
-	if destIsFloat {
-		inst(e, asmamd64.OperationMove64Bits, "CX, (R9)(AX*8)")
-	} else {
-		inst(e, asmamd64.OperationMove64Bits, "CX, (R8)(AX*8)")
-	}
-	inst(e, asmamd64.OperationIncrement64Bits, "R14")
-	e.Instruction(macroDispatchNext)
-	e.Label("sif_shim")
-	inst(e, asmamd64.OperationJump, "·"+shimSymbol+"(SB)")
-}
-
-// EmitDerefSliceIntAccess implements BytecodeArchPort.
-//
-// Tier-0 fast path for isa.OpDerefSliceGetInt (isSet=false: ints[A] =
-// (*general[B])[ints[C]]) and isa.OpDerefSliceSetInt (isSet=true: (*general[A])[ints[B]]
-// = ints[C]). Resolves the pointer from its general slot (both indirection forms), reads
-// the slice header through it, bounds-checks against the live length, and performs the
-// element access. Int element stores carry no pointers, so no write barrier applies. Nil
-// pointers, non-pointer receivers, and out-of-range indexes fall back to the Go shim,
-// which raises the matching panics.
+// Tier-0 fast path for isa.OpGetElementInt64ViaPointer (isSet=false, which computes
+// ints[A] = (*general[B])[ints[C]]) and isa.OpSetElementInt64ViaPointer (isSet=true,
+// which computes (*general[A])[ints[B]] = ints[C]). Resolves the pointer from its general
+// slot (both indirection forms), reads the slice header through it, bounds-checks against
+// the live length, and performs the element access. Int element stores carry no pointers,
+// so no write barrier applies. Nil pointers, non-pointer receivers, and out-of-range
+// indexes fall back to the Go shim, which raises the matching panics.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 // Takes isSet (bool) which selects the write-side operand roles and store.
 // Takes shimSymbol (string) which is the fallback shim handler name.
-func (*BytecodeAMD64Arch) EmitDerefSliceIntAccess(e *asmgen.Emitter, isSet bool, shimSymbol string) {
+func (*BytecodeAMD64Arch) EmitElementInt64ViaPointerAccess(e *asmgen.Emitter, isSet bool, shimSymbol string) {
 	ptrShift, idxShift := "$16", "$24"
 	if isSet {
 		ptrShift, idxShift = "$8", "$16"
@@ -490,15 +410,15 @@ func (*BytecodeAMD64Arch) EmitDerefSliceIntAccess(e *asmgen.Emitter, isSet bool,
 	inst(e, asmamd64.OperationJump, "·"+shimSymbol+"(SB)")
 }
 
-// EmitGetStructFieldGeneralPointerT0 implements BytecodeArchPort, emitting a tier-0 fast
+// EmitGetStructFieldGeneralPointer implements BytecodeArchPort, emitting a tier-0 fast
 // path for reading receiver[B].field(layout[C]) into general[A] covering pointer-kind and
 // direct-interface-kind fields. Gated on the runtime write barrier because pointer words
 // are stored with raw moves.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 //
-//nolint:revive // function-length: one handler listing; registers stay live end to end
-func (*BytecodeAMD64Arch) EmitGetStructFieldGeneralPointerT0(e *asmgen.Emitter) {
+//nolint:revive // function-length. One handler listing keeps registers live end to end
+func (*BytecodeAMD64Arch) EmitGetStructFieldGeneralPointer(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationCompare8Bits, "runtime·writeBarrier(SB), $0")
 	inst(e, asmamd64.OperationJumpIfNotEqual, "sf_shim")
 	emitStructFieldCommonPrologueAMD64(e, "$22", "$20", "$16")
@@ -563,17 +483,17 @@ func (*BytecodeAMD64Arch) EmitGetStructFieldGeneralPointerT0(e *asmgen.Emitter) 
 	inst(e, asmamd64.OperationMove64Bits, "$22, 16(DI)")
 	inst(e, asmamd64.OperationJump, "gp_done")
 	e.Label("sf_shim")
-	inst(e, asmamd64.OperationJump, "·handlerPathBShimGetStructFieldGeneralT0(SB)")
+	inst(e, asmamd64.OperationJump, "·handlerPathBShimGetStructFieldGeneral(SB)")
 }
 
-// EmitGetStructFieldRawPointerT0 implements BytecodeArchPort, emitting a tier-0 fast path
+// EmitGetStructFieldRawPointer implements BytecodeArchPort, emitting a tier-0 fast path
 // that reads a cycle-broken eface field through receiver[B] and re-wraps it as a
 // pointer-kind value in general[A]. Gated on the runtime write barrier.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 //
-//nolint:revive // function-length: one handler listing; registers stay live end to end
-func (*BytecodeAMD64Arch) EmitGetStructFieldRawPointerT0(e *asmgen.Emitter) {
+//nolint:revive // function-length. One handler listing keeps registers live end to end
+func (*BytecodeAMD64Arch) EmitGetStructFieldRawPointer(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationCompare8Bits, "runtime·writeBarrier(SB), $0")
 	inst(e, asmamd64.OperationJumpIfNotEqual, "rp_shim")
 	inst(e, asmamd64.OperationMove64Bits, "DX, BX")
@@ -646,17 +566,17 @@ func (*BytecodeAMD64Arch) EmitGetStructFieldRawPointerT0(e *asmgen.Emitter) {
 	e.Label("rp_done")
 	e.Instruction(macroDispatchNext)
 	e.Label("rp_shim")
-	inst(e, asmamd64.OperationJump, "·handlerPathBShimGetStructFieldRawPointerT0(SB)")
+	inst(e, asmamd64.OperationJump, "·handlerPathBShimGetStructFieldRawPointer(SB)")
 }
 
-// EmitEqGeneral implements BytecodeArchPort. It emits a tier-0 fast path for ints[A] =
+// EmitEqualGeneral implements BytecodeArchPort. It emits a tier-0 fast path for ints[A] =
 // (general[B] == general[C]), handling the both-invalid, differing-type and
 // pointer-identity-kind comparisons inline.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 //
-//nolint:revive // function-length: one handler listing; registers stay live end to end
-func (*BytecodeAMD64Arch) EmitEqGeneral(e *asmgen.Emitter) {
+//nolint:revive // function-length. One handler listing keeps registers live end to end
+func (*BytecodeAMD64Arch) EmitEqualGeneral(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationMove64Bits, "DX, BX")
 	inst(e, asmamd64.OperationShiftRight64Bits, "$16, BX")
 	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "BL, BX")
@@ -721,7 +641,7 @@ func (*BytecodeAMD64Arch) EmitEqGeneral(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationMove64Bits, "CX, (R8)(AX*8)")
 	e.Instruction(macroDispatchNext)
 	e.Label("eqg_shim")
-	inst(e, asmamd64.OperationJump, "·handlerPathBShimEqGeneral(SB)")
+	inst(e, asmamd64.OperationJump, "·handlerPathBShimEqualGeneral(SB)")
 }
 
 // EmitWriteBarrierGuard runs body while the runtime write barrier is off and otherwise
@@ -777,12 +697,12 @@ func (*BytecodeAMD64Arch) EmitMoveGeneralAlias(e *asmgen.Emitter) {
 
 // EmitTestNilJump implements BytecodeArchPort.
 //
-// Tier-0 body for isa.OpTestNilJumpTrue/False: tests whether general[A] holds an invalid
-// value or a nil value of a nilable kind (Chan, Func, Interface, Map, Pointer, Slice -the
-// contiguous reflect.Kind range 18..23) and branches by the signed 16-bit offset in
-// B|C<<8 according to the polarity. Pure reads with no general-bank stores, so no write
-// barrier consideration applies; the handler is total and needs no shim fallback. The
-// taken branch shares handlerJump's poll-budget back-edge exit.
+// Tier-0 body for isa.OpJumpIfNil and isa.OpJumpIfNotNil, which tests whether general[A]
+// holds an invalid value or a nil value of a nilable kind (Chan, Func, Interface, Map,
+// Pointer, Slice -the contiguous reflect.Kind range 18..23) and branches by the signed
+// 16-bit offset in B|C<<8 according to the polarity. Pure reads with no general-bank
+// stores, so no write barrier consideration applies. The handler is total and needs no
+// shim fallback. The taken branch shares handlerJump's poll-budget back-edge exit.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 // Takes jumpWhenNil (bool) which selects the True (jump on nil) polarity.
@@ -837,7 +757,7 @@ func (*BytecodeAMD64Arch) EmitTestNilJump(e *asmgen.Emitter, jumpWhenNil bool) {
 	e.Instruction(macroDispatchNext)
 }
 
-// EmitStructFieldScalarGetT0 implements BytecodeArchPort. It emits a tier-0 fast path for
+// EmitStructFieldScalarGet implements BytecodeArchPort. It emits a tier-0 fast path for
 // dest[A] = *(receiverBase + layout[C].Offset) with full-width scalar fields and zero
 // layout flags.
 //
@@ -848,8 +768,8 @@ func (*BytecodeAMD64Arch) EmitTestNilJump(e *asmgen.Emitter, jumpWhenNil bool) {
 // Takes bank (string) which names the destination bank ("ints", "floats", "uints",
 // "bools").
 // Takes shimSymbol (string) which is the fallback shim, e.g.
-// "handlerPathBShimGetStructFieldIntT0".
-func (*BytecodeAMD64Arch) EmitStructFieldScalarGetT0(e *asmgen.Emitter, kindA, kindB, bank, shimSymbol string) {
+// "handlerPathBShimGetStructFieldInt64".
+func (*BytecodeAMD64Arch) EmitStructFieldScalarGet(e *asmgen.Emitter, kindA, kindB, bank, shimSymbol string) {
 	spec := structFieldBankAMD64(bank)
 	emitStructFieldCommonPrologueAMD64(e, kindA, kindB, "$16")
 	inst(e, spec.fieldLoadOp, "(DI), CX")
@@ -862,18 +782,15 @@ func (*BytecodeAMD64Arch) EmitStructFieldScalarGetT0(e *asmgen.Emitter, kindA, k
 	inst(e, asmamd64.OperationJump, "·"+shimSymbol+"(SB)")
 }
 
-// EmitStructFieldScalarSetT0 implements BytecodeArchPort.
-//
-// Tier-0 fast path for the scalar struct-field SET family: *(receiverBase +
-// layout[C].Offset) = source[B]. Receiver operand is A; scalar stores carry no pointers
-// so no write barrier is required. Shape gates mirror EmitStructFieldScalarGetT0.
+// EmitStructFieldScalarSet emits the tier-0 fast path for the scalar struct-field SET
+// family.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 // Takes kindA (string) which is the primary accepted layout Kind byte.
 // Takes kindB (string) which is the secondary accepted layout Kind byte.
-// Takes bank (string) which names the source bank as in EmitStructFieldScalarGetT0.
+// Takes bank (string) which names the source bank as in EmitStructFieldScalarGet.
 // Takes shimSymbol (string) which is the fallback shim symbol.
-func (*BytecodeAMD64Arch) EmitStructFieldScalarSetT0(e *asmgen.Emitter, kindA, kindB, bank, shimSymbol string) {
+func (*BytecodeAMD64Arch) EmitStructFieldScalarSet(e *asmgen.Emitter, kindA, kindB, bank, shimSymbol string) {
 	spec := structFieldBankAMD64(bank)
 	emitStructFieldCommonPrologueAMD64(e, kindA, kindB, "$8")
 	inst(e, asmamd64.OperationMove64Bits, "DX, AX")
@@ -886,13 +803,13 @@ func (*BytecodeAMD64Arch) EmitStructFieldScalarSetT0(e *asmgen.Emitter, kindA, k
 	inst(e, asmamd64.OperationJump, "·"+shimSymbol+"(SB)")
 }
 
-// EmitTypedSliceIntGetDirect implements BytecodeArchPort. It emits the tier-0 body for
+// EmitGetSliceInt64Element implements BytecodeArchPort. It emits the tier-0 body for
 // ints[A] = slicesInt[B][ints[C]] with bounds check.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 // Takes contextOffset (string) which is the byte offset of the slicesInt bank base
 // pointer within the dispatchContext.
-func (*BytecodeAMD64Arch) EmitTypedSliceIntGetDirect(e *asmgen.Emitter, contextOffset string) {
+func (*BytecodeAMD64Arch) EmitGetSliceInt64Element(e *asmgen.Emitter, contextOffset string) {
 	emitTypedSliceIntDirectHeaderAMD64(e, contextOffset, "$16")
 	emitTypedSliceIntDirectIndexAMD64(e, "$24")
 	inst(e, asmamd64.OperationCompare64Bits, "BX, CX")
@@ -905,15 +822,13 @@ func (*BytecodeAMD64Arch) EmitTypedSliceIntGetDirect(e *asmgen.Emitter, contextO
 	emitTypedSliceIntDirectTailAMD64(e)
 }
 
-// EmitTypedSliceIntSetDirect implements BytecodeArchPort.
-//
-// Emits the tier-0 body for slicesInt[A][ints[B]] = ints[C] with bounds check. See
-// EmitTypedSliceIntGetDirect for the tier-0 conventions.
+// EmitSetSliceInt64Element emits the tier-0 body for slicesInt[A][ints[B]] = ints[C] with
+// bounds check.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 // Takes contextOffset (string) which is the byte offset of the slicesInt bank base
 // pointer within the dispatchContext.
-func (*BytecodeAMD64Arch) EmitTypedSliceIntSetDirect(e *asmgen.Emitter, contextOffset string) {
+func (*BytecodeAMD64Arch) EmitSetSliceInt64Element(e *asmgen.Emitter, contextOffset string) {
 	emitTypedSliceIntDirectHeaderAMD64(e, contextOffset, "$8")
 	emitTypedSliceIntDirectIndexAMD64(e, "$16")
 	inst(e, asmamd64.OperationCompare64Bits, "BX, CX")
@@ -925,15 +840,13 @@ func (*BytecodeAMD64Arch) EmitTypedSliceIntSetDirect(e *asmgen.Emitter, contextO
 	emitTypedSliceIntDirectTailAMD64(e)
 }
 
-// EmitTypedSliceIntGetDirectUnchecked implements BytecodeArchPort.
-//
-// Bounds-elided variant of EmitTypedSliceIntGetDirect: the compiler's BCE pass only emits
-// the unchecked opcode when a dominating comparison proves the index in range.
+// EmitGetSliceInt64ElementUnchecked is the bounds-elided variant of
+// EmitGetSliceInt64Element.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 // Takes contextOffset (string) which is the byte offset of the slicesInt bank base
 // pointer within the dispatchContext.
-func (*BytecodeAMD64Arch) EmitTypedSliceIntGetDirectUnchecked(e *asmgen.Emitter, contextOffset string) {
+func (*BytecodeAMD64Arch) EmitGetSliceInt64ElementUnchecked(e *asmgen.Emitter, contextOffset string) {
 	emitTypedSliceIntDirectHeaderAMD64(e, contextOffset, "$16")
 	emitTypedSliceIntDirectIndexAMD64(e, "$24")
 	inst(e, asmamd64.OperationMove64Bits, "(DI)(BX*8), CX")
@@ -944,14 +857,13 @@ func (*BytecodeAMD64Arch) EmitTypedSliceIntGetDirectUnchecked(e *asmgen.Emitter,
 	e.Instruction(macroDispatchNext)
 }
 
-// EmitTypedSliceIntSetDirectUnchecked implements BytecodeArchPort.
-//
-// Bounds-elided variant of EmitTypedSliceIntSetDirect for BCE-proven sites.
+// EmitSetSliceInt64ElementUnchecked is the bounds-elided variant of
+// EmitSetSliceInt64Element for BCE-proven sites.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 // Takes contextOffset (string) which is the byte offset of the slicesInt bank base
 // pointer within the dispatchContext.
-func (*BytecodeAMD64Arch) EmitTypedSliceIntSetDirectUnchecked(e *asmgen.Emitter, contextOffset string) {
+func (*BytecodeAMD64Arch) EmitSetSliceInt64ElementUnchecked(e *asmgen.Emitter, contextOffset string) {
 	emitTypedSliceIntDirectHeaderAMD64(e, contextOffset, "$8")
 	emitTypedSliceIntDirectIndexAMD64(e, "$16")
 	inst(e, asmamd64.OperationMove64Bits, "DX, AX")
@@ -961,13 +873,10 @@ func (*BytecodeAMD64Arch) EmitTypedSliceIntSetDirectUnchecked(e *asmgen.Emitter,
 	e.Instruction(macroDispatchNext)
 }
 
-// EmitLoadUintConst implements BytecodeArchPort.
-//
-// Tier-0 body for uints[A] = uintConstants[B|(C<<8)]. Pool indexes are compiler-generated
-// so no bounds check is emitted, mirroring handlerLoadIntConst.
+// EmitLoadUint64Constant emits the tier-0 body for uints[A] = uintConstants[B|(C<<8)].
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-func (*BytecodeAMD64Arch) EmitLoadUintConst(e *asmgen.Emitter) {
+func (*BytecodeAMD64Arch) EmitLoadUint64Constant(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationMove64Bits, "DX, AX")
 	inst(e, asmamd64.OperationShiftRight64Bits, "$8, AX")
 	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "AL, AX")
@@ -981,12 +890,11 @@ func (*BytecodeAMD64Arch) EmitLoadUintConst(e *asmgen.Emitter) {
 	e.Instruction(macroDispatchNext)
 }
 
-// EmitLoadUintConstSmall implements BytecodeArchPort.
-//
-// Tier-1 body for uints[B] = uint64(C), the immediate small-constant loader.
+// EmitLoadUint64Immediate emits the tier-1 body for uints[B] = uint64(C), the immediate
+// small-constant loader.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-func (*BytecodeAMD64Arch) EmitLoadUintConstSmall(e *asmgen.Emitter) {
+func (*BytecodeAMD64Arch) EmitLoadUint64Immediate(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationMove64Bits, "DX, AX")
 	inst(e, asmamd64.OperationShiftRight64Bits, "$16, AX")
 	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "AL, AX")
@@ -994,37 +902,6 @@ func (*BytecodeAMD64Arch) EmitLoadUintConstSmall(e *asmgen.Emitter) {
 	inst(e, asmamd64.OperationShiftRight64Bits, "$24, BX")
 	inst(e, asmamd64.OperationMove64Bits, "CTX_UINTS_BASE(R15), SI")
 	inst(e, asmamd64.OperationMove64Bits, "BX, (SI)(AX*8)")
-	e.Instruction(macroDispatchNext)
-}
-
-// EmitUintConstArith implements BytecodeArchPort.
-//
-// Tier-1 body for uints[B] = uints[C] op uintConstants[ext.A|(ext.B<<8)], consuming the
-// extension word (PC is advanced past it before DISPATCH_NEXT).
-//
-// Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
-// Takes operation (string) which selects the instruction: "add", "sub", or "and".
-func (*BytecodeAMD64Arch) EmitUintConstArith(e *asmgen.Emitter, operation string) {
-	mnemonics := map[string]string{
-		"add": asmamd64.OperationAdd64Bits,
-		"sub": asmamd64.OperationSubtract64Bits,
-		"and": asmamd64.OperationBitwiseAnd64Bits,
-	}
-	inst(e, asmamd64.OperationMove64Bits, "DX, AX")
-	inst(e, asmamd64.OperationShiftRight64Bits, "$16, AX")
-	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "AL, AX")
-	inst(e, asmamd64.OperationMove64Bits, "DX, BX")
-	inst(e, asmamd64.OperationShiftRight64Bits, "$24, BX")
-	inst(e, asmamd64.OperationMove32Bits, "(R12)(R14*4), CX")
-	inst(e, asmamd64.OperationShiftRight64Bits, "$8, CX")
-	inst(e, asmamd64.OperationMove16To32BitsZeroExtended, "CX, CX")
-	inst(e, asmamd64.OperationMove64Bits, "CTX_UINT_CONSTS_BASE(R15), SI")
-	inst(e, asmamd64.OperationMove64Bits, "(SI)(CX*8), CX")
-	inst(e, asmamd64.OperationMove64Bits, "CTX_UINTS_BASE(R15), SI")
-	inst(e, asmamd64.OperationMove64Bits, "(SI)(BX*8), DI")
-	inst(e, mnemonics[operation], "CX, DI")
-	inst(e, asmamd64.OperationMove64Bits, "DI, (SI)(AX*8)")
-	inst(e, asmamd64.OperationIncrement64Bits, "R14")
 	e.Instruction(macroDispatchNext)
 }
 
@@ -1143,36 +1020,47 @@ func (*BytecodeAMD64Arch) EmitTypedSliceByteGet(e *asmgen.Emitter, contextOffset
 	emitTypedSliceTailAMD64(e)
 }
 
+// EmitTypedSliceByteGetInt emits a bounds-checked byte load into the int register bank.
+//
+// Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
+// Takes contextOffset (string) which is the byte offset of the slicesByte bank base
+// pointer within the dispatchContext.
+func (*BytecodeAMD64Arch) EmitTypedSliceByteGetInt(e *asmgen.Emitter, contextOffset string) {
+	emitTypedSliceGetPrologueAMD64(e, contextOffset)
+	inst(e, asmamd64.OperationMove8To32BitsZeroExtended, "(DI)(BX*1), CX")
+	inst(e, asmamd64.OperationMove64Bits, "CX, (R8)(AX*8)")
+	emitTypedSliceTailAMD64(e)
+}
+
 // EmitTypedSliceByteSet implements BytecodeArchPort.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 // Takes contextOffset (string) which is the byte offset of the slicesByte bank base
 // pointer within the dispatchContext.
 func (*BytecodeAMD64Arch) EmitTypedSliceByteSet(e *asmgen.Emitter, contextOffset string) {
-	emitTypedSliceSetPrologueAMD64(e, contextOffset)
-	emitPeekExtensionWordAFieldAMD64(e, "AX")
+	emitTypedSliceByteSetPrologueAMD64(e, contextOffset)
 	inst(e, asmamd64.OperationMove64Bits, "CTX_UINTS_BASE(R15), SI")
 	inst(e, asmamd64.OperationMove64Bits, "(SI)(AX*8), AX")
 	inst(e, asmamd64.OperationMove8Bits, "AL, (DI)(BX*1)")
 	emitTypedSliceTailAMD64(e)
 }
 
-// EmitTypedSliceByteSlice implements BytecodeArchPort. It emits the body of slicesByte[B]
-// = slicesByte[C][low:high], handling every two-index form in ASM and falling back to
+// EmitSliceSliceByte implements BytecodeArchPort. It emits the body of slicesByte[B] =
+// slicesByte[C][low:high], handling every two-index form in ASM and falling back to
 // pathBFallback for the three-index form.
 //
 // Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
 // Takes contextOffset (string) which is the byte offset of the slicesByte bank base
 // pointer within the dispatchContext.
-func (*BytecodeAMD64Arch) EmitTypedSliceByteSlice(e *asmgen.Emitter, contextOffset string) {
-	emitTypedSliceByteSliceExtractOperands(e)
-	emitTypedSliceByteSliceLoadExtAndBounds(e, contextOffset)
-	emitTypedSliceByteSliceWriteHeader(e, contextOffset)
+func (*BytecodeAMD64Arch) EmitSliceSliceByte(e *asmgen.Emitter, contextOffset string) {
+	emitSliceSliceByteExtractOperands(e)
+	emitSliceSliceByteLoadExtAndBounds(e, contextOffset)
+	emitSliceSliceByteWriteHeader(e, contextOffset)
 	emitTypedSliceTailAMD64(e)
 }
 
-// EmitTypedSliceMove implements BytecodeArchPort. It emits the body of subOpMoveSlice for
-// slicesX[B] = slicesX[C], copying the 24-byte slice header.
+// EmitTypedSliceMove implements BytecodeArchPort. It emits the body of
+// isa.SubOpMoveSlice<Kind> for slicesX[B] = slicesX[C], copying the 24-byte slice header.
 //
 // R10 must not be used as scratch because DISPATCH_NEXT dereferences it as the jump-table
 // base.
@@ -1214,8 +1102,8 @@ func (*BytecodeAMD64Arch) EmitTypedSliceMove(e *asmgen.Emitter, contextOffset st
 // pointer within the dispatchContext.
 // Takes elementSizeShift (uint8) which is the log2 of the element stride.
 func (*BytecodeAMD64Arch) EmitTypedSliceSliceSlice(e *asmgen.Emitter, contextOffset string, elementSizeShift uint8) {
-	emitTypedSliceByteSliceExtractOperands(e)
-	emitTypedSliceByteSliceLoadExtAndBounds(e, contextOffset)
+	emitSliceSliceByteExtractOperands(e)
+	emitSliceSliceByteLoadExtAndBounds(e, contextOffset)
 	emitTypedSliceSliceSliceWriteHeader(e, contextOffset, elementSizeShift)
 	emitTypedSliceTailAMD64(e)
 }

@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxbroker
 
@@ -102,9 +102,9 @@ func (backend *LinuxFilesystem) SealProcess() error {
 // Returns an owned ruleset descriptor, or an error after closing partial state.
 func (backend *LinuxFilesystem) landlockRuleset() (int, error) {
 	attributes := unix.LandlockRulesetAttr{
-		Access_fs:  brokerFilesystemAccess,
-		Access_net: unix.LANDLOCK_ACCESS_NET_BIND_TCP | unix.LANDLOCK_ACCESS_NET_CONNECT_TCP,
-		Scoped:     0,
+		Handled_access_fs:  brokerFilesystemAccess,
+		Handled_access_net: unix.LANDLOCK_ACCESS_NET_BIND_TCP | unix.LANDLOCK_ACCESS_NET_CONNECT_TCP,
+		Scoped:             0,
 	}
 	descriptor, _, errno := syscall.Syscall(unix.SYS_LANDLOCK_CREATE_RULESET,
 		uintptr(unsafe.Pointer(&attributes)), unsafe.Sizeof(attributes), 0)

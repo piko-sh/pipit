@@ -36,18 +36,26 @@ const (
 	contextBaseUint
 )
 
-// tier1MoveHandlers returns the tier-1 register-move ASM handlers covering int, float,
-// bool, uint, and string bank moves.
+// tier1MoveHandlers returns tier-1 move and scalar zero-load handlers.
 //
 // Returns []HandlerDefinition[BytecodeArchitecturePort] which is the handler definitions
 // for this group.
 func tier1MoveHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		moveHandler("handlerSubOpMoveInt", asmgen.RegisterBankInteger),
-		moveHandlerFloat("handlerSubOpMoveFloat"),
-		moveHandlerContextBased("handlerSubOpMoveBool", contextBaseBool),
-		moveHandlerContextBased("handlerSubOpMoveUint", contextBaseUint),
-		guardPointerBankWriter(moveHandlerString("handlerSubOpMoveString")),
+		moveHandler("handlerMoveInt64", asmgen.RegisterBankInteger),
+		moveHandlerFloat("handlerMoveFloat64"),
+		moveHandlerContextBased("handlerMoveBool", contextBaseBool),
+		moveHandlerContextBased("handlerMoveUint64", contextBaseUint),
+		guardPointerBankWriter(moveHandlerString("handlerMoveString")),
+		{
+			Name:      "handlerLoadZero",
+			Comment:   "handlerLoadZero zeroes register B of the int, uint, float or bool bank that C names.",
+			FrameSize: frameSizeZero,
+			Flags:     flagsNoSplitNoFrame,
+			Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+				architecture.EmitLoadZero(emitter, "handlerPathBShimLoadZero")
+			},
+		},
 	}
 }
 

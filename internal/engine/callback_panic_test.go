@@ -20,6 +20,7 @@ package engine
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -67,4 +68,17 @@ func TestCallbackPanicErrorRendersValue(t *testing.T) {
 	t.Parallel()
 	nested := &callbackPanic{value: errors.New("index out of range"), stack: "x"}
 	require.Equal(t, "index out of range", nested.Error())
+}
+
+func TestPanicStackWithCallbackElidesOuterFramesPastTheBound(t *testing.T) {
+	t.Parallel()
+	vm := newGCTestVM()
+	vm.callbackPanicStack = strings.Repeat("inner()\n\tinner.go:3\n", maxCallbackPanicStackBytes/16)
+	rendered := vm.panicStackWithCallback()
+	require.True(t, strings.HasPrefix(rendered, vm.callbackPanicStack), "the innermost frames are kept")
+	require.True(t, strings.HasSuffix(rendered, callbackFramesElidedMarker))
+	require.NotContains(t, rendered, callbackBoundaryMarker)
+
+	vm.callbackPanicStack = rendered
+	require.Equal(t, rendered, vm.panicStackWithCallback(), "a further boundary adds nothing once the bound is reached")
 }

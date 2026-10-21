@@ -37,7 +37,7 @@ import (
 
 func TestRecoveryHostBindingSurvivesHostRestart(t *testing.T) {
 	policy := [sha256.Size]byte{1}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	binding, err := RecoveryHostBinding(ctx, policy)
 	if err != nil {
@@ -62,28 +62,28 @@ func TestRecoveryHostBindingSurvivesHostRestart(t *testing.T) {
 
 func TestRecoveryHostBindingCurrentIdentity(t *testing.T) {
 	policy := [sha256.Size]byte{1}
-	first, err := RecoveryHostBinding(context.Background(), policy)
+	first, err := RecoveryHostBinding(t.Context(), policy)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := RecoveryHostBinding(context.Background(), policy)
+	second, err := RecoveryHostBinding(t.Context(), policy)
 	if err != nil || first != second || first == ([sha256.Size]byte{}) {
 		t.Fatal("unstable host binding:", err)
 	}
-	changed, err := RecoveryHostBinding(context.Background(), [sha256.Size]byte{2})
+	changed, err := RecoveryHostBinding(t.Context(), [sha256.Size]byte{2})
 	if err != nil || changed == first {
 		t.Fatal("host binding omitted approved policy:", err)
 	}
 }
 
 func TestRecoveryHostBindingRejectsMissingApprovalAndCancellation(t *testing.T) {
-	for _, ctx := range []context.Context{nil, context.Background()} {
+	for _, ctx := range []context.Context{nil, t.Context()} {
 		digest, err := RecoveryHostBinding(ctx, [sha256.Size]byte{})
 		if err == nil || digest != ([sha256.Size]byte{}) {
 			t.Fatal("missing policy approved")
 		}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if digest, err := RecoveryHostBinding(ctx, [sha256.Size]byte{1}); !errors.Is(err, context.Canceled) || digest != ([sha256.Size]byte{}) {
 		t.Fatal("cancelled identity capture returned approval:", err)

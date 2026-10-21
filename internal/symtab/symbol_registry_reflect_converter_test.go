@@ -32,7 +32,7 @@ func TestReflectRegisteredErrorIsThePredeclaredError(t *testing.T) {
 		"Try": reflect.ValueOf(func(fn func() error) error { return fn() }),
 	}})
 
-	pkg, err := registry.Import("host")
+	pkg, err := registry.Import(t.Context(), "host")
 	require.NoError(t, err)
 	signature, ok := pkg.Scope().Lookup("Try").Type().(*types.Signature)
 	require.True(t, ok)

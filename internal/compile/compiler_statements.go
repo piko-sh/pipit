@@ -108,7 +108,9 @@ func (c *Compiler) registerFunctionDecl(ctx context.Context, declaration *ast.Fu
 	c.recordFunctionDeclIndex(declaration, tableName, index)
 
 	if signature.Recv() != nil {
-		c.registerMethodReceiver(ctx, signature, tableName, index)
+		if err := c.registerMethodReceiver(ctx, signature, tableName, index); err != nil {
+			return nil, err
+		}
 	}
 	return compiledFunction, nil
 }
@@ -148,11 +150,15 @@ func (c *Compiler) recordFunctionDeclIndex(declaration *ast.FuncDecl, tableName 
 // format.
 // Takes index (uint16) which is the position of the compiled function in the root
 // function table.
-func (c *Compiler) registerMethodReceiver(ctx context.Context, signature *types.Signature, tableName string, index uint16) {
+//
+// Returns error when the receiver's type shares its runtime type with another named type
+// that declares methods (checkMethodTypeIsDistinct).
+func (c *Compiler) registerMethodReceiver(ctx context.Context, signature *types.Signature, tableName string, index uint16) error {
+	ctx, logger := logging.From(ctx)
 	root := c.RootFunction
 	if err := program.RegisterMethod(root, tableName, index); err != nil {
 		c.recordStickyError(err)
-		return
+		return nil
 	}
 	if root.MethodSignatures == nil {
 		root.MethodSignatures = make(map[string]string)
@@ -165,7 +171,7 @@ func (c *Compiler) registerMethodReceiver(ctx context.Context, signature *types.
 	}
 	named, ok := receiverType.(*types.Named)
 	if !ok {
-		return
+		return nil
 	}
 
 	reflectType := c.TypeToReflect(ctx, named)
@@ -173,17 +179,21 @@ func (c *Compiler) registerMethodReceiver(ctx context.Context, signature *types.
 		root.TypeNames = make(map[reflect.Type]string)
 	}
 	if previous, exists := root.TypeNames[reflectType]; exists && previous != named.Obj().Name() {
-		logging.LoggerFrom(ctx).Debug("named types share a runtime type; interface dispatch cannot tell them apart",
+		logger.Debug("named types share a runtime type, so interface dispatch cannot tell them apart",
 			slog.String("type", named.Obj().Name()),
 			slog.String("previous", previous),
 			slog.String("runtimeType", reflectType.String()))
 	}
+	if err := c.checkMethodTypeIsDistinct(named, reflectType); err != nil {
+		return err
+	}
 	root.TypeNames[reflectType] = named.Obj().Name()
 	if _, isBasic := named.Underlying().(*types.Basic); isBasic {
-		if poolType := c.namedScalarBoxType(named); poolType != nil {
+		if poolType := c.namedScalarBoxType(ctx, named); poolType != nil {
 			root.TypeNames[poolType] = named.Obj().Name()
 		}
 	}
+	return nil
 }
 
 // compileFunctionBody compiles the body of a registered function declaration into the
@@ -214,7 +224,7 @@ func (c *Compiler) compileFunctionBody(ctx context.Context, declaration *ast.Fun
 		return sub, err
 	}
 	finish := func(sub *Compiler) error {
-		return sub.finishBody(ctx, compiledFunction, declaration.Body, finishFlags{tailCall: true, finaliseDefer: true, classifyEscapes: true})
+		return sub.finishBody(ctx, compiledFunction, declaration.Body, finishFlags{tailCall: true, finaliseDefer: true, classifyEscapes: true, returnAtEnd: true})
 	}
 	unit := retryUnit{function: compiledFunction, node: declaration, substitutions: nil}
 	if err := c.compileBodyWithRetry(ctx, unit, attempt, finish); err != nil {
@@ -261,7 +271,7 @@ func (c *Compiler) compileSpecialisedBody(
 		return sub, err
 	}
 	finish := func(sub *Compiler) error {
-		return sub.finishBody(ctx, specCF, declaration.Body, finishFlags{tailCall: true, finaliseDefer: true, classifyEscapes: true})
+		return sub.finishBody(ctx, specCF, declaration.Body, finishFlags{tailCall: true, finaliseDefer: true, classifyEscapes: true, returnAtEnd: true})
 	}
 	unit := retryUnit{function: specCF, node: declaration, substitutions: subs}
 	if err := c.compileBodyWithRetry(ctx, unit, attempt, finish); err != nil {
@@ -285,7 +295,11 @@ func (c *Compiler) populateSpecialisationStub(ctx context.Context, specCF, gener
 	specCF.VariadicSliceType = genericCF.VariadicSliceType
 	specCF.IsPointerReceiver = genericCF.IsPointerReceiver
 	specCF.HasReceiver = genericCF.HasReceiver
-	specCF.Name = genericCF.Name + "[spec:" + specialisationSuffix(subs, genericCF.GenericTypeParams) + "]"
+	suffixParams := genericCF.GenericTypeParams
+	if suffixParams == nil || suffixParams.Len() == 0 {
+		suffixParams = genericCF.GenericRecvTypeParams
+	}
+	specCF.Name = genericCF.Name + "[spec:" + specialisationSuffix(subs, suffixParams) + "]"
 
 	promotion := &typemap.KindPromotionContext{
 		Substitutions:     subs,
@@ -313,7 +327,7 @@ func (c *Compiler) populateSpecialisationStub(ctx context.Context, specCF, gener
 		resultKind, _ := typemap.KindForPromotedSlot(substituted, promotion)
 		specCF.ResultKinds = append(specCF.ResultKinds, resultKind)
 		specCF.ResultTypeRefs = append(specCF.ResultTypeRefs, substituted)
-		specCF.ResultReflectTypes = append(specCF.ResultReflectTypes, c.exactReflectTypeForBoxing(substituted))
+		specCF.ResultReflectTypes = append(specCF.ResultReflectTypes, c.exactReflectTypeForBoxing(ctx, substituted))
 	}
 	specCF.SignatureReflectType = c.specialisedSignatureReflectType(ctx, specCF)
 }
@@ -462,11 +476,8 @@ func (*Compiler) declareFunctionReceiver(ctx context.Context, sub *Compiler, dec
 
 // declareFunctionParameter declares one named parameter.
 //
-// Records the register location and returns the next parameter position. The recorded
-// location is captured BEFORE tryHeapPromoteCapturedLocal so the prologue's
-// isa.OpAllocIndirect reads from the caller-visible slot. See BuildCallArgCopyProgram,
-// which looks parameters up by this index rather than restarting per-bank counters from
-// 0.
+// The recorded location is captured BEFORE tryHeapPromoteCapturedLocal so the prologue's
+// isa.OpAllocateIndirect reads from the caller-visible slot.
 //
 // Takes sub (*Compiler) which is the body-compiling sub-Compiler.
 // Takes name (*ast.Ident) which names the parameter.
@@ -673,6 +684,7 @@ func (c *Compiler) compileIndexAssignFrom(ctx context.Context, target *ast.Index
 		c.compileIndexAssignMap(ctx, mapType, collectionLocation, indexLocation, valueLocation)
 		return nil
 	}
+	collectionLocation = c.loopByteView(collectionType, collectionLocation)
 	if c.tryCompileIndexAssignTypedSlice(ctx, collectionType, collectionLocation, indexLocation, valueLocation) {
 		return nil
 	}
@@ -681,13 +693,11 @@ func (c *Compiler) compileIndexAssignFrom(ctx context.Context, target *ast.Index
 	}
 
 	c.boxElementToGeneralTemp(ctx, &valueLocation)
-	program.Emit(c.Function, isa.OpIndexSet, collectionLocation.Register, indexLocation.Register, valueLocation.Register)
+	program.Emit(c.Function, isa.OpSetElement, collectionLocation.Register, indexLocation.Register, valueLocation.Register)
 	return nil
 }
 
-// compileIndexAssignMap emits the map-set path for `m[k] = v`. Picks the typed-map
-// fast-path opcode when the key/value/element register kinds match an exact-typed map
-// opcode; otherwise boxes to general and emits the generic isa.OpMapSet.
+// compileIndexAssignMap emits the map-set path for `m[k] = v`.
 //
 // Takes mapType (*types.Map) which is the static type of the map being written.
 // Takes collectionLocation (VarLocation) which holds the map register.
@@ -700,13 +710,16 @@ func (c *Compiler) compileIndexAssignMap(
 ) {
 	keyKind := c.kindFor(mapType.Key())
 	valueKind := c.kindFor(mapType.Elem())
-	if op, ok := selectTypedMapSetOpcode(keyKind, valueKind, indexLocation.Kind, valueLocation.Kind); ok {
+	if valueKind == isa.RegisterGeneral && indexLocation.Kind == keyKind {
+		c.boxElementToGeneralTemp(ctx, &valueLocation)
+	}
+	if op, ok := selectTypedSetMapOpcode(keyKind, valueKind, indexLocation.Kind, valueLocation.Kind); ok {
 		c.EmitTyped(ctx, op, collectionLocation, indexLocation, valueLocation)
 		return
 	}
 	c.boxElementToGeneralTemp(ctx, &indexLocation)
 	c.boxElementToGeneralTemp(ctx, &valueLocation)
-	program.Emit(c.Function, isa.OpMapSet, collectionLocation.Register, indexLocation.Register, valueLocation.Register)
+	program.Emit(c.Function, isa.OpSetMap, collectionLocation.Register, indexLocation.Register, valueLocation.Register)
 }
 
 // tryCompileIndexAssignTypedSlice emits a typed-slice fast-path `slice[i] = v` when the
@@ -717,20 +730,20 @@ func (c *Compiler) compileIndexAssignMap(
 // Takes indexLocation (VarLocation) which holds the integer index register.
 // Takes valueLocation (VarLocation) which holds the value register.
 //
-// Returns true when the fast path was emitted; the caller falls back to the generic
-// isa.OpIndexSet path on false.
+// Returns true when the fast path was emitted. The caller falls back to the generic
+// isa.OpSetElement path on false.
 func (c *Compiler) tryCompileIndexAssignTypedSlice(
 	ctx context.Context,
 	collectionType types.Type,
 	collectionLocation, indexLocation, valueLocation program.VarLocation,
 ) bool {
 	elementRegisterKind, ok := c.sliceElemRegisterKind(collectionType)
-	if !ok || indexLocation.Kind != isa.RegisterInt {
+	if !ok || indexLocation.Kind != isa.RegisterInt64 {
 		return false
 	}
-	if elementRegisterKind == isa.RegisterBool && valueLocation.Kind == isa.RegisterInt {
+	if elementRegisterKind == isa.RegisterBool && valueLocation.Kind == isa.RegisterInt64 {
 		booleanRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterBool)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpIntToBool), booleanRegister, valueLocation.Register)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertInt64ToBool), booleanRegister, valueLocation.Register)
 		valueLocation = program.VarLocation{Register: booleanRegister, Kind: isa.RegisterBool}
 	}
 	if valueLocation.Kind != elementRegisterKind {
@@ -744,7 +757,7 @@ func (c *Compiler) tryCompileIndexAssignTypedSlice(
 	return true
 }
 
-// compileSelectorAssign compiles a struct field assignment: s.Field = value.
+// compileSelectorAssign compiles a struct field assignment.
 //
 // Takes target (*ast.SelectorExpr) which is the selector expression identifying the
 // struct field.
@@ -756,6 +769,14 @@ func (c *Compiler) tryCompileIndexAssignTypedSlice(
 func (c *Compiler) compileSelectorAssign(ctx context.Context, target *ast.SelectorExpr, valueLocation program.VarLocation) error {
 	if handled, err := c.compileNativePackageVarAssign(ctx, target, valueLocation); handled {
 		return err
+	}
+	if classified, store, fused := c.classifySliceElementFieldStore(ctx, target, valueLocation.Kind); fused {
+		elementField, err := c.compileSliceElementFieldTarget(ctx, classified, store)
+		if err != nil {
+			return fmt.Errorf("compiling selector assignment: %w", err)
+		}
+		c.emitSliceElementFieldStore(elementField, valueLocation)
+		return nil
 	}
 	receiverLocation, err := c.compileExpression(ctx, target.X)
 	if err != nil {
@@ -895,6 +916,9 @@ func (c *Compiler) compileDefer(ctx context.Context, statement *ast.DeferStmt) (
 	if err := c.checkFeature(policy.InterpFeatureDefer, statement.Defer); err != nil {
 		return program.VarLocation{}, err
 	}
+	if c.rangeOverFunction != nil {
+		return program.VarLocation{}, fmt.Errorf("%w at %s", fault.ErrCompileDeferInRangeOverFunctionBody, c.positionString(statement.Defer))
+	}
 	c.hasDefers = true
 	c.deferCount++
 	if c.loopDepth > 0 {
@@ -921,7 +945,7 @@ func (c *Compiler) compileDefer(ctx context.Context, statement *ast.DeferStmt) (
 	}
 	program.Emit(c.Function, isa.OpDefer, functionLocation.Register, safeconv.MustIntToUint8(len(argumentLocations)), mode)
 	for _, location := range argumentLocations {
-		program.Emit(c.Function, isa.OpExt, 0, location.Register, uint8(location.Kind))
+		program.Emit(c.Function, isa.OpExtension, 0, location.Register, uint8(location.Kind))
 	}
 	return program.VarLocation{}, nil
 }
@@ -1006,7 +1030,7 @@ func (c *Compiler) compileBuiltinStatementCall(ctx context.Context, call *ast.Ca
 	}
 	program.Emit(c.Function, op, builtin, safeconv.MustIntToUint8(len(argumentLocations)), mode)
 	for _, location := range argumentLocations {
-		program.Emit(c.Function, isa.OpExt, 0, location.Register, uint8(location.Kind))
+		program.Emit(c.Function, isa.OpExtension, 0, location.Register, uint8(location.Kind))
 	}
 	return program.VarLocation{}, nil
 }
@@ -1127,7 +1151,7 @@ func (c *Compiler) compileNativePackageVarAssign(ctx context.Context, target *as
 		return true, err
 	}
 	pointer := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
-	program.EmitWide(c.Function, isa.OpLoadGeneralConst, pointer, constIndex)
+	program.EmitWide(c.Function, isa.OpLoadGeneralConstant, pointer, constIndex)
 	c.emitIndirectWrite(ctx, program.VarLocation{Register: pointer, Kind: isa.RegisterGeneral}, valueLocation)
 	c.Scopes.Alloc.FreeTemp(isa.RegisterGeneral, pointer)
 	return true, nil
@@ -1203,9 +1227,7 @@ func resolveResultTypes(info *types.Info, declaration *ast.FuncDecl) []types.Typ
 
 // buildFunctionDeclStub constructs the CompiledFunction stub for a FuncDecl.
 //
-// Populates receiver metadata, generic type params, parameter kinds (with heap-promotion
-// and typed-slice overrides), and result kinds. The body is compiled later in a second
-// pass.
+// The body is compiled later in a second pass.
 //
 // Takes c (*Compiler) which carries the type-info and registries.
 // Takes declaration (*ast.FuncDecl) which is the parsed declaration.
@@ -1217,8 +1239,9 @@ func buildFunctionDeclStub(ctx context.Context, c *Compiler, declaration *ast.Fu
 	compiledFunction := &program.CompiledFunction{Name: tableName}
 	compiledFunction.RuntimeName = c.runtimeFunctionName(declaration)
 
-	compiledFunction.HasRecover = bodyContainsRecoverCall(c.Info, declaration.Body)
-	compiledFunction.InspectsCallStack = bodyInspectsCallStack(c.Info, declaration.Body)
+	facts := scanBodyFacts(c.Info, declaration.Body)
+	compiledFunction.HasRecover = facts.recovers
+	compiledFunction.InspectsCallStack = facts.inspectsCallStack
 	if receiver := signature.Recv(); receiver != nil && !typemap.ContainsTypeParameter(receiver.Type()) {
 		compiledFunction.MethodReceiverReflectType = c.TypeToReflect(ctx, receiver.Type())
 	}
@@ -1232,6 +1255,9 @@ func buildFunctionDeclStub(ctx context.Context, c *Compiler, declaration *ast.Fu
 
 		compiledFunction.GenericRecvTypeParams = signature.RecvTypeParams()
 		compiledFunction.RequiresSpecialisation = declarationCallsGenericMethodGenerically(c, declaration)
+	} else if signature.RecvTypeParams() != nil && signature.RecvTypeParams().Len() > 0 {
+		compiledFunction.GenericDeclaration = declaration
+		compiledFunction.GenericRecvTypeParams = signature.RecvTypeParams()
 	}
 	if signature.Recv() != nil {
 		compiledFunction.ParameterKinds = append(compiledFunction.ParameterKinds, isa.RegisterGeneral)
@@ -1244,7 +1270,7 @@ func buildFunctionDeclStub(ctx context.Context, c *Compiler, declaration *ast.Fu
 	for r := range signature.Results().Variables() {
 		compiledFunction.ResultKinds = append(compiledFunction.ResultKinds, c.kindForCallSlot(r.Type()))
 		compiledFunction.ResultTypeRefs = append(compiledFunction.ResultTypeRefs, r.Type())
-		compiledFunction.ResultReflectTypes = append(compiledFunction.ResultReflectTypes, c.exactReflectTypeForBoxing(r.Type()))
+		compiledFunction.ResultReflectTypes = append(compiledFunction.ResultReflectTypes, c.exactReflectTypeForBoxing(ctx, r.Type()))
 	}
 	return compiledFunction
 }
@@ -1390,67 +1416,6 @@ func specialisationSuffix(subs map[*types.TypeParam]types.Type, typeParams *type
 		}
 	}
 	return strings.Join(parts, ",")
-}
-
-// bodyContainsDefer reports whether body contains a defer statement of its own; defers
-// inside nested function literals belong to those closures and are not counted.
-//
-// Takes body (*ast.BlockStmt) which is the function body to inspect.
-//
-// Returns true when a defer statement registers on this frame.
-func bodyContainsDefer(body *ast.BlockStmt) bool {
-	if body == nil {
-		return false
-	}
-	found := false
-	ast.Inspect(body, func(node ast.Node) bool {
-		if found {
-			return false
-		}
-		switch node.(type) {
-		case *ast.DeferStmt:
-			found = true
-			return false
-		case *ast.FuncLit:
-			return false
-		default:
-			return true
-		}
-	})
-	return found
-}
-
-// bodyContainsRecoverCall scans body for a predeclared recover() call.
-//
-// Resolution against types.Info ensures shadowed locals named `recover` do not trigger
-// false positives. Used by compileFunctionBody to set hasRecover once per body, so the
-// per-defer trivial-defer classification can read it without re-walking.
-//
-// Takes info (*types.Info) which holds the type-checker's resolution of identifiers. May
-// be nil; the conservative result in that case is true, which disables the trivial-defer
-// fast path.
-// Takes body (*ast.BlockStmt) which is the function body to inspect.
-//
-// Returns true when a recover() call resolves to the universe-scope builtin within body.
-func bodyContainsRecoverCall(info *types.Info, body *ast.BlockStmt) bool {
-	if body == nil {
-		return false
-	}
-	if info == nil {
-		return true
-	}
-	found := false
-	ast.Inspect(body, func(node ast.Node) bool {
-		if found {
-			return false
-		}
-		if isUniverseRecoverCall(info, node) {
-			found = true
-			return false
-		}
-		return true
-	})
-	return found
 }
 
 // isUniverseRecoverCall reports whether the AST node is a call expression invoking the

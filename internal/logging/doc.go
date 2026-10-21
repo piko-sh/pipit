@@ -18,7 +18,9 @@
 
 // Package logging carries the logger a host attaches to a context.
 //
-// The interpreter logs only warnings and errors, and resolves the logger per call rather
-// than capturing one at construction, so a host can scope a logger to a single request or
-// evaluation and still have later calls honour a changed process default.
+// The interpreter logs only warnings and errors. It resolves the logger from the context
+// rather than capturing one at construction, so a host can scope a logger to a single
+// request or evaluation. From binds the resolved logger into the context it returns, so
+// one call chain shares one logger, and a chain started after the host changes the
+// process default honours the new default.
 package logging

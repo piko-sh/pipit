@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +16,11 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
-	"context"
 	"crypto/sha256"
 	"errors"
 	"os"
@@ -60,11 +59,11 @@ func TestCheckpointedOwnerRejectsStorageBeforeLaunch(t *testing.T) {
 			case "no-parent":
 				parent = nil
 			}
-			owner, err := OpenCheckpointedFilesystemBrokerInGroup(context.Background(), WorkerConfig{Tenant: testTenant}, nil,
+			owner, err := OpenCheckpointedFilesystemBrokerInGroup(t.Context(), WorkerConfig{Tenant: testTenant}, nil,
 				sandboxbroker.FilesystemLimits{}, storage, parent)
 			if err == nil {
 				if owner != nil {
-					_ = owner.Close()
+					_ = owner.Close(t.Context())
 				}
 				t.Fatal("invalid storage reached native launch")
 			}
@@ -72,7 +71,7 @@ func TestCheckpointedOwnerRejectsStorageBeforeLaunch(t *testing.T) {
 				if owner.process != nil || !owner.recovery.complete || owner.RecoveryPending() {
 					t.Fatal("storage failure launched a child or leaked recovery")
 				}
-				if err := owner.Close(); err != nil {
+				if err := owner.Close(t.Context()); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -106,9 +105,9 @@ func TestCheckpointedOwnerRetainsStorageUntilClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer journal.Close()
-	state := &filesystemBrokerRecovery{base: context.Background(), authority: authority, journal: journal}
+	state := &filesystemBrokerRecovery{authority: authority, journal: journal}
 	owner := &FilesystemBroker{recovery: state}
-	defer owner.Close()
+	defer owner.Close(t.Context())
 	if err := state.persistCheckpoint(storage); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +123,7 @@ func TestCheckpointedOwnerRetainsStorageUntilClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertCheckpointedOwnerStoresLeased(t, storage)
-	if err := owner.Close(); err != nil {
+	if err := owner.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	assertCheckpointedOwnerStoresReleased(t, storage)

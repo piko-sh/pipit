@@ -21,7 +21,6 @@
 package bench
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -177,7 +176,7 @@ sum()`,
 			b.ReportAllocs()
 			for b.Loop() {
 				service := app.NewService()
-				_, err := service.Eval(context.Background(), bm.code)
+				_, err := service.Eval(b.Context(), bm.code)
 				if err != nil {
 					require.NoError(b, err)
 				}
@@ -249,7 +248,7 @@ fmt.Sprintf("value: %d, name: %s", 42, "test")`,
 			for b.Loop() {
 				service := app.NewService()
 				service.UseSymbols(symbols)
-				_, err := service.Eval(context.Background(), bm.code)
+				_, err := service.Eval(b.Context(), bm.code)
 				if err != nil {
 					require.NoError(b, err)
 				}

@@ -58,7 +58,12 @@ func tryCompileSnippetWithFeatures(t *testing.T, source string, features policy.
 
 func tryCompileSnippetWithSymbols(t *testing.T, source string, symbols *symtab.SymbolRegistry, features policy.InterpFeature, maxLiteralElements, maxExpressionDepth int) (*program.CompiledFunction, error) {
 	t.Helper()
-	result, err := frontend.Typecheck(testPackageName, map[string]string{"main.go": source}, symbols)
+	return tryCompileSnippetInto(t, source, symbols, engine.NewGlobalStore(), features, maxLiteralElements, maxExpressionDepth)
+}
+
+func tryCompileSnippetInto(t *testing.T, source string, symbols *symtab.SymbolRegistry, globals *engine.GlobalStore, features policy.InterpFeature, maxLiteralElements, maxExpressionDepth int) (*program.CompiledFunction, error) {
+	t.Helper()
+	result, err := frontend.Typecheck(testPackageName, map[string]string{"main.go": source}, symbols.Importer(t.Context()))
 	require.NoError(t, err, "the fixture source must type-check before it can be compiled")
 
 	rootFunction := program.NewNamedFunction("<root>")
@@ -70,7 +75,7 @@ func tryCompileSnippetWithSymbols(t *testing.T, source string, symbols *symtab.S
 		FunctionTable:      nil,
 		GlobalVariables:    nil,
 		Symbols:            symbols,
-		Globals:            engine.NewGlobalStore(),
+		Globals:            globals,
 		Patterns:           nil,
 		ScopeName:          "<root>",
 		Features:           features,

@@ -29,7 +29,7 @@ import (
 	"pipit.sh/pipit/internal/engine"
 )
 
-func TestClosureWrapperRetiresArenaPastThreshold(t *testing.T) {
+func TestClosureWrapperKeepsAHandedOffVMPastThreshold(t *testing.T) {
 	t.Parallel()
 	const calls = 5
 	var results []string
@@ -49,7 +49,8 @@ func TestClosureWrapperRetiresArenaPastThreshold(t *testing.T) {
 host.Walk(func(index int) string { return "abc" + string(rune('0'+index)) })`)
 	require.EqualValues(t, calls, result)
 	for index, stat := range stats {
-		require.Equal(t, engine.CallbackVMStats{Built: int64(index + 1), Discarded: int64(index + 1), Idle: false}, stat, "callback %d built a VM and retired it", index)
+		require.Equal(t, engine.CallbackVMStats{Built: 1, Discarded: 0, Idle: true}, stat,
+			"callback %d reused the cached VM: callback release released its arena instead of retiring it", index)
 	}
 	for index, got := range results {
 		require.Equal(t, "abc"+string(rune('0'+index)), got, "result %d survives the retire of the VM that built it", index)
@@ -85,5 +86,5 @@ host.Walk(func(index int) string { return prefix + string(rune('A'+index)) })`)
 	}
 	stats := harness.vm.CallbackVMStats()
 	require.Equal(t, stats.Built, stats.Discarded, "every callback VM was discarded exactly once")
-	require.Greater(t, stats.Built, int64(1), "the lowered threshold retired VMs during the second walk")
+	require.Equal(t, int64(1), stats.Built, "callback release released each handed-off run's arena, so the lowered threshold retired no VM")
 }

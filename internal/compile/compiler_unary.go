@@ -83,25 +83,25 @@ func (c *Compiler) compileUnaryExpression(ctx context.Context, expression *ast.U
 // from the default.
 func (c *Compiler) compileUnarySub(_ context.Context, operand program.VarLocation) (program.VarLocation, error) {
 	switch operand.Kind {
-	case isa.RegisterInt:
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpNegInt), dest, operand.Register)
-		return program.VarLocation{Register: dest, Kind: isa.RegisterInt}, nil
-	case isa.RegisterFloat:
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterFloat)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpNegFloat), dest, operand.Register)
-		return program.VarLocation{Register: dest, Kind: isa.RegisterFloat}, nil
-	case isa.RegisterUint:
-		zeroReg := c.Scopes.Alloc.AllocTemp(isa.RegisterUint)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLoadZero), zeroReg, uint8(isa.RegisterUint))
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterUint)
-		program.Emit(c.Function, isa.OpSubUint, dest, zeroReg, operand.Register)
-		c.Scopes.Alloc.FreeTemp(isa.RegisterUint, zeroReg)
-		return program.VarLocation{Register: dest, Kind: isa.RegisterUint}, nil
-	case isa.RegisterComplex:
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterComplex)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpNegComplex), dest, operand.Register)
-		return program.VarLocation{Register: dest, Kind: isa.RegisterComplex}, nil
+	case isa.RegisterInt64:
+		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpNegateInt64), dest, operand.Register)
+		return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}, nil
+	case isa.RegisterFloat64:
+		dest := c.Scopes.Alloc.Alloc(isa.RegisterFloat64)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpNegateFloat64), dest, operand.Register)
+		return program.VarLocation{Register: dest, Kind: isa.RegisterFloat64}, nil
+	case isa.RegisterUint64:
+		dest := c.Scopes.Alloc.Alloc(isa.RegisterUint64)
+		zeroReg := c.Scopes.Alloc.AllocTemp(isa.RegisterUint64)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLoadZero), zeroReg, uint8(isa.RegisterUint64))
+		program.Emit(c.Function, isa.OpSubtractUint64, dest, zeroReg, operand.Register)
+		c.Scopes.Alloc.FreeTemp(isa.RegisterUint64, zeroReg)
+		return program.VarLocation{Register: dest, Kind: isa.RegisterUint64}, nil
+	case isa.RegisterComplex128:
+		dest := c.Scopes.Alloc.Alloc(isa.RegisterComplex128)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpNegateComplex128), dest, operand.Register)
+		return program.VarLocation{Register: dest, Kind: isa.RegisterComplex128}, nil
 	default:
 		return program.VarLocation{}, fault.ErrCompileUnaryMinusUnsupported
 	}
@@ -114,29 +114,29 @@ func (c *Compiler) compileUnarySub(_ context.Context, operand program.VarLocatio
 // Returns the negated variable location and any compilation error.
 func (c *Compiler) compileUnaryNot(_ context.Context, operand program.VarLocation) (program.VarLocation, error) {
 	if operand.Kind == isa.RegisterBool {
-		intRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBoolToInt), intRegister, operand.Register)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpNot), intRegister, intRegister)
+		intRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertBoolToInt64), intRegister, operand.Register)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpNotInt64), intRegister, intRegister)
 		dest := c.Scopes.Alloc.Alloc(isa.RegisterBool)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpIntToBool), dest, intRegister)
-		c.Scopes.Alloc.FreeTemp(isa.RegisterInt, intRegister)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertInt64ToBool), dest, intRegister)
+		c.Scopes.Alloc.FreeTemp(isa.RegisterInt64, intRegister)
 		return program.VarLocation{Register: dest, Kind: isa.RegisterBool}, nil
 	}
 	if operand.Kind == isa.RegisterGeneral {
 		booleanRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterBool)
-		program.Emit(c.Function, isa.OpUnpackInterface, booleanRegister, operand.Register, uint8(isa.RegisterBool))
-		intRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBoolToInt), intRegister, booleanRegister)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpNot), intRegister, intRegister)
+		program.Emit(c.Function, isa.OpUnboxFromInterface, booleanRegister, operand.Register, uint8(isa.RegisterBool))
+		intRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertBoolToInt64), intRegister, booleanRegister)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpNotInt64), intRegister, intRegister)
 		dest := c.Scopes.Alloc.Alloc(isa.RegisterBool)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpIntToBool), dest, intRegister)
-		c.Scopes.Alloc.FreeTemp(isa.RegisterInt, intRegister)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertInt64ToBool), dest, intRegister)
+		c.Scopes.Alloc.FreeTemp(isa.RegisterInt64, intRegister)
 		c.Scopes.Alloc.FreeTemp(isa.RegisterBool, booleanRegister)
 		return program.VarLocation{Register: dest, Kind: isa.RegisterBool}, nil
 	}
-	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpNot), dest, operand.Register)
-	return program.VarLocation{Register: dest, Kind: isa.RegisterInt}, nil
+	dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpNotInt64), dest, operand.Register)
+	return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}, nil
 }
 
 // compileUnaryXor compiles the bitwise complement operator (^x).
@@ -148,14 +148,14 @@ func (c *Compiler) compileUnaryNot(_ context.Context, operand program.VarLocatio
 // fault.ErrCompileUnaryXorRequiresInteger from the default.
 func (c *Compiler) compileUnaryXor(_ context.Context, operand program.VarLocation) (program.VarLocation, error) {
 	switch operand.Kind {
-	case isa.RegisterInt:
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBitNot), dest, operand.Register)
-		return program.VarLocation{Register: dest, Kind: isa.RegisterInt}, nil
-	case isa.RegisterUint:
-		dest := c.Scopes.Alloc.Alloc(isa.RegisterUint)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBitNotUint), dest, operand.Register)
-		return program.VarLocation{Register: dest, Kind: isa.RegisterUint}, nil
+	case isa.RegisterInt64:
+		dest := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBitNotInt64), dest, operand.Register)
+		return program.VarLocation{Register: dest, Kind: isa.RegisterInt64}, nil
+	case isa.RegisterUint64:
+		dest := c.Scopes.Alloc.Alloc(isa.RegisterUint64)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBitNotUint64), dest, operand.Register)
+		return program.VarLocation{Register: dest, Kind: isa.RegisterUint64}, nil
 	default:
 		return program.VarLocation{}, fault.ErrCompileUnaryXorRequiresInteger
 	}
@@ -186,9 +186,9 @@ func (c *Compiler) compileUnaryArrow(_ context.Context, expression *ast.UnaryExp
 	elementType := channelType.Elem()
 	resultKind := c.kindFor(elementType)
 	destinationRegister := c.Scopes.Alloc.Alloc(resultKind)
-	okRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpChannelReceive), operand.Register, okRegister)
-	program.Emit(c.Function, isa.OpExt, destinationRegister, uint8(resultKind), 0)
+	okRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpReceiveFromChannel), operand.Register, okRegister)
+	program.Emit(c.Function, isa.OpExtension, destinationRegister, uint8(resultKind), 0)
 	return program.VarLocation{Register: destinationRegister, Kind: resultKind}, nil
 }
 
@@ -218,25 +218,25 @@ func (c *Compiler) compileAddressOf(ctx context.Context, expression *ast.UnaryEx
 	}
 	c.boxToGeneral(ctx, &operand)
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpAddr, dest, operand.Register, 0)
+	program.Emit(c.Function, isa.OpAddress, dest, operand.Register, 0)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, nil
 }
 
 // compileAddressOfUpvalue handles &identifier for a captured upvalue that was
-// heap-promoted, loading the cell's *T pointer via OpGetUpvalue so the returned address
-// aliases the shared cell.
+// heap-promoted, loading the cell's *T pointer via OpGetCapturedVariable so the returned
+// address aliases the shared cell.
 //
 // Takes identifier (*ast.Ident) which is the captured-name expression.
 //
 // Returns (location, true) when the name resolves to an indirect upvalue and the cell
-// pointer was loaded; (_, false) otherwise.
+// pointer was loaded.
 func (c *Compiler) compileAddressOfUpvalue(identifier *ast.Ident) (program.VarLocation, bool) {
 	reference, ok := c.upvalueMap[identifier.Name]
 	if !ok || !reference.isIndirect {
 		return program.VarLocation{}, false
 	}
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpGetUpvalue, dest, safeconv.MustIntToUint8(reference.index), uint8(program.UpvalueKindAsPointer))
+	program.Emit(c.Function, isa.OpGetCapturedVariable, dest, safeconv.MustIntToUint8(reference.index), uint8(program.UpvalueKindAsPointer))
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, true
 }
 
@@ -296,7 +296,7 @@ func (c *Compiler) promoteToIndirect(ctx context.Context, name string, reflectTy
 	}
 	pointerRegister := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
 	allocSitePC := len(c.Function.Body)
-	program.Emit(c.Function, isa.OpAllocIndirect, pointerRegister, sourceLocation.Register, uint8(sourceLocation.Kind))
+	program.Emit(c.Function, isa.OpAllocateIndirect, pointerRegister, sourceLocation.Register, uint8(sourceLocation.Kind))
 	program.EmitExtension(c.Function, typeIndex, 0)
 	if c.escapeAllocSitePCs == nil {
 		c.escapeAllocSitePCs = make(map[string]int)
@@ -334,8 +334,8 @@ func (c *Compiler) compileAddressOfSelector(ctx context.Context, selectorExpress
 		indices := selection.Index()
 		parent := c.walkFieldPointerPath(base, selectorExpression.X, indices[:len(indices)-1])
 		dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-		program.Emit(c.Function, isa.OpDeref, dest, parent.Register, 0)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpFieldAddr), dest, dest)
+		program.Emit(c.Function, isa.OpDereference, dest, parent.Register, 0)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpAddressField), dest, dest)
 		program.EmitExtension(c.Function, uint16(safeconv.MustIntToUint8(indices[len(indices)-1])), 0)
 		return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, nil
 	}
@@ -346,7 +346,7 @@ func (c *Compiler) compileAddressOfSelector(ctx context.Context, selectorExpress
 	}
 	c.boxToGeneral(ctx, &receiverLocation)
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpAddr, dest, receiverLocation.Register, 0)
+	program.Emit(c.Function, isa.OpAddress, dest, receiverLocation.Register, 0)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, nil
 }
 
@@ -378,16 +378,16 @@ func (c *Compiler) tryAddressOfKnownSelector(ctx context.Context, selectorExpres
 
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
 	dereferenceRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpDeref, dereferenceRegister, receiverLocation.Register, 0)
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpFieldAddr), dest, dereferenceRegister)
+	program.Emit(c.Function, isa.OpDereference, dereferenceRegister, receiverLocation.Register, 0)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpAddressField), dest, dereferenceRegister)
 	program.EmitExtension(c.Function, uint16(safeconv.MustIntToUint8(indices[0])), 0)
 	c.Scopes.Alloc.FreeTemp(isa.RegisterGeneral, dereferenceRegister)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, true
 }
 
-// promoteReceiverToIndirect moves a general-register receiver into a heap cell and
-// keeps its pointer in the same register. Spilled receivers are reloaded first and
-// remain in that register.
+// promoteReceiverToIndirect moves a general-register receiver into a heap cell and keeps
+// its pointer in the same register. Spilled receivers are reloaded first and remain in
+// that register.
 //
 // Takes xExpr (ast.Expr) which is the expression used to resolve the type.
 // Takes name (string) which is the variable name in scope.
@@ -403,7 +403,7 @@ func (c *Compiler) promoteReceiverToIndirect(ctx context.Context, xExpr ast.Expr
 		c.recordStickyError(err)
 		return receiverLocation
 	}
-	program.Emit(c.Function, isa.OpAllocIndirect, receiverLocation.Register, receiverLocation.Register, uint8(isa.RegisterGeneral))
+	program.Emit(c.Function, isa.OpAllocateIndirect, receiverLocation.Register, receiverLocation.Register, uint8(isa.RegisterGeneral))
 	program.EmitExtension(c.Function, typeIndex, 0)
 	promoted := program.VarLocation{
 		Register:     receiverLocation.Register,
@@ -433,17 +433,17 @@ func (c *Compiler) compileAddressOfIndex(ctx context.Context, expression *ast.In
 		return program.VarLocation{}, err
 	}
 
-	if indexLocation.Kind != isa.RegisterInt {
+	if indexLocation.Kind != isa.RegisterInt64 {
 		c.ensureIntRegister(ctx, &indexLocation)
 	}
 
 	c.boxToGeneral(ctx, &collectionLocation)
 
 	elementRegister := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpIndex, elementRegister, collectionLocation.Register, indexLocation.Register)
+	program.Emit(c.Function, isa.OpGetElement, elementRegister, collectionLocation.Register, indexLocation.Register)
 
 	dest := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpAddr, dest, elementRegister, engine.AddrSourceStable)
+	program.Emit(c.Function, isa.OpAddress, dest, elementRegister, engine.AddrSourceStable)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}, nil
 }
 

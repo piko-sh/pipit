@@ -19,12 +19,10 @@
 package engine
 
 import (
+	"math"
+
 	"pipit.sh/pipit/internal/isa"
 )
-
-// The handlers in this file fuse an integer operation with the 32-bit truncation of its
-// result, which Go's int32 and uint32 arithmetic needs after every step. Each one stores
-// exactly what the operation followed by isa.OpTruncateNarrow would have stored.
 
 // handleAddInt32 sets ints[A] = int64(int32(ints[B] + ints[C])).
 //
@@ -37,29 +35,29 @@ func handleAddInt32(_ *VM, _ *CallFrame, registers *Registers, instruction isa.I
 	return opContinue
 }
 
-// handleSubInt32 sets ints[A] = int64(int32(ints[B] - ints[C])).
+// handleSubtractInt32 sets ints[A] = int64(int32(ints[B] - ints[C])).
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (isa.Instruction) which encodes the destination and operands.
 //
 // Returns OpResult indicating the next execution step.
-func handleSubInt32(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSubtractInt32(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = int64(int32(registers.Ints[instruction.B] - registers.Ints[instruction.C])) //nolint:gosec // int32 wrap is the semantics
 	return opContinue
 }
 
-// handleMulInt32 sets ints[A] = int64(int32(ints[B] * ints[C])).
+// handleMultiplyInt32 sets ints[A] = int64(int32(ints[B] * ints[C])).
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (isa.Instruction) which encodes the destination and operands.
 //
 // Returns OpResult indicating the next execution step.
-func handleMulInt32(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleMultiplyInt32(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = int64(int32(registers.Ints[instruction.B] * registers.Ints[instruction.C])) //nolint:gosec // int32 wrap is the semantics
 	return opContinue
 }
 
-// handleAddInt32Const sets ints[A] = int64(int32(ints[B] + intConstants[C])).
+// handleAddInt32Constant sets ints[A] = int64(int32(ints[B] + intConstants[C])).
 //
 // Takes vm (*VM) which reports a constant index out of range.
 // Takes frame (*CallFrame) which provides the constant pool.
@@ -68,7 +66,7 @@ func handleMulInt32(_ *VM, _ *CallFrame, registers *Registers, instruction isa.I
 // index.
 //
 // Returns OpResult indicating the next execution step.
-func handleAddInt32Const(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleAddInt32Constant(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	if int(instruction.C) >= len(frame.Function.IntConstants) {
 		vMBoundsError(vm, frame, boundsTableIntConstant, int(instruction.C), len(frame.Function.IntConstants))
 		return opPanicError
@@ -77,7 +75,7 @@ func handleAddInt32Const(vm *VM, frame *CallFrame, registers *Registers, instruc
 	return opContinue
 }
 
-// handleSubInt32Const sets ints[A] = int64(int32(ints[B] - intConstants[C])).
+// handleSubtractInt32Constant sets ints[A] = int64(int32(ints[B] - intConstants[C])).
 //
 // Takes vm (*VM) which reports a constant index out of range.
 // Takes frame (*CallFrame) which provides the constant pool.
@@ -86,7 +84,7 @@ func handleAddInt32Const(vm *VM, frame *CallFrame, registers *Registers, instruc
 // index.
 //
 // Returns OpResult indicating the next execution step.
-func handleSubInt32Const(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSubtractInt32Constant(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	if int(instruction.C) >= len(frame.Function.IntConstants) {
 		vMBoundsError(vm, frame, boundsTableIntConstant, int(instruction.C), len(frame.Function.IntConstants))
 		return opPanicError
@@ -95,24 +93,24 @@ func handleSubInt32Const(vm *VM, frame *CallFrame, registers *Registers, instruc
 	return opContinue
 }
 
-// handleIncInt32 sets ints[A] = int64(int32(ints[A] + 1)).
+// handleIncrementInt32Body sets ints[A] = int64(int32(ints[A] + 1)).
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (isa.Instruction) which encodes the register in A.
 //
 // Returns OpResult indicating the next execution step.
-func handleIncInt32(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleIncrementInt32Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = int64(int32(registers.Ints[instruction.A] + 1)) //nolint:gosec // int32 wrap is the semantics
 	return opContinue
 }
 
-// handleDecInt32 sets ints[A] = int64(int32(ints[A] - 1)).
+// handleDecrementInt32Body sets ints[A] = int64(int32(ints[A] - 1)).
 //
 // Takes registers (*Registers) which holds the register banks.
 // Takes instruction (isa.Instruction) which encodes the register in A.
 //
 // Returns OpResult indicating the next execution step.
-func handleDecInt32(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleDecrementInt32Body(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Ints[instruction.A] = int64(int32(registers.Ints[instruction.A] - 1)) //nolint:gosec // int32 wrap is the semantics
 	return opContinue
 }
@@ -125,5 +123,63 @@ func handleDecInt32(_ *VM, _ *CallFrame, registers *Registers, instruction isa.I
 // Returns OpResult indicating the next execution step.
 func handleAddUint32(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Uints[instruction.A] = uint64(uint32(registers.Uints[instruction.B] + registers.Uints[instruction.C])) //nolint:gosec // uint32 wrap is the semantics
+	return opContinue
+}
+
+// handleSubtractUint32 sets uints[A] = uint64(uint32(uints[B] - uints[C])).
+//
+// Takes registers (*Registers) which holds the register banks.
+// Takes instruction (isa.Instruction) which encodes the destination and operands.
+//
+// Returns OpResult indicating the next execution step.
+func handleSubtractUint32(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	registers.Uints[instruction.A] = (registers.Uints[instruction.B] - registers.Uints[instruction.C]) & math.MaxUint32
+	return opContinue
+}
+
+// handleMultiplyUint32 sets uints[A] = uint64(uint32(uints[B] * uints[C])).
+//
+// Takes registers (*Registers) which holds the register banks.
+// Takes instruction (isa.Instruction) which encodes the destination and operands.
+//
+// Returns OpResult indicating the next execution step.
+func handleMultiplyUint32(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	registers.Uints[instruction.A] = (registers.Uints[instruction.B] * registers.Uints[instruction.C]) & math.MaxUint32
+	return opContinue
+}
+
+// handleAddUint32Constant sets uints[B] = uint64(uint32(uints[C] + uintConstants[ext])),
+// the constant's index being in the extension word.
+//
+// Takes vm (*VM) which provides bounds-error reporting.
+// Takes frame (*CallFrame) which holds the function constants and program counter.
+// Takes registers (*Registers) which holds the register banks.
+// Takes instruction (isa.Instruction) which is the tier-1 word, its operands in B and C.
+//
+// Returns OpResult indicating the next execution step.
+func handleAddUint32Constant(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	constant, ok := uintConstantOfExtension(vm, frame)
+	if !ok {
+		return opPanicError
+	}
+	registers.Uints[instruction.B] = (registers.Uints[instruction.C] + constant) & math.MaxUint32
+	return opContinue
+}
+
+// handleSubtractUint32Constant sets uints[B] = uint64(uint32(uints[C] -
+// uintConstants[ext])), the constant's index being in the extension word.
+//
+// Takes vm (*VM) which provides bounds-error reporting.
+// Takes frame (*CallFrame) which holds the function constants and program counter.
+// Takes registers (*Registers) which holds the register banks.
+// Takes instruction (isa.Instruction) which is the tier-1 word, its operands in B and C.
+//
+// Returns OpResult indicating the next execution step.
+func handleSubtractUint32Constant(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	constant, ok := uintConstantOfExtension(vm, frame)
+	if !ok {
+		return opPanicError
+	}
+	registers.Uints[instruction.B] = (registers.Uints[instruction.C] - constant) & math.MaxUint32
 	return opContinue
 }

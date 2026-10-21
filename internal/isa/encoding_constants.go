@@ -19,7 +19,7 @@
 package isa
 
 const (
-	// SliceMaxBitFlag is the bit flag ORed into the flags byte of OpSliceOp when a
+	// SliceMaxBitFlag is the bit flag ORed into the flags byte of OpSliceGeneral when a
 	// three-index slice expression has a max bound.
 	SliceMaxBitFlag uint8 = 4
 
@@ -105,9 +105,9 @@ const (
 	// via pointer dereference" rather than an actual struct field.
 	SentinelFieldDeref uint8 = 255
 
-	// AllocIndirectHeapCell is the OpExt C operand of OpAllocIndirect that requests a
-	// heap-resident cell for cells that must outlive the allocating frame.
-	AllocIndirectHeapCell uint8 = 1
+	// AllocateIndirectHeapCell is the OpExtension C operand of OpAllocateIndirect that
+	// requests a heap-resident cell for cells that must outlive the allocating frame.
+	AllocateIndirectHeapCell uint8 = 1
 
 	// StructFieldLayoutMaxPathDepth caps the embedded-field walk depth. 4 levels covers
 	// virtually every real-world Go embedded pattern; paths deeper than this fall back to

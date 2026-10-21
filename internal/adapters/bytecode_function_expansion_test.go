@@ -29,13 +29,13 @@ import (
 	"pipit.sh/pipit/internal/symtab"
 )
 
-func repeatedFunctionGraph(depth int, bothRoots, initializer bool) []byte {
+func repeatedFunctionGraph(depth int, bothRoots, initialiser bool) []byte {
 	builder := flatbuffers.NewBuilder(1024)
 	schemagen.CompiledFunctionStart(builder)
 	child := schemagen.CompiledFunctionEnd(builder)
 	for range depth {
 		width := 2
-		if initializer {
+		if initialiser {
 			width = 1
 		}
 		schemagen.CompiledFunctionStartFunctionsVector(builder, width)
@@ -45,7 +45,7 @@ func repeatedFunctionGraph(depth int, bothRoots, initializer bool) []byte {
 		children := builder.EndVector(width)
 		schemagen.CompiledFunctionStart(builder)
 		schemagen.CompiledFunctionAddFunctions(builder, children)
-		if initializer {
+		if initialiser {
 			schemagen.CompiledFunctionAddVariableInitFunction(builder, child)
 		}
 		child = schemagen.CompiledFunctionEnd(builder)
@@ -64,15 +64,15 @@ func TestBytecodeRejectsExponentialFunctionExpansion(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name        string
-		initializer bool
+		initialiser bool
 	}{
-		{name: "nested functions", initializer: false},
-		{name: "variable initialisers", initializer: true},
+		{name: "nested functions", initialiser: false},
+		{name: "variable initialisers", initialiser: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			payload := repeatedFunctionGraph(24, false, tt.initializer)
+			payload := repeatedFunctionGraph(24, false, tt.initialiser)
 			require.LessOrEqual(t, len(payload), 4096, "the fixture stays compact")
 			loaded, err := decodeCompiledFileSet(t.Context(), payload, symtab.NewSymbolRegistry(nil))
 			require.ErrorIs(t, err, errCorruptBytecodePayload, "an expansion bomb stops before reconstruction")

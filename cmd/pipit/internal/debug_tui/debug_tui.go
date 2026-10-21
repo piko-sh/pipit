@@ -45,8 +45,12 @@ type model struct {
 	// theme supplies the colour and style settings for rendering.
 	theme *styles.Theme
 
-	// ctx threads cancellation from the parent context.
-	ctx context.Context
+	// awaitEvent blocks until the debugger reports its next event, under the context the
+	// debugger was started with.
+	awaitEvent tea.Cmd
+
+	// runScript evaluates the script under that same context.
+	runScript func(source string)
 
 	// interpreter runs the script under debug.
 	interpreter *pipit.Interpreter
@@ -102,7 +106,11 @@ type model struct {
 // Returns *model which holds the initialised UI state.
 func newModel(ctx context.Context, interpreter *pipit.Interpreter, debugger *pipit.Debugger, scriptPath, source string, theme *styles.Theme) *model {
 	return &model{
-		ctx:         ctx,
+		awaitEvent: func() tea.Msg {
+			event, err := debugger.WaitForEvent(ctx)
+			return eventMsg{event: event, err: err}
+		},
+		runScript:   func(source string) { _, _ = interpreter.EvalFile(ctx, source, "main") },
 		interpreter: interpreter,
 		debugger:    debugger,
 		scriptPath:  scriptPath,
@@ -167,24 +175,15 @@ func (m *model) View() tea.View {
 //
 // Returns Cmd which delivers the event, or the wait error when the context ended.
 func (m *model) waitForEvent() tea.Cmd {
-	debugger := m.debugger
-	ctx := m.ctx
-	return func() tea.Msg {
-		event, err := debugger.WaitForEvent(ctx)
-		return eventMsg{event: event, err: err}
-	}
+	return m.awaitEvent
 }
 
 // startExecution runs EvalFile in a goroutine and starts listening for events.
 //
 // Returns Cmd which waits for the first debugger event.
 func (m *model) startExecution() tea.Cmd {
-	interpreter := m.interpreter
 	source := strings.Join(m.source, "\n")
-	ctx := m.ctx
-	go func() {
-		_, _ = interpreter.EvalFile(ctx, source, "main")
-	}()
+	go m.runScript(source)
 	return m.waitForEvent()
 }
 

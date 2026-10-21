@@ -4,27 +4,27 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function div
-;   registers: int=5 general=4
-;   dispatch:  asm=2 shim=2 exit=0 go=3
+;   registers: int64=5 general=4
+;   dispatch:  asm=2 shim=4 exit=0 go=1
 ;   params:    (general, general)
 ;   returns:   (general)
 ; ═════════════════════════════════════════════════════════════
 
-0000 S 0:TYPE_ASSERT                2   0   0
-0001   0:EXT                        0   0   1
-0002 S 0:TYPE_ASSERT                3   1   1
-0003   0:EXT                        0   0   1
-0004 G 1:MOVE_GENERAL_TO_INT       41   2   2
-0005 G 1:MOVE_GENERAL_TO_INT       41   3   3
-0006 A 0:DIV_INT                    4   2   3
-0007 G 0:PACK_TYPED                 0   4   0
-0008   0:EXT                        0   0   0
-0009 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 0:TYPE_ASSERT                                          2   0   0
+0001   0:EXTENSION                                            0   0   1
+0002 S 0:TYPE_ASSERT                                          3   1   1
+0003   0:EXTENSION                                            0   0   1
+0004 S 1:UNBOX_INT64                                         41   2   2
+0005 S 1:UNBOX_INT64                                         41   3   3
+0006 A 0:DIVIDE_INT64                                         4   2   3
+0007 G 0:BOX_AS_TYPE                                          0   4   0
+0008   0:EXTENSION                                            0   0   0
+0009 A 2:RETURN                                               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=2 general=2
-;   dispatch:  asm=3 shim=0 exit=0 go=2
+;   registers: int64=7 general=5
+;   dispatch:  asm=6 shim=4 exit=0 go=3
 ;   params:    (none)
 ;   returns:   (general)
 ; ═════════════════════════════════════════════════════════════
@@ -32,10 +32,21 @@
 ; constants:
 ;   ints:    [0]=10  [1]=2
 
-0000 A 1:LOAD_INT_CONST_SMALL      75   0  10    ; ints[0] = 10
-0001 G 0:PACK_TYPED                 0   0   0
-0002   0:EXT                        0   0   0
-0003 A 1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
-0004 G 0:PACK_TYPED                 1   1   0
-0005   0:EXT                        0   0   0
-0006 A 1:TAIL_CALL                129   0   0    ; tail call (site 0)
+0000 A 1:LOAD_INT64_IMMEDIATE                                75   0  10    ; ints[0] = 10
+0001 G 0:BOX_AS_TYPE                                          0   0   0
+0002   0:EXTENSION                                            0   0   0
+0003 A 1:LOAD_INT64_IMMEDIATE                                75   1   2    ; ints[1] = 2
+0004 G 0:BOX_AS_TYPE                                          1   1   0
+0005   0:EXTENSION                                            0   0   0
+0006 A 0:MOVE_GENERAL                                         2   0   0
+0007 S 0:TYPE_ASSERT                                          3   2   2    ; inlined body of function 0 called at PC 6
+0008   0:EXTENSION                                            0   0   1
+0009 S 0:TYPE_ASSERT                                          4   1   3
+0010   0:EXTENSION                                            0   0   1
+0011 S 1:UNBOX_INT64                                         41   4   3
+0012 S 1:UNBOX_INT64                                         41   5   4
+0013 A 0:DIVIDE_INT64                                         6   4   5
+0014 G 0:BOX_AS_TYPE                                          2   6   0
+0015   0:EXTENSION                                            0   0   0
+0016 A 0:MOVE_GENERAL                                         0   2   0
+0017 A 2:RETURN                                               0  10   1    ; 1 values

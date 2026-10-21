@@ -39,23 +39,23 @@ func TestScalarCrossBankSubOpCoversTheConvertiblePairsOnly(t *testing.T) {
 		want   isa.SubOpcode
 		wantOK bool
 	}{
-		{name: "an integer widened to a float", source: isa.RegisterInt, dest: isa.RegisterFloat, want: isa.SubOpIntToFloat, wantOK: true},
-		{name: "an integer reinterpreted as unsigned", source: isa.RegisterInt, dest: isa.RegisterUint, want: isa.SubOpIntToUint, wantOK: true},
-		{name: "an integer narrowed to a boolean", source: isa.RegisterInt, dest: isa.RegisterBool, want: isa.SubOpIntToBool, wantOK: true},
-		{name: "a float truncated to an integer", source: isa.RegisterFloat, dest: isa.RegisterInt, want: isa.SubOpFloatToInt, wantOK: true},
-		{name: "a float truncated to an unsigned integer", source: isa.RegisterFloat, dest: isa.RegisterUint, want: isa.SubOpFloatToUint, wantOK: true},
-		{name: "an unsigned value reinterpreted as an integer", source: isa.RegisterUint, dest: isa.RegisterInt, want: isa.SubOpUintToInt, wantOK: true},
-		{name: "an unsigned value widened to a float", source: isa.RegisterUint, dest: isa.RegisterFloat, want: isa.SubOpUintToFloat, wantOK: true},
-		{name: "a boolean widened to an integer", source: isa.RegisterBool, dest: isa.RegisterInt, want: isa.SubOpBoolToInt, wantOK: true},
-		{name: "a boolean has no direct float form", source: isa.RegisterBool, dest: isa.RegisterFloat, wantOK: false},
-		{name: "a boolean has no direct unsigned form", source: isa.RegisterBool, dest: isa.RegisterUint, wantOK: false},
-		{name: "a float has no direct boolean form", source: isa.RegisterFloat, dest: isa.RegisterBool, wantOK: false},
-		{name: "an unsigned value has no direct boolean form", source: isa.RegisterUint, dest: isa.RegisterBool, wantOK: false},
-		{name: "a string is never a scalar cross-bank source", source: isa.RegisterString, dest: isa.RegisterInt, wantOK: false},
-		{name: "a string is never a scalar cross-bank destination", source: isa.RegisterInt, dest: isa.RegisterString, wantOK: false},
-		{name: "the general bank is never a scalar cross-bank source", source: isa.RegisterGeneral, dest: isa.RegisterInt, wantOK: false},
-		{name: "a bank never converts to itself", source: isa.RegisterInt, dest: isa.RegisterInt, wantOK: false},
-		{name: "a typed slice bank has no scalar conversion", source: isa.RegisterSliceInt, dest: isa.RegisterInt, wantOK: false},
+		{name: "an integer widened to a float", source: isa.RegisterInt64, dest: isa.RegisterFloat64, want: isa.SubOpConvertInt64ToFloat64, wantOK: true},
+		{name: "an integer reinterpreted as unsigned", source: isa.RegisterInt64, dest: isa.RegisterUint64, want: isa.SubOpConvertInt64ToUint64, wantOK: true},
+		{name: "an integer narrowed to a boolean", source: isa.RegisterInt64, dest: isa.RegisterBool, want: isa.SubOpConvertInt64ToBool, wantOK: true},
+		{name: "a float truncated to an integer", source: isa.RegisterFloat64, dest: isa.RegisterInt64, want: isa.SubOpConvertFloat64ToInt64, wantOK: true},
+		{name: "a float truncated to an unsigned integer", source: isa.RegisterFloat64, dest: isa.RegisterUint64, want: isa.SubOpConvertFloat64ToUint64, wantOK: true},
+		{name: "an unsigned value reinterpreted as an integer", source: isa.RegisterUint64, dest: isa.RegisterInt64, want: isa.SubOpConvertUint64ToInt64, wantOK: true},
+		{name: "an unsigned value widened to a float", source: isa.RegisterUint64, dest: isa.RegisterFloat64, want: isa.SubOpConvertUint64ToFloat64, wantOK: true},
+		{name: "a boolean widened to an integer", source: isa.RegisterBool, dest: isa.RegisterInt64, want: isa.SubOpConvertBoolToInt64, wantOK: true},
+		{name: "a boolean has no direct float form", source: isa.RegisterBool, dest: isa.RegisterFloat64, wantOK: false},
+		{name: "a boolean has no direct unsigned form", source: isa.RegisterBool, dest: isa.RegisterUint64, wantOK: false},
+		{name: "a float has no direct boolean form", source: isa.RegisterFloat64, dest: isa.RegisterBool, wantOK: false},
+		{name: "an unsigned value has no direct boolean form", source: isa.RegisterUint64, dest: isa.RegisterBool, wantOK: false},
+		{name: "a string is never a scalar cross-bank source", source: isa.RegisterString, dest: isa.RegisterInt64, wantOK: false},
+		{name: "a string is never a scalar cross-bank destination", source: isa.RegisterInt64, dest: isa.RegisterString, wantOK: false},
+		{name: "the general bank is never a scalar cross-bank source", source: isa.RegisterGeneral, dest: isa.RegisterInt64, wantOK: false},
+		{name: "a bank never converts to itself", source: isa.RegisterInt64, dest: isa.RegisterInt64, wantOK: false},
+		{name: "a typed slice bank has no scalar conversion", source: isa.RegisterSliceInt64, dest: isa.RegisterInt64, wantOK: false},
 	}
 
 	for _, tt := range tests {
@@ -85,11 +85,11 @@ func TestArithmeticOpcodesGivesTheBankCandidatesOfEachOperator(t *testing.T) {
 		wantStr   isa.Opcode
 		wantGen   isa.Opcode
 	}{
-		{name: "addition is the only operator with a string form", operator: token.ADD, wantInt: isa.OpAddInt, wantFloat: isa.OpAddFloat, wantStr: isa.OpConcatString, wantGen: isa.OpAdd},
-		{name: "subtraction has no string form", operator: token.SUB, wantInt: isa.OpSubInt, wantFloat: isa.OpSubFloat, wantStr: 0, wantGen: isa.OpSub},
-		{name: "multiplication has no string form", operator: token.MUL, wantInt: isa.OpMulInt, wantFloat: isa.OpMulFloat, wantStr: 0, wantGen: isa.OpMul},
-		{name: "division has no string form", operator: token.QUO, wantInt: isa.OpDivInt, wantFloat: isa.OpDivFloat, wantStr: 0, wantGen: isa.OpDiv},
-		{name: "remainder is integral only", operator: token.REM, wantInt: isa.OpRemInt, wantFloat: 0, wantStr: 0, wantGen: isa.OpRem},
+		{name: "addition is the only operator with a string form", operator: token.ADD, wantInt: isa.OpAddInt64, wantFloat: isa.OpAddFloat64, wantStr: isa.OpConcatenateString, wantGen: isa.OpAddGeneral},
+		{name: "subtraction has no string form", operator: token.SUB, wantInt: isa.OpSubtractInt64, wantFloat: isa.OpSubtractFloat64, wantStr: 0, wantGen: isa.OpSubtractGeneral},
+		{name: "multiplication has no string form", operator: token.MUL, wantInt: isa.OpMultiplyInt64, wantFloat: isa.OpMultiplyFloat64, wantStr: 0, wantGen: isa.OpMultiplyGeneral},
+		{name: "division has no string form", operator: token.QUO, wantInt: isa.OpDivideInt64, wantFloat: isa.OpDivideFloat64, wantStr: 0, wantGen: isa.OpDivideGeneral},
+		{name: "remainder is integral only", operator: token.REM, wantInt: isa.OpRemainderInt64, wantFloat: 0, wantStr: 0, wantGen: isa.OpRemainderGeneral},
 		{name: "a comparison is not an arithmetic operator", operator: token.EQL, wantInt: 0, wantFloat: 0, wantStr: 0, wantGen: 0},
 		{name: "a bitwise operator is not an arithmetic operator", operator: token.AND, wantInt: 0, wantFloat: 0, wantStr: 0, wantGen: 0},
 	}
@@ -119,20 +119,20 @@ func TestResolveArithOpcodeMapsTheIntegerFormOntoTheOperandBank(t *testing.T) {
 		wantKind isa.RegisterKind
 		wantErr  error
 	}{
-		{name: "addition of integers", operator: token.ADD, leftKind: isa.RegisterInt, want: isa.OpAddInt, wantKind: isa.RegisterInt},
-		{name: "addition of floats", operator: token.ADD, leftKind: isa.RegisterFloat, want: isa.OpAddFloat, wantKind: isa.RegisterFloat},
-		{name: "addition of strings", operator: token.ADD, leftKind: isa.RegisterString, want: isa.OpConcatString, wantKind: isa.RegisterString},
-		{name: "addition of unsigned values", operator: token.ADD, leftKind: isa.RegisterUint, want: isa.OpAddUint, wantKind: isa.RegisterUint},
-		{name: "addition of complex values", operator: token.ADD, leftKind: isa.RegisterComplex, want: isa.OpAddComplex, wantKind: isa.RegisterComplex},
-		{name: "addition of boxed values", operator: token.ADD, leftKind: isa.RegisterGeneral, want: isa.OpAdd, wantKind: isa.RegisterGeneral},
-		{name: "subtraction of unsigned values", operator: token.SUB, leftKind: isa.RegisterUint, want: isa.OpSubUint, wantKind: isa.RegisterUint},
-		{name: "multiplication of unsigned values", operator: token.MUL, leftKind: isa.RegisterUint, want: isa.OpMulUint, wantKind: isa.RegisterUint},
-		{name: "division of unsigned values", operator: token.QUO, leftKind: isa.RegisterUint, want: isa.OpDivUint, wantKind: isa.RegisterUint},
-		{name: "remainder of unsigned values", operator: token.REM, leftKind: isa.RegisterUint, want: isa.OpRemUint, wantKind: isa.RegisterUint},
-		{name: "subtraction of complex values", operator: token.SUB, leftKind: isa.RegisterComplex, want: isa.OpSubComplex, wantKind: isa.RegisterComplex},
-		{name: "multiplication of complex values", operator: token.MUL, leftKind: isa.RegisterComplex, want: isa.OpMulComplex, wantKind: isa.RegisterComplex},
-		{name: "division of complex values", operator: token.QUO, leftKind: isa.RegisterComplex, want: isa.OpDivComplex, wantKind: isa.RegisterComplex},
-		{name: "a boolean operand falls through to the general bank", operator: token.ADD, leftKind: isa.RegisterBool, want: isa.OpAdd, wantKind: isa.RegisterGeneral},
+		{name: "addition of integers", operator: token.ADD, leftKind: isa.RegisterInt64, want: isa.OpAddInt64, wantKind: isa.RegisterInt64},
+		{name: "addition of floats", operator: token.ADD, leftKind: isa.RegisterFloat64, want: isa.OpAddFloat64, wantKind: isa.RegisterFloat64},
+		{name: "addition of strings", operator: token.ADD, leftKind: isa.RegisterString, want: isa.OpConcatenateString, wantKind: isa.RegisterString},
+		{name: "addition of unsigned values", operator: token.ADD, leftKind: isa.RegisterUint64, want: isa.OpAddUint64, wantKind: isa.RegisterUint64},
+		{name: "addition of complex values", operator: token.ADD, leftKind: isa.RegisterComplex128, want: isa.OpAddComplex128, wantKind: isa.RegisterComplex128},
+		{name: "addition of boxed values", operator: token.ADD, leftKind: isa.RegisterGeneral, want: isa.OpAddGeneral, wantKind: isa.RegisterGeneral},
+		{name: "subtraction of unsigned values", operator: token.SUB, leftKind: isa.RegisterUint64, want: isa.OpSubtractUint64, wantKind: isa.RegisterUint64},
+		{name: "multiplication of unsigned values", operator: token.MUL, leftKind: isa.RegisterUint64, want: isa.OpMultiplyUint64, wantKind: isa.RegisterUint64},
+		{name: "division of unsigned values", operator: token.QUO, leftKind: isa.RegisterUint64, want: isa.OpDivideUint64, wantKind: isa.RegisterUint64},
+		{name: "remainder of unsigned values", operator: token.REM, leftKind: isa.RegisterUint64, want: isa.OpRemainderUint64, wantKind: isa.RegisterUint64},
+		{name: "subtraction of complex values", operator: token.SUB, leftKind: isa.RegisterComplex128, want: isa.OpSubtractComplex128, wantKind: isa.RegisterComplex128},
+		{name: "multiplication of complex values", operator: token.MUL, leftKind: isa.RegisterComplex128, want: isa.OpMultiplyComplex128, wantKind: isa.RegisterComplex128},
+		{name: "division of complex values", operator: token.QUO, leftKind: isa.RegisterComplex128, want: isa.OpDivideComplex128, wantKind: isa.RegisterComplex128},
+		{name: "a boolean operand falls through to the general bank", operator: token.ADD, leftKind: isa.RegisterBool, want: isa.OpAddGeneral, wantKind: isa.RegisterGeneral},
 		{
 			name:     "subtraction of strings has no form at all",
 			operator: token.SUB,
@@ -143,15 +143,15 @@ func TestResolveArithOpcodeMapsTheIntegerFormOntoTheOperandBank(t *testing.T) {
 		{
 			name:     "a remainder of floats has no form",
 			operator: token.REM,
-			leftKind: isa.RegisterFloat,
-			wantKind: isa.RegisterFloat,
+			leftKind: isa.RegisterFloat64,
+			wantKind: isa.RegisterFloat64,
 			wantErr:  fault.ErrCompileArithFloatUnsupported,
 		},
 		{
 			name:     "a remainder of complex values has no form",
 			operator: token.REM,
-			leftKind: isa.RegisterComplex,
-			wantKind: isa.RegisterComplex,
+			leftKind: isa.RegisterComplex128,
+			wantKind: isa.RegisterComplex128,
 			wantErr:  fault.ErrCompileArithComplexUnsupported,
 		},
 	}
@@ -189,21 +189,21 @@ func TestPlanningATypedSliceReadPrefersTheDirectForm(t *testing.T) {
 		wantUseTier1   bool
 		wantOK         bool
 	}{
-		{name: "an integer slice with a checked index", collectionKind: isa.RegisterSliceInt, elementKind: isa.RegisterInt, wantOp: isa.OpSliceGetIntDirect, wantOK: true},
-		{name: "an integer slice with a proven index", collectionKind: isa.RegisterSliceInt, elementKind: isa.RegisterInt, boundsSafe: true, wantOp: isa.OpSliceGetIntDirectUnchecked, wantOK: true},
-		{name: "a float slice", collectionKind: isa.RegisterSliceFloat, elementKind: isa.RegisterFloat, wantTier1: isa.SubOpSliceGetFloatDirect, wantUseTier1: true, wantOK: true},
-		{name: "a string slice", collectionKind: isa.RegisterSliceString, elementKind: isa.RegisterString, wantTier1: isa.SubOpSliceGetStringDirect, wantUseTier1: true, wantOK: true},
-		{name: "a boolean slice", collectionKind: isa.RegisterSliceBool, elementKind: isa.RegisterBool, wantTier1: isa.SubOpSliceGetBoolDirect, wantUseTier1: true, wantOK: true},
-		{name: "an unsigned slice", collectionKind: isa.RegisterSliceUint, elementKind: isa.RegisterUint, wantTier1: isa.SubOpSliceGetUintDirect, wantUseTier1: true, wantOK: true},
-		{name: "a byte slice", collectionKind: isa.RegisterSliceByte, elementKind: isa.RegisterUint, wantTier1: isa.SubOpSliceGetByteDirect, wantUseTier1: true, wantOK: true},
-		{name: "a boxed slice of integers", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterInt, wantOp: isa.OpSliceGetInt, wantOK: true},
-		{name: "a boxed slice of floats", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterFloat, wantOp: isa.OpSliceGetFloat, wantOK: true},
-		{name: "a boxed slice of strings", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterString, wantOp: isa.OpSliceGetString, wantOK: true},
-		{name: "a boxed slice of booleans", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterBool, wantOp: isa.OpSliceGetBool, wantOK: true},
-		{name: "a boxed slice of unsigned values", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterUint, wantOp: isa.OpSliceGetUint, wantOK: true},
-		{name: "a typed slice whose element bank disagrees falls back", collectionKind: isa.RegisterSliceFloat, elementKind: isa.RegisterInt, wantOp: isa.OpSliceGetInt, wantOK: true},
+		{name: "an integer slice with a checked index", collectionKind: isa.RegisterSliceInt64, elementKind: isa.RegisterInt64, wantOp: isa.OpGetSliceInt64Element, wantOK: true},
+		{name: "an integer slice with a proven index", collectionKind: isa.RegisterSliceInt64, elementKind: isa.RegisterInt64, boundsSafe: true, wantOp: isa.OpGetSliceInt64ElementUnchecked, wantOK: true},
+		{name: "a float slice", collectionKind: isa.RegisterSliceFloat64, elementKind: isa.RegisterFloat64, wantTier1: isa.SubOpGetSliceFloat64Element, wantUseTier1: true, wantOK: true},
+		{name: "a string slice", collectionKind: isa.RegisterSliceString, elementKind: isa.RegisterString, wantTier1: isa.SubOpGetSliceStringElement, wantUseTier1: true, wantOK: true},
+		{name: "a boolean slice", collectionKind: isa.RegisterSliceBool, elementKind: isa.RegisterBool, wantTier1: isa.SubOpGetSliceBoolElement, wantUseTier1: true, wantOK: true},
+		{name: "an unsigned slice", collectionKind: isa.RegisterSliceUint64, elementKind: isa.RegisterUint64, wantTier1: isa.SubOpGetSliceUint64Element, wantUseTier1: true, wantOK: true},
+		{name: "a byte slice", collectionKind: isa.RegisterSliceByte, elementKind: isa.RegisterUint64, wantTier1: isa.SubOpGetSliceByteElement, wantUseTier1: true, wantOK: true},
+		{name: "a boxed slice of integers", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterInt64, wantOp: isa.OpGetElementInt64, wantOK: true},
+		{name: "a boxed slice of floats", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterFloat64, wantOp: isa.OpGetElementFloat64, wantOK: true},
+		{name: "a boxed slice of strings", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterString, wantOp: isa.OpGetElementString, wantOK: true},
+		{name: "a boxed slice of booleans", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterBool, wantOp: isa.OpGetElementBool, wantOK: true},
+		{name: "a boxed slice of unsigned values", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterUint64, wantOp: isa.OpGetElementUint64, wantOK: true},
+		{name: "a typed slice whose element bank disagrees falls back", collectionKind: isa.RegisterSliceFloat64, elementKind: isa.RegisterInt64, wantOp: isa.OpGetElementInt64, wantOK: true},
 		{name: "an element bank with no typed read", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterGeneral, wantOK: false},
-		{name: "a complex element has no typed read", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterComplex, wantOK: false},
+		{name: "a complex element has no typed read", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterComplex128, wantOK: false},
 	}
 
 	for _, tt := range tests {
@@ -235,18 +235,18 @@ func TestPlanningATypedSliceWriteMirrorsTheRead(t *testing.T) {
 		wantUseTier1   bool
 		wantOK         bool
 	}{
-		{name: "an integer slice", collectionKind: isa.RegisterSliceInt, elementKind: isa.RegisterInt, wantOp: isa.OpSliceSetIntDirect, wantOK: true},
-		{name: "a float slice", collectionKind: isa.RegisterSliceFloat, elementKind: isa.RegisterFloat, wantTier1: isa.SubOpSliceSetFloatDirect, wantUseTier1: true, wantOK: true},
-		{name: "a string slice", collectionKind: isa.RegisterSliceString, elementKind: isa.RegisterString, wantTier1: isa.SubOpSliceSetStringDirect, wantUseTier1: true, wantOK: true},
-		{name: "a boolean slice", collectionKind: isa.RegisterSliceBool, elementKind: isa.RegisterBool, wantTier1: isa.SubOpSliceSetBoolDirect, wantUseTier1: true, wantOK: true},
-		{name: "an unsigned slice", collectionKind: isa.RegisterSliceUint, elementKind: isa.RegisterUint, wantTier1: isa.SubOpSliceSetUintDirect, wantUseTier1: true, wantOK: true},
-		{name: "a byte slice", collectionKind: isa.RegisterSliceByte, elementKind: isa.RegisterUint, wantTier1: isa.SubOpSliceSetByteDirect, wantUseTier1: true, wantOK: true},
-		{name: "a boxed slice of integers", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterInt, wantOp: isa.OpSliceSetInt, wantOK: true},
-		{name: "a boxed slice of floats", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterFloat, wantOp: isa.OpSliceSetFloat, wantOK: true},
-		{name: "a boxed slice of strings", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterString, wantOp: isa.OpSliceSetString, wantOK: true},
-		{name: "a boxed slice of booleans", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterBool, wantOp: isa.OpSliceSetBool, wantOK: true},
-		{name: "a boxed slice of unsigned values", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterUint, wantOp: isa.OpSliceSetUint, wantOK: true},
-		{name: "a typed slice whose element bank disagrees falls back", collectionKind: isa.RegisterSliceString, elementKind: isa.RegisterInt, wantOp: isa.OpSliceSetInt, wantOK: true},
+		{name: "an integer slice", collectionKind: isa.RegisterSliceInt64, elementKind: isa.RegisterInt64, wantOp: isa.OpSetSliceInt64Element, wantOK: true},
+		{name: "a float slice", collectionKind: isa.RegisterSliceFloat64, elementKind: isa.RegisterFloat64, wantTier1: isa.SubOpSetSliceFloat64Element, wantUseTier1: true, wantOK: true},
+		{name: "a string slice", collectionKind: isa.RegisterSliceString, elementKind: isa.RegisterString, wantTier1: isa.SubOpSetSliceStringElement, wantUseTier1: true, wantOK: true},
+		{name: "a boolean slice", collectionKind: isa.RegisterSliceBool, elementKind: isa.RegisterBool, wantTier1: isa.SubOpSetSliceBoolElement, wantUseTier1: true, wantOK: true},
+		{name: "an unsigned slice", collectionKind: isa.RegisterSliceUint64, elementKind: isa.RegisterUint64, wantTier1: isa.SubOpSetSliceUint64Element, wantUseTier1: true, wantOK: true},
+		{name: "a byte slice", collectionKind: isa.RegisterSliceByte, elementKind: isa.RegisterUint64, wantTier1: isa.SubOpSetSliceByteElement, wantUseTier1: true, wantOK: true},
+		{name: "a boxed slice of integers", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterInt64, wantOp: isa.OpSetElementInt64, wantOK: true},
+		{name: "a boxed slice of floats", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterFloat64, wantOp: isa.OpSetElementFloat64, wantOK: true},
+		{name: "a boxed slice of strings", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterString, wantOp: isa.OpSetElementString, wantOK: true},
+		{name: "a boxed slice of booleans", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterBool, wantOp: isa.OpSetElementBool, wantOK: true},
+		{name: "a boxed slice of unsigned values", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterUint64, wantOp: isa.OpSetElementUint64, wantOK: true},
+		{name: "a typed slice whose element bank disagrees falls back", collectionKind: isa.RegisterSliceString, elementKind: isa.RegisterInt64, wantOp: isa.OpSetElementInt64, wantOK: true},
 		{name: "an element bank with no typed write", collectionKind: isa.RegisterGeneral, elementKind: isa.RegisterGeneral, wantOK: false},
 	}
 
@@ -277,11 +277,11 @@ func TestSliceTypedStructFieldSelectorsAgreeOnTheirBanks(t *testing.T) {
 		wantBank  isa.RegisterKind
 		wantOK    bool
 	}{
-		{name: "a slice of int", fieldType: types.NewSlice(types.Typ[types.Int]), wantGet: isa.SubOpGetStructFieldSliceInt, wantSet: isa.SubOpSetStructFieldSliceInt, wantBank: isa.RegisterSliceInt, wantOK: true},
-		{name: "a slice of int64", fieldType: types.NewSlice(types.Typ[types.Int64]), wantGet: isa.SubOpGetStructFieldSliceInt, wantSet: isa.SubOpSetStructFieldSliceInt, wantBank: isa.RegisterSliceInt, wantOK: true},
-		{name: "a slice of float64", fieldType: types.NewSlice(types.Typ[types.Float64]), wantGet: isa.SubOpGetStructFieldSliceFloat, wantSet: isa.SubOpSetStructFieldSliceFloat, wantBank: isa.RegisterSliceFloat, wantOK: true},
-		{name: "a slice of uint", fieldType: types.NewSlice(types.Typ[types.Uint]), wantGet: isa.SubOpGetStructFieldSliceUint, wantSet: isa.SubOpSetStructFieldSliceUint, wantBank: isa.RegisterSliceUint, wantOK: true},
-		{name: "a slice of uint64", fieldType: types.NewSlice(types.Typ[types.Uint64]), wantGet: isa.SubOpGetStructFieldSliceUint, wantSet: isa.SubOpSetStructFieldSliceUint, wantBank: isa.RegisterSliceUint, wantOK: true},
+		{name: "a slice of int", fieldType: types.NewSlice(types.Typ[types.Int]), wantGet: isa.SubOpGetStructFieldSliceInt64, wantSet: isa.SubOpSetStructFieldSliceInt64, wantBank: isa.RegisterSliceInt64, wantOK: true},
+		{name: "a slice of int64", fieldType: types.NewSlice(types.Typ[types.Int64]), wantGet: isa.SubOpGetStructFieldSliceInt64, wantSet: isa.SubOpSetStructFieldSliceInt64, wantBank: isa.RegisterSliceInt64, wantOK: true},
+		{name: "a slice of float64", fieldType: types.NewSlice(types.Typ[types.Float64]), wantGet: isa.SubOpGetStructFieldSliceFloat64, wantSet: isa.SubOpSetStructFieldSliceFloat64, wantBank: isa.RegisterSliceFloat64, wantOK: true},
+		{name: "a slice of uint", fieldType: types.NewSlice(types.Typ[types.Uint]), wantGet: isa.SubOpGetStructFieldSliceUint64, wantSet: isa.SubOpSetStructFieldSliceUint64, wantBank: isa.RegisterSliceUint64, wantOK: true},
+		{name: "a slice of uint64", fieldType: types.NewSlice(types.Typ[types.Uint64]), wantGet: isa.SubOpGetStructFieldSliceUint64, wantSet: isa.SubOpSetStructFieldSliceUint64, wantBank: isa.RegisterSliceUint64, wantOK: true},
 		{name: "a slice of string", fieldType: types.NewSlice(types.Typ[types.String]), wantGet: isa.SubOpGetStructFieldSliceString, wantSet: isa.SubOpSetStructFieldSliceString, wantBank: isa.RegisterSliceString, wantOK: true},
 		{name: "a slice of bool", fieldType: types.NewSlice(types.Typ[types.Bool]), wantGet: isa.SubOpGetStructFieldSliceBool, wantSet: isa.SubOpSetStructFieldSliceBool, wantBank: isa.RegisterSliceBool, wantOK: true},
 		{name: "a slice of byte", fieldType: types.NewSlice(types.Typ[types.Uint8]), wantGet: isa.SubOpGetStructFieldSliceByte, wantSet: isa.SubOpSetStructFieldSliceByte, wantBank: isa.RegisterSliceByte, wantOK: true},
@@ -322,14 +322,14 @@ func TestStructFieldFastPathAdmitsTheSameBanksForReadingAndWriting(t *testing.T)
 		kind isa.RegisterKind
 		want bool
 	}{
-		{name: "the integer bank", kind: isa.RegisterInt, want: true},
-		{name: "the unsigned bank", kind: isa.RegisterUint, want: true},
-		{name: "the float bank", kind: isa.RegisterFloat, want: true},
+		{name: "the integer bank", kind: isa.RegisterInt64, want: true},
+		{name: "the unsigned bank", kind: isa.RegisterUint64, want: true},
+		{name: "the float bank", kind: isa.RegisterFloat64, want: true},
 		{name: "the boolean bank", kind: isa.RegisterBool, want: true},
 		{name: "the string bank", kind: isa.RegisterString, want: true},
 		{name: "the general bank", kind: isa.RegisterGeneral, want: true},
-		{name: "the complex bank", kind: isa.RegisterComplex, want: false},
-		{name: "the typed integer slice bank", kind: isa.RegisterSliceInt, want: false},
+		{name: "the complex bank", kind: isa.RegisterComplex128, want: false},
+		{name: "the typed integer slice bank", kind: isa.RegisterSliceInt64, want: false},
 		{name: "the typed byte slice bank", kind: isa.RegisterSliceByte, want: false},
 	}
 
@@ -352,14 +352,14 @@ func TestSteppingAStructFieldInPlaceIsOfferedForTheWholeWidthIntegerBanks(t *tes
 		operator token.Token
 		want     isa.SubOpcode
 	}{
-		{name: "an integer field incremented", kind: isa.RegisterInt, operator: token.INC, want: isa.SubOpIncStructFieldInt},
-		{name: "an integer field decremented", kind: isa.RegisterInt, operator: token.DEC, want: isa.SubOpDecStructFieldInt},
-		{name: "an unsigned field incremented", kind: isa.RegisterUint, operator: token.INC, want: isa.SubOpIncStructFieldUint},
-		{name: "an unsigned field decremented", kind: isa.RegisterUint, operator: token.DEC, want: isa.SubOpDecStructFieldUint},
-		{name: "a float field has no in-place step", kind: isa.RegisterFloat, operator: token.INC, want: 0},
+		{name: "an integer field incremented", kind: isa.RegisterInt64, operator: token.INC, want: isa.SubOpIncrementStructFieldInt64},
+		{name: "an integer field decremented", kind: isa.RegisterInt64, operator: token.DEC, want: isa.SubOpDecrementStructFieldInt64},
+		{name: "an unsigned field incremented", kind: isa.RegisterUint64, operator: token.INC, want: isa.SubOpIncrementStructFieldUint64},
+		{name: "an unsigned field decremented", kind: isa.RegisterUint64, operator: token.DEC, want: isa.SubOpDecrementStructFieldUint64},
+		{name: "a float field has no in-place step", kind: isa.RegisterFloat64, operator: token.INC, want: 0},
 		{name: "a boolean field has no in-place step", kind: isa.RegisterBool, operator: token.INC, want: 0},
 		{name: "a string field has no in-place step", kind: isa.RegisterString, operator: token.INC, want: 0},
-		{name: "an operator that is neither a step", kind: isa.RegisterInt, operator: token.ADD, want: 0},
+		{name: "an operator that is neither a step", kind: isa.RegisterInt64, operator: token.ADD, want: 0},
 	}
 
 	for _, tt := range tests {
@@ -379,19 +379,48 @@ func TestSliceIndexStructFieldOpCoversTheScalarBanksOnly(t *testing.T) {
 		want   isa.Opcode
 		wantOK bool
 	}{
-		{name: "the integer bank", kind: isa.RegisterInt, want: isa.OpSliceIndexStructFieldInt, wantOK: true},
-		{name: "the unsigned bank", kind: isa.RegisterUint, want: isa.OpSliceIndexStructFieldUint, wantOK: true},
-		{name: "the float bank", kind: isa.RegisterFloat, want: isa.OpSliceIndexStructFieldFloat, wantOK: true},
-		{name: "the boolean bank", kind: isa.RegisterBool, want: isa.OpSliceIndexStructFieldBool, wantOK: true},
-		{name: "the string bank", kind: isa.RegisterString, want: isa.OpSliceIndexStructFieldString, wantOK: true},
+		{name: "the integer bank", kind: isa.RegisterInt64, want: isa.OpGetElementFieldInt64, wantOK: true},
+		{name: "the unsigned bank", kind: isa.RegisterUint64, want: isa.OpGetElementFieldUint64, wantOK: true},
+		{name: "the float bank", kind: isa.RegisterFloat64, want: isa.OpGetElementFieldFloat64, wantOK: true},
+		{name: "the boolean bank", kind: isa.RegisterBool, want: isa.OpGetElementFieldBool, wantOK: true},
+		{name: "the string bank", kind: isa.RegisterString, want: isa.OpGetElementFieldString, wantOK: true},
 		{name: "the general bank has no fused element field read", kind: isa.RegisterGeneral, wantOK: false},
-		{name: "the complex bank has no fused element field read", kind: isa.RegisterComplex, wantOK: false},
+		{name: "the complex bank has no fused element field read", kind: isa.RegisterComplex128, wantOK: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, ok := PickSliceIndexStructFieldOp(tt.kind)
+
+			require.Equal(t, tt.wantOK, ok)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestStoringIntoAFieldOfASliceElementIsFusedForTheIntegerAndFloatBanksOnly(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		kind   isa.RegisterKind
+		want   isa.Opcode
+		wantOK bool
+	}{
+		{name: "the integer bank", kind: isa.RegisterInt64, want: isa.OpSetElementFieldInt64, wantOK: true},
+		{name: "the float bank", kind: isa.RegisterFloat64, want: isa.OpSetElementFieldFloat64, wantOK: true},
+		{name: "the unsigned bank has no fused element field store", kind: isa.RegisterUint64},
+		{name: "the boolean bank has no fused element field store", kind: isa.RegisterBool},
+		{name: "the string bank has no fused element field store", kind: isa.RegisterString},
+		{name: "the general bank has no fused element field store", kind: isa.RegisterGeneral},
+		{name: "the complex bank has no fused element field store", kind: isa.RegisterComplex128},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := PickSliceIndexStructFieldStoreOp(tt.kind)
 
 			require.Equal(t, tt.wantOK, ok)
 			require.Equal(t, tt.want, got)
@@ -408,14 +437,14 @@ func TestReslicingATypedSliceHasADirectFormForEveryTypedBank(t *testing.T) {
 		want   isa.SubOpcode
 		wantOK bool
 	}{
-		{name: "the typed integer slice bank", kind: isa.RegisterSliceInt, want: isa.SubOpSliceSliceIntDirect, wantOK: true},
-		{name: "the typed float slice bank", kind: isa.RegisterSliceFloat, want: isa.SubOpSliceSliceFloatDirect, wantOK: true},
-		{name: "the typed string slice bank", kind: isa.RegisterSliceString, want: isa.SubOpSliceSliceStringDirect, wantOK: true},
-		{name: "the typed boolean slice bank", kind: isa.RegisterSliceBool, want: isa.SubOpSliceSliceBoolDirect, wantOK: true},
-		{name: "the typed unsigned slice bank", kind: isa.RegisterSliceUint, want: isa.SubOpSliceSliceUintDirect, wantOK: true},
-		{name: "the typed byte slice bank", kind: isa.RegisterSliceByte, want: isa.SubOpSliceByteSlice, wantOK: true},
+		{name: "the typed integer slice bank", kind: isa.RegisterSliceInt64, want: isa.SubOpSliceSliceInt64, wantOK: true},
+		{name: "the typed float slice bank", kind: isa.RegisterSliceFloat64, want: isa.SubOpSliceSliceFloat64, wantOK: true},
+		{name: "the typed string slice bank", kind: isa.RegisterSliceString, want: isa.SubOpSliceSliceString, wantOK: true},
+		{name: "the typed boolean slice bank", kind: isa.RegisterSliceBool, want: isa.SubOpSliceSliceBool, wantOK: true},
+		{name: "the typed unsigned slice bank", kind: isa.RegisterSliceUint64, want: isa.SubOpSliceSliceUint64, wantOK: true},
+		{name: "the typed byte slice bank", kind: isa.RegisterSliceByte, want: isa.SubOpSliceSliceByte, wantOK: true},
 		{name: "the general bank has no direct reslice", kind: isa.RegisterGeneral, wantOK: false},
-		{name: "a scalar bank has no direct reslice", kind: isa.RegisterInt, wantOK: false},
+		{name: "a scalar bank has no direct reslice", kind: isa.RegisterInt64, wantOK: false},
 	}
 
 	for _, tt := range tests {

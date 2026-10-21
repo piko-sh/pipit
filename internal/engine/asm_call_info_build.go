@@ -282,15 +282,15 @@ func asmCalleeParameterLayoutPerturbed(callee *program.CompiledFunction) bool {
 // kind is unsupported.
 func asmArgumentSourceSlice(info *AsmCallInfo, kind isa.RegisterKind) []int64 {
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return info.intArgumentSources[:]
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return info.floatArgumentSources[:]
 	case isa.RegisterString:
 		return info.stringArgumentSources[:]
 	case isa.RegisterBool:
 		return info.boolArgumentSources[:]
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return info.uintArgumentSources[:]
 	case isa.RegisterGeneral:
 		return info.generalArgumentSources[:]
@@ -330,11 +330,11 @@ func mapASMArguments(info *AsmCallInfo, site *program.CallSite, callee *program.
 		sources[counts[parameterKind]] = int64(argumentLocation.Register)
 		counts[parameterKind]++
 	}
-	info.intArgumentCount = int64(counts[isa.RegisterInt])
-	info.floatArgumentCount = int64(counts[isa.RegisterFloat])
+	info.intArgumentCount = int64(counts[isa.RegisterInt64])
+	info.floatArgumentCount = int64(counts[isa.RegisterFloat64])
 	info.stringArgumentCount = int64(counts[isa.RegisterString])
 	info.boolArgumentCount = int64(counts[isa.RegisterBool])
-	info.uintArgumentCount = int64(counts[isa.RegisterUint])
+	info.uintArgumentCount = int64(counts[isa.RegisterUint64])
 	info.generalArgumentCount = int64(counts[isa.RegisterGeneral])
 	info.sliceByteArgumentCount = int64(counts[isa.RegisterSliceByte])
 	return true
@@ -349,7 +349,7 @@ func mapASMArguments(info *AsmCallInfo, site *program.CallSite, callee *program.
 // Returns bool which is true when the inline return can carry the result.
 func asmInlineReturnKind(kind isa.RegisterKind, single bool) bool {
 	switch kind {
-	case isa.RegisterInt, isa.RegisterFloat, isa.RegisterString, isa.RegisterBool, isa.RegisterUint:
+	case isa.RegisterInt64, isa.RegisterFloat64, isa.RegisterString, isa.RegisterBool, isa.RegisterUint64:
 		return true
 	case isa.RegisterGeneral:
 		return single
@@ -389,11 +389,11 @@ func populateASMCalleeFields(info *AsmCallInfo, site *program.CallSite, callee *
 	if len(callee.UintConstants) > 0 {
 		info.calleeUintConstants = uintptr(unsafe.Pointer(&callee.UintConstants[0]))
 	}
-	info.calleeIntCount = int64(callee.NumRegisters[isa.RegisterInt])
-	info.calleeFloatCount = int64(callee.NumRegisters[isa.RegisterFloat])
+	info.calleeIntCount = int64(callee.NumRegisters[isa.RegisterInt64])
+	info.calleeFloatCount = int64(callee.NumRegisters[isa.RegisterFloat64])
 	info.calleeStringCount = int64(callee.NumRegisters[isa.RegisterString])
 	info.calleeBoolCount = int64(callee.NumRegisters[isa.RegisterBool])
-	info.calleeUintCount = int64(callee.NumRegisters[isa.RegisterUint])
+	info.calleeUintCount = int64(callee.NumRegisters[isa.RegisterUint64])
 	info.calleeGeneralCount = int64(callee.NumRegisters[isa.RegisterGeneral])
 	info.calleeSliceByteCount = int64(callee.NumRegisters[isa.RegisterSliceByte])
 	if len(site.Returns) > 0 {
@@ -409,7 +409,7 @@ func populateASMCalleeFields(info *AsmCallInfo, site *program.CallSite, callee *
 		info.isFastPath = fastPathGeneralBank
 	case callee.NumRegisters[isa.RegisterString] == 0 &&
 		callee.NumRegisters[isa.RegisterBool] == 0 &&
-		callee.NumRegisters[isa.RegisterUint] == 0 &&
+		callee.NumRegisters[isa.RegisterUint64] == 0 &&
 		callee.NumRegisters[isa.RegisterSliceByte] == 0:
 		info.isFastPath = fastPathPureIntFloat
 	default:
@@ -424,9 +424,9 @@ func populateASMCalleeFields(info *AsmCallInfo, site *program.CallSite, callee *
 //
 // Returns true when at least one unsupported typed-slice bank has nonzero register count.
 func calleeUsesTypedSliceBanks(callee *program.CompiledFunction) bool {
-	return callee.NumRegisters[isa.RegisterSliceInt] > 0 ||
-		callee.NumRegisters[isa.RegisterSliceFloat] > 0 ||
+	return callee.NumRegisters[isa.RegisterSliceInt64] > 0 ||
+		callee.NumRegisters[isa.RegisterSliceFloat64] > 0 ||
 		callee.NumRegisters[isa.RegisterSliceString] > 0 ||
 		callee.NumRegisters[isa.RegisterSliceBool] > 0 ||
-		callee.NumRegisters[isa.RegisterSliceUint] > 0
+		callee.NumRegisters[isa.RegisterSliceUint64] > 0
 }

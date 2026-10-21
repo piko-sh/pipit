@@ -21,6 +21,7 @@ package pipit
 import (
 	"errors"
 
+	"pipit.sh/pipit/internal/app"
 	"pipit.sh/pipit/internal/fault"
 
 	"pipit.sh/pipit/internal/engine"
@@ -35,8 +36,13 @@ var (
 	ErrCapabilityDenied = policy.ErrCapabilityDenied
 
 	// ErrInvalidConfig reports an invalid configuration. Tier variants such as
-	// ErrInvalidIsolatedConfig and ErrInvalidRestrictedConfig wrap it.
+	// ErrInvalidIsolatedConfig, ErrInvalidRestrictedConfig and ErrInvalidOption wrap it.
 	ErrInvalidConfig = policy.ErrInvalidConfig
+
+	// ErrInvalidOption is returned by every compile and evaluation of an interpreter built
+	// with an option given a value it does not accept, such as a limit that is not positive.
+	// It wraps ErrInvalidConfig.
+	ErrInvalidOption = app.ErrInvalidOption
 
 	// ErrUnavailable reports a capability the current platform cannot provide.
 	// ErrIsolatedUnavailable wraps it.
@@ -107,6 +113,32 @@ var (
 	// ErrNoBytecodeStore is returned when bytecode save or load runs without a store.
 	ErrNoBytecodeStore = fault.ErrNoBytecodeStore
 
+	// ErrGlobalSlotsExhausted is returned by LoadCompiled when the interpreter has no room
+	// left for the loaded program's package variables. Unloading programs with
+	// Interpreter.UnloadCompiled frees room.
+	ErrGlobalSlotsExhausted = fault.ErrGlobalSlotsExhausted
+
+	// ErrProgramUnloaded is returned by a run of a file set after Interpreter.UnloadCompiled
+	// released it, or after Interpreter.Reset. It wraps ErrClosed.
+	ErrProgramUnloaded = app.ErrProgramUnloaded
+
+	// ErrProgramNotLoaded is returned by Interpreter.UnloadCompiled for a file set this
+	// interpreter did not load from bytecode.
+	ErrProgramNotLoaded = app.ErrProgramNotLoaded
+
+	// ErrNamedInterfaceLimit is returned when loading bytecode would register more distinct
+	// interface names than WithMaxLoadedNamedInterfaces allows.
+	ErrNamedInterfaceLimit = app.ErrNamedInterfaceLimit
+
+	// ErrNamedCompositeQuota is returned when a program would add more named array, slice,
+	// map, channel and function types than WithMaxNamedCompositeTypes allows.
+	ErrNamedCompositeQuota = fault.ErrNamedCompositeQuota
+
+	// ErrNamedCompositeLimit is returned when a program would take the process past the cap
+	// WithNamedCompositeProcessLimit sets on named array, slice, map, channel and function
+	// types.
+	ErrNamedCompositeLimit = fault.ErrNamedCompositeLimit
+
 	// ErrBytecodeVerification is returned when the bytecode verifier rejects a program.
 	ErrBytecodeVerification = fault.ErrBytecodeVerification
 
@@ -141,6 +173,23 @@ var (
 	// runner may treat it as a normal exit, as Go does when main returns.
 	ErrGoroutineJoinTimeout = fault.ErrGoroutineJoinTimeout
 
+	// ErrUnwindBlocked is joined to the error of a stopped execution (a budget abort, the
+	// cost budget, the context's cancellation or deadline) when one of the deferred calls
+	// its stopped goroutines ran was still blocked in native code at the unwinding's
+	// deadline.
+	ErrUnwindBlocked = fault.ErrUnwindBlocked
+
+	// ErrLockAbandoned is returned by every evaluation once an earlier one was stopped and
+	// left a sync.Mutex or sync.RWMutex it had locked still held after its deferred calls
+	// ran.
+	ErrLockAbandoned = fault.ErrLockAbandoned
+
+	// ErrUnwindLeakLimit is returned by every evaluation once the interpreter's stopped
+	// evaluations have left as many deferred calls blocked in native code (each reported
+	// with ErrUnwindBlocked) as WithLeakedUnwinderCap allows, 64 by default, since each one
+	// keeps a goroutine and its memory alive.
+	ErrUnwindLeakLimit = fault.ErrUnwindLeakLimit
+
 	// ErrStackOverflow is returned when the call stack exceeds the maximum depth.
 	ErrStackOverflow = fault.ErrStackOverflow
 
@@ -169,38 +218,6 @@ type EvaluationError = fault.EvaluationError
 // such as type errors in two packages and a //go:embed directive in a third. errors.Is
 // matches the sentinel of any problem; CompileProblems lists them.
 type ProblemList = fault.ProblemList
-
-// CompileProblems splits a compile error for display, returning err itself when it has
-// no ProblemList. Problems are grouped by package, with each group containing its type
-// errors or register overflows.
-//
-// Takes err (error) which is the error from a compile call.
-//
-// Returns []error which is nil for a nil err.
-func CompileProblems(err error) []error {
-	return fault.Problems(err)
-}
-
-// UncaughtPanicValue returns the value of the panic behind an ErrUncaughtPanic error.
-//
-// Takes err (error) which is an execution error.
-//
-// Returns the panic value and true, or nil and false when err is not an uncaught panic.
-func UncaughtPanicValue(err error) (any, bool) {
-	return engine.UncaughtPanicValue(err)
-}
-
-// UncaughtPanicStack returns the interpreted call stack recorded when the panic behind an
-// ErrUncaughtPanic error started, rendered the way Go's traceback renders frames (a name
-// line and an indented file:line line per frame), innermost first.
-//
-// Takes err (error) which may wrap an uncaught panic.
-//
-// Returns string which is empty when err is not an uncaught panic or no stack was
-// recorded.
-func UncaughtPanicStack(err error) string {
-	return engine.UncaughtPanicStack(err)
-}
 
 var (
 	// ErrDebuggerStop is the error an execution returns when the debugger stopped it.
@@ -236,3 +253,35 @@ var (
 	// ErrVariableNotWritable is returned by an unsupported variable write.
 	ErrVariableNotWritable = fault.ErrVariableNotWritable
 )
+
+// CompileProblems splits a compile error for display, returning err itself when it has no
+// ProblemList. Problems are grouped by package, with each group containing its type
+// errors or register overflows.
+//
+// Takes err (error) which is the error from a compile call.
+//
+// Returns []error which is nil for a nil err.
+func CompileProblems(err error) []error {
+	return fault.Problems(err)
+}
+
+// UncaughtPanicValue returns the value of the panic behind an ErrUncaughtPanic error.
+//
+// Takes err (error) which is an execution error.
+//
+// Returns the panic value and true, or nil and false when err is not an uncaught panic.
+func UncaughtPanicValue(err error) (any, bool) {
+	return engine.UncaughtPanicValue(err)
+}
+
+// UncaughtPanicStack returns the interpreted call stack recorded when the panic behind an
+// ErrUncaughtPanic error started, rendered the way Go's traceback renders frames (a name
+// line and an indented file:line line per frame), innermost first.
+//
+// Takes err (error) which may wrap an uncaught panic.
+//
+// Returns string which is empty when err is not an uncaught panic or no stack was
+// recorded.
+func UncaughtPanicStack(err error) string {
+	return engine.UncaughtPanicStack(err)
+}

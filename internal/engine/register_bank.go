@@ -91,17 +91,17 @@ func NewRegistersForBench(numRegs [isa.NumRegisterKinds]uint32) Registers {
 //
 // Returns a freshly allocated register file.
 func NewRegisters(numRegs [isa.NumRegisterKinds]uint32) Registers {
-	return Registers{Ints: make([]int64, numRegs[isa.RegisterInt]),
-		Floats:       make([]float64, numRegs[isa.RegisterFloat]),
+	return Registers{Ints: make([]int64, numRegs[isa.RegisterInt64]),
+		Floats:       make([]float64, numRegs[isa.RegisterFloat64]),
 		Strings:      make([]string, numRegs[isa.RegisterString]),
 		General:      make([]reflect.Value, numRegs[isa.RegisterGeneral]),
 		Bools:        make([]bool, numRegs[isa.RegisterBool]),
-		Uints:        make([]uint64, numRegs[isa.RegisterUint]),
-		Complex:      make([]complex128, numRegs[isa.RegisterComplex]),
-		SlicesInt:    make([][]int64, numRegs[isa.RegisterSliceInt]),
-		slicesFloat:  make([][]float64, numRegs[isa.RegisterSliceFloat]),
+		Uints:        make([]uint64, numRegs[isa.RegisterUint64]),
+		Complex:      make([]complex128, numRegs[isa.RegisterComplex128]),
+		SlicesInt:    make([][]int64, numRegs[isa.RegisterSliceInt64]),
+		slicesFloat:  make([][]float64, numRegs[isa.RegisterSliceFloat64]),
 		slicesString: make([][]string, numRegs[isa.RegisterSliceString]),
 		slicesBool:   make([][]bool, numRegs[isa.RegisterSliceBool]),
-		slicesUint:   make([][]uint64, numRegs[isa.RegisterSliceUint]),
+		slicesUint:   make([][]uint64, numRegs[isa.RegisterSliceUint64]),
 		slicesByte:   make([][]byte, numRegs[isa.RegisterSliceByte]), lastAllocMask: 0}
 }

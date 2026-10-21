@@ -144,7 +144,7 @@ func JoinWide(lo, hi uint8) uint16 {
 }
 
 // DecodeExtension24 reconstructs a 24-bit unsigned integer from the three fields of an
-// OpExt instruction (a=low, b=mid, c=high byte).
+// OpExtension instruction (a=low, b=mid, c=high byte).
 //
 // Takes ext (Instruction) which is the extension instruction.
 //

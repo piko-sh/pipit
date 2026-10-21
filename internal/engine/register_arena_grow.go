@@ -57,8 +57,7 @@ const (
 )
 
 // ChargeArenaAllocation updates the live-bytes counter with the delta between old and new
-// slab capacity. When the total exceeds the budget it drives a MinorGC to reclaim dead
-// slabs, and panics with errArenaBudgetExceeded only if the total still exceeds it.
+// slab capacity.
 //
 // Takes newCapacityBytes (uint64) which is the byte capacity of the new slab.
 // Takes oldCapacityBytes (uint64) which is the byte capacity of the replaced slab.
@@ -70,11 +69,21 @@ func (a *RegisterArena) ChargeArenaAllocation(newCapacityBytes, oldCapacityBytes
 	}
 	delta := newCapacityBytes - oldCapacityBytes
 	if a.totalAllocatedBytes+delta < a.totalAllocatedBytes {
-		panic(fmt.Errorf("arena: overflow charging %d bytes: %w", delta, fault.ErrArenaBudgetExceeded))
+		a.raiseAbort(fmt.Errorf("arena: overflow charging %d bytes: %w", delta, fault.ErrArenaBudgetExceeded))
 	}
 	a.totalAllocatedBytes += delta
 	a.mirrorBudgetDelta(safeconv.Uint64ToInt64(delta))
+	if abortInjectBuilt && abortInjectFires(abortSiteGrowCharge) {
+		a.raiseAbort(abortInjectedError(abortSiteGrowCharge))
+	}
 	if a.sharedWorkingSetBytes() <= budget {
+		if a.licensed {
+			a.armSafepointForThreshold()
+		}
+		return
+	}
+	if a.licensed {
+		a.deferOverBudgetToSafepoint(budget)
 		return
 	}
 	if a.ownerVM != nil && !a.disableMinorGC {
@@ -83,7 +92,7 @@ func (a *RegisterArena) ChargeArenaAllocation(newCapacityBytes, oldCapacityBytes
 			return
 		}
 	}
-	panic(fmt.Errorf("arena: %d bytes exceeds budget %d: %w", a.sharedWorkingSetBytes(), budget, fault.ErrArenaBudgetExceeded))
+	a.raiseAbort(fmt.Errorf("arena: %d bytes exceeds budget %d: %w", a.sharedWorkingSetBytes(), budget, fault.ErrArenaBudgetExceeded))
 }
 
 // GrowByteSlab allocates a new byte slab, preserving the old one in oldByteSlabs so that
@@ -93,16 +102,23 @@ func (a *RegisterArena) ChargeArenaAllocation(newCapacityBytes, oldCapacityBytes
 //
 //go:noinline
 func (a *RegisterArena) GrowByteSlab(minExtra int) {
-	oldCap := uint64(cap(a.byteSlab))
+	oldCap := a.retiredSlabCharge(uint64(cap(a.byteSlab)))
+	newSize := a.dataSlabCapacity(max(len(a.byteSlab)*2, minExtra, a.regrowFloor(len(a.byteSlab), InitialByteSlabSize), a.takeLazyFloor(len(a.byteSlab),
+		&a.licenceState.lazyFloor.bytes)), minExtra)
+	newSize = a.fitGrow(newSize, minExtra, 1, len(a.byteSlab), oldCap)
+	a.admitGrow(safeconv.IntToUint64(newSize), oldCap)
 	a.slabRetiredSinceReset.bytes += len(a.byteSlab)
-	a.oldByteSlabs = append(a.oldByteSlabs, a.byteSlab)
-	if len(a.oldByteSlabs) > maxRetainedOldSlabsPerType {
-		forgetArenaSlab(a.oldByteSlabs[0])
+	if len(a.byteSlab) > 0 {
+		a.oldByteSlabs = append(a.oldByteSlabs, a.byteSlab)
+		if len(a.oldByteSlabs) > maxRetainedOldSlabsPerType && !a.heapData {
+			forgetArenaSlab(a.oldByteSlabs[0])
+		}
+		a.noteChargeHandedOn(slabChargeKey(a.byteSlab), oldCap)
+		trimRetainedCharged(a, &a.oldByteSlabs, 1)
 	}
-	trimRetainedSlabs(&a.oldByteSlabs)
-	newSize := max(len(a.byteSlab)*2, minExtra)
 	a.replaceByteSlab(make([]byte, newSize), true)
 	a.byteIndex = 0
+	a.publishLicenceSlabs()
 	a.ChargeArenaAllocation(uint64(cap(a.byteSlab)), oldCap)
 }
 
@@ -115,13 +131,31 @@ func (a *RegisterArena) GrowByteSlab(minExtra int) {
 //
 //go:noinline
 func (a *RegisterArena) GrowIntBackingSlab(minExtra int) {
-	oldCap := uint64(cap(a.intBackingSlab)) * arenaSizeInt64
-	a.oldIntBackings = append(a.oldIntBackings, a.intBackingSlab)
-	trimRetainedSlabs(&a.oldIntBackings)
-	newSize := max(len(a.intBackingSlab)*2, minExtra)
-	a.intBackingSlab = make([]int64, newSize)
-	a.intBackingIndex = 0
-	a.ChargeArenaAllocation(uint64(cap(a.intBackingSlab))*arenaSizeInt64, oldCap)
+	a.slabRetiredSinceReset.intBackings += a.intBackingIndex
+	growBackingSlab(a, &a.intBackingSlab, &a.oldIntBackings, &a.intBackingIndex, arenaSizeInt64, InitialIntBackingSize, minExtra)
+}
+
+// growBackingSlab replaces a typed backing slab with a fresh one and resets its index.
+//
+// Takes arena (*RegisterArena) which owns the slab.
+// Takes slab (*[]T) which is the backing slab to replace.
+// Takes retired (*[][]T) which keeps the replaced slabs.
+// Takes index (*int) which is the slab's bump index.
+// Takes elementBytes (uint64) which is the size of one element.
+// Takes initial (int) which is the slab's initial length.
+// Takes minExtra (int) which is the minimum number of elements the new slab must hold.
+func growBackingSlab[T any](arena *RegisterArena, slab *[]T, retired *[][]T, index *int, elementBytes uint64, initial, minExtra int) {
+	oldCap := arena.retiredSlabCharge(uint64(cap(*slab)) * elementBytes)
+	newSize := arena.dataSlabCapacity(max(len(*slab)*2, minExtra, arena.regrowFloor(len(*slab), initial)), minExtra)
+	newSize = arena.fitGrow(newSize, minExtra, elementBytes, len(*slab), oldCap)
+	arena.admitGrow(safeconv.IntToUint64(newSize)*elementBytes, oldCap)
+	*retired = append(*retired, *slab)
+	arena.noteChargeHandedOn(slabChargeKey(*slab), oldCap)
+	trimRetainedCharged(arena, retired, elementBytes)
+	*slab = make([]T, newSize)
+	*index = 0
+	arena.publishLicenceSlabs()
+	arena.ChargeArenaAllocation(uint64(cap(*slab))*elementBytes, oldCap)
 }
 
 // arenaBudgetLimit returns the effective per-Execute byte budget for this arena. Zero on
@@ -141,8 +175,11 @@ func (a *RegisterArena) arenaBudgetLimit() uint64 {
 //
 // Takes elementCount (int) which is the requested element count for a single allocation.
 func (a *RegisterArena) enforceSingleAllocLimit(elementCount int) {
+	if abortInjectBuilt && abortInjectFires(abortSiteAllocLimit) {
+		a.raiseAbort(abortInjectedError(abortSiteAllocLimit))
+	}
 	if a.MaxAllocSize > 0 && elementCount > a.MaxAllocSize {
-		panic(fmt.Errorf("arena: single allocation of %d elements exceeds limit %d: %w",
+		a.raiseAbort(fmt.Errorf("arena: single allocation of %d elements exceeds limit %d: %w",
 			elementCount, a.MaxAllocSize, fault.ErrAllocationLimit))
 	}
 }
@@ -179,19 +216,26 @@ func (a *RegisterArena) growComplexBoxSlab() {
 //
 // Takes minCap (int) which is the minimum byte capacity the new slab must satisfy.
 func (a *RegisterArena) growGenericBytesSlab(minCap int) {
-	oldCap := uint64(cap(a.genericBytesSlab))
+	oldCap := a.retiredSlabCharge(uint64(cap(a.genericBytesSlab)))
+	initial := max(initialGenericBytesCapacity, a.takeLazyFloor(len(a.genericBytesSlab), &a.licenceState.lazyFloor.genericBytes))
+	newCap := a.dataSlabCapacity(chunkedSlabCapacity(len(a.genericBytesSlab), minCap, initial, genericBytesSlabChunk), minCap)
+	a.admitChunkedGrow(safeconv.IntToUint64(newCap), oldCap, genericBytesSlabChunk, newCap == genericBytesSlabChunk && len(a.freeGenericByteChunks) > 0)
 	a.slabRetiredSinceReset.genericBytes += len(a.genericBytesSlab)
 	if len(a.genericBytesSlab) > 0 {
 		a.oldGenericByteSlabs = append(a.oldGenericByteSlabs, a.genericBytesSlab)
-		trimRetainedSlabs(&a.oldGenericByteSlabs)
+		trimRetainedCharged(a, &a.oldGenericByteSlabs, 1)
 	}
-	newCap := chunkedSlabCapacity(len(a.genericBytesSlab), minCap, initialGenericBytesCapacity, genericBytesSlabChunk)
 	a.genericBytesIndex = 0
 	if recycled, ok := popFreeChunk(&a.freeGenericByteChunks, newCap, genericBytesSlabChunk); ok {
 		a.genericBytesSlab = recycled
+		a.publishLicenceSlabs()
 		return
 	}
+	if oldCap < genericBytesSlabChunk {
+		a.noteChargeHandedOn(slabChargeKey(a.genericBytesSlab), oldCap)
+	}
 	a.genericBytesSlab = make([]byte, newCap)
+	a.publishLicenceSlabs()
 	a.chargeChunkedSlab(uint64(cap(a.genericBytesSlab)), oldCap, genericBytesSlabChunk)
 }
 
@@ -203,19 +247,27 @@ func (a *RegisterArena) growGenericBytesSlab(minCap int) {
 // grown-away slab remain reachable from the arena root. Mirrors the retention pattern
 // used by growGenericBytesSlab and GrowByteSlab.
 func (a *RegisterArena) growSliceHeaderSlab() {
-	oldCap := uint64(cap(a.sliceHeaderSlab)) * arenaSizeSliceHeader
+	oldCap := a.retiredSlabCharge(uint64(cap(a.sliceHeaderSlab)) * arenaSizeSliceHeader)
+	initial := max(initialSliceHeaderCapacity, a.takeLazyFloor(len(a.sliceHeaderSlab), &a.licenceState.lazyFloor.sliceHeaders))
+	newCap := a.dataSlabCapacity(chunkedSlabCapacity(len(a.sliceHeaderSlab), 1, initial, sliceHeaderSlabChunk), 1)
+	a.admitChunkedGrow(safeconv.IntToUint64(newCap)*arenaSizeSliceHeader, oldCap, sliceHeaderSlabChunk*arenaSizeSliceHeader,
+		newCap == sliceHeaderSlabChunk && len(a.freeSliceHeaderChunks) > 0)
 	a.slabRetiredSinceReset.sliceHeaders += len(a.sliceHeaderSlab)
 	if len(a.sliceHeaderSlab) > 0 {
 		a.oldSliceHeaderSlabs = append(a.oldSliceHeaderSlabs, a.sliceHeaderSlab)
-		trimRetainedSlabs(&a.oldSliceHeaderSlabs)
+		trimRetainedCharged(a, &a.oldSliceHeaderSlabs, arenaSizeSliceHeader)
 	}
-	newCap := chunkedSlabCapacity(len(a.sliceHeaderSlab), 1, initialSliceHeaderCapacity, sliceHeaderSlabChunk)
 	a.sliceHeaderIndex = 0
 	if recycled, ok := popFreeChunk(&a.freeSliceHeaderChunks, newCap, sliceHeaderSlabChunk); ok {
 		a.sliceHeaderSlab = recycled
+		a.publishLicenceSlabs()
 		return
 	}
+	if oldCap < sliceHeaderSlabChunk*arenaSizeSliceHeader {
+		a.noteChargeHandedOn(slabChargeKey(a.sliceHeaderSlab), oldCap)
+	}
 	a.sliceHeaderSlab = make([]arenaSliceHeader, newCap)
+	a.publishLicenceSlabs()
 	a.chargeChunkedSlab(uint64(cap(a.sliceHeaderSlab))*arenaSizeSliceHeader, oldCap, sliceHeaderSlabChunk*arenaSizeSliceHeader)
 }
 
@@ -252,7 +304,7 @@ func (a *RegisterArena) growFrameStack(minCap int) ([]CallFrame, []uintptr, []as
 //
 //go:noinline
 func (a *RegisterArena) growUpvalueCellSlab(minCap int) {
-	growSlab(a, &a.upvalueCellSlab, minCap, nil, false)
+	growSlab(a, &a.upvalueCellSlab, max(minCap, a.regrowFloor(len(a.upvalueCellSlab), initialUpvalueCellSlabs)), nil, false)
 }
 
 // growUpvalueRefSlab grows the upvalue reference slab to at least minCap.
@@ -261,7 +313,7 @@ func (a *RegisterArena) growUpvalueCellSlab(minCap int) {
 //
 //go:noinline
 func (a *RegisterArena) growUpvalueRefSlab(minCap int) {
-	growSlab(a, &a.upvalueReferenceSlab, minCap, nil, false)
+	growSlab(a, &a.upvalueReferenceSlab, max(minCap, a.regrowFloor(len(a.upvalueReferenceSlab), initialUpvalueRefSlabs)), nil, false)
 }
 
 // growFloatBackingSlab is the float64 sibling of GrowIntBackingSlab.
@@ -270,13 +322,8 @@ func (a *RegisterArena) growUpvalueRefSlab(minCap int) {
 //
 //go:noinline
 func (a *RegisterArena) growFloatBackingSlab(minExtra int) {
-	oldCap := uint64(cap(a.floatBackingSlab)) * arenaSizeFloat64
-	a.oldFloatBackings = append(a.oldFloatBackings, a.floatBackingSlab)
-	trimRetainedSlabs(&a.oldFloatBackings)
-	newSize := max(len(a.floatBackingSlab)*2, minExtra)
-	a.floatBackingSlab = make([]float64, newSize)
-	a.floatBackingIndex = 0
-	a.ChargeArenaAllocation(uint64(cap(a.floatBackingSlab))*arenaSizeFloat64, oldCap)
+	a.slabRetiredSinceReset.floatBackings += a.floatBackingIndex
+	growBackingSlab(a, &a.floatBackingSlab, &a.oldFloatBackings, &a.floatBackingIndex, arenaSizeFloat64, initialFloatBackingSize, minExtra)
 }
 
 // growStringBackingSlab is the string sibling of GrowIntBackingSlab.
@@ -285,13 +332,8 @@ func (a *RegisterArena) growFloatBackingSlab(minExtra int) {
 //
 //go:noinline
 func (a *RegisterArena) growStringBackingSlab(minExtra int) {
-	oldCap := uint64(cap(a.stringBackingSlab)) * arenaSizeString
-	a.oldStringBackings = append(a.oldStringBackings, a.stringBackingSlab)
-	trimRetainedSlabs(&a.oldStringBackings)
-	newSize := max(len(a.stringBackingSlab)*2, minExtra)
-	a.stringBackingSlab = make([]string, newSize)
-	a.stringBackingIndex = 0
-	a.ChargeArenaAllocation(uint64(cap(a.stringBackingSlab))*arenaSizeString, oldCap)
+	a.slabRetiredSinceReset.stringBackings += a.stringBackingIndex
+	growBackingSlab(a, &a.stringBackingSlab, &a.oldStringBackings, &a.stringBackingIndex, arenaSizeString, initialStringBackingSize, minExtra)
 }
 
 // growBoolBackingSlab is the bool sibling of GrowIntBackingSlab.
@@ -300,13 +342,8 @@ func (a *RegisterArena) growStringBackingSlab(minExtra int) {
 //
 //go:noinline
 func (a *RegisterArena) growBoolBackingSlab(minExtra int) {
-	oldCap := uint64(cap(a.boolBackingSlab)) * arenaSizeBool
-	a.oldBoolBackings = append(a.oldBoolBackings, a.boolBackingSlab)
-	trimRetainedSlabs(&a.oldBoolBackings)
-	newSize := max(len(a.boolBackingSlab)*2, minExtra)
-	a.boolBackingSlab = make([]bool, newSize)
-	a.boolBackingIndex = 0
-	a.ChargeArenaAllocation(uint64(cap(a.boolBackingSlab))*arenaSizeBool, oldCap)
+	a.slabRetiredSinceReset.boolBackings += a.boolBackingIndex
+	growBackingSlab(a, &a.boolBackingSlab, &a.oldBoolBackings, &a.boolBackingIndex, arenaSizeBool, initialBoolBackingSize, minExtra)
 }
 
 // growUintBackingSlab is the uint64 sibling of GrowIntBackingSlab.
@@ -315,13 +352,8 @@ func (a *RegisterArena) growBoolBackingSlab(minExtra int) {
 //
 //go:noinline
 func (a *RegisterArena) growUintBackingSlab(minExtra int) {
-	oldCap := uint64(cap(a.uintBackingSlab)) * arenaSizeUint64
-	a.oldUintBackings = append(a.oldUintBackings, a.uintBackingSlab)
-	trimRetainedSlabs(&a.oldUintBackings)
-	newSize := max(len(a.uintBackingSlab)*2, minExtra)
-	a.uintBackingSlab = make([]uint64, newSize)
-	a.uintBackingIndex = 0
-	a.ChargeArenaAllocation(uint64(cap(a.uintBackingSlab))*arenaSizeUint64, oldCap)
+	a.slabRetiredSinceReset.uintBackings += a.uintBackingIndex
+	growBackingSlab(a, &a.uintBackingSlab, &a.oldUintBackings, &a.uintBackingIndex, arenaSizeUint64, initialUintBackingSize, minExtra)
 }
 
 // growSlabs grows each register bank whose current index plus the requested count exceeds
@@ -469,8 +501,28 @@ func (a *RegisterArena) growComplexSlab(minCap int) {
 // Takes retained (*[]T) which is the bank's retired-slab list, trimmed in place.
 func trimRetainedSlabs[T any](retained *[]T) {
 	if len(*retained) > maxRetainedOldSlabsPerType {
+		var zero T
+		(*retained)[0] = zero
 		*retained = (*retained)[1:]
 	}
+}
+
+// trimRetainedCharged is trimRetainedSlabs for a data slab list, handing back the budget
+// charge the dropped slab carries (takeSlabCharge), since the budget bounds the slabs the
+// arena holds, and the dropped slab leaves the arena. A heap-data arena charges every
+// allocation for the whole run and keeps the charge.
+//
+// Takes arena (*RegisterArena) which owns the list and the budget.
+// Takes retained (*[][]T) which is the bank's retired-slab list, trimmed in place.
+// Takes elementBytes (uint64) which is the size of one element.
+func trimRetainedCharged[T any](arena *RegisterArena, retained *[][]T, elementBytes uint64) {
+	if len(*retained) <= maxRetainedOldSlabsPerType {
+		return
+	}
+	if !arena.heapData {
+		arena.releaseArenaBytes(takeSlabCharge(arena, (*retained)[0], elementBytes))
+	}
+	trimRetainedSlabs(retained)
 }
 
 // growSlab replaces a register slab with one at least minCap long, preserving its
@@ -488,6 +540,7 @@ func growSlab[T any](a *RegisterArena, slab *[]T, minCap int, demand *int, ctxMi
 	newSlab := make([]T, newCap)
 	copy(newSlab, *slab)
 	*slab = newSlab
+	a.publishLicenceSlabs()
 	if demand != nil {
 		*demand = max(*demand, newCap)
 	}
@@ -505,9 +558,27 @@ func growSlab[T any](a *RegisterArena, slab *[]T, minCap int, demand *int, ctxMi
 // Takes elementSize (uint64) which is the per-slot budget charge for this bank.
 func growBoxSlab[T any](a *RegisterArena, slab *[]T, index, retired *int, elementSize uint64) {
 	oldCap := uint64(cap(*slab)) * elementSize
-	*retired += len(*slab)
 	newCap := max(len(*slab)*2, initialBoxSlabCapacity)
+	if !a.heapData {
+		newCap = a.dataSlabCapacity(newCap, 1)
+	}
+	newCap = a.fitGrow(newCap, 1, elementSize, len(*slab), oldCap)
+	a.admitGrow(safeconv.IntToUint64(newCap)*elementSize, oldCap)
+	*retired += len(*slab)
 	*slab = make([]T, newCap)
 	*index = 0
+	a.publishLicenceSlabs()
 	a.ChargeArenaAllocation(uint64(cap(*slab))*elementSize, oldCap)
+}
+
+// retiredSlabCharge returns the budget charge recovered when a data slab is retired.
+//
+// Takes capacityBytes (uint64) which is the retired slab's capacity in bytes.
+//
+// Returns uint64 which is the charge to hand back.
+func (a *RegisterArena) retiredSlabCharge(capacityBytes uint64) uint64 {
+	if a.heapData {
+		return 0
+	}
+	return capacityBytes
 }

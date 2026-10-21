@@ -29,93 +29,106 @@ import (
 // maxLicmConstHoistsPerFunction caps the constant loads the loop-invariant code motion
 // pass lifts per CompiledFunction, separately from the struct-field read cap so the two
 // families never compete for a budget.
-const maxLicmConstHoistsPerFunction = 16
+const maxLicmConstHoistsPerFunction = 64
 
 // hoistLoopInvariantConstantLoads lifts loop-invariant constant loads to the pre-header,
 // excluding fresh-storage loads that must produce a new value each execution.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose body is rewritten in place.
 // Takes analysis (*functionAnalysis) which supplies loops and dominators and is
-// invalidated by every hoist; nil is tolerated.
+// invalidated by every hoist. Nil is tolerated.
 //
 // Returns error when cancellation interrupts the pass.
 func hoistLoopInvariantConstantLoads(ctx context.Context, compiledFunction *program.CompiledFunction, analysis *functionAnalysis) error {
 	if analysis == nil {
 		analysis = newFunctionAnalysis(compiledFunction)
 	}
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("hoistLoopInvariantConstantLoads cancelled: %w", err)
-	}
-	for range maxLicmConstHoistsPerFunction {
-		if !tryOneConstantLoadHoist(compiledFunction, analysis) {
+	var visits loopVisits
+	for budget := maxLicmConstHoistsPerFunction; budget > 0; {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("hoistLoopInvariantConstantLoads cancelled: %w", err)
+		}
+		hoisted := hoistConstantLoadsOfOneLoop(compiledFunction, analysis, &visits, budget)
+		if hoisted == 0 {
 			return nil
 		}
+		budget -= hoisted
 	}
 	return nil
 }
 
-// tryOneConstantLoadHoist performs at most one constant-load hoist.
+// hoistConstantLoadsOfOneLoop lifts every hoistable constant load of the first loop that
+// has one, in a single batch.
+//
+// The loads are found against one snapshot of the loop and lifted from the highest PC
+// down, so each lift shifts the ones still to come by its own width and nothing else
+// about them changes, since no two of them write one register and none reads another's.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose body is rewritten in place.
-// Takes analysis (*FunctionAnalysis) which supplies the loop list when non-nil.
+// Takes analysis (*functionAnalysis) which supplies the loop list.
+// Takes visits (*loopVisits) which holds the loops already searched to the end.
+// Takes limit (int) which is the most loads to lift.
 //
-// Returns true when a hoist was applied.
-func tryOneConstantLoadHoist(compiledFunction *program.CompiledFunction, analysis *functionAnalysis) bool {
+// Returns int which is the number of loads lifted, zero when no loop has one.
+func hoistConstantLoadsOfOneLoop(compiledFunction *program.CompiledFunction, analysis *functionAnalysis, visits *loopVisits, limit int) int {
 	loops := mergeLoopsSharingHeader(loopsFor(analysis, compiledFunction.Body))
 	for _, loop := range loops {
-		if !loopHeaderReachableByFallThrough(compiledFunction.Body, loop) {
+		if visits.finished(loop) || !loopOpenToHoisting(compiledFunction.Body, loop) {
 			continue
 		}
-		facts := newLoopFacts(analysis, loop)
-		loadPC, ok := findHoistableConstantLoadInLoop(compiledFunction, facts)
-		if facts.renamed {
-			return true
+		loads := hoistableConstantLoadsInLoop(compiledFunction, newLoopFacts(analysis, loop), limit)
+		for lifted := range loads {
+			readPC := loads[len(loads)-1-lifted] + lifted
+			applyLoopHoist(compiledFunction, analysis, loop.header, readPC)
+			visits.lifted(loop.header, readPC, 1)
 		}
-		if !ok {
-			continue
+		if len(loads) > 0 {
+			return len(loads)
 		}
-		applyLoopHoist(compiledFunction, analysis, loop.header, loadPC)
-		return true
+		visits.finish(loop)
 	}
-	return false
+	return 0
 }
 
-// findHoistableConstantLoadInLoop locates the lowest-PC constant load in loop that
-// dominates the latch, is the loop's only writer of its destination and is safe on the
-// entry path.
+// hoistableConstantLoadsInLoop lists the constant loads in loop that are the loop's only
+// writer of their destination and are safe on the entry path, in ascending PC order.
+//
+// A load that shares its register with another writer is given a register of its own
+// first when it can be (renameDefinition()), which changes operands and no PC, so the
+// search carries on with the same loop facts.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose body holds the loop.
-// Takes facts (*loopFacts) which supplies the loop's members and dominators, and records
-// a rename that gave a load its own register so the caller searches again.
+// Takes facts (*loopFacts) which supplies the loop's members and dominators.
+// Takes limit (int) which is the most loads to list.
 //
-// Returns the load's PC and true on success; (0, false) otherwise.
-func findHoistableConstantLoadInLoop(compiledFunction *program.CompiledFunction, facts *loopFacts) (int, bool) {
+// Returns []int which holds the loads' PCs, nil when there are none.
+func hoistableConstantLoadsInLoop(compiledFunction *program.CompiledFunction, facts *loopFacts, limit int) []int {
 	body := compiledFunction.Body
 	loop := facts.loop
-	for pc := loop.header; pc <= loop.latch; pc++ {
+	var loads []int
+	for pc := loop.header; pc <= loop.latch && len(loads) < limit; pc++ {
 		kind, reg, ok := constantLoadDestination(body[pc])
 		if !ok {
 			continue
 		}
 		members := facts.loopMembers()
 		if len(members) == 0 {
-			return 0, false
+			return nil
 		}
-		if !facts.dominatesLatch(pc) {
+		if !facts.isMember(pc) {
 			continue
 		}
 		if !constantLoadIsLoopInvariant(compiledFunction, members, pc, kind, reg) {
-			if renameDefinition(compiledFunction, facts.analysis, pc, 1, kind, reg) {
-				facts.renamed = true
-				return 0, false
+			if !renameDefinition(compiledFunction, facts.analysis, pc, 1, kind, reg) {
+				continue
 			}
-			continue
+			_, reg, _ = constantLoadDestination(body[pc])
 		}
-		if constantHoistSafeAcrossLoopEntry(compiledFunction, loop, pc, kind, reg) {
-			return pc, true
+		if definitionHoistsUnobserved(compiledFunction, facts, pc, kind, reg) {
+			loads = append(loads, pc)
 		}
 	}
-	return 0, false
+	return loads
 }
 
 // constantLoadDestination classifies inst as a hoistable constant load and names the
@@ -128,20 +141,20 @@ func findHoistableConstantLoadInLoop(compiledFunction *program.CompiledFunction,
 // Returns ok (bool) which is false when inst is not in the hoistable family.
 func constantLoadDestination(inst isa.Instruction) (kind isa.RegisterKind, reg uint8, ok bool) {
 	switch inst.Op {
-	case isa.OpLoadIntConst:
-		return isa.RegisterInt, inst.A, true
-	case isa.OpLoadFloatConst:
-		return isa.RegisterFloat, inst.A, true
-	case isa.OpLoadStringConst:
+	case isa.OpLoadInt64Constant:
+		return isa.RegisterInt64, inst.A, true
+	case isa.OpLoadFloat64Constant:
+		return isa.RegisterFloat64, inst.A, true
+	case isa.OpLoadStringConstant:
 		return isa.RegisterString, inst.A, true
-	case isa.OpLoadUintConst:
-		return isa.RegisterUint, inst.A, true
+	case isa.OpLoadUint64Constant:
+		return isa.RegisterUint64, inst.A, true
 	case isa.OpDrillTier1:
 		switch isa.SubOpcode(inst.A) {
-		case isa.SubOpLoadIntConstSmall:
-			return isa.RegisterInt, inst.B, true
-		case isa.SubOpLoadUintConstSmall:
-			return isa.RegisterUint, inst.B, true
+		case isa.SubOpLoadInt64Immediate:
+			return isa.RegisterInt64, inst.B, true
+		case isa.SubOpLoadUint64Immediate:
+			return isa.RegisterUint64, inst.B, true
 		default:
 			return 0, 0, false
 		}
@@ -170,6 +183,29 @@ func constantLoadIsLoopInvariant(compiledFunction *program.CompiledFunction, mem
 		}
 	}
 	return true
+}
+
+// definitionHoistsUnobserved reports whether a definition that cannot fault, and is the
+// loop's only writer of its register, may run in the pre-header in place of its position
+// in the loop.
+//
+// It may when the register is dead at the loop header, which is to say every path from
+// the header writes the register before reading it. The definition must be a loop member,
+// because the claim that it is the only writer is made of the members alone, and an arm
+// that leaves the loop is free to write the register again.
+//
+// Takes compiledFunction (*program.CompiledFunction) whose body holds the loop.
+// Takes facts (*loopFacts) which supplies the loop and its dominators.
+// Takes pc (int) which is the definition.
+// Takes kind (isa.RegisterKind) which is the destination bank.
+// Takes reg (uint8) which is the destination register.
+//
+// Returns true when the hoist is unobservable.
+func definitionHoistsUnobserved(compiledFunction *program.CompiledFunction, facts *loopFacts, pc int, kind isa.RegisterKind, reg uint8) bool {
+	if registerDeadFrom(compiledFunction, compiledFunction.Body, facts.loop.header, kind, reg) {
+		return true
+	}
+	return facts.dominatesLatch(pc) && constantHoistSafeAcrossLoopEntry(compiledFunction, facts.loop, pc, kind, reg)
 }
 
 // constantHoistSafeAcrossLoopEntry reports whether running the load at loadPC in the

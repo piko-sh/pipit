@@ -21,7 +21,6 @@
 package engine
 
 import (
-	"context"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -139,7 +138,7 @@ func TestArenaResetStopsCloningUnownedStrings(t *testing.T) {
 func TestReentrantVMArenasCloneUnownedStrings(t *testing.T) {
 	t.Parallel()
 	for _, reentrant := range []bool{false, true} {
-		vm := NewVM(context.Background(), NewGlobalStore(), nil)
+		vm := NewVM(t.Context(), NewGlobalStore(), nil)
 		vm.reentrantInterpreterVM = reentrant
 		arena := vm.acquireArena()
 		require.Equal(t, reentrant, arena.cloneUnownedStrings, "reentrant=%v", reentrant)

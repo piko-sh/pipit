@@ -4,81 +4,77 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function Pipe.Read
-;   registers: int=5 general=3 bool=1 sliceByte=2
-;   dispatch:  asm=18 shim=3 exit=0 go=5
+;   registers: int64=5 general=3 bool=1 sliceByte=2
+;   dispatch:  asm=16 shim=5 exit=0 go=2
 ;   params:    (general, general)
-;   returns:   (int, general)
+;   returns:   (int64, general)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=0
 
-0000 A 0:GET_STRUCT_FIELD_BOOL_T0   0   0   0
-0001 G 1:BOOL_TO_INT               53   0   0
-0002 A 1:MOVE_INT                  35   1   0
-0003 A 0:JUMP_IF_FALSE              1   3   0    ; if ints[1] == 0 goto +3
-0004 A 0:GET_STRUCT_FIELD_SLICE_LEN   2   0   1
-0005 A 1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
-0006 A 0:EQ_INT                     1   2   3
-0007 A 0:JUMP_IF_FALSE              1   6   0    ; if ints[1] == 0 goto +6
-0008 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0009 S 0:LOAD_GENERAL_CONST         2   0   0
-0010 A 0:MOVE_GENERAL               2   2   0
-0011 A 1:MOVE_INT                  35   0   1
-0012 A 0:MOVE_GENERAL               0   2   0
-0013 A 2:TIER2_RETURN               0  10   2    ; 2 values
-0014 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
-0015   0:EXT                        1   0   0
-0016 S 0:PACK_INTERFACE             2   0  12
-0017 S 0:COPY                       0   1   2
-0018 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
-0019   0:EXT                        1   0   0
-0020 A 1:SLICE_BYTE_SLICE         115   1   0
-0021   0:EXT                        1   0   0
-0022 G 1:SET_STRUCT_FIELD_SLICE_BYTE 201   0   1
-0023   0:EXT                        1   0   0
-0024 A 1:MOVE_INT                  35   1   0
-0025 G 2:TIER2_LOAD_NIL             0   9   2
-0026 A 0:MOVE_GENERAL               2   2   1
-0027 A 1:MOVE_INT                  35   0   1
-0028 A 0:MOVE_GENERAL               0   2   0
-0029 A 2:TIER2_RETURN               0  10   2    ; 2 values
+0000 A 0:GET_STRUCT_FIELD_BOOL                                0   0   0
+0001 A 1:CONVERT_BOOL_TO_INT64                               53   0   0
+0002 A 1:MOVE_INT64                                          35   1   0
+0003 A 0:JUMP_IF_FALSE                                        1   9   0    ; if ints[1] == 0 goto +9
+0004 A 0:LENGTH_STRUCT_FIELD                                  2   0   1
+0005 A 1:LOAD_INT64_IMMEDIATE                                75   3   0    ; ints[3] = 0
+0006 A 1:EQUAL_INT64_THEN_JUMP_IF_FALSE                     120   2   3
+0007   0:EXTENSION                                            5   0   0
+0008 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0009 S 0:LOAD_GENERAL_CONSTANT                                2   0   0
+0010 A 0:MOVE_GENERAL                                         2   2   0
+0011 A 0:MOVE_GENERAL                                         0   2   0
+0012 A 2:RETURN                                               0  10   2    ; 2 values
+0013 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   0   0
+0014   0:EXTENSION                                            1   0   0
+0015 S 0:BOX_AS_INTERFACE                                     2   0  12
+0016 S 0:COPY_GENERAL                                         0   1   2
+0017 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   0   0
+0018   0:EXTENSION                                            1   0   0
+0019 A 1:SLICE_SLICE_BYTE                                   115   1   0
+0020   0:EXTENSION                                            1   0   0
+0021 G 1:SET_STRUCT_FIELD_SLICE_BYTE                        201   0   1
+0022   0:EXTENSION                                            1   0   0
+0023 A 1:MOVE_INT64                                          35   0   0
+0024 G 2:LOAD_NIL                                             0   9   2
+0025 A 0:MOVE_GENERAL                                         2   2   1
+0026 A 0:MOVE_GENERAL                                         0   2   0
+0027 A 2:RETURN                                               0  10   2    ; 2 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function Pipe.Write
-;   registers: int=2 string=1 general=5 bool=1 sliceByte=1
-;   dispatch:  asm=14 shim=3 exit=0 go=5
+;   registers: int64=2 string=1 general=4 bool=1 sliceByte=1
+;   dispatch:  asm=13 shim=4 exit=0 go=2
 ;   params:    (general, general)
-;   returns:   (int, general)
+;   returns:   (int64, general)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=0
 ;   strings: [0]="closed"
 
-0000 A 0:GET_STRUCT_FIELD_BOOL_T0   0   0   0
-0001 G 1:BOOL_TO_INT               53   0   0
-0002 A 0:JUMP_IF_FALSE              0   8   0    ; if ints[0] == 0 goto +8
-0003 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0004 S 0:LOAD_GENERAL_CONST         2   0   0
-0005 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "closed"
-0006 G 1:CALL_NATIVE              130   0   0    ; call native general[2] (site 0)
-0007 A 0:MOVE_GENERAL               2   3   0
-0008 A 1:MOVE_INT                  35   0   1
-0009 A 0:MOVE_GENERAL               0   2   0
-0010 A 2:TIER2_RETURN               0  10   2    ; 2 values
-0011 A 0:MOVE_GENERAL               2   0   0
-0012 G 1:GET_STRUCT_FIELD_SLICE_BYTE 195   0   0
-0013   0:EXT                        1   0   0
-0014 S 0:PACK_INTERFACE             3   0  12
-0015 S 0:APPEND_SPREAD              4   3   1
-0016 A 0:SET_STRUCT_FIELD_GENERAL_T0   2   4   1
-0017 G 1:LEN                       70   1   1
-0018 G 2:TIER2_LOAD_NIL             0   9   2
-0019 A 0:MOVE_GENERAL               2   2   1
-0020 A 1:MOVE_INT                  35   0   1
-0021 A 0:MOVE_GENERAL               0   2   0
-0022 A 2:TIER2_RETURN               0  10   2    ; 2 values
+0000 A 0:GET_STRUCT_FIELD_BOOL                                0   0   0
+0001 A 2:JUMP_IF_FALSE_BOOL                                   0  20   0
+0002   0:EXTENSION                                            8   0   0
+0003 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0004 S 0:LOAD_GENERAL_CONSTANT                                2   0   0
+0005 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "closed"
+0006 G 1:CALL_NATIVE                                        130   0   0    ; call native general[2] (site 0)
+0007 A 0:MOVE_GENERAL                                         2   3   0
+0008 A 1:MOVE_INT64                                          35   0   1
+0009 A 0:MOVE_GENERAL                                         0   2   0
+0010 A 2:RETURN                                               0  10   2    ; 2 values
+0011 S 1:GET_STRUCT_FIELD_SLICE_BYTE                        195   0   0
+0012   0:EXTENSION                                            1   0   0
+0013 S 0:BOX_AS_INTERFACE                                     2   0  12
+0014 S 0:APPEND_SPREAD                                        3   2   1
+0015 A 0:SET_STRUCT_FIELD_GENERAL                             0   3   1
+0016 A 1:LENGTH_GENERAL                                      70   0   1
+0017 G 2:LOAD_NIL                                             0   9   2
+0018 A 0:MOVE_GENERAL                                         2   2   1
+0019 A 0:MOVE_GENERAL                                         0   2   0
+0020 A 2:RETURN                                               0  10   2    ; 2 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function Pipe.Close
@@ -91,16 +87,16 @@
 ; constants:
 ;   bools:   [0]=true
 
-0000 A 1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
-0001 A 0:SET_STRUCT_FIELD_BOOL_T0   0   0   0
-0002 G 2:TIER2_LOAD_NIL             0   9   1
-0003 A 0:MOVE_GENERAL               0   1   0
-0004 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = true
+0001 A 0:SET_STRUCT_FIELD_BOOL                                0   0   0
+0002 G 2:LOAD_NIL                                             0   9   1
+0003 A 0:MOVE_GENERAL                                         0   1   0
+0004 A 2:RETURN                                               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=1 string=3 general=5 bool=1
-;   dispatch:  asm=14 shim=4 exit=0 go=4
+;   registers: int64=1 string=3 general=5 bool=1
+;   dispatch:  asm=14 shim=5 exit=0 go=3
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -109,32 +105,32 @@
 ;   ints:    [0]=32
 ;   strings: [0]="hello"  [1]="Write"  [2]=" world"  [3]="Close"  [4]="Read"  [5]="read=%s,closed=%t"
 
-0000 G 2:MAKE_MAP                   0  12   0
-0001   0:EXT                        0   0   0
-0002 S 0:ADDR                       1   0   0
-0003 A 0:MOVE_GENERAL               0   1   1
-0004 A 0:MOVE_GENERAL               1   0   1
-0005 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "hello"
-0006 G 1:STRING_TO_BYTES           71   3   0
-0007 A 1:CALL_METHOD              132   0   0    ; call method (site 0)
-0008   0:EXT                        1   0   0
-0009 A 0:LOAD_STRING_CONST          0   2   0    ; strings[0] = " world"
-0010 G 1:STRING_TO_BYTES           71   3   0
-0011 A 1:CALL_METHOD              132   1   0    ; call method (site 1)
-0012   0:EXT                        1   0   0
-0013 A 1:CALL_METHOD              132   2   0    ; call method (site 2)
-0014   0:EXT                        3   0   0
-0015 A 1:LOAD_INT_CONST_SMALL      75   0  32    ; ints[0] = 32
-0016 S 0:MAKE_SLICE                 2   0   0
-0017   0:EXT                        1   0   0
-0018 A 1:CALL_METHOD              132   3   0    ; call method (site 3)
-0019   0:EXT                        4   0   0
-0020 S 0:LOAD_GENERAL_CONST         3   0   0
-0021 A 0:LOAD_STRING_CONST          0   5   0    ; strings[0] = "read=%s,closed=%t"
-0022 S 1:SLICE_OP                 141   4   2
-0023   0:EXT                        2   0   0
-0024 A 1:BYTES_TO_STRING           11   1   4
-0025 A 0:GET_STRUCT_FIELD_BOOL_T0   0   0   0
-0026 G 1:CALL_NATIVE              130   4   0    ; call native general[3] (site 4)
-0027 A 1:MOVE_STRING               37   0   2
-0028 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 2:MAKE_MAP                                             0  12   0
+0001   0:EXTENSION                                            0   0   0
+0002 S 0:ADDRESS                                              1   0   0
+0003 A 0:MOVE_GENERAL                                         0   1   1
+0004 A 0:MOVE_GENERAL                                         1   0   1
+0005 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "hello"
+0006 G 1:CONVERT_STRING_TO_BYTES                             71   3   0
+0007 A 1:CALL_METHOD                                        132   0   0    ; call method (site 0)
+0008   0:EXTENSION                                            1   0   0
+0009 A 0:LOAD_STRING_CONSTANT                                 0   2   0    ; strings[0] = " world"
+0010 G 1:CONVERT_STRING_TO_BYTES                             71   3   0
+0011 A 1:CALL_METHOD                                        132   1   0    ; call method (site 1)
+0012   0:EXTENSION                                            1   0   0
+0013 A 1:CALL_METHOD                                        132   2   0    ; call method (site 2)
+0014   0:EXTENSION                                            3   0   0
+0015 A 1:LOAD_INT64_IMMEDIATE                                75   0  32    ; ints[0] = 32
+0016 S 0:MAKE_SLICE                                           2   0   0
+0017   0:EXTENSION                                            1   0   0
+0018 A 1:CALL_METHOD                                        132   3   0    ; call method (site 3)
+0019   0:EXTENSION                                            4   0   0
+0020 S 0:LOAD_GENERAL_CONSTANT                                3   0   0
+0021 A 0:LOAD_STRING_CONSTANT                                 0   5   0    ; strings[0] = "read=%s,closed=%t"
+0022 S 1:SLICE_GENERAL                                      141   4   2
+0023   0:EXTENSION                                            2   0   0
+0024 A 1:CONVERT_BYTES_TO_STRING                             11   1   4
+0025 A 0:GET_STRUCT_FIELD_BOOL                                0   0   0
+0026 G 1:CALL_NATIVE                                        130   4   0    ; call native general[3] (site 4)
+0027 A 1:MOVE_STRING                                         37   0   2
+0028 A 2:RETURN                                               0  10   1    ; 1 values

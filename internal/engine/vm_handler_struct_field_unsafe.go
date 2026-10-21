@@ -32,104 +32,7 @@ import (
 // structFieldReflectWrite so the wide-encoded resolver helpers can share their skeleton.
 type structFieldReflectFallback func(registers *Registers, frame *CallFrame, generalRegister uint8, layout program.StructFieldLayout) (reflect.Value, bool)
 
-// structFieldUnsafeBase resolves a general-bank reflect.Value to the underlying
-// unsafe.Pointer of the struct it represents (auto-deref for pointer-to-struct, returns
-// (nil, false) for non-addressable receivers so the caller falls back to the
-// reflect-based walk).
-//
-// Takes registers (*Registers) which provides the general bank.
-// Takes generalRegister (uint8) which is the general register index holding the struct
-// reflect.Value.
-//
-// Returns the base unsafe.Pointer of the underlying struct, plus true on success.
-// Returns (nil, false) when the value is invalid, a nil pointer, or otherwise unreachable
-// as a stable base pointer.
-//
-// Bypasses reflect.Value method calls for the dominant Pointer case by reading the
-// value's internal {typ,ptr,flag} layout directly. The inline form is a kind extract +
-// nil check + pointer fetch, with no function call boundary.
-func structFieldUnsafeBase(registers *Registers, generalRegister uint8) (unsafe.Pointer, bool) {
-	value := registers.General[generalRegister]
-	raw := (*unsafeReflectValue)(unsafe.Pointer(&value))
-	if raw.typ == nil {
-		return nil, false
-	}
-	switch reflect.Kind(raw.flag & flagKindMask) {
-	case reflect.Pointer:
-		return resolvePointerBase(raw)
-	case reflect.Interface:
-		return resolveInterfaceBase(value)
-	case reflect.Struct:
-		return resolveStructBase(raw)
-	default:
-	}
-	return nil, false
-}
-
-// resolvePointerBase extracts the underlying unsafe.Pointer when the reflect.Value holds
-// a Pointer kind.
-//
-// When flagIndir is set, raw.ptr addresses a *T storage cell that must be dereferenced.
-// When unset, raw.ptr IS the pointer value already (snapshotted from
-// snapshotPointerLeaf).
-//
-// Takes raw (*unsafeReflectValue) which is the punned reflect.Value internals.
-//
-// Returns the dereferenced pointer plus true on success; (nil, false) when the pointer is
-// nil.
-func resolvePointerBase(raw *unsafeReflectValue) (unsafe.Pointer, bool) {
-	if raw.flag&flagIndir != 0 {
-		inner := *(*unsafe.Pointer)(raw.ptr)
-		if inner == nil {
-			return nil, false
-		}
-		return inner, true
-	}
-	if raw.ptr == nil {
-		return nil, false
-	}
-	return raw.ptr, true
-}
-
-// resolveInterfaceBase extracts the underlying unsafe.Pointer when the reflect.Value
-// holds an Interface kind.
-//
-// For an addressable Value (flagAddr | flagIndir set) the internal .ptr field IS the
-// storage address - same as what inner.Addr(). UnsafePointer() returns, but without the
-// ptrTo() / sync.Map.Load round-trip Addr() does to build the *T wrapper Value.
-//
-// Takes value (reflect.Value) which is the interface-holding value.
-//
-// Returns the dereferenced pointer plus true on success; (nil, false) when the value is a
-// nil pointer or otherwise unreachable.
-func resolveInterfaceBase(value reflect.Value) (unsafe.Pointer, bool) {
-	inner := value.Elem()
-	if inner.Kind() == reflect.Pointer {
-		if inner.IsNil() {
-			return nil, false
-		}
-		return inner.UnsafePointer(), true
-	}
-	if inner.CanAddr() {
-		return ReflectValuePtr(inner), true
-	}
-	return nil, false
-}
-
-// resolveStructBase extracts the unsafe.Pointer when the reflect.Value holds an
-// addressable Struct kind. flagAddr set means raw.ptr is the storage.
-//
-// Takes raw (*unsafeReflectValue) which is the punned reflect.Value internals.
-//
-// Returns the storage pointer plus true when addressable; (nil, false) otherwise.
-func resolveStructBase(raw *unsafeReflectValue) (unsafe.Pointer, bool) {
-	if raw.flag&flagAddr != 0 {
-		return raw.ptr, true
-	}
-	return nil, false
-}
-
-// handleGetStructFieldUnsafeInt reads an int-kind struct field.
+// handleGetStructFieldInt64Wide reads an int-kind struct field.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -137,7 +40,7 @@ func resolveStructBase(raw *unsafeReflectValue) (unsafe.Pointer, bool) {
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next dispatch step.
-func handleGetStructFieldUnsafeInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldInt64Wide(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	fieldPointer, ok, fallbackField, layoutKind := resolveReadFieldPointerWideKind(frame, registers, instruction.C)
 	if !ok {
 		if fallbackField.IsValid() {
@@ -150,11 +53,7 @@ func handleGetStructFieldUnsafeInt(vm *VM, frame *CallFrame, registers *Register
 	return opContinue
 }
 
-// handleGetStructFieldUnsafeUint reads a uint-kind struct field.
-//
-// Stores the uint64 value into uints[B]. Uses unsafe.Pointer arithmetic via the
-// pre-resolved structLayoutTable entry; falls back to a reflect walk on non-addressable
-// receivers.
+// handleGetStructFieldUint64Wide reads a uint-kind struct field.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -162,7 +61,7 @@ func handleGetStructFieldUnsafeInt(vm *VM, frame *CallFrame, registers *Register
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleGetStructFieldUnsafeUint(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldUint64Wide(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	fieldPointer, ok, fallbackField, layoutKind := resolveReadFieldPointerWideKind(frame, registers, instruction.C)
 	if !ok {
 		if fallbackField.IsValid() {
@@ -175,11 +74,7 @@ func handleGetStructFieldUnsafeUint(vm *VM, frame *CallFrame, registers *Registe
 	return opContinue
 }
 
-// handleGetStructFieldUnsafeBool reads a bool-kind struct field.
-//
-// Stores the bool value into bools[B]. Uses unsafe.Pointer arithmetic via the
-// pre-resolved structLayoutTable entry; falls back to a reflect walk on non-addressable
-// receivers.
+// handleGetStructFieldBoolWide reads a bool-kind struct field.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -187,7 +82,7 @@ func handleGetStructFieldUnsafeUint(vm *VM, frame *CallFrame, registers *Registe
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleGetStructFieldUnsafeBool(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldBoolWide(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	fieldPointer, ok, fallbackField := resolveReadFieldPointerWide(frame, registers, instruction.C)
 	if !ok {
 		if fallbackField.IsValid() {
@@ -200,11 +95,7 @@ func handleGetStructFieldUnsafeBool(vm *VM, frame *CallFrame, registers *Registe
 	return opContinue
 }
 
-// handleGetStructFieldUnsafeString reads a string-kind struct field.
-//
-// Stores the 16-byte string header into strings[B]. Reads are barrier-free. Uses
-// unsafe.Pointer arithmetic via the pre-resolved structLayoutTable entry; falls back to a
-// reflect walk on non-addressable receivers.
+// handleGetStructFieldStringWide reads a string-kind struct field.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -212,7 +103,7 @@ func handleGetStructFieldUnsafeBool(vm *VM, frame *CallFrame, registers *Registe
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleGetStructFieldUnsafeString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldStringWide(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	fieldPointer, ok, fallbackField := resolveReadFieldPointerWide(frame, registers, instruction.C)
 	if !ok {
 		if fallbackField.IsValid() {
@@ -225,7 +116,7 @@ func handleGetStructFieldUnsafeString(vm *VM, frame *CallFrame, registers *Regis
 	return opContinue
 }
 
-// handleGetStructFieldUnsafeSliceInt reads a []int64 struct field.
+// handleGetStructFieldSliceInt64 reads a []int64 struct field.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -233,7 +124,7 @@ func handleGetStructFieldUnsafeString(vm *VM, frame *CallFrame, registers *Regis
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleGetStructFieldUnsafeSliceInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldSliceInt64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	fieldPointer, ok, fallbackField := resolveReadFieldPointerWide(frame, registers, instruction.C)
 	if !ok {
 		return readTypedSliceFieldFallback(vm, frame, registers, instruction.C, fallbackField, &registers.SlicesInt[instruction.B])
@@ -242,8 +133,8 @@ func handleGetStructFieldUnsafeSliceInt(vm *VM, frame *CallFrame, registers *Reg
 	return opContinue
 }
 
-// handleGetStructFieldUnsafeSliceFloat is the float64 counterpart of
-// handleGetStructFieldUnsafeSliceInt.
+// handleGetStructFieldSliceFloat64 is the float64 counterpart of
+// handleGetStructFieldSliceInt64.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -251,7 +142,7 @@ func handleGetStructFieldUnsafeSliceInt(vm *VM, frame *CallFrame, registers *Reg
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleGetStructFieldUnsafeSliceFloat(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldSliceFloat64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	fieldPointer, ok, fallbackField := resolveReadFieldPointerWide(frame, registers, instruction.C)
 	if !ok {
 		return readTypedSliceFieldFallback(vm, frame, registers, instruction.C, fallbackField, &registers.slicesFloat[instruction.B])
@@ -260,8 +151,8 @@ func handleGetStructFieldUnsafeSliceFloat(vm *VM, frame *CallFrame, registers *R
 	return opContinue
 }
 
-// handleGetStructFieldUnsafeSliceUint is the uint64 counterpart of
-// handleGetStructFieldUnsafeSliceInt.
+// handleGetStructFieldSliceUint64 is the uint64 counterpart of
+// handleGetStructFieldSliceInt64.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -269,7 +160,7 @@ func handleGetStructFieldUnsafeSliceFloat(vm *VM, frame *CallFrame, registers *R
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleGetStructFieldUnsafeSliceUint(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldSliceUint64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	fieldPointer, ok, fallbackField := resolveReadFieldPointerWide(frame, registers, instruction.C)
 	if !ok {
 		return readTypedSliceFieldFallback(vm, frame, registers, instruction.C, fallbackField, &registers.slicesUint[instruction.B])
@@ -278,8 +169,8 @@ func handleGetStructFieldUnsafeSliceUint(vm *VM, frame *CallFrame, registers *Re
 	return opContinue
 }
 
-// handleGetStructFieldUnsafeSliceString is the string counterpart of
-// handleGetStructFieldUnsafeSliceInt.
+// handleGetStructFieldSliceString is the string counterpart of
+// handleGetStructFieldSliceInt64.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -287,7 +178,7 @@ func handleGetStructFieldUnsafeSliceUint(vm *VM, frame *CallFrame, registers *Re
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleGetStructFieldUnsafeSliceString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldSliceString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	fieldPointer, ok, fallbackField := resolveReadFieldPointerWide(frame, registers, instruction.C)
 	if !ok {
 		return readTypedSliceFieldFallback(vm, frame, registers, instruction.C, fallbackField, &registers.slicesString[instruction.B])
@@ -296,8 +187,8 @@ func handleGetStructFieldUnsafeSliceString(vm *VM, frame *CallFrame, registers *
 	return opContinue
 }
 
-// handleGetStructFieldUnsafeSliceBool is the bool counterpart of
-// handleGetStructFieldUnsafeSliceInt.
+// handleGetStructFieldSliceBool is the bool counterpart of
+// handleGetStructFieldSliceInt64.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -305,7 +196,7 @@ func handleGetStructFieldUnsafeSliceString(vm *VM, frame *CallFrame, registers *
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleGetStructFieldUnsafeSliceBool(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldSliceBool(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	fieldPointer, ok, fallbackField := resolveReadFieldPointerWide(frame, registers, instruction.C)
 	if !ok {
 		return readTypedSliceFieldFallback(vm, frame, registers, instruction.C, fallbackField, &registers.slicesBool[instruction.B])
@@ -314,8 +205,8 @@ func handleGetStructFieldUnsafeSliceBool(vm *VM, frame *CallFrame, registers *Re
 	return opContinue
 }
 
-// handleGetStructFieldUnsafeSliceByte is the byte (uint8) counterpart of
-// handleGetStructFieldUnsafeSliceInt.
+// handleGetStructFieldSliceByte is the byte (uint8) counterpart of
+// handleGetStructFieldSliceInt64.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -323,7 +214,7 @@ func handleGetStructFieldUnsafeSliceBool(vm *VM, frame *CallFrame, registers *Re
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleGetStructFieldUnsafeSliceByte(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldSliceByte(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	fieldPointer, ok, fallbackField := resolveReadFieldPointerWide(frame, registers, instruction.C)
 	if !ok {
 		return readTypedSliceFieldFallback(vm, frame, registers, instruction.C, fallbackField, &registers.slicesByte[instruction.B])
@@ -332,12 +223,7 @@ func handleGetStructFieldUnsafeSliceByte(vm *VM, frame *CallFrame, registers *Re
 	return opContinue
 }
 
-// handleSetStructFieldUnsafeInt writes an int-kind struct field.
-//
-// Operand layout: B=destination general register holding the struct, C=source int
-// register. Uses unsafe.Pointer arithmetic via the pre-resolved structLayoutTable entry;
-// falls back to a reflect write on non-addressable receivers (with rehome - writes to
-// non-addressable values are otherwise a Go compile error).
+// handleSetStructFieldInt64Wide writes an int-kind struct field.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -345,7 +231,7 @@ func handleGetStructFieldUnsafeSliceByte(vm *VM, frame *CallFrame, registers *Re
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleSetStructFieldUnsafeInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldInt64Wide(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	fieldPointer, ok, fallbackField, layoutKind := resolveWriteFieldPointerWideKind(frame, registers, instruction.B)
 	if !ok {
 		if fallbackField.IsValid() {
@@ -358,10 +244,7 @@ func handleSetStructFieldUnsafeInt(vm *VM, frame *CallFrame, registers *Register
 	return opContinue
 }
 
-// handleSetStructFieldUnsafeUint writes a uint-kind struct field.
-//
-// Uses unsafe.Pointer arithmetic via the pre-resolved structLayoutTable entry; falls back
-// to a reflect write on non-addressable receivers.
+// handleSetStructFieldUint64Wide writes a uint-kind struct field.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -369,7 +252,7 @@ func handleSetStructFieldUnsafeInt(vm *VM, frame *CallFrame, registers *Register
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleSetStructFieldUnsafeUint(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldUint64Wide(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	fieldPointer, ok, fallbackField, layoutKind := resolveWriteFieldPointerWideKind(frame, registers, instruction.B)
 	if !ok {
 		if fallbackField.IsValid() {
@@ -382,9 +265,8 @@ func handleSetStructFieldUnsafeUint(vm *VM, frame *CallFrame, registers *Registe
 	return opContinue
 }
 
-// setStructFieldUnsafeSliceImpl writes a typed-slice struct field, copying arena
-// backing when needed. It uses runtime.typedmemmove for direct stores and reflection
-// otherwise.
+// setStructFieldUnsafeSliceImpl writes a typed-slice struct field, copying arena backing
+// when needed. It uses runtime.typedmemmove for direct stores and reflection otherwise.
 //
 // Takes vm (*VM) which carries the panic machinery for nil-pointer receivers.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -392,8 +274,7 @@ func handleSetStructFieldUnsafeUint(vm *VM, frame *CallFrame, registers *Registe
 // Takes instruction (instruction) which encodes the operand indices.
 // Takes source (S) which is the typed-slice header to write.
 //
-// Returns opContinue, or the raised interpreted panic when the receiver is a nil
-// pointer.
+// Returns opContinue, or the raised interpreted panic when the receiver is a nil pointer.
 func setStructFieldUnsafeSliceImpl[S ~[]E, E any](vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction, source S) OpResult {
 	layoutIndex := readExtensionWideIndex(frame)
 	layout := structLayoutAtWide(frame, layoutIndex)
@@ -419,28 +300,7 @@ func setStructFieldUnsafeSliceImpl[S ~[]E, E any](vm *VM, frame *CallFrame, regi
 	return opContinue
 }
 
-// materialiseSliceForFieldStore is the store barrier for a typed slice written into a
-// struct field. A backing this arena owns is copied to the heap, as MaterialiseArenaValue
-// does for a general field, unless the receiving struct itself lives in the arena, which
-// copies its fields when it escapes.
-//
-// Takes arena (*RegisterArena) which owns the candidate slabs; nil stores s as it is.
-// Takes base (unsafe.Pointer) which is the receiving struct, or nil when unknown.
-// Takes s (S) which is the slice about to be stored.
-//
-// Returns s, or a heap copy of it when its backing is in the arena.
-func materialiseSliceForFieldStore[S ~[]E, E any](arena *RegisterArena, base unsafe.Pointer, s S) S {
-	if arena == nil || cap(s) == 0 || arena.ownsBytePointer(base) || !arena.OwnsSliceBacking(unsafe.Pointer(unsafe.SliceData(s))) {
-		return s
-	}
-	detached, ok := reflect.TypeAssert[S](MaterialiseArenaSliceUnconditional(arena, reflect.ValueOf(s)))
-	if !ok {
-		return s
-	}
-	return detached
-}
-
-// handleSetStructFieldUnsafeSliceInt writes a []int64 struct field.
+// handleSetStructFieldSliceInt64 writes a []int64 struct field.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -448,12 +308,12 @@ func materialiseSliceForFieldStore[S ~[]E, E any](arena *RegisterArena, base uns
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleSetStructFieldUnsafeSliceInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldSliceInt64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	return setStructFieldUnsafeSliceImpl(vm, frame, registers, instruction, registers.SlicesInt[instruction.C])
 }
 
-// handleSetStructFieldUnsafeSliceFloat is the float64 counterpart of
-// handleSetStructFieldUnsafeSliceInt.
+// handleSetStructFieldSliceFloat64 is the float64 counterpart of
+// handleSetStructFieldSliceInt64.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -461,12 +321,12 @@ func handleSetStructFieldUnsafeSliceInt(vm *VM, frame *CallFrame, registers *Reg
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleSetStructFieldUnsafeSliceFloat(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldSliceFloat64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	return setStructFieldUnsafeSliceImpl(vm, frame, registers, instruction, registers.slicesFloat[instruction.C])
 }
 
-// handleSetStructFieldUnsafeSliceUint is the uint64 counterpart of
-// handleSetStructFieldUnsafeSliceInt.
+// handleSetStructFieldSliceUint64 is the uint64 counterpart of
+// handleSetStructFieldSliceInt64.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -474,12 +334,12 @@ func handleSetStructFieldUnsafeSliceFloat(vm *VM, frame *CallFrame, registers *R
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleSetStructFieldUnsafeSliceUint(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldSliceUint64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	return setStructFieldUnsafeSliceImpl(vm, frame, registers, instruction, registers.slicesUint[instruction.C])
 }
 
-// handleSetStructFieldUnsafeSliceString is the []string counterpart of
-// handleSetStructFieldUnsafeSliceInt.
+// handleSetStructFieldSliceString is the []string counterpart of
+// handleSetStructFieldSliceInt64.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -487,12 +347,12 @@ func handleSetStructFieldUnsafeSliceUint(vm *VM, frame *CallFrame, registers *Re
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleSetStructFieldUnsafeSliceString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldSliceString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	return setStructFieldUnsafeSliceImpl(vm, frame, registers, instruction, registers.slicesString[instruction.C])
 }
 
-// handleSetStructFieldUnsafeSliceBool is the []bool counterpart of
-// handleSetStructFieldUnsafeSliceInt.
+// handleSetStructFieldSliceBool is the []bool counterpart of
+// handleSetStructFieldSliceInt64.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -500,12 +360,12 @@ func handleSetStructFieldUnsafeSliceString(vm *VM, frame *CallFrame, registers *
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleSetStructFieldUnsafeSliceBool(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldSliceBool(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	return setStructFieldUnsafeSliceImpl(vm, frame, registers, instruction, registers.slicesBool[instruction.C])
 }
 
-// handleSetStructFieldUnsafeSliceByte is the []byte counterpart of
-// handleSetStructFieldUnsafeSliceInt.
+// handleSetStructFieldSliceByte is the []byte counterpart of
+// handleSetStructFieldSliceInt64.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -513,7 +373,7 @@ func handleSetStructFieldUnsafeSliceBool(vm *VM, frame *CallFrame, registers *Re
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleSetStructFieldUnsafeSliceByte(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldSliceByte(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	return setStructFieldUnsafeSliceImpl(vm, frame, registers, instruction, registers.slicesByte[instruction.C])
 }
 

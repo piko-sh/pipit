@@ -54,11 +54,17 @@ func TestArenaSlabRegistryTracksEveryByteSlab(t *testing.T) {
 	require.True(t, inArenaSlab(stringAddress(grown)), "a grown slab is recorded")
 
 	arena.dropRetainedOldSlabs()
-	require.False(t, inArenaSlab(stringAddress(current)), "a dropped slab is forgotten")
+	require.False(t, inOwnersSlab(arena.slabOwner, stringAddress(current)), "a dropped slab is forgotten")
 
-	arena.abandonEscapedSlabs()
-	require.False(t, inArenaSlab(stringAddress(grown)), "an abandoned slab is no arena's to reuse")
+	arena.abandonEscapedSlabsLazily()
+	require.False(t, inOwnersSlab(arena.slabOwner, stringAddress(grown)), "an abandoned slab is no longer the arena's to reuse")
 	require.True(t, inArenaSlab(stringAddress(arenaString(arena, "fresh"))), "its replacement is recorded")
+}
+
+func inOwnersSlab(owner uint64, pointer uintptr) bool {
+	return slices.ContainsFunc(loadArenaSlabRanges(), func(entry arenaSlabRange) bool {
+		return entry.owner == owner && entry.start <= pointer && pointer < entry.end
+	})
 }
 
 func TestArenaSlabRegistryForgetsACollectedArena(t *testing.T) {
@@ -89,7 +95,7 @@ func TestForeignStringBarrierClonesOnlyArenaStrings(t *testing.T) {
 	t.Cleanup(func() { PutRegisterArena(parent) })
 	abandoning := NewRegisterArena()
 	abandoned := arenaString(abandoning, "left-to-an-escaped-value")
-	abandoning.abandonEscapedSlabs()
+	abandoning.abandonEscapedSlabsLazily()
 
 	tests := []struct {
 		name      string
@@ -131,12 +137,30 @@ func TestInAnArenaSlabRemembersTheLastForeignSlab(t *testing.T) {
 	require.True(t, callback.inAnArenaSlab(foreign))
 	start, length := callback.foreignSlabStart, callback.foreignSlabLength
 	require.Positive(t, length, "the slab the lookup found is remembered")
-	require.False(t, callback.inAnArenaSlab(strings.Clone("host-string")), "a host string misses the remembered slab and the registry")
+	require.False(t, callback.inAnArenaSlab(hostStringOutsideTheRegistry(t)), "a host string misses the remembered slab and the registry")
 	require.Equal(t, start, callback.foreignSlabStart, "a miss keeps the remembered slab")
 	require.True(t, callback.inAnArenaSlab(arenaString(parent, "another")), "a second string in the same slab hits it")
 
 	callback.Reset()
 	require.Zero(t, callback.foreignSlabLength, "Reset forgets the remembered slab")
+}
+
+func hostStringOutsideTheRegistry(t *testing.T) string {
+	t.Helper()
+	held := make([]string, 0, 64)
+	for attempt := range 64 {
+		if attempt > 0 && attempt%16 == 0 {
+			runtime.GC()
+		}
+		host := strings.Repeat("h", 11<<(attempt%12))
+		if _, _, found := arenaSlabContaining(stringAddress(host)); !found {
+			runtime.KeepAlive(held)
+			return host
+		}
+		held = append(held, host)
+	}
+	require.FailNow(t, "64 host strings in a row lay in recorded slab ranges")
+	return ""
 }
 
 func TestArenaSlabRegistryIsSafeForConcurrentUse(t *testing.T) {
@@ -148,7 +172,7 @@ func TestArenaSlabRegistryIsSafeForConcurrentUse(t *testing.T) {
 				arena := NewRegisterArena()
 				arena.GrowByteSlab(len(arena.byteSlab) + 1)
 				arena.dropRetainedOldSlabs()
-				arena.abandonEscapedSlabs()
+				arena.abandonEscapedSlabsLazily()
 			}
 		})
 		group.Go(func() {
@@ -198,4 +222,120 @@ func TestOnlyReplaceByteSlabAssignsTheByteSlab(t *testing.T) {
 		}
 	}
 	require.Empty(t, offenders, "install a byte slab through replaceByteSlab so the slab registry records it")
+}
+
+func TestReuseHazardForeignStringBarrierSeesAReusedByteSlab(t *testing.T) {
+	observations := &hazardObservations{}
+	const text = "foreign bytes past the end of a dead arena's shorter slab"
+	buffer := make([]byte, InitialByteSlabSize)
+	base := slabBase(buffer)
+	half := len(buffer) / 2
+
+	dead := NewRegisterArena()
+	dead.replaceByteSlab(buffer[:half:half], false)
+	if !inOwnersSlab(dead.slabOwner, base) {
+		assertNoHazard(t, observations, "the first arena's half-length slab is not recorded")
+		return
+	}
+
+	owner := NewRegisterArena()
+	owner.replaceByteSlab(buffer, false)
+	owner.attachLicencePolicy(&VMLimits{})
+	arenaString(owner, strings.Repeat("f", half))
+	lent := arenaString(owner, text)
+	address := stringAddress(lent)
+	if slabBase(owner.byteSlab) != base || address < base+uintptr(half) {
+		assertNoHazard(t, observations, "the lent string is not in the second half of the reused slab")
+		return
+	}
+	observations.note("the first arena's entry is still recorded=%v", inOwnersSlab(dead.slabOwner, base))
+	if start, holder, found := arenaSlabHolder(address); !found || start != base || holder != owner.slabOwner {
+		observations.fire("slab-misattributed", "the byte registry names start %#x holder %d (found=%v) for the lent string, want %#x holder %d",
+			start, holder, found, base, owner.slabOwner)
+	}
+
+	callback := newArena(t)
+	callback.cloneUnownedStrings = true
+	stored := materialiseString(callback, lent)
+	cloned := stringAddress(stored) != address
+	observations.note("the callback's store into heap memory cloned the foreign string=%v", cloned)
+
+	owner.Reset()
+	observations.note("owner's release recycled the slab=%v", slabBase(owner.byteSlab) == base)
+	relicence(owner)
+	overwriteStrings(owner, half+len(text))
+	observations.compareString("foreign string a callback stored into heap memory", text, stored)
+	runtime.KeepAlive(lent)
+	runtime.KeepAlive(buffer)
+	runtime.KeepAlive(dead)
+	callback.Reset()
+	owner.Reset()
+	assertNoHazard(t, observations, "")
+}
+
+func ownerHasRegistryEntries(owner uint64) bool {
+	if slices.ContainsFunc(loadArenaSlabRanges(), func(entry arenaSlabRange) bool { return entry.owner == owner }) {
+		return true
+	}
+	return slices.ContainsFunc(licenceRegistryRanges(), func(entry licenceSlabRange) bool { return entry.owner == owner })
+}
+
+func TestAnArenaThePoolRefusesLeavesNeitherRegistryAtOnce(t *testing.T) {
+	bound := stablepoolRetentionBound(registerArenaPool.Cap(), registerArenaPool.MaxCap())
+	arenas := burst(2*bound, func() *RegisterArena {
+		arena := GetRegisterArena()
+		arena.attachLicencePolicy(&VMLimits{})
+		arenaString(arena, "published before release")
+		return arena
+	}, PutRegisterArena)
+	kept := registerArenaPool.Drain()
+	for _, arena := range kept {
+		registerArenaPool.Put(arena)
+	}
+	var refused []*RegisterArena
+	for _, arena := range arenas {
+		if !slices.Contains(kept, arena) {
+			refused = append(refused, arena)
+		}
+	}
+	require.NotEmpty(t, refused, "a burst of %d arenas overflows a pool bounded at %d", len(arenas), bound)
+	for _, arena := range refused {
+		require.NotZero(t, arena.slabOwner, "test harness: the arena recorded its slabs")
+		require.False(t, ownerHasRegistryEntries(arena.slabOwner),
+			"an arena the pool refused is torn down at once: none of its slabs stays registered until its cleanup runs")
+	}
+	for _, arena := range kept {
+		if arena.slabOwner != 0 && slices.Contains(arenas, arena) {
+			require.True(t, ownerHasRegistryEntries(arena.slabOwner), "a pooled arena keeps its slabs registered")
+		}
+	}
+}
+
+func collectedArenaSlab() ([]byte, uint64) {
+	arena := NewRegisterArena()
+	arena.attachLicencePolicy(&VMLimits{})
+	arenaString(arena, "in a slab whose arena is collected")
+	return arena.byteSlab, arena.slabOwner
+}
+
+func TestACollectedArenasSlabsAreNoArenasStorageBeforeItsCleanupRuns(t *testing.T) {
+	slab, owner := collectedArenaSlab()
+	start := uintptr(unsafe.Pointer(unsafe.SliceData(slab)))
+
+	arenaSlabRangesMu.Lock()
+	runtime.GC()
+	runtime.GC()
+	recorded := ownerHasRegistryEntries(owner)
+	_, _, inByteRegistry := arenaSlabContaining(start)
+	_, holder, heldByteSlab := arenaSlabHolder(start)
+	licenceEntry, inLicenceRegistry := licenceSlabContaining(start)
+	publishes := licenceHolderPublishes(licenceForeignKey{start: start, owner: owner})
+	arenaSlabRangesMu.Unlock()
+	runtime.KeepAlive(slab)
+
+	require.True(t, recorded, "test harness: the arena's cleanup, waiting for the registry's lock, has not run yet")
+	require.False(t, inByteRegistry, "the byte slab of a collected arena is not arena storage, whether or not its cleanup has run")
+	require.False(t, heldByteSlab, "no holder is named for it (holder %d)", holder)
+	require.False(t, inLicenceRegistry, "the licence registry names no holder for it (owner %d)", licenceEntry.owner)
+	require.False(t, publishes, "a foreign revocation against a collected arena is not recorded")
 }

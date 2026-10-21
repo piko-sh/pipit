@@ -33,11 +33,11 @@ import (
 //
 // Returns true when p is in any arena backing slab.
 func (a *RegisterArena) OwnsSliceBacking(p unsafe.Pointer) bool {
-	if p == nil {
+	if p == nil || a.heapData {
 		return false
 	}
 	pointer := uintptr(p)
-	return slabsOwnPointer(a.byteSlab, a.oldByteSlabs, pointer) ||
+	return slabsOwnPointer(a.byteSlab, a.oldByteSlabs, pointer) || a.ownsMutBytes(pointer) ||
 		slabsOwnPointer(a.genericBytesSlab, a.oldGenericByteSlabs, pointer) ||
 		slabsOwnPointer(a.stringBackingSlab, a.oldStringBackings, pointer) ||
 		slabsOwnPointer(a.intBackingSlab, a.oldIntBackings, pointer) ||
@@ -52,7 +52,7 @@ func (a *RegisterArena) OwnsSliceBacking(p unsafe.Pointer) bool {
 //
 // Returns true when p is in the arena's string-backing slabs.
 func (a *RegisterArena) ownsStringBacking(p unsafe.Pointer) bool {
-	if p == nil {
+	if p == nil || a.heapData {
 		return false
 	}
 	return slabsOwnPointer(a.stringBackingSlab, a.oldStringBackings, uintptr(p))
@@ -69,7 +69,7 @@ func (a *RegisterArena) ownsStringBacking(p unsafe.Pointer) bool {
 // Returns true when v's backing lies in an arena slab that could hold its element type.
 func (a *RegisterArena) ownsSliceBackingOf(v reflect.Value) bool {
 	p := v.UnsafePointer()
-	if p == nil {
+	if p == nil || a.heapData {
 		return false
 	}
 	pointer := uintptr(p)
@@ -77,7 +77,7 @@ func (a *RegisterArena) ownsSliceBackingOf(v reflect.Value) bool {
 	case reflect.String:
 		return slabsOwnPointer(a.stringBackingSlab, a.oldStringBackings, pointer)
 	case reflect.Uint8:
-		return slabsOwnPointer(a.byteSlab, a.oldByteSlabs, pointer) || a.ownsBytePointer(p)
+		return slabsOwnPointer(a.byteSlab, a.oldByteSlabs, pointer) || a.ownsMutBytes(pointer) || a.ownsBytePointer(p)
 	case reflect.Int, reflect.Int64:
 		return slabsOwnPointer(a.intBackingSlab, a.oldIntBackings, pointer) || a.ownsBytePointer(p)
 	case reflect.Float64:
@@ -127,4 +127,45 @@ func slabsOwnPointer[T any](current []T, retired [][]T, pointer uintptr) bool {
 		}
 	}
 	return false
+}
+
+// ownsPointee reports whether target addresses storage the arena hands out and reuses.
+//
+// Takes target (unsafe.Pointer) which is the pointer's target.
+//
+// Returns bool which is true for arena-owned storage.
+func (a *RegisterArena) ownsPointee(target unsafe.Pointer) bool {
+	if target == nil {
+		return false
+	}
+	if a.ownsAnyStorage(target) {
+		return true
+	}
+	if arenaUsesUnsafeSlabs {
+		return false
+	}
+	pointer := uintptr(target)
+	if sliceHeaderSlabOwns(a.sliceHeaderSlab, pointer) {
+		return true
+	}
+	for _, slab := range a.oldSliceHeaderSlabs {
+		if sliceHeaderSlabOwns(slab, pointer) {
+			return true
+		}
+	}
+	return false
+}
+
+// sliceHeaderSlabOwns reports whether pointer falls inside slab.
+//
+// Takes slab ([]arenaSliceHeader) which is one slice-header slab.
+// Takes pointer (uintptr) which is the address to test.
+//
+// Returns bool which is true when the address is one of the slab's slots.
+func sliceHeaderSlabOwns(slab []arenaSliceHeader, pointer uintptr) bool {
+	if len(slab) == 0 {
+		return false
+	}
+	base := uintptr(unsafe.Pointer(&slab[0]))
+	return pointer >= base && pointer < base+uintptr(len(slab))*unsafe.Sizeof(slab[0])
 }

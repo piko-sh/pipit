@@ -45,7 +45,7 @@ func TestClosureWriteTypedSliceNoBoxing(t *testing.T) {
 	cell := newIndirectCell(t, box)
 
 	allocs := testing.AllocsPerRun(100, func() {
-		writeRegisterToCell(vm, vm.Arena, cell, registers, isa.RegisterSliceInt, 0)
+		writeRegisterToCell(vm, vm.Arena, cell, registers, isa.RegisterSliceInt64, 0)
 	})
 	require.Zero(t, allocs)
 	require.Equal(t, []int{1, 2, 3}, *box)
@@ -59,7 +59,7 @@ func TestClosureWriteScalarStoresThroughPointer(t *testing.T) {
 	registers.Uints[0] = 7
 	intBox, floatBox, boolBox, uintBox := new(int), new(float64), new(bool), new(uint)
 	cells := []*program.UpvalueCell{newIndirectCell(t, intBox), newIndirectCell(t, floatBox), newIndirectCell(t, boolBox), newIndirectCell(t, uintBox)}
-	kinds := []isa.RegisterKind{isa.RegisterInt, isa.RegisterFloat, isa.RegisterBool, isa.RegisterUint}
+	kinds := []isa.RegisterKind{isa.RegisterInt64, isa.RegisterFloat64, isa.RegisterBool, isa.RegisterUint64}
 
 	allocs := testing.AllocsPerRun(100, func() {
 		for i, cell := range cells {
@@ -80,7 +80,7 @@ func TestClosureWriteNarrowScalarFallsBackToReflect(t *testing.T) {
 	box := new(int8)
 	cell := newIndirectCell(t, box)
 
-	writeRegisterToCell(vm, vm.Arena, cell, registers, isa.RegisterInt, 0)
+	writeRegisterToCell(vm, vm.Arena, cell, registers, isa.RegisterInt64, 0)
 	require.Equal(t, int8(0x34), *box)
 }
 
@@ -93,7 +93,7 @@ func TestClosureWriteArenaSliceBackingIsMaterialised(t *testing.T) {
 	box := new([]int)
 	cell := newIndirectCell(t, box)
 
-	writeRegisterToCell(vm, vm.Arena, cell, registers, isa.RegisterSliceInt, 0)
+	writeRegisterToCell(vm, vm.Arena, cell, registers, isa.RegisterSliceInt64, 0)
 	require.Equal(t, []int{4, 5, 6}, *box)
 	require.False(t, vm.Arena.ownsSliceBackingOf(reflect.ValueOf(*box)), "the cell must not point into the arena")
 }

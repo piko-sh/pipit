@@ -4,24 +4,22 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun
-;   registers: int=6
-;   dispatch:  asm=10 shim=0 exit=0 go=0
+;   registers: int64=6
+;   dispatch:  asm=7 shim=0 exit=0 go=0
 ;   params:    (none)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=0  [1]=4  [2]=2
 
-0000 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0001 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0002 A 1:LT_INT_CONST_JUMP_FALSE  123   1   1
-0003   0:EXT                        7   0   0
-0004 A 1:EQ_INT_CONST_JUMP_FALSE  124   1   2
-0005   0:EXT                        1   0   0
-0006 A 1:JUMP                      74   4   0    ; goto 4
-0007 A 0:ADD_INT                    4   0   1
-0008 A 1:MOVE_INT                  35   0   4
-0009 A 2:TIER2_INC_INT              0   1   1
-0010 A 1:JUMP                      74 247 255    ; goto -9
-0011 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0001 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0002 A 1:LESS_THAN_INT64_CONSTANT_THEN_JUMP_IF_FALSE        123   1   1
+0003   0:EXTENSION                                            5   0   0
+0004 A 1:EQUAL_INT64_CONSTANT_THEN_JUMP_IF_TRUE             125   1   2
+0005   0:EXTENSION                                            3   0   0
+0006 A 0:ADD_INT64                                            0   0   1
+0007 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN_CONSTANT    215   1   1
+0008   0:EXTENSION                                          251 255   0
+0009 A 2:RETURN                                               0  10   1    ; 1 values

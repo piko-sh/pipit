@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64) && !race
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64) && !race
 
 package sandboxlinux
 
@@ -36,9 +36,9 @@ import (
 
 func TestNativeCheckpointImageStoreBinding(t *testing.T) {
 	parent := sandboxtest.CgroupParent(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	group, err := newServiceGroup(parent, Limits{}, testTenant)
+	group, err := newServiceGroup(t.Context(), parent, Limits{}, testTenant)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestNativeCheckpointImageStoreBinding(t *testing.T) {
 	rejectCheckpointImageChanges(t, ctx, group, config, storage, identity)
 	owner, err := OpenCheckpointedFilesystemBrokerInGroup(ctx, config, nil, sandboxbroker.FilesystemLimits{}, storage, group)
 	if owner != nil {
-		defer owner.Close()
+		defer owner.Close(t.Context())
 	}
 	if err != nil {
 		t.Fatal("approved image-bound broker could not start:", err)
@@ -103,7 +103,7 @@ func TestNativeCheckpointImageStoreBinding(t *testing.T) {
 	if _, err := group.RecoveryIdentityWithImages(store); err == nil {
 		t.Fatal("image identity captured after child admission")
 	}
-	if err := owner.Close(); err != nil {
+	if err := owner.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
@@ -190,7 +190,7 @@ func rejectCheckpointImageChanges(t *testing.T, ctx context.Context, group *Grou
 		}
 		owner, err := OpenCheckpointedFilesystemBrokerInGroup(ctx, selected, grants, sandboxbroker.FilesystemLimits{}, metadata, group)
 		if owner != nil {
-			_ = owner.Close()
+			_ = owner.Close(t.Context())
 		}
 		if err == nil || owner != nil {
 			t.Fatal("mismatched checkpoint image policy admitted:", mode, err)

@@ -56,7 +56,7 @@ func NewIsolatedFilesystemRecovery(ctx context.Context, config IsolatedFilesyste
 		return nil, err
 	}
 	if err != nil {
-		return nil, cleanupOrFail(err, recovery.Close)
+		return nil, cleanupOrFail(ctx, err, func(context.Context) error { return recovery.Close() })
 	}
 	return &IsolatedFilesystemRecovery{recovery: recovery, logger: config.Worker.Logger, mutex: sync.Mutex{}}, nil
 }

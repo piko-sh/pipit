@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxlinux
 
@@ -40,6 +40,10 @@ import (
 const (
 	// maximumWorkerImageBytes is the largest allowed worker executable size.
 	maximumWorkerImageBytes = 128 << 20
+
+	// workerImageCopyChunk is the most bytes copyCancellable reads between two checks of its
+	// context.
+	workerImageCopyChunk = 1 << 20
 
 	// workerImageMode is the sealed permission mode for a staged worker.
 	workerImageMode = 0500
@@ -134,26 +138,38 @@ func (image *WorkerImage) Close() error {
 	return image.closeHandles()
 }
 
-// workerImageReader checks cancellation between bounded reads of the host file.
-type workerImageReader struct {
-	// context holds the cancellation context for staging reads.
-	context context.Context
-
-	// source holds the open source executable file.
-	source *os.File
-}
-
-// Read checks the preparation context before each source read.
+// copyCancellable copies at most limit bytes from source to destination, checking ctx
+// before each bounded read, so a cancelled preparation stops copying a large file.
 //
-// Takes buffer ([]byte) which receives the next source bytes.
+// Takes destination (io.Writer) which receives the bytes.
+// Takes source (io.Reader) which is read in chunks of workerImageCopyChunk bytes.
+// Takes limit (int64) which is the most bytes copied.
 //
-// Returns int which counts the bytes read.
-// Returns error when cancelled or when the source read fails.
-func (reader workerImageReader) Read(buffer []byte) (int, error) {
-	if err := reader.context.Err(); err != nil {
-		return 0, err
+// Returns int64 which counts the bytes written.
+// Returns error when ctx is done or a read or write fails.
+func copyCancellable(ctx context.Context, destination io.Writer, source io.Reader, limit int64) (int64, error) {
+	buffer := make([]byte, workerImageCopyChunk)
+	var written int64
+	for written < limit {
+		if err := ctx.Err(); err != nil {
+			return written, err
+		}
+		read, readErr := source.Read(buffer[:min(int64(len(buffer)), limit-written)])
+		if read > 0 {
+			count, writeErr := destination.Write(buffer[:read])
+			written += int64(count)
+			if writeErr != nil {
+				return written, writeErr
+			}
+		}
+		if errors.Is(readErr, io.EOF) {
+			return written, nil
+		}
+		if readErr != nil {
+			return written, readErr
+		}
 	}
-	return reader.source.Read(buffer)
+	return written, nil
 }
 
 // PrepareWorkerImage copies and verifies a worker before inspecting its ELF data.
@@ -314,8 +330,7 @@ func stageWorkerImage(ctx context.Context, source *os.File, image *WorkerImage, 
 	}
 	defer func() { result = errors.Join(result, target.Close()) }()
 	digest := sha256.New()
-	reader := workerImageReader{context: ctx, source: source}
-	written, err := io.Copy(io.MultiWriter(target, digest), io.LimitReader(reader, maximumWorkerImageBytes+1))
+	written, err := copyCancellable(ctx, io.MultiWriter(target, digest), source, maximumWorkerImageBytes+1)
 	if err != nil {
 		return fmt.Errorf("copying approved worker: %w", err)
 	}

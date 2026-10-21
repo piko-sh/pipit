@@ -1,5 +1,3 @@
-//go:build !linux || (!amd64 && !arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +16,11 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build !linux || (!amd64 && !arm64)
+
 package sandboxhost_test
 
 import (
-	"context"
 	"crypto/sha256"
 	"errors"
 	"path/filepath"
@@ -39,29 +38,29 @@ func TestIsolatedEmbeddingUnavailable(t *testing.T) {
 	config.WatchdogSHA256 = config.WorkerSHA256
 	config.Tenant = "test-tenant"
 	config.StateDirectory = t.TempDir()
-	worker, err := sandboxhost.NewIsolatedWorker(context.Background(), config)
+	worker, err := sandboxhost.NewIsolatedWorker(t.Context(), config)
 	if worker != nil || !errors.Is(err, sandboxhost.ErrIsolatedUnavailable) {
 		t.Fatalf("unsupported platform did not fail closed: worker=%v error=%v", worker, err)
 	}
-	session, err := sandboxhost.NewIsolatedSession(context.Background(), config)
+	session, err := sandboxhost.NewIsolatedSession(t.Context(), config)
 	if session != nil || !errors.Is(err, sandboxhost.ErrIsolatedUnavailable) {
 		t.Fatalf("unsupported session platform did not fail closed: session=%v error=%v", session, err)
 	}
-	filesystem, err := sandboxhost.NewIsolatedFilesystemWorker(context.Background(), sandboxhost.IsolatedFilesystemConfig{
+	filesystem, err := sandboxhost.NewIsolatedFilesystemWorker(t.Context(), sandboxhost.IsolatedFilesystemConfig{
 		Worker: config, BrokerPath: config.WorkerPath, BrokerSHA256: config.WorkerSHA256,
 		Roots: nil, Limits: sandboxhost.FilesystemLimits{},
 	})
 	if filesystem != nil || !errors.Is(err, sandboxhost.ErrIsolatedUnavailable) {
 		t.Fatalf("unsupported filesystem platform did not fail closed: worker=%v error=%v", filesystem, err)
 	}
-	recovery, err := sandboxhost.NewIsolatedFilesystemRecovery(context.Background(), sandboxhost.IsolatedFilesystemConfig{
+	recovery, err := sandboxhost.NewIsolatedFilesystemRecovery(t.Context(), sandboxhost.IsolatedFilesystemConfig{
 		Worker: config, BrokerPath: config.WorkerPath, BrokerSHA256: config.WorkerSHA256,
 		Roots: nil, Limits: sandboxhost.FilesystemLimits{},
 	})
 	if recovery != nil || !errors.Is(err, sandboxhost.ErrIsolatedUnavailable) {
 		t.Fatalf("unsupported recovery platform did not fail closed: owner=%v error=%v", recovery, err)
 	}
-	workerRecovery, err := sandboxhost.NewIsolatedRecovery(context.Background(), config)
+	workerRecovery, err := sandboxhost.NewIsolatedRecovery(t.Context(), config)
 	if workerRecovery != nil || !errors.Is(err, sandboxhost.ErrIsolatedUnavailable) {
 		t.Fatalf("unsupported worker recovery platform did not fail closed: owner=%v error=%v", workerRecovery, err)
 	}

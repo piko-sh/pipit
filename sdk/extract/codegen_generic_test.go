@@ -38,7 +38,7 @@ func TestGenerateFileSlicesGenericDispatch(t *testing.T) {
 		ElementTypes: []string{"string", "int"},
 	}
 
-	pkgs, err := Extract([]string{"slices"}, map[string]PackageConfig{"slices": config})
+	pkgs, err := Extract(t.Context(), []string{"slices"}, map[string]PackageConfig{"slices": config})
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 
@@ -72,7 +72,7 @@ func TestGenerateFileMapsGenericDispatch(t *testing.T) {
 		ValueTypes: []string{"int"},
 	}
 
-	pkgs, err := Extract([]string{"maps"}, map[string]PackageConfig{"maps": config})
+	pkgs, err := Extract(t.Context(), []string{"maps"}, map[string]PackageConfig{"maps": config})
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 
@@ -101,7 +101,7 @@ func TestGenerateFileCmpScalarDispatch(t *testing.T) {
 		ElementTypes: []string{"string", "int", "float64"},
 	}
 
-	pkgs, err := Extract([]string{"cmp"}, map[string]PackageConfig{"cmp": config})
+	pkgs, err := Extract(t.Context(), []string{"cmp"}, map[string]PackageConfig{"cmp": config})
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 
@@ -133,7 +133,7 @@ func TestGenerateFileSlicesWithFuncParams(t *testing.T) {
 		ElementTypes: []string{"string"},
 	}
 
-	pkgs, err := Extract([]string{"slices"}, map[string]PackageConfig{"slices": config})
+	pkgs, err := Extract(t.Context(), []string{"slices"}, map[string]PackageConfig{"slices": config})
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 
@@ -169,7 +169,7 @@ func TestGenerateFileSlicesConcatVariadic(t *testing.T) {
 		ElementTypes: []string{"string", "int"},
 	}
 
-	pkgs, err := Extract([]string{"slices"}, map[string]PackageConfig{"slices": config})
+	pkgs, err := Extract(t.Context(), []string{"slices"}, map[string]PackageConfig{"slices": config})
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 
@@ -205,7 +205,7 @@ func TestGenerateFileEmptyGenericConfig(t *testing.T) {
 		ElementTypes: nil,
 	}
 
-	pkgs, err := Extract([]string{"cmp"}, map[string]PackageConfig{"cmp": config})
+	pkgs, err := Extract(t.Context(), []string{"cmp"}, map[string]PackageConfig{"cmp": config})
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 
@@ -234,7 +234,7 @@ func TestGenerateFilePerFunctionOverrides(t *testing.T) {
 		},
 	}
 
-	pkgs, err := Extract([]string{"slices"}, map[string]PackageConfig{"slices": config})
+	pkgs, err := Extract(t.Context(), []string{"slices"}, map[string]PackageConfig{"slices": config})
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 
@@ -473,7 +473,7 @@ func TestExtractSlicesGenericFuncs(t *testing.T) {
 		ElementTypes: []string{"string"},
 	}
 
-	pkgs, err := Extract([]string{"slices"}, map[string]PackageConfig{"slices": config})
+	pkgs, err := Extract(t.Context(), []string{"slices"}, map[string]PackageConfig{"slices": config})
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 
@@ -499,7 +499,7 @@ func TestExtractCmpGenericFuncs(t *testing.T) {
 		ElementTypes: []string{"int"},
 	}
 
-	pkgs, err := Extract([]string{"cmp"}, map[string]PackageConfig{"cmp": config})
+	pkgs, err := Extract(t.Context(), []string{"cmp"}, map[string]PackageConfig{"cmp": config})
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 
@@ -522,7 +522,7 @@ func TestExtractMapsGenericFuncs(t *testing.T) {
 		ValueTypes: []string{"int"},
 	}
 
-	pkgs, err := Extract([]string{"maps"}, map[string]PackageConfig{"maps": config})
+	pkgs, err := Extract(t.Context(), []string{"maps"}, map[string]PackageConfig{"maps": config})
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 
@@ -539,7 +539,7 @@ func TestGenerateFileAllThreeDispatchKinds(t *testing.T) {
 		"cmp":    {ImportPath: "cmp", ElementTypes: []string{"int"}},
 	}
 
-	pkgs, err := Extract([]string{"slices", "maps", "cmp"}, configs)
+	pkgs, err := Extract(t.Context(), []string{"slices", "maps", "cmp"}, configs)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 3)
 
@@ -563,7 +563,7 @@ func TestGenerateFileSlicesMultipleTypes(t *testing.T) {
 		ElementTypes: []string{"string", "int", "int64", "float64", "byte", "bool"},
 	}
 
-	pkgs, err := Extract([]string{"slices"}, map[string]PackageConfig{"slices": config})
+	pkgs, err := Extract(t.Context(), []string{"slices"}, map[string]PackageConfig{"slices": config})
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 

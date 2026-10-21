@@ -41,23 +41,36 @@ func (vm *VM) appendSelectWakeArms(numCases int, hasDefault bool) (cases []refle
 	if hasDefault {
 		return vm.selectCasesBuffer[:numCases], -1, -1
 	}
-	count, cancelIndex, panicIndex := appendWakeCases(vm.selectCasesBuffer, numCases, vm.blockingDone(), vm.Globals.goroutinePanicWakeChan())
+	count, cancelIndex, panicIndex := appendWakeCases(vm.selectCasesBuffer, numCases, vm.blockingDone(), vm.panicWakeChan())
 	return vm.selectCasesBuffer[:count], cancelIndex, panicIndex
 }
 
-// handleStringToBytes converts a string register value to a byte slice and stores the
-// result in the general register bank.
+// handleConvertStringToBytesBody converts a string register value to a byte slice and
+// stores the result in the general register bank.
 //
+// Takes vm (*VM) which is the VM executing the instruction.
+// Takes frame (*CallFrame) which is the active call frame.
 // Takes registers (*Registers) which holds the source string and destination.
-// Takes instruction (instruction) which encodes the operand indices.
+// Takes instruction (isa.Instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleStringToBytes(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleConvertStringToBytesBody(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	if vm != nil && vm.Arena != nil && vm.Arena.licensed {
+		if view, ok := byteViewFor(vm, frame, registers, instruction.A, registers.Strings[instruction.B]); ok {
+			registers.General[instruction.A] = view
+			return opContinue
+		}
+	}
+
+	if placesBytes(vm, frame) && vm.Arena.splitsMutableBytes() {
+		registers.General[instruction.A] = placeStringToBytes(vm.Arena, frame, registers.Strings[instruction.B])
+		return opContinue
+	}
 	registers.General[instruction.A] = reflect.ValueOf([]byte(registers.Strings[instruction.B]))
 	return opContinue
 }
 
-// handleStringIndex retrieves a single byte from a string at the given index and stores
+// handleGetStringByte retrieves a single byte from a string at the given index and stores
 // it as a uint64 in the destination register.
 //
 // Takes vm (*VM) which is the executing VM.
@@ -65,11 +78,11 @@ func handleStringToBytes(_ *VM, _ *CallFrame, registers *Registers, instruction 
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleStringIndex(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStringByte(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	s := registers.Strings[instruction.B]
 	index := int(registers.Ints[instruction.C])
 	if index < 0 || index >= len(s) {
-		return raiseNativePanicAsInterpreted(vm, newRuntimePanicError("runtime error: index out of range [%d] with length %d", index, len(s)))
+		return raiseIndexOutOfRange(vm, index, len(s))
 	}
 	registers.Uints[instruction.A] = uint64(s[index])
 	return opContinue
@@ -90,33 +103,34 @@ func raiseIndexOutOfRange(vm *VM, index, length int) OpResult {
 	return raiseNativePanicAsInterpreted(vm, newRuntimePanicError("runtime error: index out of range [%d] with length %d", index, length))
 }
 
-// handleStringIndexToInt retrieves a single byte from a string and stores it directly as
-// an int64, fusing isa.OpStringIndex + isa.SubOpUintToInt into one operation.
+// handleGetStringByteAsInt64 retrieves a single byte from a string and stores it directly
+// as an int64, fusing isa.OpGetStringByte + isa.SubOpConvertUint64ToInt64 into one
+// operation.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes registers (*Registers) which holds the string, index and destination.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleStringIndexToInt(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStringByteAsInt64(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	s := registers.Strings[instruction.B]
 	index := int(registers.Ints[instruction.C])
 	if index < 0 || index >= len(s) {
-		return raiseNativePanicAsInterpreted(vm, newRuntimePanicError("runtime error: index out of range [%d] with length %d", index, len(s)))
+		return raiseIndexOutOfRange(vm, index, len(s))
 	}
 	registers.Ints[instruction.A] = int64(s[index])
 	return opContinue
 }
 
-// handleRuneToString converts an int64 register value to its UTF-8 string representation
-// and stores the result in the string register bank.
+// handleConvertRuneToStringBody converts an int64 register value to its UTF-8 string
+// representation and stores the result in the string register bank.
 //
 // Takes vm (*VM) which provides the arena for string allocation.
 // Takes registers (*Registers) which holds the rune and destination.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleRuneToString(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleConvertRuneToStringBody(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	registers.Strings[instruction.A] = arenaRuneToString(vm.Arena, safeconv.Int64ToInt32(registers.Ints[instruction.B]))
 	return opContinue
 }
@@ -174,14 +188,14 @@ func sliceBoundsRuntimeError(low, high, size int, useCapacity bool) *runtimePani
 	}
 }
 
-// handleRangeInit creates a range iterator for the collection in the source register and
-// stores it in the destination general register.
+// handleRangeInitialise creates a range iterator for the collection in the source
+// register and stores it in the destination general register.
 //
 // Takes registers (*Registers) which holds the collection and destination.
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleRangeInit(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleRangeInitialise(_ *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	collection := registers.General[instruction.C]
 
 	if collection.Kind() == reflect.Pointer && collection.IsValid() && !collection.IsNil() {
@@ -235,19 +249,19 @@ func handleRangeInit(_ *VM, _ *CallFrame, registers *Registers, instruction isa.
 // Takes iterator (*rangeIterator) which receives the typed slice.
 // Takes collection (reflect.Value) which holds the underlying slice.
 func assignRangeSliceFastPath(iterator *rangeIterator, collection reflect.Value) {
-	if s, ok := reflect.TypeAssert[[]int](collection); ok {
+	if s, ok := typedSliceOf[int](collection); ok {
 		iterator.intSlice = s
 		return
 	}
-	if s, ok := reflect.TypeAssert[[]string](collection); ok {
+	if s, ok := typedSliceOf[string](collection); ok {
 		iterator.stringSlice = s
 		return
 	}
-	if s, ok := reflect.TypeAssert[[]float64](collection); ok {
+	if s, ok := typedSliceOf[float64](collection); ok {
 		iterator.floatSlice = s
 		return
 	}
-	if s, ok := reflect.TypeAssert[[]bool](collection); ok {
+	if s, ok := typedSliceOf[bool](collection); ok {
 		iterator.boolSlice = s
 	}
 }
@@ -262,7 +276,7 @@ func assignRangeSliceFastPath(iterator *rangeIterator, collection reflect.Value)
 // Returns OpResult which reports whether the range loop should continue or exit.
 func rangeNextChannel(vm *VM, registers *Registers, iterator *rangeIterator, context rangeNextContext) OpResult {
 	done := vm.blockingDone()
-	panicWake := vm.Globals.goroutinePanicWakeChan()
+	panicWake := vm.panicWakeChan()
 
 	var value reflect.Value
 	var ok bool
@@ -337,7 +351,7 @@ func rangeNextSlice(vm *VM, registers *Registers, iterator *rangeIterator, conte
 		return
 	}
 	registers.Ints[context.DoneDestination] = 1
-	if context.HasKey && isa.RegisterKind(context.KeyInstruction.C) == isa.RegisterInt {
+	if context.HasKey && isa.RegisterKind(context.KeyInstruction.C) == isa.RegisterInt64 {
 		registers.Ints[context.KeyInstruction.B] = int64(iterator.index)
 	}
 	if context.HasValue {
@@ -362,10 +376,10 @@ func rangeNextString(registers *Registers, iterator *rangeIterator, context rang
 	}
 	registers.Ints[context.DoneDestination] = 1
 	runeValue, runeWidth := utf8.DecodeRuneInString(iterator.StringSource[iterator.index:])
-	if context.HasKey && isa.RegisterKind(context.KeyInstruction.C) == isa.RegisterInt {
+	if context.HasKey && isa.RegisterKind(context.KeyInstruction.C) == isa.RegisterInt64 {
 		registers.Ints[context.KeyInstruction.B] = int64(iterator.index)
 	}
-	if context.HasValue && isa.RegisterKind(context.ValInstruction.C) == isa.RegisterInt {
+	if context.HasValue && isa.RegisterKind(context.ValInstruction.C) == isa.RegisterInt64 {
 		registers.Ints[context.ValInstruction.B] = int64(runeValue)
 	}
 	iterator.index += runeWidth
@@ -381,11 +395,11 @@ func rangeNextString(registers *Registers, iterator *rangeIterator, context rang
 // Takes kind (isa.RegisterKind) which selects the typed bank for the value.
 func rangeSliceValue(vm *VM, registers *Registers, iterator *rangeIterator, destination uint8, kind isa.RegisterKind) {
 	switch {
-	case iterator.intSlice != nil && kind == isa.RegisterInt:
+	case iterator.intSlice != nil && kind == isa.RegisterInt64:
 		registers.Ints[destination] = int64(iterator.intSlice[iterator.index])
 	case iterator.stringSlice != nil && kind == isa.RegisterString:
 		registers.Strings[destination] = iterator.stringSlice[iterator.index]
-	case iterator.floatSlice != nil && kind == isa.RegisterFloat:
+	case iterator.floatSlice != nil && kind == isa.RegisterFloat64:
 		registers.Floats[destination] = iterator.floatSlice[iterator.index]
 	case iterator.boolSlice != nil && kind == isa.RegisterBool:
 		registers.Bools[destination] = iterator.boolSlice[iterator.index]
@@ -432,8 +446,8 @@ func handleRangeNext(vm *VM, frame *CallFrame, registers *Registers, instruction
 	return opContinue
 }
 
-// handleTypeAssert unwraps interface values and adapters before testing the dynamic
-// type, then stores the result and success flag.
+// handleTypeAssert unwraps interface values and adapters before testing the dynamic type,
+// then stores the result and success flag.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes frame (*CallFrame) which provides the type table index extension.
@@ -467,15 +481,21 @@ func handleTypeAssert(vm *VM, frame *CallFrame, registers *Registers, instructio
 }
 
 // typeAssertOperand unwraps interfaces and adapters to expose the script value for type
-// assertions. Adapters without a runtime script type name remain wrapped and are
-// checked by their resolved methods.
+// assertions. Adapters without a runtime script type name remain wrapped and are checked
+// by their resolved methods.
+//
+// A nil interface held as a value of an interface type is given back as the invalid value
+// every other nil interface is, so it matches a nil case and no other.
 //
 // Takes vm (*VM) which resolves script type names.
 // Takes value (reflect.Value) which is the asserted register value.
 //
 // Returns reflect.Value which is the value to match.
 func typeAssertOperand(vm *VM, value reflect.Value) reflect.Value {
-	if value.IsValid() && value.Kind() == reflect.Interface && !value.IsNil() {
+	if value.IsValid() && value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return reflect.Value{}
+		}
 		value = value.Elem()
 	}
 	if !isInterfaceablePointer(value) {
@@ -503,7 +523,7 @@ func hasScriptTypeName(vm *VM, value reflect.Value) bool {
 	if _, ok := pipitTypeName(vm, value); ok {
 		return true
 	}
-	_, ok := typemodel.LookupNamedScalarPoolInfo(value.Type())
+	_, ok := typemodel.LookupNamedTypeInfo(value.Type())
 	return ok
 }
 
@@ -566,11 +586,13 @@ func typeAssertSatisfiesInterfaceMethods(vm *VM, frame *CallFrame, source reflec
 func handleTypeAssertMissingMatch(vm *VM, registers *Registers, instruction, extensionWord isa.Instruction, source reflect.Value, reflectType reflect.Type) OpResult {
 	if extensionWord.C == typeAssertModePanic {
 		srcType := "nil"
-		if source.IsValid() {
-			srcType = typemodel.NamedScalarDisplayType(source.Type())
+		if closure := closureFromValue(source); closure != nil {
+			srcType = closureTypeString(closure)
+		} else if source.IsValid() {
+			srcType = typemodel.NamedTypeDisplayType(source.Type())
 		}
 
-		return raiseNativePanicAsInterpreted(vm, newRuntimePanicError("interface conversion: interface {} is %s, not %s", srcType, typemodel.NamedScalarDisplayType(reflectType)))
+		return raiseNativePanicAsInterpreted(vm, newRuntimePanicError("interface conversion: interface {} is %s, not %s", srcType, typemodel.NamedTypeDisplayType(reflectType)))
 	}
 	registers.Ints[instruction.C] = 0
 	if extensionWord.C == TypeAssertModeTypeSwitch {
@@ -603,12 +625,15 @@ func matchTypeAssertion(source reflect.Value, reflectType reflect.Type) (reflect
 	source = unwrapAdapterUnderlying(source)
 	srcType := source.Type()
 	if srcType == runtimeClosureReflectType {
-		return source, reflectType.Kind() == reflect.Func && closureSignatureType(source) == reflectType
+		return source, reflectType.Kind() == reflect.Func && closureDynamicType(source) == reflectType
 	}
 	switch {
 	case srcType == reflectType,
-		reflectType.Kind() == reflect.Interface && srcType.Implements(reflectType),
-		srcType.AssignableTo(reflectType):
+		reflectType.Kind() == reflect.Interface && srcType.Implements(reflectType):
+		return source, true
+	case typemodel.IsNamedCompositeType(srcType), typemodel.IsNamedCompositeType(reflectType):
+		return source, false
+	case srcType.AssignableTo(reflectType):
 		return source, true
 	}
 	return source, false
@@ -626,6 +651,37 @@ func closureSignatureType(value reflect.Value) reflect.Type {
 		return nil
 	}
 	return closure.Function.SignatureReflectType
+}
+
+// closureDynamicType returns the type a boxed closure has in Go, which is the named func
+// type it was converted to, or else its static signature.
+//
+// Takes value (reflect.Value) which holds a *RuntimeClosure.
+//
+// Returns reflect.Type which is the type, or nil when neither is recorded.
+func closureDynamicType(value reflect.Value) reflect.Type {
+	closure := closureFromValue(value)
+	if closure == nil {
+		return nil
+	}
+	if named := typemodel.NamedCompositeTypeByID(closure.namedType); named != nil {
+		return named
+	}
+	return closureSignatureType(value)
+}
+
+// closureNamedTypeName returns the method-table name of the named func type a closure was
+// converted to.
+//
+// Takes closure (*RuntimeClosure) which is the closure.
+//
+// Returns string which is "" for a plain func value.
+func closureNamedTypeName(closure *RuntimeClosure) string {
+	info, ok := typemodel.LookupNamedCompositeInfo(typemodel.NamedCompositeTypeByID(closure.namedType))
+	if !ok {
+		return ""
+	}
+	return info.BareName
 }
 
 // closureFromValue returns the *RuntimeClosure a value holds, or nil when the value is
@@ -726,7 +782,7 @@ func sourceImplementsAllMethods(vm *VM, source reflect.Value, required []string)
 	}
 	srcName := bareSentinelName(srcType)
 	if srcName == "" {
-		if info, ok := typemodel.LookupNamedScalarPoolInfo(srcType); ok {
+		if info, ok := typemodel.LookupNamedTypeInfo(srcType); ok {
 			srcName = info.BareName
 		}
 	}
@@ -814,20 +870,20 @@ func methodAvailableOnType(vm *VM, srcType, pointerType reflect.Type, srcName st
 // Returns reflect.Value which is the source converted to targetType.
 func readRegisterConvert(registers *Registers, source uint8, kind isa.RegisterKind, targetType reflect.Type) reflect.Value {
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return reflect.ValueOf(registers.Ints[source]).Convert(targetType)
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return reflect.ValueOf(registers.Floats[source]).Convert(targetType)
 	case isa.RegisterString:
 		return reflect.ValueOf(registers.Strings[source]).Convert(targetType)
 	case isa.RegisterBool:
 		return reflect.ValueOf(registers.Bools[source]).Convert(targetType)
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return reflect.ValueOf(registers.Uints[source]).Convert(targetType)
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return reflect.ValueOf(registers.Complex[source]).Convert(targetType)
-	case isa.RegisterSliceInt, isa.RegisterSliceFloat, isa.RegisterSliceString, isa.RegisterSliceBool,
-		isa.RegisterSliceUint, isa.RegisterSliceByte:
+	case isa.RegisterSliceInt64, isa.RegisterSliceFloat64, isa.RegisterSliceString, isa.RegisterSliceBool,
+		isa.RegisterSliceUint64, isa.RegisterSliceByte:
 
 		value, _ := sliceBankToReflect(registers, kind, source)
 		if value.IsValid() && value.Type() != targetType && value.Type().ConvertibleTo(targetType) {
@@ -843,8 +899,8 @@ func readRegisterConvert(registers *Registers, source uint8, kind isa.RegisterKi
 	}
 }
 
-// handleAllocIndirect allocates a new pointer of a type from the type table, initialises
-// it with a converted register value, and stores the pointer.
+// handleAllocateIndirect allocates a new pointer of a type from the type table,
+// initialises it with a converted register value, and stores the pointer.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which provides the type table index extension.
@@ -852,35 +908,86 @@ func readRegisterConvert(registers *Registers, source uint8, kind isa.RegisterKi
 // Takes instruction (instruction) which encodes the source register and kind.
 //
 // Returns OpResult indicating the next execution step.
-func handleAllocIndirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleAllocateIndirect(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	allocPC := frame.ProgramCounter - 1
-	arenaSafe := frame.Function.ArenaSafeAllocPCs[allocPC]
+	arenaSafe := pcGranted(frame.Function.ArenaSafeAllocPCs, allocPC)
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	typeIndex := uint16(extensionWord.A) | uint16(extensionWord.B)<<isa.WideBitShift
-	heapCell := extensionWord.C == isa.AllocIndirectHeapCell
+	heapCell := allocatesHeapCell(vm, extensionWord)
 	if int(typeIndex) >= len(frame.Function.TypeTable) {
 		vMBoundsError(vm, frame, boundsTableTypeTable, int(typeIndex), len(frame.Function.TypeTable))
 		return opPanicError
 	}
 	reflectType := frame.Function.TypeTable[typeIndex]
 	source := readRegisterConvert(registers, instruction.B, isa.RegisterKind(instruction.C), reflectType)
-	if !heapCell && source.IsValid() && source.CanAddr() && source.Type() == reflectType {
+	reflectType = allocateIndirectCellType(vm, source, reflectType)
+
+	if !arenaSafe && !heapCell && optimisticPointee(vm.Arena, vm.rootFunction, reflectType) {
+		arenaSafe = true
+	}
+	if !heapCell && source.IsValid() && source.CanAddr() && source.Type() == reflectType && !isScalarKind(source.Kind()) {
 		registers.General[instruction.A] = source.Addr()
 		return opContinue
 	}
-	pointer := allocIndirectPointee(vm, reflectType, arenaSafe, heapCell)
+
+	pointer, placed := reflect.Value{}, false
+	if !arenaSafe {
+		pointer, placed = krefPointee(vm, frame.Function, allocPC, reflectType, heapCell)
+	}
+	if !placed {
+		pointer = allocateIndirectPointee(vm, reflectType, arenaSafe, heapCell)
+	}
 	if source.IsValid() {
 		source = coerceValue(vm, source, reflectType)
 		if source.IsValid() && source.Type().AssignableTo(reflectType) {
-			pointer.Elem().Set(materialiseAllocIndirectSource(vm, source, arenaSafe, heapCell))
+			if !arenaSafe && !heapCell && krefMemberSlotStore(vm.Arena, pointer.UnsafePointer(), source) {
+				pointer.Elem().Set(source)
+			} else {
+				pointer.Elem().Set(materialiseAllocateIndirectSource(vm, source, arenaSafe, heapCell))
+			}
 		}
 	}
 	registers.General[instruction.A] = pointer
 	return opContinue
 }
 
-// materialiseAllocIndirectSource detaches source from the arena unless the escape pass
+// allocateIndirectCellType returns the type of the cell an isa.OpAllocateIndirect
+// allocates for source.
+//
+// The cell takes the value's own type when source cannot be stored in the static type.
+// Every access through the pointer reads the cell's dynamic type.
+//
+// Takes vm (*VM) which is the allocating VM.
+// Takes source (reflect.Value) which is the initial value, invalid when there is none.
+// Takes staticType (reflect.Type) which is the type table's entry.
+//
+// Returns reflect.Type which is staticType unless source cannot be stored in it.
+func allocateIndirectCellType(vm *VM, source reflect.Value, staticType reflect.Type) reflect.Type {
+	if !source.IsValid() || source.Type() == staticType || source.Type().AssignableTo(staticType) {
+		return staticType
+	}
+	coerced := coerceValue(vm, source, staticType)
+	if coerced.IsValid() && coerced.Type().AssignableTo(staticType) {
+		return staticType
+	}
+	return source.Type()
+}
+
+// allocatesHeapCell reports whether an isa.OpAllocateIndirect allocates its pointee as a
+// heap cell, with reflect.New, which it does when the site is a global cell
+// (isa.AllocateIndirectHeapCell), or the program calls runtime.SetFinalizer
+// (allocatesForFinalisers).
+//
+// Takes vm (*VM) which is the allocating VM.
+// Takes extensionWord (isa.Instruction) which is the instruction's extension word.
+//
+// Returns bool which is true for a heap cell.
+func allocatesHeapCell(vm *VM, extensionWord isa.Instruction) bool {
+	return extensionWord.C == isa.AllocateIndirectHeapCell || vm.allocatesForFinalisers()
+}
+
+// materialiseAllocateIndirectSource detaches source from the arena unless the escape pass
 // proved the pointer cannot outlive the frame. heapCell forces materialisation because
 // that form deliberately outlives the frame.
 //
@@ -891,16 +998,16 @@ func handleAllocIndirect(vm *VM, frame *CallFrame, registers *Registers, instruc
 //
 // Returns source unchanged when arena-safe and not heapCell, else the arena-detached
 // copy.
-func materialiseAllocIndirectSource(vm *VM, source reflect.Value, arenaSafe, heapCell bool) reflect.Value {
+func materialiseAllocateIndirectSource(vm *VM, source reflect.Value, arenaSafe, heapCell bool) reflect.Value {
 	if arenaSafe && !heapCell {
 		return source
 	}
 	return MaterialiseArenaValue(vm.Arena, source)
 }
 
-// allocIndirectPointee returns a *T pointing at zero-initialised storage, routing slice
-// pointees through the arena slice-header slab, pointer-free pointees through the byte
-// slab, struct/array pointees through boundary-snapshot chunks, and everything else
+// allocateIndirectPointee returns a *T pointing at zero-initialised storage, routing
+// slice pointees through the arena slice-header slab, pointer-free pointees through the
+// byte slab, struct/array pointees through boundary-snapshot chunks, and everything else
 // through reflect.New.
 //
 // Takes vm (*VM) which provides the arena slabs and boundary chunks.
@@ -909,9 +1016,9 @@ func materialiseAllocIndirectSource(vm *VM, source reflect.Value, arenaSafe, hea
 // Takes heapCell (bool) which forces a reflect.New cell that outlives every frame.
 //
 // Returns reflect.Value of type *reflectType pointing at zero-init storage.
-func allocIndirectPointee(vm *VM, reflectType reflect.Type, arenaSafe bool, heapCell bool) reflect.Value {
+func allocateIndirectPointee(vm *VM, reflectType reflect.Type, arenaSafe bool, heapCell bool) reflect.Value {
 	if heapCell {
-		return reflect.New(reflectType)
+		return recordFinaliserPointer(vm, reflect.New(reflectType))
 	}
 	arena := vm.Arena
 	if arena != nil && reflectType.Kind() == reflect.Slice {
@@ -939,8 +1046,10 @@ func allocIndirectPointee(vm *VM, reflectType reflect.Type, arenaSafe bool, heap
 // buildSelectSendValue reads the send value from the appropriate register and converts it
 // to the channel's element type.
 //
-// Named banks build the send value directly; the default reads it from the general bank,
-// which is where any other kind is held.
+// Named banks build the send value directly. The default reads it from the general bank,
+// which is where any other kind is held. A typed-slice bank's storage type is not always
+// the element type ([]int travels as []int64), so a slice is reinterpreted as the element
+// type, sharing its backing array, rather than converted.
 //
 // Takes vm (*VM) which provides the arena for string materialisation.
 // Takes registers (*Registers) which holds the source values.
@@ -949,28 +1058,34 @@ func allocIndirectPointee(vm *VM, reflectType reflect.Type, arenaSafe bool, heap
 //
 // Returns reflect.Value which is ready for sending on the channel.
 func buildSelectSendValue(vm *VM, registers *Registers, ext2 isa.Instruction, channelElementType reflect.Type) reflect.Value {
-	switch isa.RegisterKind(ext2.B) {
-	case isa.RegisterInt:
+	kind := isa.RegisterKind(ext2.B)
+	if isa.IsTypedSliceKind(kind) && channelElementType.Kind() == reflect.Slice {
+		if boxed, ok := boxTypedSliceAs(nil, channelElementType, registers, ext2.A, kind); ok {
+			return boxed
+		}
+	}
+	switch kind {
+	case isa.RegisterInt64:
 		return reflect.ValueOf(registers.Ints[ext2.A]).Convert(channelElementType)
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return reflect.ValueOf(registers.Floats[ext2.A]).Convert(channelElementType)
 	case isa.RegisterString:
 		return reflect.ValueOf(materialiseStringUnconditional(vm.Arena, registers.Strings[ext2.A])).Convert(channelElementType)
 	case isa.RegisterBool:
 		return reflect.ValueOf(registers.Bools[ext2.A]).Convert(channelElementType)
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return reflect.ValueOf(registers.Uints[ext2.A]).Convert(channelElementType)
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return reflect.ValueOf(registers.Complex[ext2.A]).Convert(channelElementType)
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		return reflect.ValueOf(registers.SlicesInt[ext2.A]).Convert(channelElementType)
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		return reflect.ValueOf(registers.slicesFloat[ext2.A]).Convert(channelElementType)
 	case isa.RegisterSliceString:
 		return reflect.ValueOf(registers.slicesString[ext2.A]).Convert(channelElementType)
 	case isa.RegisterSliceBool:
 		return reflect.ValueOf(registers.slicesBool[ext2.A]).Convert(channelElementType)
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		return reflect.ValueOf(registers.slicesUint[ext2.A]).Convert(channelElementType)
 	case isa.RegisterSliceByte:
 		return reflect.ValueOf(registers.slicesByte[ext2.A]).Convert(channelElementType)
@@ -993,9 +1108,9 @@ func buildSelectSendValue(vm *VM, registers *Registers, ext2 isa.Instruction, ch
 // Takes value (reflect.Value) which is the value to store.
 func writeRegisterValue(registers *Registers, dest uint8, kind isa.RegisterKind, value reflect.Value) {
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		registers.Ints[dest] = value.Int()
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		registers.Floats[dest] = value.Float()
 	case isa.RegisterString:
 		registers.Strings[dest] = value.String()
@@ -1003,19 +1118,19 @@ func writeRegisterValue(registers *Registers, dest uint8, kind isa.RegisterKind,
 		registers.General[dest] = ValueCopyForBoundary(value)
 	case isa.RegisterBool:
 		registers.Bools[dest] = value.Bool()
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.Uints[dest] = value.Uint()
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		registers.Complex[dest] = value.Complex()
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		registers.SlicesInt[dest] = sliceFromReflectAs[int64](value)
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		registers.slicesFloat[dest] = sliceFromReflectAs[float64](value)
 	case isa.RegisterSliceString:
 		registers.slicesString[dest] = sliceFromReflectAs[string](value)
 	case isa.RegisterSliceBool:
 		registers.slicesBool[dest] = sliceFromReflectAs[bool](value)
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		registers.slicesUint[dest] = sliceFromReflectAs[uint64](value)
 	case isa.RegisterSliceByte:
 		registers.slicesByte[dest] = sliceFromReflectAs[byte](value)
@@ -1033,7 +1148,7 @@ func sliceFromReflectAs[E any](value reflect.Value) []E {
 	if !value.IsValid() {
 		return nil
 	}
-	if typed, ok := reflect.TypeAssert[[]E](value); ok {
+	if typed, ok := typedSliceOf[E](value); ok {
 		return typed
 	}
 	if value.Kind() != reflect.Slice {
@@ -1122,7 +1237,7 @@ func handleSelect(vm *VM, frame *CallFrame, registers *Registers, instruction is
 // Returns opPanicError so the dispatcher unwinds to the host.
 func handleSelectNoCases(vm *VM) OpResult {
 	done := vm.blockingDone()
-	panicWake := vm.Globals.goroutinePanicWakeChan()
+	panicWake := vm.panicWakeChan()
 	if done == nil && panicWake == nil {
 		select {}
 	}

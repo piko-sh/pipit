@@ -609,8 +609,28 @@ func (rcv *CompiledFunction) SignatureTypeDescriptor(obj *TypeDescriptor) *TypeD
 	return nil
 }
 
+func (rcv *CompiledFunction) ReceiverMethods(obj *ReceiverMethodEntry, j int) bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(62))
+	if o != 0 {
+		x := rcv._tab.Vector(o)
+		x += flatbuffers.UOffsetT(j) * 4
+		x = rcv._tab.Indirect(x)
+		obj.Init(rcv._tab.Bytes, x)
+		return true
+	}
+	return false
+}
+
+func (rcv *CompiledFunction) ReceiverMethodsLength() int {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(62))
+	if o != 0 {
+		return rcv._tab.VectorLen(o)
+	}
+	return 0
+}
+
 func CompiledFunctionStart(builder *flatbuffers.Builder) {
-	builder.StartObject(29)
+	builder.StartObject(30)
 }
 func CompiledFunctionAddName(builder *flatbuffers.Builder, name flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(name), 0)
@@ -761,6 +781,12 @@ func CompiledFunctionAddHasReceiver(builder *flatbuffers.Builder, hasReceiver bo
 }
 func CompiledFunctionAddSignatureTypeDescriptor(builder *flatbuffers.Builder, signatureTypeDescriptor flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(28, flatbuffers.UOffsetT(signatureTypeDescriptor), 0)
+}
+func CompiledFunctionAddReceiverMethods(builder *flatbuffers.Builder, receiverMethods flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(29, flatbuffers.UOffsetT(receiverMethods), 0)
+}
+func CompiledFunctionStartReceiverMethodsVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
+	return builder.StartVector(4, numElems, 4)
 }
 func CompiledFunctionEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

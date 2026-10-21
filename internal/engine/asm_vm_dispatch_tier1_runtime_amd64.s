@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerSubOpCap sets ints[B] = cap(value at C) via asmCallCap (collectionLengthOrCap).
-TEXT ·handlerSubOpCap(SB), NOSPLIT|NOFRAME, $0
+// handlerCapacityGeneral sets ints[B] = cap(value at C) via asmCallCapacityGeneral (collectionLengthOrCap).
+TEXT ·handlerCapacityGeneral(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -38,7 +38,7 @@ TEXT ·handlerSubOpCap(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    R15, 0(SP)
 	MOVQ    BX, 8(SP)
 	MOVQ    CX, 16(SP)
-	CALL    ·asmCallCap(SB)
+	CALL    ·asmCallCapacityGeneral(SB)
 	MOVQ    24(SP), R15
 	ADJSP   $-32
 	MOVQ    CTX_SAVED_PC(R15), R14
@@ -50,8 +50,8 @@ TEXT ·handlerSubOpCap(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	DISPATCH_NEXT()
 
-// handlerSubOpBytesToString sets strings[B] = string(bytes at C) via asmCallBytesToString (arena-backed).
-TEXT ·handlerSubOpBytesToString(SB), NOSPLIT|NOFRAME, $0
+// handlerConvertBytesToString sets strings[B] = string(bytes at C) via asmCallConvertBytesToString (arena-backed).
+TEXT ·handlerConvertBytesToString(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -63,7 +63,7 @@ TEXT ·handlerSubOpBytesToString(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    R15, 0(SP)
 	MOVQ    BX, 8(SP)
 	MOVQ    CX, 16(SP)
-	CALL    ·asmCallBytesToString(SB)
+	CALL    ·asmCallConvertBytesToString(SB)
 	MOVQ    24(SP), R15
 	ADJSP   $-32
 	MOVQ    CTX_SAVED_PC(R15), R14
@@ -75,8 +75,8 @@ TEXT ·handlerSubOpBytesToString(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	DISPATCH_NEXT()
 
-// handlerSubOpBoxSliceInt boxes []int64 at C into general[B] via asmCallBoxSliceInt (reflect.ValueOf).
-TEXT ·handlerSubOpBoxSliceInt(SB), NOSPLIT|NOFRAME, $0
+// handlerBoxSliceInt64 boxes []int64 at C into general[B] via asmCallBoxSliceInt64 (reflect.ValueOf).
+TEXT ·handlerBoxSliceInt64(SB), NOSPLIT|NOFRAME, $0
 	NO_LOCAL_POINTERS
 	MOVQ    DX, BX
 	SHRQ    $16, BX
@@ -88,7 +88,7 @@ TEXT ·handlerSubOpBoxSliceInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    R15, 0(SP)
 	MOVQ    BX, 8(SP)
 	MOVQ    CX, 16(SP)
-	CALL    ·asmCallBoxSliceInt(SB)
+	CALL    ·asmCallBoxSliceInt64(SB)
 	MOVQ    24(SP), R15
 	ADJSP   $-32
 	MOVQ    CTX_SAVED_PC(R15), R14
@@ -100,8 +100,8 @@ TEXT ·handlerSubOpBoxSliceInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	DISPATCH_NEXT()
 
-// handlerSubOpAllocStructLiteral carves a zeroed pointer-free struct literal from the arena generic-bytes slab into general[C]; falls back to Go via EXIT_TIER2.
-TEXT ·handlerSubOpAllocStructLiteral(SB), NOSPLIT|NOFRAME, $0
+// handlerAllocateStructLiteral carves a zeroed pointer-free struct literal from the arena generic-bytes slab into general[C]. It falls back to Go via EXIT_TIER2.
+TEXT ·handlerAllocateStructLiteral(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, BX
 	SHRQ    $24, BX
 	MOVBLZX BL, BX

@@ -25,26 +25,13 @@ import (
 
 const (
 	// copyFusionLookaheadLimit bounds the forward scan inside the liveness check used by
-	// FuseCopyStructFieldGeneralT0, keeping compile-time bounded on pathologically large
+	// FuseCopyStructFieldGeneral, keeping compile-time bounded on pathologically large
 	// functions.
 	copyFusionLookaheadLimit = 24
 )
 
-// FuseCopyStructFieldGeneralT0 fuses an adjacent get/set struct-field pair into a single
+// FuseCopyStructFieldGeneral fuses an adjacent get/set struct-field pair into a single
 // copy when the temp register is dead and the layouts are byte-compatible.
-//
-// Rewrites
-//
-//	GET_STRUCT_FIELD_GENERAL_T0 destination=T, sourceReceiver=A, sourceField=Fa
-//	SET_STRUCT_FIELD_GENERAL_T0 destinationReceiver=B, value=T, destinationField=Fb
-//
-// into
-//
-//	COPY_STRUCT_FIELD_GENERAL_T0 sourceReceiver=A, destinationReceiver=B, sourceField=Fa
-//	  isa.OpExt a=Fb
-//
-// A gap variant tolerates one neutral intermediate instruction between the GET and the
-// SET (typically a CSE-emitted isa.OpMoveGeneral preparing the SET's receiver).
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
@@ -54,7 +41,7 @@ const (
 // Takes jumpTargets (map[int]bool) which marks branch destinations.
 //
 // Returns true on a successful rewrite.
-func FuseCopyStructFieldGeneralT0(compiledFunction *program.CompiledFunction,
+func FuseCopyStructFieldGeneral(compiledFunction *program.CompiledFunction,
 	body []isa.Instruction,
 	i, n int,
 	jumpTargets map[int]bool,
@@ -64,7 +51,7 @@ func FuseCopyStructFieldGeneralT0(compiledFunction *program.CompiledFunction,
 	}
 
 	getOp := body[i].Op
-	if getOp != isa.OpGetStructFieldGeneral && getOp != isa.OpGetStructFieldRawPointerT0 {
+	if getOp != isa.OpGetStructFieldGeneral && getOp != isa.OpGetStructFieldRawPointer {
 		return false
 	}
 	if tryFuseCopyAdjacent(compiledFunction, body, i, n, jumpTargets) {
@@ -113,8 +100,8 @@ func tryFuseCopyAdjacent(compiledFunction *program.CompiledFunction,
 	}
 	sourceReceiver := body[i].B
 	destinationReceiver := body[i+1].A
-	body[i] = isa.NewInstruction(isa.OpCopyStructFieldGeneralT0, sourceReceiver, destinationReceiver, sourceLayoutIndex)
-	body[i+1] = isa.NewInstruction(isa.OpExt, destinationLayoutIndex, 0, 0)
+	body[i] = isa.NewInstruction(isa.OpCopyStructFieldGeneral, sourceReceiver, destinationReceiver, sourceLayoutIndex)
+	body[i+1] = isa.NewInstruction(isa.OpExtension, destinationLayoutIndex, 0, 0)
 	return true
 }
 
@@ -147,21 +134,11 @@ func copyFusionLayoutsCompatible(compiledFunction *program.CompiledFunction, sou
 	return true
 }
 
-// tryFuseCopyWithGap handles the GET; X; SET case where a single neutral instruction X
-// sits between the GET and the SET.
+// tryFuseCopyWithGap handles a GET followed by one neutral instruction X and a SET.
 //
-// The intermediate is typically a CSE-emitted isa.OpMoveGeneral preparing the SET's
-// receiver. X is moved BEFORE the GET so the fused layout
-//
-//	X
-//	COPY sourceReceiver=A, destinationReceiver=B, sourceField=Fa
-//	EXT  destinationLayoutIndex=Fb
-//
-// preserves observable semantics. Safety requires that X neither reads nor writes the
-// GET's destination register T (reads would change T's observed value once X runs before
-// GET; writes are also caught by the post-SET liveness scan), X does not write the GET's
-// source receiver register A (the COPY needs A intact), and PC i+1 and i+2 are not jump
-// targets.
+// X is moved before the GET. Safety requires that X neither reads nor writes the GET's
+// destination register, does not write the GET's source receiver register, and that
+// neither instruction after the GET is a jump target.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function being
 // optimised.
@@ -196,7 +173,7 @@ func tryFuseCopyWithGap(compiledFunction *program.CompiledFunction,
 		return false
 	}
 	intermediate := body[i+1]
-	if intermediate.Op == isa.OpNop || intermediate.Op == isa.OpExt {
+	if intermediate.Op == isa.OpNoOperation || intermediate.Op == isa.OpExtension {
 		return false
 	}
 	intermediateReads, intermediateWrites := classifyGeneralRegisterUse(intermediate, tempReg)
@@ -215,8 +192,8 @@ func tryFuseCopyWithGap(compiledFunction *program.CompiledFunction,
 	destinationReceiver := body[i+2].A
 
 	body[i] = intermediate
-	body[i+1] = isa.NewInstruction(isa.OpCopyStructFieldGeneralT0, sourceReceiver, destinationReceiver, sourceLayoutIndex)
-	body[i+2] = isa.NewInstruction(isa.OpExt, destinationLayoutIndex, 0, 0)
+	body[i+1] = isa.NewInstruction(isa.OpCopyStructFieldGeneral, sourceReceiver, destinationReceiver, sourceLayoutIndex)
+	body[i+2] = isa.NewInstruction(isa.OpExtension, destinationLayoutIndex, 0, 0)
 	return true
 }
 
@@ -340,29 +317,29 @@ func classifyGeneralRegisterUse(instr isa.Instruction, reg uint8) (reads, writes
 		}
 	}
 	switch instr.Op {
-	case isa.OpJumpIfFalse, isa.OpJumpIfTrue, isa.OpExt:
+	case isa.OpJumpIfFalse, isa.OpJumpIfTrue, isa.OpExtension:
 
 		return false, false
 	case isa.OpGo, isa.OpDefer:
 
 		return true, false
-	case isa.OpLoadGeneralConst:
+	case isa.OpLoadGeneralConstant:
 
 		return false, instr.A == reg
-	case isa.OpGetStructFieldGeneral, isa.OpGetStructFieldRawPointerT0, isa.OpMoveGeneral:
+	case isa.OpGetStructFieldGeneral, isa.OpGetStructFieldRawPointer, isa.OpMoveGeneral:
 
 		return instr.B == reg, instr.A == reg
-	case isa.OpSetStructFieldGeneral, isa.OpCopyStructFieldGeneralT0:
+	case isa.OpSetStructFieldGeneral, isa.OpCopyStructFieldGeneral:
 
 		return instr.A == reg || instr.B == reg, false
-	case isa.OpGetStructFieldIntT0, isa.OpGetStructFieldUint, isa.OpGetStructFieldFloat, isa.OpGetStructFieldBool:
+	case isa.OpGetStructFieldInt64, isa.OpGetStructFieldUint64, isa.OpGetStructFieldFloat64, isa.OpGetStructFieldBool:
 
 		return instr.B == reg, false
-	case isa.OpSetStructFieldIntT0, isa.OpSetStructFieldUint, isa.OpSetStructFieldFloat, isa.OpSetStructFieldBool,
-		isa.OpTestNilJumpFalse, isa.OpTestNilJumpTrue:
+	case isa.OpSetStructFieldInt64, isa.OpSetStructFieldUint64, isa.OpSetStructFieldFloat64, isa.OpSetStructFieldBool,
+		isa.OpJumpIfNotNil, isa.OpJumpIfNil:
 
 		return instr.A == reg, false
-	case isa.OpEqGeneral, isa.OpNeGeneral, isa.OpLtGeneral, isa.OpLeGeneral, isa.OpGtGeneral, isa.OpGeGeneral:
+	case isa.OpEqualGeneral, isa.OpNotEqualGeneral, isa.OpLessThanGeneral, isa.OpLessOrEqualGeneral, isa.OpGreaterThanGeneral, isa.OpGreaterOrEqualGeneral:
 
 		return instr.B == reg || instr.C == reg, false
 	default:

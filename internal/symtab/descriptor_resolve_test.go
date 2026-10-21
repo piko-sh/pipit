@@ -25,12 +25,15 @@ import (
 	"net/http"
 	"reflect"
 	"sort"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/link"
 	"pipit.sh/pipit/internal/symtab/descriptor"
+	"pipit.sh/pipit/internal/symtab/typemodel"
 )
 
 func TestDescriptorToReflectTypeRefusesExcessiveNesting(t *testing.T) {
@@ -39,7 +42,7 @@ func TestDescriptorToReflectTypeRefusesExcessiveNesting(t *testing.T) {
 	for range descriptor.MaxTypeDescriptorDepth + 16 {
 		typeDescriptor = &descriptor.TypeDescriptor{Kind: descriptor.KindPtr, Element: typeDescriptor}
 	}
-	reconstructed, err := ReflectTypeFor(*typeDescriptor, nil)
+	reconstructed, err := ReflectTypeFor(t.Context(), *typeDescriptor, nil)
 	require.ErrorIs(t, err, errCorruptTypeDescriptor)
 	require.Nil(t, reconstructed)
 }
@@ -50,7 +53,7 @@ func TestDescriptorToReflectTypeAllowsModerateNesting(t *testing.T) {
 	for range 8 {
 		typeDescriptor = &descriptor.TypeDescriptor{Kind: descriptor.KindPtr, Element: typeDescriptor}
 	}
-	reconstructed, err := ReflectTypeFor(*typeDescriptor, nil)
+	reconstructed, err := ReflectTypeFor(t.Context(), *typeDescriptor, nil)
 	require.NoError(t, err)
 	require.Equal(t, reflect.Pointer, reconstructed.Kind())
 }
@@ -100,7 +103,40 @@ func TestDescriptorRoundTripPreservesHostNamedTypes(t *testing.T) {
 	} {
 		t.Run(want.String(), func(t *testing.T) {
 			t.Parallel()
-			reconstructed, err := ReflectTypeFor(descriptor.ReflectTypeToDescriptor(want), registry)
+			reconstructed, err := ReflectTypeFor(t.Context(), descriptor.ReflectTypeToDescriptor(want), registry)
+			require.NoError(t, err)
+			require.Same(t, want, reconstructed)
+		})
+	}
+}
+
+func TestDescriptorRoundTripPreservesNamedCompositeTypes(t *testing.T) {
+	t.Parallel()
+	requireNamedCompositeTypes(t)
+	registry := hostNamedTypesRegistry()
+	build := func(name string, underlying reflect.Type) reflect.Type {
+		t.Helper()
+		identity := typemodel.NamedCompositeIdentity{PkgPath: "example.com/shapes", PkgName: "shapes", Name: name, BareName: name}
+		named, err := typemodel.NamedCompositeTypeFor(identity, underlying)
+		require.NoError(t, err)
+		return named
+	}
+	points := build("Points", reflect.TypeFor[[]float64]())
+	for _, want := range []reflect.Type{
+		points,
+		build("Grid", reflect.TypeFor[[2][2]time.Month]()),
+		build("Index", reflect.TypeFor[map[string]time.Duration]()),
+		build("Lane", reflect.TypeFor[<-chan error]()),
+		build("Handler", reflect.TypeFor[func(time.Duration, ...string) error]()),
+		build("Stack[int]", reflect.TypeFor[[]int]()),
+		reflect.SliceOf(points),
+		reflect.MapOf(reflect.TypeFor[string](), points),
+		reflect.PointerTo(points),
+	} {
+		t.Run(want.String(), func(t *testing.T) {
+			t.Parallel()
+			encoded := descriptor.ReflectTypeToDescriptor(want)
+			reconstructed, err := ReflectTypeFor(t.Context(), encoded, registry)
 			require.NoError(t, err)
 			require.Same(t, want, reconstructed)
 		})
@@ -130,7 +166,7 @@ func TestDescriptorHostNamedTypeFallsBackToShape(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			reconstructed, err := ReflectTypeFor(tt.descriptor, tt.registry)
+			reconstructed, err := ReflectTypeFor(t.Context(), tt.descriptor, tt.registry)
 			require.NoError(t, err)
 			require.Same(t, tt.want, reconstructed)
 		})
@@ -143,7 +179,7 @@ func TestDescriptorHostNamedTypeResolvesThroughAlias(t *testing.T) {
 		"os": {"FileMode": reflect.ValueOf((*fs.FileMode)(nil))},
 	})
 	want := reflect.TypeFor[fs.FileMode]()
-	reconstructed, err := ReflectTypeFor(descriptor.ReflectTypeToDescriptor(want), registry)
+	reconstructed, err := ReflectTypeFor(t.Context(), descriptor.ReflectTypeToDescriptor(want), registry)
 	require.NoError(t, err)
 	require.Same(t, want, reconstructed)
 }
@@ -163,4 +199,111 @@ func TestHostNamedTypeIndexFollowsRegistration(t *testing.T) {
 	resolved, found = registry.HostNamedType("time", "Month")
 	require.True(t, found, "an overlay after the first lookup must be indexed")
 	require.Equal(t, reflect.TypeFor[time.Month](), resolved)
+}
+
+func TestAnEmbeddedFieldStaysEmbeddedThroughADescriptor(t *testing.T) {
+	t.Parallel()
+
+	type Inner struct{ A int }
+	original := reflect.StructOf([]reflect.StructField{
+		{Name: "Inner", Type: reflect.TypeFor[Inner](), Anonymous: true},
+		{Name: "B", Type: reflect.TypeFor[string]()},
+	})
+	encoded := descriptor.ReflectTypeToDescriptor(original)
+	require.True(t, encoded.Fields[0].Embedded)
+	require.False(t, encoded.Fields[1].Embedded)
+	decoded, err := ReflectTypeFor(t.Context(), encoded, nil)
+	require.NoError(t, err)
+	require.True(t, decoded.Field(0).Anonymous)
+	require.Equal(t, original.Field(0).Name, decoded.Field(0).Name)
+}
+
+func TestTheErasedInstantiationOfANativeBackedGenericTypeResolvesToTheNativeType(t *testing.T) {
+	t.Parallel()
+
+	erased := reflect.TypeFor[atomic.Pointer[struct{}]]()
+	registry := NewSymbolRegistry(SymbolExports{"sync/atomic": {
+		"Pointer": reflect.ValueOf(link.WrapNativeGenericType("Pointer", 1, erased, reflect.TypeFor[struct{}]())),
+	}})
+	described := descriptor.ReflectTypeToDescriptor(erased)
+
+	resolved, ok := nativeBackedInstantiation(described, registry)
+	require.True(t, ok)
+	require.Equal(t, erased, resolved, "the loaded type keeps the native methods every instantiation runs on")
+
+	described.Name = "Pointer[int]"
+	_, ok = nativeBackedInstantiation(described, registry)
+	require.False(t, ok, "only the erased instantiation itself is matched")
+	_, ok = nativeBackedInstantiation(descriptor.ReflectTypeToDescriptor(reflect.TypeFor[atomic.Int64]()), registry)
+	require.False(t, ok)
+}
+
+var counterVariable = 3
+
+func TestConstantsAreRebuiltFromTheirDescriptors(t *testing.T) {
+	t.Parallel()
+
+	type config struct{ Name string }
+	registry := NewSymbolRegistry(SymbolExports{"example.com/host": {
+		"Answer":  reflect.ValueOf(42),
+		"Counter": reflect.ValueOf(&counterVariable).Elem(),
+		"Config":  reflect.ValueOf((*config)(nil)),
+	}})
+
+	value, err := ReconstructConstant(t.Context(), descriptor.GeneralConstantDescriptor{Kind: descriptor.GeneralConstantPackageSymbol, PackagePath: "example.com/host", SymbolName: "Answer"}, registry)
+	require.NoError(t, err)
+	require.EqualValues(t, 42, value.Int())
+	address, err := ReconstructConstant(t.Context(), descriptor.GeneralConstantDescriptor{Kind: descriptor.GeneralConstantPackageSymbolAddress, PackagePath: "example.com/host", SymbolName: "Counter"}, registry)
+	require.NoError(t, err)
+	require.Equal(t, &counterVariable, address.Interface())
+	_, err = ReconstructConstant(t.Context(), descriptor.GeneralConstantDescriptor{Kind: descriptor.GeneralConstantPackageSymbolAddress, PackagePath: "example.com/host", SymbolName: "Answer"}, registry)
+	require.ErrorContains(t, err, "not a settable variable")
+	zero, err := ReconstructConstant(t.Context(), descriptor.GeneralConstantDescriptor{Kind: descriptor.GeneralConstantNamedTypeZero, PackagePath: "example.com/host", SymbolName: "Config"}, registry)
+	require.NoError(t, err)
+	require.Equal(t, config{}, zero.Interface())
+	composite, err := ReconstructConstant(t.Context(), descriptor.GeneralConstantDescriptor{
+		Kind:           descriptor.GeneralConstantCompositeZero,
+		TypeDescriptor: descriptor.TypeDescriptor{Kind: descriptor.KindSlice, Element: &descriptor.TypeDescriptor{Kind: descriptor.KindBasic, BasicKind: uint8(reflect.String)}},
+	}, registry)
+	require.NoError(t, err)
+	require.Equal(t, reflect.TypeFor[[]string](), composite.Type())
+
+	for _, missing := range []descriptor.GeneralConstantDescriptor{
+		{Kind: descriptor.GeneralConstantPackageSymbol, PackagePath: "example.com/host", SymbolName: "Gone"},
+		{Kind: descriptor.GeneralConstantPackageSymbolAddress, PackagePath: "example.com/host", SymbolName: "Gone"},
+		{Kind: descriptor.GeneralConstantNamedTypeZero, PackagePath: "example.com/host", SymbolName: "Gone"},
+		{Kind: descriptor.GeneralConstantCompositeZero, TypeDescriptor: descriptor.TypeDescriptor{Kind: descriptor.KindNil}},
+		{Kind: descriptor.GeneralConstantCompositeZero, TypeDescriptor: descriptor.TypeDescriptor{Kind: descriptor.KindNamed, PackagePath: "example.com/host", Name: "Gone"}},
+		{Kind: descriptor.GeneralConstantKind(99)},
+	} {
+		_, err := ReconstructConstant(t.Context(), missing, registry)
+		require.Error(t, err, "%+v", missing)
+	}
+}
+
+func TestANamedDescriptorWithoutAnUnderlyingTypeResolvesByName(t *testing.T) {
+	t.Parallel()
+
+	type config struct{ Name string }
+	registry := NewSymbolRegistry(SymbolExports{"example.com/host": {"Config": reflect.ValueOf((*config)(nil))}})
+	resolved, err := ReflectTypeFor(t.Context(), descriptor.TypeDescriptor{Kind: descriptor.KindNamed, PackagePath: "example.com/host", Name: "Config"}, registry)
+	require.NoError(t, err)
+	require.Equal(t, reflect.TypeFor[config](), resolved)
+
+	pooled, err := ReflectTypeFor(t.Context(), descriptor.TypeDescriptor{Kind: descriptor.KindNamed, PackagePath: "example.com/script", Name: "Celsius", BasicKind: uint8(reflect.Float64)}, registry)
+	require.NoError(t, err)
+	require.Equal(t, reflect.Float64, pooled.Kind(), "a script's named basic type resolves to its pool type")
+
+	_, err = ReflectTypeFor(t.Context(), descriptor.TypeDescriptor{Kind: descriptor.KindNamed, PackagePath: "example.com/script", Name: "Unknown"}, registry)
+	require.ErrorContains(t, err, "not found")
+
+	for kind := reflect.Bool; kind <= reflect.String; kind++ {
+		_, scalar := basicKindForReflectKind(kind)
+		switch kind {
+		case reflect.Array, reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+			require.False(t, scalar, kind.String())
+		default:
+			require.True(t, scalar, kind.String())
+		}
+	}
 }

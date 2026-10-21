@@ -86,8 +86,8 @@ type VarLocation struct {
 	OriginalKind isa.RegisterKind
 
 	// IsCaptured is true when the variable has been captured by a closure. Writes to
-	// captured variables must Emit opWriteSharedCell to keep the upvalue cell in sync with
-	// the register.
+	// captured variables must emit isa.SubOpSetSharedCell to keep the upvalue cell in sync
+	// with the register.
 	IsCaptured bool
 
 	// IsSpilled is true when the variable lives in the spill area (register file index >=

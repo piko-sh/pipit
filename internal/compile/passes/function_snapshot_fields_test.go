@@ -19,7 +19,6 @@
 package passes
 
 import (
-	"context"
 	"reflect"
 	"slices"
 	"testing"
@@ -34,15 +33,15 @@ func snapshotFixture() *program.CompiledFunction {
 	return &program.CompiledFunction{
 		Body: []isa.Instruction{
 			mk(isa.OpMoveGeneral, 1, 0, engine.MoveGeneralModeSnapshot),
-			mk(isa.OpSetStructFieldIntT0, 0, 0, 0),
-			mk(isa.OpGetStructFieldIntT0, 1, 1, 0),
+			mk(isa.OpSetStructFieldInt64, 0, 0, 0),
+			mk(isa.OpGetStructFieldInt64, 1, 1, 0),
 			isa.NewTier1Instruction(isa.SubOpGetStructFieldSliceByte, 0, 1),
-			mk(isa.OpExt, 1, 0, 0),
+			mk(isa.OpExtension, 1, 0, 0),
 			isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
 		},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 2, isa.RegisterGeneral: 2, isa.RegisterSliceByte: 1},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 2, isa.RegisterGeneral: 2, isa.RegisterSliceByte: 1},
 		StructLayoutTable: []program.StructFieldLayout{
-			{PathLength: 1, Kind: uint8(reflect.Int), RegisterKind: uint8(isa.RegisterInt)},
+			{PathLength: 1, Kind: uint8(reflect.Int), RegisterKind: uint8(isa.RegisterInt64)},
 			{PathLength: 1, Path: [isa.StructFieldLayoutMaxPathDepth]uint8{1}, Kind: uint8(reflect.Slice), RegisterKind: uint8(isa.RegisterSliceByte)},
 		},
 		TypeTable: []reflect.Type{reflect.TypeFor[struct {
@@ -54,20 +53,20 @@ func snapshotFixture() *program.CompiledFunction {
 
 func runSnapshotPass(t *testing.T, cf *program.CompiledFunction) {
 	t.Helper()
-	require.NoError(t, (scalarizeSnapshotsPass{}).Run(context.Background(), &PassContext{Analysis: newFunctionAnalysis(cf)}, cf))
+	require.NoError(t, (scalarizeSnapshotsPass{}).Run(t.Context(), &PassContext{Analysis: newFunctionAnalysis(cf)}, cf))
 }
 
 func TestSnapshotFieldsCaptureBeforeSourceMutation(t *testing.T) {
 	t.Parallel()
 	cf := snapshotFixture()
 	runSnapshotPass(t, cf)
-	require.Equal(t, mk(isa.OpGetStructFieldIntT0, 2, 0, 0), cf.Body[0])
+	require.Equal(t, mk(isa.OpGetStructFieldInt64, 2, 0, 0), cf.Body[0])
 	require.Equal(t, isa.NewTier1Instruction(isa.SubOpGetStructFieldSliceByte, 1, 0), cf.Body[1])
-	require.Equal(t, mk(isa.OpExt, 1, 0, 0), cf.Body[2])
-	require.Equal(t, mk(isa.OpSetStructFieldIntT0, 0, 0, 0), cf.Body[3])
-	require.Equal(t, isa.NewTier1Instruction(isa.SubOpMoveInt, 1, 2), cf.Body[4])
+	require.Equal(t, mk(isa.OpExtension, 1, 0, 0), cf.Body[2])
+	require.Equal(t, mk(isa.OpSetStructFieldInt64, 0, 0, 0), cf.Body[3])
+	require.Equal(t, isa.NewTier1Instruction(isa.SubOpMoveInt64, 1, 2), cf.Body[4])
 	require.Equal(t, isa.NewTier1Instruction(isa.SubOpMoveSliceByte, 0, 1), cf.Body[5])
-	require.Equal(t, uint32(3), cf.NumRegisters[isa.RegisterInt])
+	require.Equal(t, uint32(3), cf.NumRegisters[isa.RegisterInt64])
 	require.NotNil(t, cf.AliasInfo)
 }
 
@@ -75,7 +74,7 @@ func TestSnapshotFieldsRefuseObservableCopies(t *testing.T) {
 	t.Parallel()
 	for name, op := range map[string]isa.Instruction{
 		"whole value":    mk(isa.OpMoveGeneral, 0, 1, engine.MoveGeneralModeAlias),
-		"field mutation": mk(isa.OpSetStructFieldIntT0, 1, 0, 0),
+		"field mutation": mk(isa.OpSetStructFieldInt64, 1, 0, 0),
 		"call":           isa.NewTier1Instruction(isa.SubOpCall, 0, 0),
 		"opaque":         mk(isa.Opcode(255), 255, 1, 0),
 	} {
@@ -99,7 +98,7 @@ func TestSnapshotFieldsRefuseObservableCopies(t *testing.T) {
 	t.Run("register overflow", func(t *testing.T) {
 		t.Parallel()
 		cf := snapshotFixture()
-		cf.NumRegisters[isa.RegisterInt] = 256
+		cf.NumRegisters[isa.RegisterInt64] = 256
 		old := slices.Clone(cf.Body)
 		runSnapshotPass(t, cf)
 		require.Equal(t, old, cf.Body)
@@ -113,7 +112,7 @@ func TestSnapshotFieldsRejectMixedDefinitions(t *testing.T) {
 		mk(isa.OpMoveGeneral, 1, 0, engine.MoveGeneralModeSnapshot),
 		mk(isa.OpJumpIfFalse, 0, 1, 0),
 		mk(isa.OpMoveGeneral, 1, 2, engine.MoveGeneralModeAlias),
-		mk(isa.OpGetStructFieldIntT0, 0, 1, 0),
+		mk(isa.OpGetStructFieldInt64, 0, 1, 0),
 		isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
 	}
 	require.True(t, program.SetJumpTarget(cf.Body, 1, 3))
@@ -129,12 +128,12 @@ func TestSnapshotFieldsCaptureOutOfLineRead(t *testing.T) {
 		mk(isa.OpMoveGeneral, 1, 0, engine.MoveGeneralModeSnapshot),
 		tier1Jump(1),
 		isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
-		mk(isa.OpGetStructFieldIntT0, 0, 1, 0),
+		mk(isa.OpGetStructFieldInt64, 0, 1, 0),
 		tier1Jump(-3),
 	}
 	runSnapshotPass(t, cf)
-	require.Equal(t, isa.OpGetStructFieldIntT0, cf.Body[0].Op)
-	require.Equal(t, isa.NewTier1Instruction(isa.SubOpMoveInt, 0, 2), cf.Body[3])
+	require.Equal(t, isa.OpGetStructFieldInt64, cf.Body[0].Op)
+	require.Equal(t, isa.NewTier1Instruction(isa.SubOpMoveInt64, 0, 2), cf.Body[3])
 }
 
 func TestSnapshotFieldsPreserveDebugValues(t *testing.T) {
@@ -143,7 +142,7 @@ func TestSnapshotFieldsPreserveDebugValues(t *testing.T) {
 	cf.DebugVarTable = &program.DebugVarTable{Entries: []program.DebugVarEntry{{StartPC: 1, EndPC: 5}}}
 	runSnapshotPass(t, cf)
 	require.Equal(t, mk(isa.OpMoveGeneral, 1, 0, engine.MoveGeneralModeDebugSnapshot), cf.Body[0])
-	require.Equal(t, mk(isa.OpGetStructFieldIntT0, 2, 1, 0), cf.Body[1])
+	require.Equal(t, mk(isa.OpGetStructFieldInt64, 2, 1, 0), cf.Body[1])
 	require.Equal(t, isa.NewTier1Instruction(isa.SubOpGetStructFieldSliceByte, 1, 1), cf.Body[2])
 	require.Equal(t, 4, cf.DebugVarTable.Entries[0].StartPC)
 	require.Equal(t, 8, cf.DebugVarTable.Entries[0].EndPC)
@@ -173,14 +172,14 @@ func TestSnapshotFieldsIgnoreUnreachablePaddingPredecessors(t *testing.T) {
 	cf := snapshotFixture()
 	cf.Body = []isa.Instruction{
 		mk(isa.OpMoveGeneral, 1, 0, engine.MoveGeneralModeSnapshot),
-		mk(isa.OpGetStructFieldIntT0, 0, 1, 0),
+		mk(isa.OpGetStructFieldInt64, 0, 1, 0),
 		tier1Jump(2),
-		mk(isa.OpNop, 0, 0, 0),
-		mk(isa.OpNop, 0, 0, 0),
-		mk(isa.OpGetStructFieldIntT0, 1, 1, 0),
+		mk(isa.OpNoOperation, 0, 0, 0),
+		mk(isa.OpNoOperation, 0, 0, 0),
+		mk(isa.OpGetStructFieldInt64, 1, 1, 0),
 		isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
 	}
 	runSnapshotPass(t, cf)
-	require.Equal(t, isa.OpGetStructFieldIntT0, cf.Body[0].Op)
-	require.Equal(t, isa.NewTier1Instruction(isa.SubOpMoveInt, 1, 2), cf.Body[5])
+	require.Equal(t, isa.OpGetStructFieldInt64, cf.Body[0].Op)
+	require.Equal(t, isa.NewTier1Instruction(isa.SubOpMoveInt64, 1, 2), cf.Body[5])
 }

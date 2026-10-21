@@ -52,14 +52,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimLoadGeneralConst calls ·asmCallHandleLoadGeneralConst(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimLoadGeneralConst(SB), NOSPLIT, $32-0
+// handlerPathBShimLoadGeneralConstant calls ·asmCallHandleLoadGeneralConstant(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimLoadGeneralConstant(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleLoadGeneralConst(SB)
+	BL   ·asmCallHandleLoadGeneralConstant(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -79,14 +79,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimLoadComplexConst calls ·asmCallHandleLoadComplexConst(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimLoadComplexConst(SB), NOSPLIT, $32-0
+// handlerPathBShimLoadComplex128Constant calls ·asmCallHandleLoadComplex128Constant(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimLoadComplex128Constant(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleLoadComplexConst(SB)
+	BL   ·asmCallHandleLoadComplex128Constant(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -106,14 +106,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimAddComplex calls ·asmCallHandleAddComplex(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimAddComplex(SB), NOSPLIT, $32-0
+// handlerPathBShimAddComplex128 calls ·asmCallHandleAddComplex128(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimAddComplex128(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleAddComplex(SB)
+	BL   ·asmCallHandleAddComplex128(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -133,14 +133,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSubComplex calls ·asmCallHandleSubComplex(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSubComplex(SB), NOSPLIT, $32-0
+// handlerPathBShimSubtractComplex128 calls ·asmCallHandleSubtractComplex128(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSubtractComplex128(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSubComplex(SB)
+	BL   ·asmCallHandleSubtractComplex128(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -160,14 +160,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMulComplex calls ·asmCallHandleMulComplex(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMulComplex(SB), NOSPLIT, $32-0
+// handlerPathBShimMultiplyComplex128 calls ·asmCallHandleMultiplyComplex128(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimMultiplyComplex128(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMulComplex(SB)
+	BL   ·asmCallHandleMultiplyComplex128(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -187,14 +187,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimDivComplex calls ·asmCallHandleDivComplex(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimDivComplex(SB), NOSPLIT, $32-0
+// handlerPathBShimDivideComplex128 calls ·asmCallHandleDivideComplex128(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimDivideComplex128(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleDivComplex(SB)
+	BL   ·asmCallHandleDivideComplex128(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -214,14 +214,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimEqComplex calls ·asmCallHandleEqComplex(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimEqComplex(SB), NOSPLIT, $32-0
+// handlerPathBShimEqualComplex128 calls ·asmCallHandleEqualComplex128(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimEqualComplex128(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleEqComplex(SB)
+	BL   ·asmCallHandleEqualComplex128(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -241,14 +241,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimNeComplex calls ·asmCallHandleNeComplex(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimNeComplex(SB), NOSPLIT, $32-0
+// handlerPathBShimNotEqualComplex128 calls ·asmCallHandleNotEqualComplex128(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimNotEqualComplex128(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleNeComplex(SB)
+	BL   ·asmCallHandleNotEqualComplex128(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -268,14 +268,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimBuildComplex calls ·asmCallHandleBuildComplex(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimBuildComplex(SB), NOSPLIT, $32-0
+// handlerPathBShimMakeComplex128 calls ·asmCallHandleMakeComplex128(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimMakeComplex128(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleBuildComplex(SB)
+	BL   ·asmCallHandleMakeComplex128(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -295,14 +295,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimConcatString calls ·asmCallHandleConcatString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimConcatString(SB), NOSPLIT, $32-0
+// handlerPathBShimConcatenateString calls ·asmCallHandleConcatenateString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimConcatenateString(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleConcatString(SB)
+	BL   ·asmCallHandleConcatenateString(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -322,14 +322,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimConcatRuneString calls ·asmCallHandleConcatRuneString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimConcatRuneString(SB), NOSPLIT, $32-0
+// handlerPathBShimConcatenateStringRune calls ·asmCallHandleConcatenateStringRune(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimConcatenateStringRune(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleConcatRuneString(SB)
+	BL   ·asmCallHandleConcatenateStringRune(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -349,14 +349,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimEqGeneral calls ·asmCallHandleEqGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimEqGeneral(SB), NOSPLIT, $32-0
+// handlerPathBShimEqualGeneral calls ·asmCallHandleEqualGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimEqualGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleEqGeneral(SB)
+	BL   ·asmCallHandleEqualGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -376,14 +376,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimNeGeneral calls ·asmCallHandleNeGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimNeGeneral(SB), NOSPLIT, $32-0
+// handlerPathBShimNotEqualGeneral calls ·asmCallHandleNotEqualGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimNotEqualGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleNeGeneral(SB)
+	BL   ·asmCallHandleNotEqualGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -403,14 +403,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimLtGeneral calls ·asmCallHandleLtGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimLtGeneral(SB), NOSPLIT, $32-0
+// handlerPathBShimLessThanGeneral calls ·asmCallHandleLessThanGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimLessThanGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleLtGeneral(SB)
+	BL   ·asmCallHandleLessThanGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -430,14 +430,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimLeGeneral calls ·asmCallHandleLeGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimLeGeneral(SB), NOSPLIT, $32-0
+// handlerPathBShimLessOrEqualGeneral calls ·asmCallHandleLessOrEqualGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimLessOrEqualGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleLeGeneral(SB)
+	BL   ·asmCallHandleLessOrEqualGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -457,14 +457,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimGtGeneral calls ·asmCallHandleGtGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimGtGeneral(SB), NOSPLIT, $32-0
+// handlerPathBShimGreaterThanGeneral calls ·asmCallHandleGreaterThanGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGreaterThanGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleGtGeneral(SB)
+	BL   ·asmCallHandleGreaterThanGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -484,14 +484,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimGeGeneral calls ·asmCallHandleGeGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimGeGeneral(SB), NOSPLIT, $32-0
+// handlerPathBShimGreaterOrEqualGeneral calls ·asmCallHandleGreaterOrEqualGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGreaterOrEqualGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleGeGeneral(SB)
+	BL   ·asmCallHandleGreaterOrEqualGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -511,14 +511,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimPackInterface calls ·asmCallHandlePackInterface(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimPackInterface(SB), NOSPLIT, $32-0
+// handlerPathBShimBoxAsInterface calls ·asmCallHandleBoxAsInterface(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimBoxAsInterface(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandlePackInterface(SB)
+	BL   ·asmCallHandleBoxAsInterface(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -538,14 +538,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimUnpackInterface calls ·asmCallHandleUnpackInterface(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimUnpackInterface(SB), NOSPLIT, $32-0
+// handlerPathBShimUnboxFromInterface calls ·asmCallHandleUnboxFromInterface(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimUnboxFromInterface(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleUnpackInterface(SB)
+	BL   ·asmCallHandleUnboxFromInterface(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -565,14 +565,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimTestNilJumpTrue calls ·asmCallHandleTestNilJumpTrue(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimTestNilJumpTrue(SB), NOSPLIT, $32-0
+// handlerPathBShimJumpIfNil calls ·asmCallHandleJumpIfNil(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimJumpIfNil(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleTestNilJumpTrue(SB)
+	BL   ·asmCallHandleJumpIfNil(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -592,14 +592,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimTestNilJumpFalse calls ·asmCallHandleTestNilJumpFalse(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimTestNilJumpFalse(SB), NOSPLIT, $32-0
+// handlerPathBShimJumpIfNotNil calls ·asmCallHandleJumpIfNotNil(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimJumpIfNotNil(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleTestNilJumpFalse(SB)
+	BL   ·asmCallHandleJumpIfNotNil(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -646,14 +646,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimGetUpvalue calls ·asmCallHandleGetUpvalue(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimGetUpvalue(SB), NOSPLIT, $32-0
+// handlerPathBShimGetCapturedVariable calls ·asmCallHandleGetCapturedVariable(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetCapturedVariable(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleGetUpvalue(SB)
+	BL   ·asmCallHandleGetCapturedVariable(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -673,14 +673,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSetUpvalue calls ·asmCallHandleSetUpvalue(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSetUpvalue(SB), NOSPLIT, $32-0
+// handlerPathBShimSetCapturedVariable calls ·asmCallHandleSetCapturedVariable(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetCapturedVariable(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSetUpvalue(SB)
+	BL   ·asmCallHandleSetCapturedVariable(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -727,14 +727,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimIndex calls ·asmCallHandleIndex(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimIndex(SB), NOSPLIT, $32-0
+// handlerPathBShimGetElement calls ·asmCallHandleGetElement(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetElement(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleIndex(SB)
+	BL   ·asmCallHandleGetElement(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -754,14 +754,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimIndexSet calls ·asmCallHandleIndexSet(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimIndexSet(SB), NOSPLIT, $32-0
+// handlerPathBShimSetElement calls ·asmCallHandleSetElement(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetElement(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleIndexSet(SB)
+	BL   ·asmCallHandleSetElement(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -781,14 +781,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapSet calls ·asmCallHandleMapSet(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapSet(SB), NOSPLIT, $32-0
+// handlerPathBShimSetMap calls ·asmCallHandleSetMap(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetMap(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapSet(SB)
+	BL   ·asmCallHandleSetMap(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -808,14 +808,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapIndexOk calls ·asmCallHandleMapIndexOk(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapIndexOk(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapOk calls ·asmCallHandleGetMapOk(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapOk(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapIndexOk(SB)
+	BL   ·asmCallHandleGetMapOk(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -862,14 +862,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimCopy calls ·asmCallHandleCopy(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimCopy(SB), NOSPLIT, $32-0
+// handlerPathBShimCopyGeneral calls ·asmCallHandleCopyGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimCopyGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleCopy(SB)
+	BL   ·asmCallHandleCopyGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -889,14 +889,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSliceGetInt calls ·asmCallHandleSliceGetInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSliceGetInt(SB), NOSPLIT, $32-0
+// handlerPathBShimGetElementInt64 calls ·asmCallHandleGetElementInt64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetElementInt64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSliceGetInt(SB)
+	BL   ·asmCallHandleGetElementInt64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -916,14 +916,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSliceSetInt calls ·asmCallHandleSliceSetInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSliceSetInt(SB), NOSPLIT, $32-0
+// handlerPathBShimSetElementInt64 calls ·asmCallHandleSetElementInt64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetElementInt64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSliceSetInt(SB)
+	BL   ·asmCallHandleSetElementInt64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -943,14 +943,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSliceGetFloat calls ·asmCallHandleSliceGetFloat(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSliceGetFloat(SB), NOSPLIT, $32-0
+// handlerPathBShimGetElementFloat64 calls ·asmCallHandleGetElementFloat64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetElementFloat64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSliceGetFloat(SB)
+	BL   ·asmCallHandleGetElementFloat64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -970,14 +970,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSliceSetFloat calls ·asmCallHandleSliceSetFloat(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSliceSetFloat(SB), NOSPLIT, $32-0
+// handlerPathBShimSetElementFloat64 calls ·asmCallHandleSetElementFloat64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetElementFloat64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSliceSetFloat(SB)
+	BL   ·asmCallHandleSetElementFloat64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -997,14 +997,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSliceGetString calls ·asmCallHandleSliceGetString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSliceGetString(SB), NOSPLIT, $32-0
+// handlerPathBShimGetElementString calls ·asmCallHandleGetElementString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetElementString(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSliceGetString(SB)
+	BL   ·asmCallHandleGetElementString(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1024,14 +1024,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSliceSetString calls ·asmCallHandleSliceSetString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSliceSetString(SB), NOSPLIT, $32-0
+// handlerPathBShimSetElementString calls ·asmCallHandleSetElementString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetElementString(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSliceSetString(SB)
+	BL   ·asmCallHandleSetElementString(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1051,14 +1051,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSliceGetBool calls ·asmCallHandleSliceGetBool(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSliceGetBool(SB), NOSPLIT, $32-0
+// handlerPathBShimGetElementBool calls ·asmCallHandleGetElementBool(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetElementBool(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSliceGetBool(SB)
+	BL   ·asmCallHandleGetElementBool(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1078,14 +1078,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSliceSetBool calls ·asmCallHandleSliceSetBool(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSliceSetBool(SB), NOSPLIT, $32-0
+// handlerPathBShimSetElementBool calls ·asmCallHandleSetElementBool(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetElementBool(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSliceSetBool(SB)
+	BL   ·asmCallHandleSetElementBool(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1105,14 +1105,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSliceGetUint calls ·asmCallHandleSliceGetUint(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSliceGetUint(SB), NOSPLIT, $32-0
+// handlerPathBShimGetElementUint64 calls ·asmCallHandleGetElementUint64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetElementUint64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSliceGetUint(SB)
+	BL   ·asmCallHandleGetElementUint64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1132,14 +1132,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSliceSetUint calls ·asmCallHandleSliceSetUint(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSliceSetUint(SB), NOSPLIT, $32-0
+// handlerPathBShimSetElementUint64 calls ·asmCallHandleSetElementUint64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetElementUint64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSliceSetUint(SB)
+	BL   ·asmCallHandleSetElementUint64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1159,14 +1159,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapGetIntInt calls ·asmCallHandleMapGetIntInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapGetIntInt(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapInt64Int64 calls ·asmCallHandleGetMapInt64Int64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapInt64Int64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapGetIntInt(SB)
+	BL   ·asmCallHandleGetMapInt64Int64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1186,14 +1186,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapSetIntInt calls ·asmCallHandleMapSetIntInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapSetIntInt(SB), NOSPLIT, $32-0
+// handlerPathBShimSetMapInt64Int64 calls ·asmCallHandleSetMapInt64Int64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetMapInt64Int64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapSetIntInt(SB)
+	BL   ·asmCallHandleSetMapInt64Int64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1213,14 +1213,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapGetStringInt calls ·asmCallHandleMapGetStringInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapGetStringInt(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapStringInt64 calls ·asmCallHandleGetMapStringInt64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapStringInt64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapGetStringInt(SB)
+	BL   ·asmCallHandleGetMapStringInt64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1240,14 +1240,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapSetStringInt calls ·asmCallHandleMapSetStringInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapSetStringInt(SB), NOSPLIT, $32-0
+// handlerPathBShimSetMapStringInt64 calls ·asmCallHandleSetMapStringInt64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetMapStringInt64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapSetStringInt(SB)
+	BL   ·asmCallHandleSetMapStringInt64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1267,14 +1267,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapGetStringString calls ·asmCallHandleMapGetStringString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapGetStringString(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapStringString calls ·asmCallHandleGetMapStringString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapStringString(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapGetStringString(SB)
+	BL   ·asmCallHandleGetMapStringString(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1294,14 +1294,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapSetStringString calls ·asmCallHandleMapSetStringString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapSetStringString(SB), NOSPLIT, $32-0
+// handlerPathBShimSetMapStringString calls ·asmCallHandleSetMapStringString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetMapStringString(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapSetStringString(SB)
+	BL   ·asmCallHandleSetMapStringString(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1321,14 +1321,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapGetIntString calls ·asmCallHandleMapGetIntString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapGetIntString(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapInt64String calls ·asmCallHandleGetMapInt64String(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapInt64String(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapGetIntString(SB)
+	BL   ·asmCallHandleGetMapInt64String(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1348,14 +1348,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapSetIntString calls ·asmCallHandleMapSetIntString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapSetIntString(SB), NOSPLIT, $32-0
+// handlerPathBShimSetMapInt64String calls ·asmCallHandleSetMapInt64String(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetMapInt64String(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapSetIntString(SB)
+	BL   ·asmCallHandleSetMapInt64String(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1375,14 +1375,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapIndexOkIntInt calls ·asmCallHandleMapIndexOkIntInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapIndexOkIntInt(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapInt64Int64Ok calls ·asmCallHandleGetMapInt64Int64Ok(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapInt64Int64Ok(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapIndexOkIntInt(SB)
+	BL   ·asmCallHandleGetMapInt64Int64Ok(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1402,14 +1402,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapIndexOkStringInt calls ·asmCallHandleMapIndexOkStringInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapIndexOkStringInt(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapStringInt64Ok calls ·asmCallHandleGetMapStringInt64Ok(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapStringInt64Ok(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapIndexOkStringInt(SB)
+	BL   ·asmCallHandleGetMapStringInt64Ok(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1429,14 +1429,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapIndexOkStringString calls ·asmCallHandleMapIndexOkStringString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapIndexOkStringString(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapStringStringOk calls ·asmCallHandleGetMapStringStringOk(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapStringStringOk(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapIndexOkStringString(SB)
+	BL   ·asmCallHandleGetMapStringStringOk(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1456,14 +1456,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapIndexOkIntString calls ·asmCallHandleMapIndexOkIntString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapIndexOkIntString(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapInt64StringOk calls ·asmCallHandleGetMapInt64StringOk(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapInt64StringOk(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapIndexOkIntString(SB)
+	BL   ·asmCallHandleGetMapInt64StringOk(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1483,14 +1483,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapGetIntGeneral calls ·asmCallHandleMapGetIntGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapGetIntGeneral(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapInt64General calls ·asmCallHandleGetMapInt64General(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapInt64General(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapGetIntGeneral(SB)
+	BL   ·asmCallHandleGetMapInt64General(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1510,14 +1510,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapIndexOkIntGeneral calls ·asmCallHandleMapIndexOkIntGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapIndexOkIntGeneral(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapInt64GeneralOk calls ·asmCallHandleGetMapInt64GeneralOk(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapInt64GeneralOk(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapIndexOkIntGeneral(SB)
+	BL   ·asmCallHandleGetMapInt64GeneralOk(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1537,14 +1537,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapGetStringGeneral calls ·asmCallHandleMapGetStringGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapGetStringGeneral(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapStringGeneral calls ·asmCallHandleGetMapStringGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapStringGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapGetStringGeneral(SB)
+	BL   ·asmCallHandleGetMapStringGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1564,14 +1564,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapIndexOkStringGeneral calls ·asmCallHandleMapIndexOkStringGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapIndexOkStringGeneral(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapStringGeneralOk calls ·asmCallHandleGetMapStringGeneralOk(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapStringGeneralOk(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapIndexOkStringGeneral(SB)
+	BL   ·asmCallHandleGetMapStringGeneralOk(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1591,14 +1591,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapSetStringGeneral calls ·asmCallHandleMapSetStringGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapSetStringGeneral(SB), NOSPLIT, $32-0
+// handlerPathBShimSetMapStringGeneral calls ·asmCallHandleSetMapStringGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetMapStringGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapSetStringGeneral(SB)
+	BL   ·asmCallHandleSetMapStringGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1618,14 +1618,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapAddIntInt calls ·asmCallHandleMapAddIntInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapAddIntInt(SB), NOSPLIT, $32-0
+// handlerPathBShimAddToMapInt64Int64 calls ·asmCallHandleAddToMapInt64Int64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimAddToMapInt64Int64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapAddIntInt(SB)
+	BL   ·asmCallHandleAddToMapInt64Int64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1645,14 +1645,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapAddStringInt calls ·asmCallHandleMapAddStringInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapAddStringInt(SB), NOSPLIT, $32-0
+// handlerPathBShimAddToMapStringInt64 calls ·asmCallHandleAddToMapStringInt64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimAddToMapStringInt64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapAddStringInt(SB)
+	BL   ·asmCallHandleAddToMapStringInt64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1699,14 +1699,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimAddr calls ·asmCallHandleAddr(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimAddr(SB), NOSPLIT, $32-0
+// handlerPathBShimAddress calls ·asmCallHandleAddress(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimAddress(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleAddr(SB)
+	BL   ·asmCallHandleAddress(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1726,14 +1726,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimDeref calls ·asmCallHandleDeref(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimDeref(SB), NOSPLIT, $32-0
+// handlerPathBShimDereference calls ·asmCallHandleDereference(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimDereference(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleDeref(SB)
+	BL   ·asmCallHandleDereference(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1753,14 +1753,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimAllocIndirect calls ·asmCallHandleAllocIndirect(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimAllocIndirect(SB), NOSPLIT, $32-0
+// handlerPathBShimAllocateIndirect calls ·asmCallHandleAllocateIndirect(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimAllocateIndirect(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleAllocIndirect(SB)
+	BL   ·asmCallHandleAllocateIndirect(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1807,14 +1807,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimConvert calls ·asmCallHandleConvert(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimConvert(SB), NOSPLIT, $32-0
+// handlerPathBShimConvertGeneral calls ·asmCallHandleConvertGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimConvertGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleConvert(SB)
+	BL   ·asmCallHandleConvertGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1969,14 +1969,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimStrContainsRune calls ·asmCallHandleStrContainsRune(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimStrContainsRune(SB), NOSPLIT, $32-0
+// handlerPathBShimStringsContainsRune calls ·asmCallHandleStringsContainsRune(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimStringsContainsRune(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleStrContainsRune(SB)
+	BL   ·asmCallHandleStringsContainsRune(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -1996,14 +1996,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimStrContains calls ·asmCallHandleStrContains(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimStrContains(SB), NOSPLIT, $32-0
+// handlerPathBShimStringsContains calls ·asmCallHandleStringsContains(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimStringsContains(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleStrContains(SB)
+	BL   ·asmCallHandleStringsContains(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2023,14 +2023,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimStrHasPrefix calls ·asmCallHandleStrHasPrefix(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimStrHasPrefix(SB), NOSPLIT, $32-0
+// handlerPathBShimStringsHasPrefix calls ·asmCallHandleStringsHasPrefix(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimStringsHasPrefix(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleStrHasPrefix(SB)
+	BL   ·asmCallHandleStringsHasPrefix(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2050,14 +2050,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimStrHasSuffix calls ·asmCallHandleStrHasSuffix(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimStrHasSuffix(SB), NOSPLIT, $32-0
+// handlerPathBShimStringsHasSuffix calls ·asmCallHandleStringsHasSuffix(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimStringsHasSuffix(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleStrHasSuffix(SB)
+	BL   ·asmCallHandleStringsHasSuffix(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2077,14 +2077,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimStrEqualFold calls ·asmCallHandleStrEqualFold(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimStrEqualFold(SB), NOSPLIT, $32-0
+// handlerPathBShimStringsEqualFold calls ·asmCallHandleStringsEqualFold(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimStringsEqualFold(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleStrEqualFold(SB)
+	BL   ·asmCallHandleStringsEqualFold(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2104,14 +2104,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimStrIndex calls ·asmCallHandleStrIndex(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimStrIndex(SB), NOSPLIT, $32-0
+// handlerPathBShimStringsIndex calls ·asmCallHandleStringsIndex(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimStringsIndex(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleStrIndex(SB)
+	BL   ·asmCallHandleStringsIndex(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2131,14 +2131,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimStrCount calls ·asmCallHandleStrCount(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimStrCount(SB), NOSPLIT, $32-0
+// handlerPathBShimStringsCount calls ·asmCallHandleStringsCount(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimStringsCount(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleStrCount(SB)
+	BL   ·asmCallHandleStringsCount(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2158,14 +2158,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimStrTrimPrefix calls ·asmCallHandleStrTrimPrefix(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimStrTrimPrefix(SB), NOSPLIT, $32-0
+// handlerPathBShimStringsTrimPrefix calls ·asmCallHandleStringsTrimPrefix(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimStringsTrimPrefix(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleStrTrimPrefix(SB)
+	BL   ·asmCallHandleStringsTrimPrefix(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2185,14 +2185,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimStrTrimSuffix calls ·asmCallHandleStrTrimSuffix(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimStrTrimSuffix(SB), NOSPLIT, $32-0
+// handlerPathBShimStringsTrimSuffix calls ·asmCallHandleStringsTrimSuffix(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimStringsTrimSuffix(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleStrTrimSuffix(SB)
+	BL   ·asmCallHandleStringsTrimSuffix(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2212,14 +2212,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimStrTrim calls ·asmCallHandleStrTrim(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimStrTrim(SB), NOSPLIT, $32-0
+// handlerPathBShimStringsTrim calls ·asmCallHandleStringsTrim(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimStringsTrim(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleStrTrim(SB)
+	BL   ·asmCallHandleStringsTrim(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2239,14 +2239,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimStrIndexRune calls ·asmCallHandleStrIndexRune(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimStrIndexRune(SB), NOSPLIT, $32-0
+// handlerPathBShimStringsIndexRune calls ·asmCallHandleStringsIndexRune(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimStringsIndexRune(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleStrIndexRune(SB)
+	BL   ·asmCallHandleStringsIndexRune(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2266,14 +2266,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimStrRepeat calls ·asmCallHandleStrRepeat(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimStrRepeat(SB), NOSPLIT, $32-0
+// handlerPathBShimStringsRepeat calls ·asmCallHandleStringsRepeat(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimStringsRepeat(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleStrRepeat(SB)
+	BL   ·asmCallHandleStringsRepeat(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2293,14 +2293,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimStrLastIndex calls ·asmCallHandleStrLastIndex(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimStrLastIndex(SB), NOSPLIT, $32-0
+// handlerPathBShimStringsLastIndex calls ·asmCallHandleStringsLastIndex(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimStringsLastIndex(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleStrLastIndex(SB)
+	BL   ·asmCallHandleStringsLastIndex(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2320,14 +2320,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimStrJoin calls ·asmCallHandleStrJoin(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimStrJoin(SB), NOSPLIT, $32-0
+// handlerPathBShimStringsJoin calls ·asmCallHandleStringsJoin(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimStringsJoin(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleStrJoin(SB)
+	BL   ·asmCallHandleStringsJoin(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2347,14 +2347,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimStrSplit calls ·asmCallHandleStrSplit(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimStrSplit(SB), NOSPLIT, $32-0
+// handlerPathBShimStringsSplit calls ·asmCallHandleStringsSplit(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimStringsSplit(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleStrSplit(SB)
+	BL   ·asmCallHandleStringsSplit(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2374,14 +2374,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimStrReplaceAll calls ·asmCallHandleStrReplaceAll(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimStrReplaceAll(SB), NOSPLIT, $32-0
+// handlerPathBShimStringsReplaceAll calls ·asmCallHandleStringsReplaceAll(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimStringsReplaceAll(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleStrReplaceAll(SB)
+	BL   ·asmCallHandleStringsReplaceAll(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2428,13 +2428,13 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimGetStructFieldIntT0 calls ·asmCallHandleGetStructFieldIntT0(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimGetStructFieldIntT0(SB), NOSPLIT, $32-0
+// handlerPathBShimGetStructFieldInt64 calls ·asmCallHandleGetStructFieldInt64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetStructFieldInt64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleGetStructFieldIntT0(SB)
+	BL   ·asmCallHandleGetStructFieldInt64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2454,13 +2454,13 @@ tier2_shim_exit_narrow:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSetStructFieldIntT0 calls ·asmCallHandleSetStructFieldIntT0(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSetStructFieldIntT0(SB), NOSPLIT, $32-0
+// handlerPathBShimSetStructFieldInt64 calls ·asmCallHandleSetStructFieldInt64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetStructFieldInt64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSetStructFieldIntT0(SB)
+	BL   ·asmCallHandleSetStructFieldInt64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2480,13 +2480,13 @@ tier2_shim_exit_narrow:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimGetStructFieldUintT0 calls ·asmCallHandleGetStructFieldUintT0(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimGetStructFieldUintT0(SB), NOSPLIT, $32-0
+// handlerPathBShimGetStructFieldUint64 calls ·asmCallHandleGetStructFieldUint64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetStructFieldUint64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleGetStructFieldUintT0(SB)
+	BL   ·asmCallHandleGetStructFieldUint64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2506,13 +2506,13 @@ tier2_shim_exit_narrow:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSetStructFieldUintT0 calls ·asmCallHandleSetStructFieldUintT0(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSetStructFieldUintT0(SB), NOSPLIT, $32-0
+// handlerPathBShimSetStructFieldUint64 calls ·asmCallHandleSetStructFieldUint64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetStructFieldUint64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSetStructFieldUintT0(SB)
+	BL   ·asmCallHandleSetStructFieldUint64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2532,13 +2532,13 @@ tier2_shim_exit_narrow:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimGetStructFieldFloatT0 calls ·asmCallHandleGetStructFieldFloatT0(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimGetStructFieldFloatT0(SB), NOSPLIT, $32-0
+// handlerPathBShimGetStructFieldFloat64 calls ·asmCallHandleGetStructFieldFloat64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetStructFieldFloat64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleGetStructFieldFloatT0(SB)
+	BL   ·asmCallHandleGetStructFieldFloat64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2558,13 +2558,13 @@ tier2_shim_exit_narrow:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSetStructFieldFloatT0 calls ·asmCallHandleSetStructFieldFloatT0(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSetStructFieldFloatT0(SB), NOSPLIT, $32-0
+// handlerPathBShimSetStructFieldFloat64 calls ·asmCallHandleSetStructFieldFloat64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetStructFieldFloat64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSetStructFieldFloatT0(SB)
+	BL   ·asmCallHandleSetStructFieldFloat64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2584,13 +2584,13 @@ tier2_shim_exit_narrow:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimGetStructFieldBoolT0 calls ·asmCallHandleGetStructFieldBoolT0(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimGetStructFieldBoolT0(SB), NOSPLIT, $32-0
+// handlerPathBShimGetStructFieldBool calls ·asmCallHandleGetStructFieldBool(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetStructFieldBool(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleGetStructFieldBoolT0(SB)
+	BL   ·asmCallHandleGetStructFieldBool(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2610,13 +2610,13 @@ tier2_shim_exit_narrow:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSetStructFieldBoolT0 calls ·asmCallHandleSetStructFieldBoolT0(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSetStructFieldBoolT0(SB), NOSPLIT, $32-0
+// handlerPathBShimSetStructFieldBool calls ·asmCallHandleSetStructFieldBool(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetStructFieldBool(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSetStructFieldBoolT0(SB)
+	BL   ·asmCallHandleSetStructFieldBool(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2636,13 +2636,13 @@ tier2_shim_exit_narrow:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimGetStructFieldGeneralT0 calls ·asmCallHandleGetStructFieldGeneralT0(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimGetStructFieldGeneralT0(SB), NOSPLIT, $32-0
+// handlerPathBShimGetStructFieldGeneral calls ·asmCallHandleGetStructFieldGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetStructFieldGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleGetStructFieldGeneralT0(SB)
+	BL   ·asmCallHandleGetStructFieldGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2662,13 +2662,13 @@ tier2_shim_exit_narrow:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSetStructFieldGeneralT0 calls ·asmCallHandleSetStructFieldGeneralT0(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSetStructFieldGeneralT0(SB), NOSPLIT, $32-0
+// handlerPathBShimSetStructFieldGeneral calls ·asmCallHandleSetStructFieldGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetStructFieldGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSetStructFieldGeneralT0(SB)
+	BL   ·asmCallHandleSetStructFieldGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2688,13 +2688,13 @@ tier2_shim_exit_narrow:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimCopyStructFieldGeneralT0 calls ·asmCallHandleCopyStructFieldGeneralT0(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimCopyStructFieldGeneralT0(SB), NOSPLIT, $32-0
+// handlerPathBShimCopyStructFieldGeneral calls ·asmCallHandleCopyStructFieldGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimCopyStructFieldGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleCopyStructFieldGeneralT0(SB)
+	BL   ·asmCallHandleCopyStructFieldGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2714,14 +2714,14 @@ tier2_shim_exit_narrow:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSliceIndexStructFieldInt calls ·asmCallHandleSliceIndexStructFieldInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSliceIndexStructFieldInt(SB), NOSPLIT, $32-0
+// handlerPathBShimGetElementFieldInt64 calls ·asmCallHandleGetElementFieldInt64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetElementFieldInt64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSliceIndexStructFieldInt(SB)
+	BL   ·asmCallHandleGetElementFieldInt64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2741,14 +2741,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSliceIndexStructFieldFloat calls ·asmCallHandleSliceIndexStructFieldFloat(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSliceIndexStructFieldFloat(SB), NOSPLIT, $32-0
+// handlerPathBShimGetElementFieldFloat64 calls ·asmCallHandleGetElementFieldFloat64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetElementFieldFloat64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSliceIndexStructFieldFloat(SB)
+	BL   ·asmCallHandleGetElementFieldFloat64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2768,14 +2768,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapIndexOkJumpIfFalseIntInt calls ·asmCallHandleMapIndexOkJumpIfFalseIntInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapIndexOkJumpIfFalseIntInt(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapInt64Int64OkThenJumpIfFalse calls ·asmCallHandleGetMapInt64Int64OkThenJumpIfFalse(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapInt64Int64OkThenJumpIfFalse(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapIndexOkJumpIfFalseIntInt(SB)
+	BL   ·asmCallHandleGetMapInt64Int64OkThenJumpIfFalse(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2795,14 +2795,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapIndexOkJumpIfFalseStringInt calls ·asmCallHandleMapIndexOkJumpIfFalseStringInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapIndexOkJumpIfFalseStringInt(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapStringInt64OkThenJumpIfFalse calls ·asmCallHandleGetMapStringInt64OkThenJumpIfFalse(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapStringInt64OkThenJumpIfFalse(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapIndexOkJumpIfFalseStringInt(SB)
+	BL   ·asmCallHandleGetMapStringInt64OkThenJumpIfFalse(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2822,14 +2822,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapIndexOkJumpIfFalseStringString calls ·asmCallHandleMapIndexOkJumpIfFalseStringString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapIndexOkJumpIfFalseStringString(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapStringStringOkThenJumpIfFalse calls ·asmCallHandleGetMapStringStringOkThenJumpIfFalse(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapStringStringOkThenJumpIfFalse(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapIndexOkJumpIfFalseStringString(SB)
+	BL   ·asmCallHandleGetMapStringStringOkThenJumpIfFalse(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2849,14 +2849,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapIndexOkJumpIfFalseIntString calls ·asmCallHandleMapIndexOkJumpIfFalseIntString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapIndexOkJumpIfFalseIntString(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapInt64StringOkThenJumpIfFalse calls ·asmCallHandleGetMapInt64StringOkThenJumpIfFalse(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapInt64StringOkThenJumpIfFalse(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapIndexOkJumpIfFalseIntString(SB)
+	BL   ·asmCallHandleGetMapInt64StringOkThenJumpIfFalse(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2876,14 +2876,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapIndexOkJumpIfFalseIntGeneral calls ·asmCallHandleMapIndexOkJumpIfFalseIntGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapIndexOkJumpIfFalseIntGeneral(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapInt64GeneralOkThenJumpIfFalse calls ·asmCallHandleGetMapInt64GeneralOkThenJumpIfFalse(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapInt64GeneralOkThenJumpIfFalse(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapIndexOkJumpIfFalseIntGeneral(SB)
+	BL   ·asmCallHandleGetMapInt64GeneralOkThenJumpIfFalse(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2903,14 +2903,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapIndexOkJumpIfFalseStringGeneral calls ·asmCallHandleMapIndexOkJumpIfFalseStringGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapIndexOkJumpIfFalseStringGeneral(SB), NOSPLIT, $32-0
+// handlerPathBShimGetMapStringGeneralOkThenJumpIfFalse calls ·asmCallHandleGetMapStringGeneralOkThenJumpIfFalse(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetMapStringGeneralOkThenJumpIfFalse(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapIndexOkJumpIfFalseStringGeneral(SB)
+	BL   ·asmCallHandleGetMapStringGeneralOkThenJumpIfFalse(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2930,13 +2930,13 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSwapStructFieldsGeneralT0 calls ·asmCallHandleSwapStructFieldsGeneralT0(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSwapStructFieldsGeneralT0(SB), NOSPLIT, $32-0
+// handlerPathBShimSwapStructFieldsGeneral calls ·asmCallHandleSwapStructFieldsGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSwapStructFieldsGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSwapStructFieldsGeneralT0(SB)
+	BL   ·asmCallHandleSwapStructFieldsGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2956,13 +2956,13 @@ tier2_shim_exit_narrow:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimGetStructFieldRawPointerT0 calls ·asmCallHandleGetStructFieldRawPointerT0(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimGetStructFieldRawPointerT0(SB), NOSPLIT, $32-0
+// handlerPathBShimGetStructFieldRawPointer calls ·asmCallHandleGetStructFieldRawPointer(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetStructFieldRawPointer(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleGetStructFieldRawPointerT0(SB)
+	BL   ·asmCallHandleGetStructFieldRawPointer(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -2982,14 +2982,14 @@ tier2_shim_exit_narrow:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimMapSetIntGeneral calls ·asmCallHandleMapSetIntGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimMapSetIntGeneral(SB), NOSPLIT, $32-0
+// handlerPathBShimSetMapInt64General calls ·asmCallHandleSetMapInt64General(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetMapInt64General(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleMapSetIntGeneral(SB)
+	BL   ·asmCallHandleSetMapInt64General(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3009,14 +3009,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimGetStructFieldIndexGeneral calls ·asmCallHandleGetStructFieldIndexGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimGetStructFieldIndexGeneral(SB), NOSPLIT, $32-0
+// handlerPathBShimGetStructFieldElementGeneral calls ·asmCallHandleGetStructFieldElementGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetStructFieldElementGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleGetStructFieldIndexGeneral(SB)
+	BL   ·asmCallHandleGetStructFieldElementGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3036,14 +3036,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSetStructFieldIndexGeneral calls ·asmCallHandleSetStructFieldIndexGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSetStructFieldIndexGeneral(SB), NOSPLIT, $32-0
+// handlerPathBShimSetStructFieldElementGeneral calls ·asmCallHandleSetStructFieldElementGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetStructFieldElementGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSetStructFieldIndexGeneral(SB)
+	BL   ·asmCallHandleSetStructFieldElementGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3063,14 +3063,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimDerefSliceGetInt calls ·asmCallHandleDerefSliceGetInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimDerefSliceGetInt(SB), NOSPLIT, $32-0
+// handlerPathBShimGetElementInt64ViaPointer calls ·asmCallHandleGetElementInt64ViaPointer(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetElementInt64ViaPointer(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleDerefSliceGetInt(SB)
+	BL   ·asmCallHandleGetElementInt64ViaPointer(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3090,14 +3090,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimDerefSliceSetInt calls ·asmCallHandleDerefSliceSetInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimDerefSliceSetInt(SB), NOSPLIT, $32-0
+// handlerPathBShimSetElementInt64ViaPointer calls ·asmCallHandleSetElementInt64ViaPointer(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetElementInt64ViaPointer(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleDerefSliceSetInt(SB)
+	BL   ·asmCallHandleSetElementInt64ViaPointer(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3117,13 +3117,13 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimGetStructFieldSliceLen calls ·asmCallHandleGetStructFieldSliceLen(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimGetStructFieldSliceLen(SB), NOSPLIT, $32-0
+// handlerPathBShimLengthStructField calls ·asmCallHandleLengthStructField(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimLengthStructField(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleGetStructFieldSliceLen(SB)
+	BL   ·asmCallHandleLengthStructField(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3143,14 +3143,14 @@ tier2_shim_exit_narrow:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimGetStructFieldSliceIndexScalar calls ·asmCallHandleGetStructFieldSliceIndexScalar(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimGetStructFieldSliceIndexScalar(SB), NOSPLIT, $32-0
+// handlerPathBShimGetStructFieldElementField calls ·asmCallHandleGetStructFieldElementField(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetStructFieldElementField(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleGetStructFieldSliceIndexScalar(SB)
+	BL   ·asmCallHandleGetStructFieldElementField(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3170,14 +3170,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSubOpMakeSliceInt calls ·asmCallHandleSubOpMakeSliceInt(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSubOpMakeSliceInt(SB), NOSPLIT, $32-0
+// handlerPathBShimAppendStringToMapString calls ·asmCallHandleAppendStringToMapString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimAppendStringToMapString(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSubOpMakeSliceInt(SB)
+	BL   ·asmCallHandleAppendStringToMapString(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3197,14 +3197,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSubOpMakeSliceFloat calls ·asmCallHandleSubOpMakeSliceFloat(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSubOpMakeSliceFloat(SB), NOSPLIT, $32-0
+// handlerPathBShimSetElementFieldInt64 calls ·asmCallHandleSetElementFieldInt64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetElementFieldInt64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSubOpMakeSliceFloat(SB)
+	BL   ·asmCallHandleSetElementFieldInt64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3224,14 +3224,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSubOpMakeSliceString calls ·asmCallHandleSubOpMakeSliceString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSubOpMakeSliceString(SB), NOSPLIT, $32-0
+// handlerPathBShimSetElementFieldFloat64 calls ·asmCallHandleSetElementFieldFloat64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetElementFieldFloat64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSubOpMakeSliceString(SB)
+	BL   ·asmCallHandleSetElementFieldFloat64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3251,14 +3251,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSubOpMakeSliceBool calls ·asmCallHandleSubOpMakeSliceBool(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSubOpMakeSliceBool(SB), NOSPLIT, $32-0
+// handlerPathBShimMakeSliceInt64 calls ·asmCallHandleMakeSliceInt64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimMakeSliceInt64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSubOpMakeSliceBool(SB)
+	BL   ·asmCallHandleMakeSliceInt64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3278,14 +3278,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSubOpMakeSliceUint calls ·asmCallHandleSubOpMakeSliceUint(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSubOpMakeSliceUint(SB), NOSPLIT, $32-0
+// handlerPathBShimMakeSliceFloat64 calls ·asmCallHandleMakeSliceFloat64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimMakeSliceFloat64(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSubOpMakeSliceUint(SB)
+	BL   ·asmCallHandleMakeSliceFloat64(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3305,14 +3305,419 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSubOpMakeSliceByte calls ·asmCallHandleSubOpMakeSliceByte(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSubOpMakeSliceByte(SB), NOSPLIT, $32-0
+// handlerPathBShimMakeSliceString calls ·asmCallHandleMakeSliceString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimMakeSliceString(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSubOpMakeSliceByte(SB)
+	BL   ·asmCallHandleMakeSliceString(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimMakeSliceBool calls ·asmCallHandleMakeSliceBool(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimMakeSliceBool(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleMakeSliceBool(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimMakeSliceUint64 calls ·asmCallHandleMakeSliceUint64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimMakeSliceUint64(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleMakeSliceUint64(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimBoxInt64 calls ·asmCallHandleBoxInt64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimBoxInt64(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleBoxInt64(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimUnboxInt64 calls ·asmCallHandleUnboxInt64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimUnboxInt64(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleUnboxInt64(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimBoxFloat64 calls ·asmCallHandleBoxFloat64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimBoxFloat64(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleBoxFloat64(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimBoxString calls ·asmCallHandleBoxString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimBoxString(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleBoxString(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimLengthGeneral calls ·asmCallHandleLengthGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimLengthGeneral(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleLengthGeneral(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimLoadZero calls ·asmCallHandleLoadZero(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimLoadZero(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleLoadZero(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimDeleteFromMap calls ·asmCallHandleDeleteFromMap(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimDeleteFromMap(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleDeleteFromMap(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimGetStructFieldStringWide calls ·asmCallHandleGetStructFieldStringWide(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetStructFieldStringWide(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleGetStructFieldStringWide(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimSetStructFieldStringWide calls ·asmCallHandleSetStructFieldStringWide(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetStructFieldStringWide(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleSetStructFieldStringWide(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimAppendUint64Wide calls ·asmCallHandleAppendUint64Wide(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimAppendUint64Wide(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleAppendUint64Wide(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimAppendByteViaPointer calls ·asmCallHandleAppendByteViaPointer(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimAppendByteViaPointer(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleAppendByteViaPointer(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimAppendSpreadByteViaPointer calls ·asmCallHandleAppendSpreadByteViaPointer(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimAppendSpreadByteViaPointer(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleAppendSpreadByteViaPointer(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimMakeSliceByte calls ·asmCallHandleMakeSliceByte(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimMakeSliceByte(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleMakeSliceByte(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3359,14 +3764,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimWriteSharedCell calls ·asmCallHandleWriteSharedCell(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimWriteSharedCell(SB), NOSPLIT, $32-0
+// handlerPathBShimSetSharedCell calls ·asmCallHandleSetSharedCell(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSetSharedCell(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleWriteSharedCell(SB)
+	BL   ·asmCallHandleSetSharedCell(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3386,14 +3791,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSliceOp calls ·asmCallHandleSliceOp(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSliceOp(SB), NOSPLIT, $32-0
+// handlerPathBShimSliceGeneral calls ·asmCallHandleSliceGeneral(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSliceGeneral(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSliceOp(SB)
+	BL   ·asmCallHandleSliceGeneral(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3413,14 +3818,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimRangeInit calls ·asmCallHandleRangeInit(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimRangeInit(SB), NOSPLIT, $32-0
+// handlerPathBShimRangeInitialise calls ·asmCallHandleRangeInitialise(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimRangeInitialise(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleRangeInit(SB)
+	BL   ·asmCallHandleRangeInitialise(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3521,14 +3926,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimEqInterfaceNil calls ·asmCallHandleEqInterfaceNil(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimEqInterfaceNil(SB), NOSPLIT, $32-0
+// handlerPathBShimEqualInterfaceNil calls ·asmCallHandleEqualInterfaceNil(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimEqualInterfaceNil(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleEqInterfaceNil(SB)
+	BL   ·asmCallHandleEqualInterfaceNil(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3548,14 +3953,14 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimNeInterfaceNil calls ·asmCallHandleNeInterfaceNil(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimNeInterfaceNil(SB), NOSPLIT, $32-0
+// handlerPathBShimNotEqualInterfaceNil calls ·asmCallHandleNotEqualInterfaceNil(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimNotEqualInterfaceNil(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleNeInterfaceNil(SB)
+	BL   ·asmCallHandleNotEqualInterfaceNil(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0
@@ -3575,14 +3980,662 @@ tier2_shim_exit:
 	ADD  $48, RSP
 	JMP  ·dispatchExit(SB)
 
-// handlerPathBShimSyncClosureUpvalues calls ·asmCallHandleSyncClosureUpvalues(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
-TEXT ·handlerPathBShimSyncClosureUpvalues(SB), NOSPLIT, $32-0
+// handlerPathBShimBoxSliceByte calls ·asmCallHandleBoxSliceByte(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimBoxSliceByte(SB), NOSPLIT, $32-0
 	NO_LOCAL_POINTERS
 	MOVD R20, CTX_PC(R19)
 	MOVD R20, CTX_SAVED_PC(R19)
 	MOVD R19, 8(RSP)
 	MOVW R0, 16(RSP)
-	BL   ·asmCallHandleSyncClosureUpvalues(SB)
+	BL   ·asmCallHandleBoxSliceByte(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimConvertSliceByteToString calls ·asmCallHandleConvertSliceByteToString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimConvertSliceByteToString(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleConvertSliceByteToString(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimUnboxSliceFloat64 calls ·asmCallHandleUnboxSliceFloat64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimUnboxSliceFloat64(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleUnboxSliceFloat64(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimUnboxSliceInt64 calls ·asmCallHandleUnboxSliceInt64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimUnboxSliceInt64(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleUnboxSliceInt64(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimUnboxSliceString calls ·asmCallHandleUnboxSliceString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimUnboxSliceString(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleUnboxSliceString(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimUnboxSliceBool calls ·asmCallHandleUnboxSliceBool(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimUnboxSliceBool(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleUnboxSliceBool(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimUnboxSliceUint64 calls ·asmCallHandleUnboxSliceUint64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimUnboxSliceUint64(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleUnboxSliceUint64(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimUnboxSliceByte calls ·asmCallHandleUnboxSliceByte(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimUnboxSliceByte(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleUnboxSliceByte(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimBoxSliceFloat64 calls ·asmCallHandleBoxSliceFloat64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimBoxSliceFloat64(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleBoxSliceFloat64(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimBoxSliceString calls ·asmCallHandleBoxSliceString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimBoxSliceString(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleBoxSliceString(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimBoxSliceBool calls ·asmCallHandleBoxSliceBool(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimBoxSliceBool(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleBoxSliceBool(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimBoxSliceUint64 calls ·asmCallHandleBoxSliceUint64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimBoxSliceUint64(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleBoxSliceUint64(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimGetStructFieldSliceInt64 calls ·asmCallHandleGetStructFieldSliceInt64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetStructFieldSliceInt64(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleGetStructFieldSliceInt64(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimGetStructFieldSliceFloat64 calls ·asmCallHandleGetStructFieldSliceFloat64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetStructFieldSliceFloat64(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleGetStructFieldSliceFloat64(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimGetStructFieldSliceUint64 calls ·asmCallHandleGetStructFieldSliceUint64(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetStructFieldSliceUint64(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleGetStructFieldSliceUint64(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimGetStructFieldSliceString calls ·asmCallHandleGetStructFieldSliceString(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetStructFieldSliceString(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleGetStructFieldSliceString(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimGetStructFieldSliceBool calls ·asmCallHandleGetStructFieldSliceBool(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetStructFieldSliceBool(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleGetStructFieldSliceBool(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimGetStructFieldSliceByte calls ·asmCallHandleGetStructFieldSliceByte(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetStructFieldSliceByte(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleGetStructFieldSliceByte(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimMakeSliceHeap calls ·asmCallHandleMakeSliceHeap(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimMakeSliceHeap(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleMakeSliceHeap(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimTypeSwitchJump calls ·asmCallHandleTypeSwitchJump(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimTypeSwitchJump(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleTypeSwitchJump(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimAddressField calls ·asmCallHandleAddressField(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimAddressField(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleAddressField(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimGetStructFieldUint64Run calls ·asmCallHandleGetStructFieldUint64Run(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetStructFieldUint64Run(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleGetStructFieldUint64Run(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimGetElementFieldUint64Run calls ·asmCallHandleGetElementFieldUint64Run(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimGetElementFieldUint64Run(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleGetElementFieldUint64Run(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimMakeMap calls ·asmCallHandleMakeMap(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimMakeMap(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleMakeMap(SB)
+	MOVD 24(RSP), R19
+	MOVBU CTX_HANDLER_RESULT(R19), R0
+	CMP  $0, R0
+	BNE  tier2_shim_exit
+	MOVD CTX_PC(R19), R20
+	MOVD CTX_CODE_BASE(R19), R22
+	MOVD CTX_CODE_LEN(R19), R21
+	MOVD CTX_INTS_BASE(R19), R23
+	MOVD CTX_FLOATS_BASE(R19), R24
+	MOVD CTX_INT_CONSTS_BASE(R19), R26
+	MOVD CTX_JUMP_TABLE(R19), R25
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	DISPATCH_NEXT()
+tier2_shim_exit:
+	MOVD 0(RSP), R30
+	ADD  $48, RSP
+	JMP  ·dispatchExit(SB)
+
+// handlerPathBShimSynchroniseClosureCapturedVariables calls ·asmCallHandleSynchroniseClosureCapturedVariables(SB) then tail-JMPs DISPATCH_NEXT on opContinue or dispatchExit on cold paths.
+TEXT ·handlerPathBShimSynchroniseClosureCapturedVariables(SB), NOSPLIT, $32-0
+	NO_LOCAL_POINTERS
+	MOVD R20, CTX_PC(R19)
+	MOVD R20, CTX_SAVED_PC(R19)
+	MOVD R19, 8(RSP)
+	MOVW R0, 16(RSP)
+	BL   ·asmCallHandleSynchroniseClosureCapturedVariables(SB)
 	MOVD 24(RSP), R19
 	MOVBU CTX_HANDLER_RESULT(R19), R0
 	CMP  $0, R0

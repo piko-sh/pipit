@@ -21,9 +21,13 @@ package typemap
 import (
 	"go/token"
 	"go/types"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/engine"
+	"pipit.sh/pipit/internal/symtab"
 )
 
 func makeTypeParam(name string) *types.TypeParam {
@@ -34,184 +38,6 @@ func makeTypeParam(name string) *types.TypeParam {
 		panic("any's underlying type is not an interface, so a go/types invariant is broken")
 	}
 	return types.NewTypeParam(tname, constraint)
-}
-
-func TestSubstituteTypeNilReturnsNil(t *testing.T) {
-	t.Parallel()
-	require.Nil(t, SubstituteType(nil, map[*types.TypeParam]types.Type{}, nil))
-}
-
-func TestSubstituteTypeEmptySubsReturnsIdentity(t *testing.T) {
-	t.Parallel()
-	intType := types.Typ[types.Int]
-	require.Same(t, intType, SubstituteType(intType, nil, nil))
-	require.Same(t, intType, SubstituteType(intType, map[*types.TypeParam]types.Type{}, nil))
-}
-
-func TestSubstituteTypeBareTypeParam(t *testing.T) {
-	t.Parallel()
-	tp := makeTypeParam("T")
-	intType := types.Typ[types.Int]
-	subs := map[*types.TypeParam]types.Type{tp: intType}
-	require.Same(t, intType, SubstituteType(tp, subs, nil))
-}
-
-func TestSubstituteTypeUnmappedTypeParamPassesThrough(t *testing.T) {
-	t.Parallel()
-	tp := makeTypeParam("T")
-	other := makeTypeParam("K")
-	subs := map[*types.TypeParam]types.Type{other: types.Typ[types.String]}
-	require.Same(t, tp, SubstituteType(tp, subs, nil))
-}
-
-func TestSubstituteTypePointerOfTypeParam(t *testing.T) {
-	t.Parallel()
-	tp := makeTypeParam("T")
-	intType := types.Typ[types.Int]
-	pointer := types.NewPointer(tp)
-	subs := map[*types.TypeParam]types.Type{tp: intType}
-	result := SubstituteType(pointer, subs, map[types.Type]types.Type{})
-	resultPointer, ok := result.(*types.Pointer)
-	require.True(t, ok, "result must be a *types.Pointer")
-	require.Same(t, intType, resultPointer.Elem(),
-		"the pointer's element type must be the substituted concrete type; without this every generic path that takes a pointer parameter would fail to specialise correctly")
-}
-
-func TestSubstituteTypeSliceOfTypeParam(t *testing.T) {
-	t.Parallel()
-	tp := makeTypeParam("T")
-	intType := types.Typ[types.Int]
-	slice := types.NewSlice(tp)
-	subs := map[*types.TypeParam]types.Type{tp: intType}
-	result := SubstituteType(slice, subs, map[types.Type]types.Type{})
-	resultSlice, ok := result.(*types.Slice)
-	require.True(t, ok, "result must be a *types.Slice")
-	require.Same(t, intType, resultSlice.Elem(),
-		"slice element substitution must recurse, because the body of a generic that ranges []T relies on this for typed-bank slice ops")
-}
-
-func TestSubstituteTypeMapOfTypeParams(t *testing.T) {
-	t.Parallel()
-	keyParam := makeTypeParam("K")
-	valueParam := makeTypeParam("V")
-	stringType := types.Typ[types.String]
-	intType := types.Typ[types.Int]
-	mapType := types.NewMap(keyParam, valueParam)
-	subs := map[*types.TypeParam]types.Type{keyParam: stringType, valueParam: intType}
-	result := SubstituteType(mapType, subs, map[types.Type]types.Type{})
-	resultMap, ok := result.(*types.Map)
-	require.True(t, ok, "result must be a *types.Map")
-	require.Same(t, stringType, resultMap.Key(),
-		"map key substitution: both K and V must resolve independently to support multi-param generics")
-	require.Same(t, intType, resultMap.Elem(),
-		"map value substitution")
-}
-
-func TestSubstituteTypeArrayOfTypeParam(t *testing.T) {
-	t.Parallel()
-	tp := makeTypeParam("T")
-	intType := types.Typ[types.Int]
-	array := types.NewArray(tp, 5)
-	subs := map[*types.TypeParam]types.Type{tp: intType}
-	result := SubstituteType(array, subs, map[types.Type]types.Type{})
-	resultArray, ok := result.(*types.Array)
-	require.True(t, ok, "result must be a *types.Array")
-	require.Same(t, intType, resultArray.Elem(),
-		"array element substitution preserves the length while replacing the element type")
-	require.Equal(t, int64(5), resultArray.Len(),
-		"array length must round-trip: a generic [N]T with concrete N stays the same N after substitution")
-}
-
-func TestSubstituteTypeChanOfTypeParam(t *testing.T) {
-	t.Parallel()
-	tp := makeTypeParam("T")
-	intType := types.Typ[types.Int]
-	chanType := types.NewChan(types.SendOnly, tp)
-	subs := map[*types.TypeParam]types.Type{tp: intType}
-	result := SubstituteType(chanType, subs, map[types.Type]types.Type{})
-	resultChan, ok := result.(*types.Chan)
-	require.True(t, ok, "result must be a *types.Chan")
-	require.Same(t, intType, resultChan.Elem(),
-		"channel element substitution: generic chan T must specialise to concrete chan int")
-	require.Equal(t, types.SendOnly, resultChan.Dir(),
-		"channel direction must be preserved")
-}
-
-func TestSubstituteTypeNestedComposite(t *testing.T) {
-	t.Parallel()
-	tp := makeTypeParam("T")
-	intType := types.Typ[types.Int]
-	pointerToTP := types.NewPointer(tp)
-	sliceOfPointer := types.NewSlice(pointerToTP)
-	subs := map[*types.TypeParam]types.Type{tp: intType}
-	result := SubstituteType(sliceOfPointer, subs, map[types.Type]types.Type{})
-	resultSlice, ok := result.(*types.Slice)
-	require.True(t, ok)
-	resultPointer, ok := resultSlice.Elem().(*types.Pointer)
-	require.True(t, ok)
-	require.Same(t, intType, resultPointer.Elem(),
-		"deeply nested substitution must propagate through every layer; without this []*Box[T] in a generic body would fail to specialise correctly")
-}
-
-func TestSubstituteTypeIdentityWhenNoSubstitutionApplies(t *testing.T) {
-	t.Parallel()
-	tp := makeTypeParam("T")
-	stringType := types.Typ[types.String]
-	otherTP := makeTypeParam("U")
-	pointerToOther := types.NewPointer(otherTP)
-	subs := map[*types.TypeParam]types.Type{tp: stringType}
-	require.Same(t, pointerToOther, SubstituteType(pointerToOther, subs, map[types.Type]types.Type{}),
-		"unchanged sub-trees must be returned via identity to avoid unnecessary allocation churn during specialisation")
-}
-
-func TestSubstituteTypeStructFieldWithTypeParam(t *testing.T) {
-	t.Parallel()
-	tp := makeTypeParam("T")
-	intType := types.Typ[types.Int]
-	field := types.NewField(token.NoPos, nil, "Value", tp, false)
-	structType := types.NewStruct([]*types.Var{field}, []string{`json:"value"`})
-	subs := map[*types.TypeParam]types.Type{tp: intType}
-	result := SubstituteType(structType, subs, map[types.Type]types.Type{})
-	resultStruct, ok := result.(*types.Struct)
-	require.True(t, ok)
-	require.Equal(t, 1, resultStruct.NumFields())
-	require.Same(t, intType, resultStruct.Field(0).Type(),
-		"struct field substitution: Box[T]{Value T} must specialise to Box[int]{Value int}")
-	require.Equal(t, `json:"value"`, resultStruct.Tag(0),
-		"struct field tags must be preserved across substitution")
-}
-
-func TestSubstituteTypeSignatureWithTypeParamParam(t *testing.T) {
-	t.Parallel()
-	tp := makeTypeParam("T")
-	intType := types.Typ[types.Int]
-	param := types.NewVar(token.NoPos, nil, "x", tp)
-	result := types.NewVar(token.NoPos, nil, "", tp)
-	signature := types.NewSignatureType(nil, nil, nil,
-		types.NewTuple(param), types.NewTuple(result), false)
-	subs := map[*types.TypeParam]types.Type{tp: intType}
-	substituted := SubstituteType(signature, subs, map[types.Type]types.Type{})
-	resultSig, ok := substituted.(*types.Signature)
-	require.True(t, ok)
-	require.Equal(t, 1, resultSig.Params().Len())
-	require.Same(t, intType, resultSig.Params().At(0).Type(),
-		"signature param substitution: func(T) T must specialise to func(int) int when T->int")
-	require.Equal(t, 1, resultSig.Results().Len())
-	require.Same(t, intType, resultSig.Results().At(0).Type(),
-		"signature result substitution")
-}
-
-func TestSubstituteTypeCacheReusesResults(t *testing.T) {
-	t.Parallel()
-	tp := makeTypeParam("T")
-	intType := types.Typ[types.Int]
-	slice := types.NewSlice(tp)
-	cache := map[types.Type]types.Type{}
-	subs := map[*types.TypeParam]types.Type{tp: intType}
-	first := SubstituteType(slice, subs, cache)
-	second := SubstituteType(slice, subs, cache)
-	require.Same(t, first, second,
-		"the cache must return the same constructed type on repeated lookups; without this, deeply nested generic bodies would allocate a fresh substituted slice/map/etc. for every reference, multiplying the substitution cost")
 }
 
 func TestBasicToReflectCoversEveryNumericKind(t *testing.T) {
@@ -236,4 +62,55 @@ func TestBasicToReflectCoversEveryNumericKind(t *testing.T) {
 			require.Equal(t, tt.want, basicToReflect(tt.kind).String())
 		})
 	}
+}
+
+func TestGenericInstantiationsPrintTheirTypeArgumentsAsTheRuntimeDoes(t *testing.T) {
+	t.Parallel()
+
+	typesPackage := types.NewPackage("example.com/generic", "generic")
+	parameterK := types.NewTypeParam(types.NewTypeName(0, typesPackage, "K", nil), types.NewInterfaceType(nil, nil))
+	parameterV := types.NewTypeParam(types.NewTypeName(0, typesPackage, "V", nil), types.NewInterfaceType(nil, nil))
+	pair := types.NewNamed(types.NewTypeName(0, typesPackage, "Pair", nil), nil, nil)
+	pair.SetTypeParams([]*types.TypeParam{parameterK, parameterV})
+	pair.SetUnderlying(types.NewStruct([]*types.Var{
+		types.NewField(0, typesPackage, "Key", parameterK, false),
+		types.NewField(0, typesPackage, "Value", parameterV, false),
+	}, nil))
+	instance, err := types.Instantiate(nil, pair, []types.Type{types.Typ[types.String], types.NewMap(types.Typ[types.Int], types.Typ[types.Bool])}, true)
+	require.NoError(t, err)
+
+	require.Equal(t, "generic.Pair[string,map[int]bool]", RuntimeTypeString(instance))
+	require.Equal(t, "a[b,c]", compactTypeArgumentLists("a[b, c]"))
+	require.Equal(t, "f(a, b)", compactTypeArgumentLists("f(a, b)"), "a parameter list keeps its spaces")
+	converted, err := TypeToReflectCached(t.Context(), instance, symtab.NewSymbolRegistry(nil), NewTypeCache(), engine.NewGlobalStore())
+	require.NoError(t, err)
+	sentinel := converted.Field(converted.NumField() - 1)
+	require.Contains(t, string(sentinel.Tag), "string", "the sentinel records the type arguments")
+	require.True(t, wordBoundary("a.b", -1))
+	require.False(t, wordBoundary("ab", 1))
+}
+
+func TestStructFieldsThatLeadBackKeepTheirContainers(t *testing.T) {
+	t.Parallel()
+
+	typesPackage := types.NewPackage("example.com/tree", "tree")
+	node := types.NewNamed(types.NewTypeName(0, typesPackage, "Node", nil), nil, nil)
+	pointer := types.NewPointer(node)
+	node.SetUnderlying(types.NewStruct([]*types.Var{
+		types.NewField(0, typesPackage, "Children", types.NewSlice(pointer), false),
+		types.NewField(0, typesPackage, "Index", types.NewMap(types.Typ[types.String], types.NewSlice(pointer)), false),
+		types.NewField(0, typesPackage, "Pair", types.NewArray(pointer, 2), false),
+		types.NewField(0, typesPackage, "Queue", types.NewChan(types.RecvOnly, pointer), false),
+		types.NewField(0, typesPackage, "Visit", types.NewSignatureType(nil, nil, nil, types.NewTuple(types.NewVar(0, typesPackage, "", pointer)), nil, false), false),
+		types.NewField(0, typesPackage, "Name", types.Typ[types.String], false),
+	}, nil))
+
+	converted := convertOne(t, node)
+	require.Equal(t, reflect.Slice, converted.Field(0).Type.Kind())
+	require.Equal(t, reflect.Map, converted.Field(1).Type.Kind())
+	require.Equal(t, reflect.Array, converted.Field(2).Type.Kind())
+	require.Equal(t, 2, converted.Field(2).Type.Len())
+	require.Equal(t, reflect.Chan, converted.Field(3).Type.Kind())
+	require.Equal(t, reflect.RecvDir, converted.Field(3).Type.ChanDir())
+	require.Equal(t, reflect.TypeFor[string](), converted.Field(5).Type)
 }

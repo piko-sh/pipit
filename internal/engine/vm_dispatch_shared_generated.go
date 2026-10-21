@@ -39,136 +39,142 @@ func initSubOpJumpTables()
 func pathBFallback()
 
 //go:noescape
-func handlerLoadIntConst()
+func handlerLoadInt64Constant()
 
 //go:noescape
-func handlerLoadBool()
+func handlerLoadBoolImmediateAsInt64()
 
 //go:noescape
-func handlerAddInt()
+func handlerAddInt64()
 
 //go:noescape
-func handlerAddUint()
+func handlerAddUint64()
 
 //go:noescape
 func handlerAddInt32()
 
 //go:noescape
-func handlerSubInt32()
+func handlerSubtractInt32()
 
 //go:noescape
-func handlerMulInt32()
+func handlerMultiplyInt32()
 
 //go:noescape
-func handlerAddInt32Const()
+func handlerAddInt32Constant()
 
 //go:noescape
-func handlerSubInt32Const()
+func handlerSubtractInt32Constant()
 
 //go:noescape
 func handlerAddUint32()
 
 //go:noescape
-func handlerSubUint()
+func handlerSubtractUint32()
 
 //go:noescape
-func handlerMulUint()
+func handlerMultiplyUint32()
 
 //go:noescape
-func handlerBitAndUint()
+func handlerSubtractUint64()
 
 //go:noescape
-func handlerBitOrUint()
+func handlerMultiplyUint64()
 
 //go:noescape
-func handlerBitXorUint()
+func handlerBitAndUint64()
 
 //go:noescape
-func handlerBitAndNotUint()
+func handlerBitOrUint64()
 
 //go:noescape
-func handlerShiftLeftUint()
+func handlerBitXorUint64()
 
 //go:noescape
-func handlerShiftRightUint()
+func handlerBitAndNotUint64()
 
 //go:noescape
-func handlerEqUint()
+func handlerShiftLeftUint64()
 
 //go:noescape
-func handlerNeUint()
+func handlerShiftRightUint64()
 
 //go:noescape
-func handlerLtUint()
+func handlerEqualUint64()
 
 //go:noescape
-func handlerLeUint()
+func handlerNotEqualUint64()
 
 //go:noescape
-func handlerGtUint()
+func handlerLessThanUint64()
 
 //go:noescape
-func handlerGeUint()
+func handlerLessOrEqualUint64()
 
 //go:noescape
-func handlerSubInt()
+func handlerGreaterThanUint64()
 
 //go:noescape
-func handlerMulInt()
+func handlerGreaterOrEqualUint64()
 
 //go:noescape
-func handlerDivInt()
+func handlerSubtractInt64()
 
 //go:noescape
-func handlerRemInt()
+func handlerMultiplyInt64()
 
 //go:noescape
-func handlerBitAnd()
+func handlerDivideInt64()
 
 //go:noescape
-func handlerBitOr()
+func handlerRemainderInt64()
 
 //go:noescape
-func handlerBitXor()
+func handlerBitAndInt64()
 
 //go:noescape
-func handlerBitAndNot()
+func handlerBitOrInt64()
 
 //go:noescape
-func handlerShiftLeft()
+func handlerBitXorInt64()
 
 //go:noescape
-func handlerShiftRight()
+func handlerBitAndNotInt64()
 
 //go:noescape
-func handlerAddFloat()
+func handlerShiftLeftInt64()
 
 //go:noescape
-func handlerSubFloat()
+func handlerShiftRightInt64()
 
 //go:noescape
-func handlerMulFloat()
+func handlerAddFloat64()
 
 //go:noescape
-func handlerDivFloat()
+func handlerSubtractFloat64()
 
 //go:noescape
-func handlerEqInt()
+func handlerMultiplyFloat64()
 
 //go:noescape
-func handlerNeInt()
+func handlerDivideFloat64()
 
 //go:noescape
-func handlerLtInt()
+func handlerEqualInt64()
 
 //go:noescape
-func handlerLeInt()
+func handlerNotEqualInt64()
 
 //go:noescape
-func handlerGtInt()
+func handlerLessThanInt64()
 
 //go:noescape
-func handlerGeInt()
+func handlerLessOrEqualInt64()
+
+//go:noescape
+func handlerGreaterThanInt64()
+
+//go:noescape
+func handlerGreaterOrEqualInt64()
 
 //go:noescape
 func handlerJump()
@@ -195,7 +201,7 @@ func handlerTailCallExit()
 func handlerTailCallInlineSubroutine()
 
 //go:noescape
-func handlerCallInline()
+func handlerCall()
 
 //go:noescape
 func handlerCallInlineSetupGeneralBank()
@@ -204,331 +210,385 @@ func handlerCallInlineSetupGeneralBank()
 func handlerCallInlineClearGeneralBank()
 
 //go:noescape
-func handlerReturnInline()
+func handlerReturn()
 
 //go:noescape
-func handlerReturnVoidInline()
+func handlerReturnVoid()
 
 //go:noescape
-func handlerSubIntConst()
+func handlerSubtractInt64Constant()
 
 //go:noescape
-func handlerAddIntConst()
+func handlerAddInt64Constant()
 
 //go:noescape
-func handlerLeIntConstJumpFalse()
+func handlerLessOrEqualInt64ConstantThenJumpIfFalse()
 
 //go:noescape
-func handlerLtIntConstJumpFalse()
+func handlerLessThanInt64ConstantThenJumpIfFalse()
 
 //go:noescape
-func handlerEqIntConstJumpFalse()
+func handlerEqualInt64ConstantThenJumpIfFalse()
 
 //go:noescape
-func handlerEqIntConstJumpTrue()
+func handlerEqualInt64ConstantThenJumpIfTrue()
 
 //go:noescape
-func handlerGeIntConstJumpFalse()
+func handlerGreaterOrEqualInt64ConstantThenJumpIfFalse()
 
 //go:noescape
-func handlerGtIntConstJumpFalse()
+func handlerGreaterThanInt64ConstantThenJumpIfFalse()
 
 //go:noescape
-func handlerLtIntJumpFalse()
+func handlerLessThanInt64ThenJumpIfFalse()
 
 //go:noescape
-func handlerLeIntJumpFalse()
+func handlerLessOrEqualInt64ThenJumpIfFalse()
 
 //go:noescape
-func handlerGtIntJumpFalse()
+func handlerGreaterThanInt64ThenJumpIfFalse()
 
 //go:noescape
-func handlerGeIntJumpFalse()
+func handlerGreaterOrEqualInt64ThenJumpIfFalse()
 
 //go:noescape
-func handlerEqIntJumpFalse()
+func handlerEqualInt64ThenJumpIfFalse()
 
 //go:noescape
-func handlerNeIntJumpFalse()
+func handlerNotEqualInt64ThenJumpIfFalse()
 
 //go:noescape
-func handlerMulIntConst()
+func handlerEqualUint64ThenJumpIfFalse()
 
 //go:noescape
-func handlerAddIntJump()
+func handlerNotEqualUint64ThenJumpIfFalse()
 
 //go:noescape
-func handlerIncIntJumpLt()
+func handlerMultiplyInt64Constant()
 
 //go:noescape
-func handlerLoadIntConstSmall()
+func handlerAddInt64ConstantThenJump()
 
 //go:noescape
-func handlerLoadFloatConst()
+func handlerMultiplyInt64ConstantThenAdd()
 
 //go:noescape
-func handlerLoadStringConst()
+func handlerIncrementInt64ThenJumpIfLessThan()
 
 //go:noescape
-func handlerLoadBoolConst()
+func handlerIncrementInt64ThenJumpIfLessOrEqual()
 
 //go:noescape
-func handlerEqFloat()
+func handlerIncrementInt64ThenJumpIfLessThanConstant()
 
 //go:noescape
-func handlerNeFloat()
+func handlerLoadInt64Immediate()
 
 //go:noescape
-func handlerLtFloat()
+func handlerLoadFloat64Constant()
 
 //go:noescape
-func handlerLeFloat()
+func handlerLoadStringConstant()
 
 //go:noescape
-func handlerGtFloat()
+func handlerLoadBoolConstant()
 
 //go:noescape
-func handlerGeFloat()
+func handlerEqualFloat64()
 
 //go:noescape
-func handlerStringIndex()
+func handlerNotEqualFloat64()
 
 //go:noescape
-func handlerEqString()
+func handlerLessThanFloat64()
 
 //go:noescape
-func handlerNeString()
+func handlerLessOrEqualFloat64()
+
+//go:noescape
+func handlerGreaterThanFloat64()
+
+//go:noescape
+func handlerGreaterOrEqualFloat64()
+
+//go:noescape
+func handlerGetStringByte()
+
+//go:noescape
+func handlerEqualString()
+
+//go:noescape
+func handlerNotEqualString()
 
 //go:noescape
 func handlerSliceString()
 
 //go:noescape
-func handlerStringIndexToInt()
+func handlerGetStringByteAsInt64()
 
 //go:noescape
-func handlerLenStringLtJumpFalse()
+func handlerLessThanLengthStringThenJumpIfFalse()
 
 //go:noescape
-func handlerSubOpEqUintConstJumpFalse()
+func handlerEqualUint64ImmediateThenJumpIfFalse()
 
 //go:noescape
-func handlerSubOpLenSliceIntDirect()
+func handlerLengthSliceInt64()
 
 //go:noescape
-func handlerSubOpLenSliceFloatDirect()
+func handlerLengthSliceFloat64()
 
 //go:noescape
-func handlerSubOpLenSliceStringDirect()
+func handlerLengthSliceString()
 
 //go:noescape
-func handlerSubOpLenSliceBoolDirect()
+func handlerLengthSliceBool()
 
 //go:noescape
-func handlerSubOpLenSliceUintDirect()
+func handlerLengthSliceUint64()
 
 //go:noescape
-func handlerSubOpSliceGetFloatDirect()
+func handlerGetSliceFloat64Element()
 
 //go:noescape
-func handlerSubOpSliceSetFloatDirect()
+func handlerSetSliceFloat64Element()
 
 //go:noescape
-func handlerSubOpSliceGetUintDirect()
+func handlerGetSliceUint64Element()
 
 //go:noescape
-func handlerSubOpSliceSetUintDirect()
+func handlerSetSliceUint64Element()
 
 //go:noescape
-func handlerSubOpSliceGetBoolDirect()
+func handlerGetSliceBoolElement()
 
 //go:noescape
-func handlerSubOpSliceSetBoolDirect()
+func handlerSetSliceBoolElement()
 
 //go:noescape
-func handlerSubOpSliceGetStringDirect()
+func handlerGetSliceStringElement()
 
 //go:noescape
-func handlerSubOpRealComplex()
+func handlerRealPartComplex128()
 
 //go:noescape
-func handlerSubOpImagComplex()
+func handlerImaginaryPartComplex128()
 
 //go:noescape
-func handlerSubOpMoveComplex()
+func handlerMoveComplex128()
 
 //go:noescape
-func handlerSubOpNegComplex()
+func handlerNegateComplex128()
 
 //go:noescape
-func handlerSubOpMoveInt()
+func handlerMoveInt64()
 
 //go:noescape
-func handlerSubOpMoveFloat()
+func handlerMoveFloat64()
 
 //go:noescape
-func handlerSubOpMoveBool()
+func handlerMoveBool()
 
 //go:noescape
-func handlerSubOpMoveUint()
+func handlerMoveUint64()
 
 //go:noescape
-func handlerSubOpMoveString()
+func handlerMoveString()
 
 //go:noescape
-func handlerSubOpMoveSliceInt()
+func handlerMoveSliceInt64()
 
 //go:noescape
-func handlerSubOpMoveSliceFloat()
+func handlerMoveSliceFloat64()
 
 //go:noescape
-func handlerSubOpMoveSliceString()
+func handlerMoveSliceString()
 
 //go:noescape
-func handlerSubOpMoveSliceBool()
+func handlerMoveSliceBool()
 
 //go:noescape
-func handlerSubOpMoveSliceUint()
+func handlerMoveSliceUint64()
 
 //go:noescape
-func handlerSubOpMoveSliceByte()
+func handlerMoveSliceByte()
 
 //go:noescape
-func handlerSubOpSliceSliceIntDirect()
+func handlerSliceSliceInt64()
 
 //go:noescape
-func handlerSubOpSliceSliceFloatDirect()
+func handlerSliceSliceFloat64()
 
 //go:noescape
-func handlerSubOpSliceSliceStringDirect()
+func handlerSliceSliceString()
 
 //go:noescape
-func handlerSubOpSliceSliceBoolDirect()
+func handlerSliceSliceBool()
 
 //go:noescape
-func handlerSubOpSliceSliceUintDirect()
+func handlerSliceSliceUint64()
 
 //go:noescape
-func handlerSubOpTier2IncInt()
+func handlerIncrementInt64()
 
 //go:noescape
-func handlerSubOpTier2DecInt()
+func handlerDecrementInt64()
 
 //go:noescape
-func handlerSubOpNegInt()
+func handlerNegateInt64()
 
 //go:noescape
-func handlerSubOpNegFloat()
+func handlerNegateFloat64()
 
 //go:noescape
-func handlerSubOpBitNot()
+func handlerBitNotInt64()
 
 //go:noescape
-func handlerSubOpIntToFloat()
+func handlerConvertInt64ToFloat64()
 
 //go:noescape
-func handlerSubOpFloatToInt()
+func handlerConvertFloat64ToInt64()
 
 //go:noescape
-func handlerSubOpUintToFloat()
+func handlerNotInt64()
 
 //go:noescape
-func handlerSubOpFloatToUint()
+func handlerLoadZero()
 
 //go:noescape
-func handlerSubOpMathSqrt()
+func handlerAddUint32Constant()
 
 //go:noescape
-func handlerSubOpMathAbs()
+func handlerSubtractUint32Constant()
 
 //go:noescape
-func handlerSubOpMathFloor()
+func handlerLengthGeneral()
 
 //go:noescape
-func handlerSubOpMathCeil()
+func handlerConvertBoolToInt64()
 
 //go:noescape
-func handlerSubOpMathTrunc()
+func handlerConvertInt64ToBool()
 
 //go:noescape
-func handlerSubOpMathRound()
+func handlerConvertInt64ToUint64()
 
 //go:noescape
-func handlerSubOpLenString()
+func handlerConvertUint64ToInt64()
 
 //go:noescape
-func handlerSubOpMathSin()
+func handlerConvertUint64ToFloat64()
 
 //go:noescape
-func handlerSubOpMathCos()
+func handlerConvertFloat64ToUint64()
 
 //go:noescape
-func handlerSubOpMathExp()
+func handlerMathSqrt()
 
 //go:noescape
-func handlerSubOpMathTan()
+func handlerMathAbs()
 
 //go:noescape
-func handlerSubOpMathMod()
+func handlerMathFloor()
 
 //go:noescape
-func handlerSubOpStrconvFormatBool()
+func handlerMathCeil()
 
 //go:noescape
-func handlerSubOpStrconvItoa()
+func handlerMathTrunc()
 
 //go:noescape
-func handlerSubOpStrconvFormatInt()
+func handlerMathRound()
 
 //go:noescape
-func handlerSubOpCap()
+func handlerLengthString()
 
 //go:noescape
-func handlerSubOpBytesToString()
+func handlerMathSin()
 
 //go:noescape
-func handlerSubOpBoxSliceInt()
+func handlerMathCos()
 
 //go:noescape
-func handlerSubOpLenSliceByteDirect()
+func handlerMathExp()
 
 //go:noescape
-func handlerSubOpSliceGetByteDirect()
+func handlerMathTan()
 
 //go:noescape
-func handlerSubOpSliceSetByteDirect()
+func handlerMathMod()
 
 //go:noescape
-func handlerSubOpSliceByteSlice()
+func handlerStrconvFormatBool()
+
+//go:noescape
+func handlerStrconvItoa()
+
+//go:noescape
+func handlerStrconvFormatInt()
+
+//go:noescape
+func handlerCapacityGeneral()
+
+//go:noescape
+func handlerConvertBytesToString()
+
+//go:noescape
+func handlerBoxSliceInt64()
+
+//go:noescape
+func handlerLengthSliceByte()
+
+//go:noescape
+func handlerGetSliceByteElement()
+
+//go:noescape
+func handlerGetSliceByteElementInt64()
+
+//go:noescape
+func handlerSetSliceByteElement()
+
+//go:noescape
+func handlerSetSliceByteElementRun()
+
+//go:noescape
+func handlerSliceSliceByte()
 
 //go:noescape
 func handlerRangeNextSliceByte()
 
 //go:noescape
-func handlerSubOpIncStructFieldInt()
+func handlerIncrementStructFieldInt64()
 
 //go:noescape
-func handlerSubOpDecStructFieldInt()
+func handlerDecrementStructFieldInt64()
 
 //go:noescape
-func handlerSubOpIncStructFieldUint()
+func handlerIncrementStructFieldUint64()
 
 //go:noescape
-func handlerSubOpDecStructFieldUint()
+func handlerDecrementStructFieldUint64()
 
 //go:noescape
-func handlerSubOpRangeCheckUintJumpFalse()
+func handlerInRangeUint64ThenJumpIfFalse()
 
 //go:noescape
-func handlerSubOpTier2IncUint()
+func handlerJumpIfFalseBool()
 
 //go:noescape
-func handlerSubOpTier2DecUint()
+func handlerJumpIfTrueBool()
 
 //go:noescape
-func handlerSubOpTier2IncInt32()
+func handlerIncrementUint64()
 
 //go:noescape
-func handlerSubOpTier2DecInt32()
+func handlerDecrementUint64()
+
+//go:noescape
+func handlerIncrementInt32()
+
+//go:noescape
+func handlerDecrementInt32()
 
 func installDispatchTables() {
 	installTier1Dispatcher()

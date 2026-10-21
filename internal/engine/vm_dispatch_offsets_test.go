@@ -162,10 +162,11 @@ func TestUpvalueCellOffsets(t *testing.T) {
 
 func TestRegisterKindConstants(t *testing.T) {
 	t.Parallel()
-	assert.EqualValuesf(t, 0, isa.RegisterInt, "RegisterInt")
-	assert.EqualValuesf(t, 1, isa.RegisterFloat, "RegisterFloat")
+	assert.EqualValuesf(t, 0, isa.RegisterInt64, "RegisterInt64")
+	assert.EqualValuesf(t, 1, isa.RegisterFloat64, "RegisterFloat64")
+	assert.EqualValuesf(t, 3, isa.RegisterGeneral, "RegisterGeneral")
 	assert.EqualValuesf(t, 4, isa.RegisterBool, "RegisterBool")
-	assert.EqualValuesf(t, 5, isa.RegisterUint, "RegisterUint")
+	assert.EqualValuesf(t, 5, isa.RegisterUint64, "RegisterUint64")
 }
 
 func TestASMDispatchSaveOffsets(t *testing.T) {
@@ -214,6 +215,7 @@ func TestReflectKindConstants(t *testing.T) {
 		{name: "Float64", kind: reflect.Float64, expect: 14},
 		{name: "Interface", kind: reflect.Interface, expect: 20},
 		{name: "Pointer", kind: reflect.Pointer, expect: 22},
+		{name: "Slice", kind: reflect.Slice, expect: 23},
 	}
 	for _, tt := range tests {
 		assert.Equalf(t, tt.expect, uintptr(tt.kind), "reflect.%s (the ASM REFLECT_%s define needs update)", tt.name, tt.name)

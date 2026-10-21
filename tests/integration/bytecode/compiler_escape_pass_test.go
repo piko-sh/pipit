@@ -102,8 +102,8 @@ func TestEscapePassDoesNotArenaPromotePointersHandedToOutlivingSinks(t *testing.
 	}{
 		{function: "spawnedArgument", sink: isa.NewInstruction(isa.OpGo, 0, 0, 0)},
 		{function: "selectSend", sink: isa.NewTier1Instruction(isa.SubOpSelect, 0, 0)},
-		{function: "mapStoredIntKey", sink: isa.NewInstruction(isa.OpMapSetIntGeneral, 0, 0, 0)},
-		{function: "mapStoredStringKey", sink: isa.NewInstruction(isa.OpMapSetStringGeneral, 0, 0, 0)},
+		{function: "mapStoredIntKey", sink: isa.NewInstruction(isa.OpSetMapInt64General, 0, 0, 0)},
+		{function: "mapStoredStringKey", sink: isa.NewInstruction(isa.OpSetMapStringGeneral, 0, 0, 0)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.function, func(t *testing.T) {
@@ -150,7 +150,7 @@ func arenaCandidateSites(fn *program.CompiledFunction) []int {
 	var sites []int
 	for pc := 0; pc < len(fn.Body); pc++ {
 		inst := fn.Body[pc]
-		if inst.Op == isa.OpAllocIndirect || (inst.Op == isa.OpAddr && inst.C != engine.AddrSourceStable) {
+		if inst.Op == isa.OpAllocateIndirect || (inst.Op == isa.OpAddress && inst.C != engine.AddrSourceStable) {
 			sites = append(sites, pc)
 		}
 	}

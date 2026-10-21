@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64) && !race
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64) && !race
 
 package sandboxlinux
 
@@ -48,7 +48,7 @@ func TestNativeFilesystemBrokerFilter(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "file"), []byte("original"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
 	command := sandboxtest.Command(ctx, "TestNativeFilesystemBrokerFilter", "PIPIT_BROKER_FILTER_CHILD=1", "PIPIT_BROKER_FILTER_ROOT="+root)
 	output, err := command.CombinedOutput()

@@ -19,13 +19,20 @@
 package app
 
 import (
+	"bytes"
+	"log/slog"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/symtab"
 )
+
+type mockSymbolProvider struct {
+	exports symtab.SymbolExports
+}
 
 func TestServiceCompileAndExecute(t *testing.T) {
 	t.Parallel()
@@ -109,10 +116,6 @@ func TestServiceClone(t *testing.T) {
 	result, err := clone.Eval(t.Context(), "3 + 4")
 	require.NoError(t, err)
 	require.Equal(t, 7, result)
-}
-
-type mockSymbolProvider struct {
-	exports symtab.SymbolExports
 }
 
 func (m *mockSymbolProvider) Exports() symtab.SymbolExports {
@@ -485,4 +488,16 @@ func main() {}
 	file, line, _ := fn.DebugSourcePosition(0)
 	require.NotEmpty(t, file)
 	require.Positive(t, line)
+}
+
+func TestNewServiceLogsARejectedTypesPackageOnceOnTheFirstCall(t *testing.T) {
+	var logged bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logged, nil))
+	service := NewService(WithLogger(logger), WithSymbolProvider(staleLayoutProvider()))
+	require.Empty(t, logged.String(), "construction logs nothing")
+	_, err := service.Eval(t.Context(), "1")
+	require.ErrorIs(t, err, symtab.ErrTypesPackageLayout)
+	_, _ = service.Eval(t.Context(), "1")
+	require.Equal(t, 1, strings.Count(logged.String(), "level=WARN"), logged.String())
+	require.Contains(t, logged.String(), "layouthost.T")
 }

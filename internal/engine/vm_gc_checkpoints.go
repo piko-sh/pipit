@@ -18,11 +18,42 @@
 
 package engine
 
-// runPendingCheckpoints services pending dispatch-loop checkpoint signals. Dispatches the
-// arena GC trigger when the pending bit is set or the allocation threshold is exceeded.
+// requestCheckpoint raises a checkpoint flag for the next dispatch safepoint. Inside the
+// assembly dispatcher it also spends the poll budget, so the next back-edge poll returns
+// to Go and the safepoint comes within one loop iteration, not one poll interval.
+//
+// Takes flag (uint8) which is the checkpoint bit to raise.
+func (vm *VM) requestCheckpoint(flag uint8) {
+	vm.checkpointFlags |= flag
+	if budget := vm.activePollBudget; budget != nil {
+		*budget = 0
+	}
+}
+
+// runPendingCheckpoints services pending dispatch-loop checkpoint signals.
+//
+// It dispatches the arena GC trigger when the pending bit is set or the allocation
+// threshold is exceeded. In a licensed arena a pending bit raised by a grow past the
+// budget also checks the budget once the collection has run, panicking when the arena is
+// still over.
 func (vm *VM) runPendingCheckpoints() {
-	if vm.Arena != nil && !vm.Arena.disableMinorGC && (vm.checkpointFlags&checkpointFlagGCPending != 0 || vm.Arena.gcShouldRun()) {
+	arena := vm.Arena
+	if arena == nil {
+		return
+	}
+	if abortInjectBuilt && abortInjectFires(abortSiteSafepointBudget) {
+		arena.raiseAbort(abortInjectedError(abortSiteSafepointBudget))
+	}
+	pending := vm.checkpointFlags&checkpointFlagGCPending != 0
+	if !arena.disableMinorGC && (pending || arena.gcShouldRun()) {
 		vm.checkpointFlags &^= checkpointFlagGCPending
-		vm.Arena.MinorGC(vm)
+		arena.MinorGC(vm)
+		if arenaAuditEnabled {
+			auditMidRunCheckpoint()
+		}
+	}
+	if arena.licensed && pending {
+		vm.checkpointFlags &^= checkpointFlagGCPending
+		arena.enforceBudgetAtSafepoint()
 	}
 }

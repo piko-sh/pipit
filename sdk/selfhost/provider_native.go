@@ -22,13 +22,12 @@ package selfhost
 
 import (
 	"errors"
+	"fmt"
 	"go/token"
 	"go/types"
-	"log/slog"
 	"maps"
 	"sync"
 
-	"pipit.sh/pipit/internal/logging"
 	"pipit.sh/pipit/sdk/stdlib/typeinfo"
 )
 
@@ -79,7 +78,6 @@ func loadSharedTypesPackages() {
 		}
 	}
 	if len(loader.errs) > 0 {
-		sharedTypesError = errors.Join(loader.errs...)
-		slog.Warn("self-host types export data failed to decode", logging.ErrAttr(sharedTypesError))
+		sharedTypesError = fmt.Errorf("self-host types export data failed to decode: %w", errors.Join(loader.errs...))
 	}
 }

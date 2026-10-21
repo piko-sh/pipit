@@ -25,16 +25,20 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"reflect"
+	"slices"
 	"time"
 
 	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/fault"
+	"pipit.sh/pipit/internal/logging"
 	"pipit.sh/pipit/internal/policy"
 	"pipit.sh/pipit/internal/sandboxbroker"
 	"pipit.sh/pipit/internal/symtab"
+	"pipit.sh/pipit/internal/symtab/typemodel"
 )
 
 const (
@@ -158,6 +162,10 @@ type RestrictedResult struct {
 // RestrictedInterpreter executes each submission in fresh interpreter state. It rejects
 // concurrent calls without queuing them.
 type RestrictedInterpreter struct {
+	// constructionLog keeps what the constructor's registry check logged, with no caller's
+	// context at hand, until the first run replays it through the run's logger.
+	constructionLog *logging.Deferred
+
 	// filesystem is the optional broker proxy for pipit/fs access.
 	filesystem *sandboxbroker.FilesystemProxy
 
@@ -165,11 +173,27 @@ type RestrictedInterpreter struct {
 	// provider keeps the math-only surface for callers that do not inject one.
 	provider symtab.SymbolProviderPort
 
+	// namedCompositeQuota is charged for the named composite types every submission adds, so
+	// many submissions together cannot add more than one interpreter may.
+	namedCompositeQuota *typemodel.NamedCompositeQuota
+
 	// active admits at most one submission without retaining queued source strings.
 	active chan struct{}
 
 	// config is a private copy that is never changed after construction.
 	config RestrictedConfig
+}
+
+// restrictedOutput bounds captured builtin output without exposing buffer methods.
+type restrictedOutput struct {
+	// buffer accumulates captured output bytes.
+	buffer bytes.Buffer
+
+	// remaining tracks the remaining output byte budget.
+	remaining int
+
+	// truncated is true when output exceeded the budget.
+	truncated bool
 }
 
 // NewRestrictedInterpreter copies and validates policy. With no injected provider only
@@ -202,7 +226,8 @@ func NewRestrictedInterpreterWithProvider(config RestrictedConfig, provider symt
 // Takes config (RestrictedConfig) which holds the limits and import allowlist.
 // Takes provider (symtab.SymbolProviderPort) which may be nil.
 //
-// Returns the interpreter, or an error for an invalid limit or import.
+// Returns the interpreter, or an error for an invalid limit or import, or for an
+// allowlisted package whose pre-built types the registry rejects.
 func newRestrictedInterpreter(config RestrictedConfig, provider symtab.SymbolProviderPort) (*RestrictedInterpreter, error) {
 	if config.Timeout < 0 || config.CostBudget < 0 || config.MaxArenaBytes < 0 {
 		return nil, ErrInvalidRestrictedConfig
@@ -242,7 +267,18 @@ func newRestrictedInterpreter(config RestrictedConfig, provider symtab.SymbolPro
 	if config.Hook == nil {
 		config.Hook = policy.DenyCapabilityHook{}
 	}
-	return &RestrictedInterpreter{config: config, active: make(chan struct{}, 1), filesystem: nil, provider: provider}, nil
+	interpreter := &RestrictedInterpreter{
+		constructionLog:     logging.NewDeferred(),
+		config:              config,
+		active:              make(chan struct{}, 1),
+		filesystem:          nil,
+		provider:            provider,
+		namedCompositeQuota: typemodel.NewNamedCompositeQuota(typemodel.DefaultNamedCompositeQuota),
+	}
+	if _, err := interpreter.restrictedRegistry(interpreter.constructionLog.Context()); err != nil {
+		return nil, err
+	}
+	return interpreter, nil
 }
 
 // Eval evaluates an expression or statements with no state retained between calls.
@@ -291,12 +327,16 @@ func (interpreter *RestrictedInterpreter) run(ctx context.Context, source, entry
 	if len(source) > config.MaxSourceBytes {
 		return RestrictedResult{}, fmt.Errorf("%w: source", ErrRestrictedLimit)
 	}
-	ctx, cancel := context.WithTimeout(ctx, config.Timeout)
+	ctx = logging.WithFallbackLogger(ctx, config.Logger)
+	interpreter.constructionLog.Replay(ctx)
+	ctx, cancel := context.WithTimeoutCause(ctx, config.Timeout, fault.ErrExecutionCancelled)
 	defer cancel()
 	output := &restrictedOutput{buffer: bytes.Buffer{}, remaining: config.MaxOutputBytes, truncated: false}
-	service := interpreter.newService(output)
+	service, err := interpreter.newService(ctx, output)
+	if err != nil {
+		return RestrictedResult{}, err
+	}
 	var value any
-	var err error
 	if file {
 		value, err = service.EvalFile(ctx, source, entrypoint)
 	} else {
@@ -321,7 +361,8 @@ func (interpreter *RestrictedInterpreter) run(ctx context.Context, source, entry
 // Takes output (*restrictedOutput) which captures bounded builtin output.
 //
 // Returns *Service which is not exposed through the restricted API.
-func (interpreter *RestrictedInterpreter) newService(output *restrictedOutput) *Service {
+// Returns error when the registry rejects an allowlisted package's pre-built types.
+func (interpreter *RestrictedInterpreter) newService(ctx context.Context, output *restrictedOutput) (*Service, error) {
 	config := interpreter.config
 	service := NewService(
 		WithSafeMode(),
@@ -345,8 +386,12 @@ func (interpreter *RestrictedInterpreter) newService(output *restrictedOutput) *
 		WithStderr(output),
 		WithLogger(config.Logger),
 	)
-	service.UseSymbols(interpreter.restrictedRegistry())
-	return service
+	registry, err := interpreter.restrictedRegistry(ctx)
+	if err != nil {
+		return nil, err
+	}
+	service.UseSymbols(registry)
+	return service, nil
 }
 
 // restrictedRegistry builds the symbol registry for one submission: the allowlisted
@@ -355,23 +400,39 @@ func (interpreter *RestrictedInterpreter) newService(output *restrictedOutput) *
 // attached. The unsafe package is always protected.
 //
 // Returns *symtab.SymbolRegistry which is installed for this submission only.
-func (interpreter *RestrictedInterpreter) restrictedRegistry() *symtab.SymbolRegistry {
+// Returns error which joins, per rejected package, an error wrapping
+// symtab.ErrTypesPackageLayout.
+func (interpreter *RestrictedInterpreter) restrictedRegistry(ctx context.Context) (*symtab.SymbolRegistry, error) {
 	allow := make(map[string]struct{}, len(interpreter.config.Imports))
 	for _, path := range interpreter.config.Imports {
 		allow[path] = struct{}{}
 	}
 	exports := interpreter.restrictedExports(allow)
 	registry := symtab.NewSymbolRegistry(exports)
+	registry.SetNamedCompositeQuota(interpreter.namedCompositeQuota)
 	registry.ProtectPackage(policy.PkgUnsafe)
+	var rejected []error
+	if reporter, reports := interpreter.provider.(typesPackagesLoadErrorReporter); reports {
+		if err := reporter.TypesPackagesLoadError(); err != nil {
+			rejected = append(rejected, fmt.Errorf("%w: decoding the provider's types packages: %w", ErrInvalidRestrictedConfig, err))
+		}
+	}
 	if typed, ok := interpreter.provider.(program.TypesPackageProviderPort); ok {
-		for path, pkg := range typed.TypesPackages() {
-			if _, allowed := allow[path]; allowed {
-				registry.RegisterTypesPackage(path, pkg)
+		packages := typed.TypesPackages()
+		for _, path := range slices.Sorted(maps.Keys(packages)) {
+			if _, allowed := allow[path]; !allowed {
+				continue
+			}
+			if err := registry.RegisterTypesPackage(path, packages[path]); err != nil {
+				rejected = append(rejected, fmt.Errorf("%w: registering the types of package %q: %w", ErrInvalidRestrictedConfig, path, err))
 			}
 		}
 	}
-	registry.SynthesiseAll()
-	return registry
+	if err := errors.Join(rejected...); err != nil {
+		return nil, err
+	}
+	registry.SynthesiseAll(ctx)
+	return registry, nil
 }
 
 // restrictedExports selects the native symbols this submission may reach: the allowlisted
@@ -403,18 +464,6 @@ func (interpreter *RestrictedInterpreter) restrictedExports(allow map[string]str
 		}
 	}
 	return exports
-}
-
-// restrictedOutput bounds captured builtin output without exposing buffer methods.
-type restrictedOutput struct {
-	// buffer accumulates captured output bytes.
-	buffer bytes.Buffer
-
-	// remaining tracks the remaining output byte budget.
-	remaining int
-
-	// truncated is true when output exceeded the budget.
-	truncated bool
 }
 
 // Write appends only the bytes that fit within the remaining capture budget.

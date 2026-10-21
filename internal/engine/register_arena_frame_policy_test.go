@@ -24,12 +24,16 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/engine/program"
+	"pipit.sh/pipit/internal/fault"
 )
 
 const deepFrameStack = 4096
 
 func occupyFrame(arena *RegisterArena, index int) {
-	arena.frameSlab[index].Function = &program.CompiledFunction{}
+	function := &program.CompiledFunction{}
+	for slot := arena.framesUsed; slot <= index; slot++ {
+		arena.frameSlab[slot].Function = function
+	}
 }
 
 func requireFrameArraysMatch(t *testing.T, arena *RegisterArena, want int) {
@@ -126,4 +130,89 @@ func TestReleaseRecordsObservedCallDepth(t *testing.T) {
 	vm.releaseArenaUnlessLeaked(arena)
 
 	require.Equal(t, 2501, root.ObservedCallDepth())
+}
+
+func panicValueOf(body func()) (value any) {
+	defer func() { value = recover() }()
+	body()
+	return nil
+}
+
+func requireInvariantPanic(t *testing.T, body func()) {
+	t.Helper()
+	value := panicValueOf(body)
+	require.NotNil(t, value, "the check panics")
+	err, isError := value.(error)
+	require.True(t, isError, "the panic value %v is an error", value)
+	require.ErrorIs(t, err, fault.ErrInterpreterInvariant)
+}
+
+func TestParanoidFrameStackGapIsAnInvariantFailure(t *testing.T) {
+	if !arenaParanoidEnabled {
+		t.Skip("the frame stack is checked in the paranoid build")
+	}
+	arena := &RegisterArena{frameSlab: make([]CallFrame, 4)}
+	arena.frameSlab[2].Function = program.NewNamedFunction("orphan")
+
+	requireInvariantPanic(t, func() { arena.frameStackPeak() })
+}
+
+func enterFrames(arena *RegisterArena, depth int, entry arenaIndices) {
+	occupyFrame(arena, depth-1)
+	arena.frameSlab[depth-1].arenaSave.arenaIndices = entry
+}
+
+func TestResetCountsFrameSavePointsAsScalarBankDemand(t *testing.T) {
+	arena := NewRegisterArena()
+	overgrown := initialIntSlabs*maxArenaMultiplier + 1
+	arena.ensureScalarBankCapacity(program.TypedSlabCounts{Ints: overgrown})
+	require.Len(t, arena.intSlab, overgrown)
+
+	for range backingSlabIdleResetsBeforeShrink * 2 {
+		enterFrames(arena, 3, arenaIndices{IntIndex: overgrown / 2})
+		arena.Reset()
+		require.Len(t, arena.intSlab, overgrown, "a run whose frames reached half the bank keeps it grown")
+	}
+	for range backingSlabIdleResetsBeforeShrink - 1 {
+		enterFrames(arena, 3, arenaIndices{IntIndex: overgrown / 8})
+		arena.Reset()
+		require.Len(t, arena.intSlab, overgrown, "an idle streak below the threshold keeps the bank")
+	}
+	arena.Reset()
+	require.Len(t, arena.intSlab, initialIntSlabs, "an idle overgrown bank shrinks after the threshold")
+}
+
+func TestResetShrinksASliceBankOnlyWhenTheRunLeftItIdle(t *testing.T) {
+	arena := NewRegisterArena()
+	overgrown := initialSlicesByteSlabs * maxArenaMultiplier * 4
+	arena.slicesByteSlab = make([][]byte, overgrown)
+	arena.slicesStringSlab = make([][]string, overgrown)
+
+	for range backingSlabIdleResetsBeforeShrink * 2 {
+		enterFrames(arena, 2, arenaIndices{SlicesByteIndex: overgrown / 2})
+		generation := arena.slabGeneration
+		arena.Reset()
+		require.Len(t, arena.slicesByteSlab, overgrown, "a bank the run's frames used is kept")
+		require.Equal(t, generation, arena.slabGeneration, "a kept bank leaves cached views valid")
+		require.Len(t, arena.slicesStringSlab, initialSlicesStringSlabs, "a bank the run left idle is shrunk")
+		arena.slicesStringSlab = make([][]string, overgrown)
+	}
+	generation := arena.slabGeneration
+	arena.Reset()
+	require.Len(t, arena.slicesByteSlab, initialSlicesByteSlabs, "an overgrown bank the run left idle is shrunk at once")
+	require.Greater(t, arena.slabGeneration, generation, "shrinking the byte bank refreshes cached views")
+}
+
+func TestFrameBankPeakReadsEveryOccupiedFrame(t *testing.T) {
+	arena := NewRegisterArena()
+	enterFrames(arena, 2, arenaIndices{IntIndex: 7, SlicesByteIndex: 3})
+	enterFrames(arena, 5, arenaIndices{IntIndex: 5, GeneralIndex: 9, ComplexIndex: 2})
+	arena.GeneralIndex = 11
+	peak := arena.frameBankPeak(arena.frameStackPeak())
+	require.Equal(t, 7, peak.IntIndex)
+	require.Equal(t, 11, peak.GeneralIndex, "the arena's own index counts")
+	require.Equal(t, 3, peak.SlicesByteIndex)
+	require.Equal(t, 2, peak.ComplexIndex)
+	arena.GeneralIndex = 0
+	arena.Reset()
 }

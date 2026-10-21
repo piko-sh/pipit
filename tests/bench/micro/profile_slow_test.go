@@ -1,5 +1,3 @@
-//go:build bench
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +16,11 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build bench
+
 package bench
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"runtime"
@@ -153,18 +152,22 @@ const (
 	`
 )
 
+var (
+	_ = fmt.Sprintf
+)
+
 func runProfile(t *testing.T, name, source, profileFile string, iterations int) {
 	t.Helper()
 	service := app.NewService(app.WithMaxCallDepth(200000))
 	symbolRegistry := symtab.NewSymbolRegistry(stdlib.Exports())
 	service.UseSymbols(symbolRegistry)
 
-	compiledFileSet, err := service.CompileFileSet(context.Background(), map[string]string{
+	compiledFileSet, err := service.CompileFileSet(t.Context(), map[string]string{
 		"main.go": source,
 	})
 	require.NoError(t, err, "%s compile", name)
 
-	_, err = service.ExecuteEntrypoint(context.Background(), compiledFileSet, "EntrypointRun")
+	_, err = service.ExecuteEntrypoint(t.Context(), compiledFileSet, "EntrypointRun")
 	require.NoError(t, err, "%s warmup", name)
 
 	cpuFile, err := os.Create(profileFile)
@@ -176,7 +179,7 @@ func runProfile(t *testing.T, name, source, profileFile string, iterations int) 
 	require.NoError(t, pprof.StartCPUProfile(cpuFile), "start cpu profile")
 
 	for range iterations {
-		_, err := service.ExecuteEntrypoint(context.Background(), compiledFileSet, "EntrypointRun")
+		_, err := service.ExecuteEntrypoint(t.Context(), compiledFileSet, "EntrypointRun")
 		require.NoError(t, err, "%s execute", name)
 	}
 
@@ -220,7 +223,3 @@ func TestProfileArithInt(t *testing.T) {
 	}
 	runProfile(t, "arith_int", arithIntSource, "/tmp/pipit_arith.prof", 5)
 }
-
-var (
-	_ = fmt.Sprintf
-)

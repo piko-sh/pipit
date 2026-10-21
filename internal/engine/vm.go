@@ -20,7 +20,6 @@ package engine
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -28,6 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 	"unsafe"
+	"weak"
 
 	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
@@ -54,22 +54,19 @@ const (
 	// checkpointFlagGCPending signals a pending arena MinorGC at the next safe point.
 	checkpointFlagGCPending uint8 = 1 << 0
 
-	// arenaConcatStringAvgBytes is the per-call byte budget assumed for an
-	// isa.OpConcatString. Real-world string concatenations span orders of magnitude; 32
-	// bytes is a defensive estimate that covers small-to-medium results without blowing out
-	// the slab for programs that never concatenate large strings.
-	arenaConcatStringAvgBytes = 32
+	// arenaConcatenateStringAvgBytes is the per-call byte budget assumed for an
+	// isa.OpConcatenateString. Real-world string concatenations span orders of magnitude.
+	arenaConcatenateStringAvgBytes = 32
 
-	// arenaConcatRuneStringAvgBytes is the per-call byte budget for isa.OpConcatRuneString.
-	// The base string contributes most of the length; the rune adds at most 4 UTF-8 bytes.
-	arenaConcatRuneStringAvgBytes = 16
+	// arenaConcatenateStringRuneAvgBytes is the per-call byte budget for
+	// isa.OpConcatenateStringRune. The base string contributes most of the length.
+	arenaConcatenateStringRuneAvgBytes = 16
 
 	// arenaRuneToStringMaxBytes is the worst-case UTF-8 length of a single rune.
 	arenaRuneToStringMaxBytes = 4
 
-	// arenaBytesToStringAvgBytes is the per-call byte budget for isa.SubOpBytesToString. The
-	// actual byte slice length is dynamic; 64 bytes covers typical tokenisation /
-	// small-string conversion patterns without bloating tiny programs.
+	// arenaBytesToStringAvgBytes is the per-call byte budget for
+	// isa.SubOpConvertBytesToString. The actual byte slice length is dynamic.
 	arenaBytesToStringAvgBytes = 64
 
 	// arenaItoaMaxBytes is the worst-case byte length of an int64 formatted in base 10
@@ -123,7 +120,7 @@ const (
 	// clamping to maxFrameStackPreSize.
 	frameStackSafetyMargin = 16
 
-	// boxSlabPerOccurrenceFactor multiplies each isa.OpPackInterface or isa.OpPackTyped
+	// boxSlabPerOccurrenceFactor multiplies each isa.OpBoxAsInterface or isa.OpBoxAsType
 	// count to derive the per-kind box slab budget. Conservative 4x absorbs amplification
 	// from loop bodies.
 	boxSlabPerOccurrenceFactor = 4
@@ -136,9 +133,13 @@ const (
 	// (covers the hmap header allocation routed through the generic byte slab).
 	arenaMakeMapAvgBytes = 48
 
-	// arenaAllocIndirectAvgBytes is the per-occurrence byte charge for isa.OpAllocIndirect
-	// (heap-promoted local storage; conservative estimate of a small struct).
-	arenaAllocIndirectAvgBytes = 64
+	// arenaAllocateIndirectAvgBytes is the per-occurrence byte charge for
+	// isa.OpAllocateIndirect (heap-promoted local storage. Conservative estimate of a small
+	// struct).
+	arenaAllocateIndirectAvgBytes = 64
+
+	// pointerTypeCacheSlots is the number of element types VM.pointerTypeOf remembers.
+	pointerTypeCacheSlots = 4
 )
 
 // VM is the pipit bytecode interpreter, created fresh via NewVM for each invocation of a
@@ -147,7 +148,7 @@ const (
 //nolint:govet // related fields kept together
 //exhaustruct:ignore
 type VM struct {
-	// evalResult holds the return value from handleReturn when the base frame returns.
+	// evalResult holds the return value from handleReturnBody when the base frame returns.
 	// Extracted by the dispatch loop after opDone.
 	evalResult any
 
@@ -163,11 +164,21 @@ type VM struct {
 	// overridable for testing.
 	StderrWriter io.Writer
 
-	// liveCtx points at the dispatch context currently executing on this VM, letting Go-path
-	// handlers that retarget per-frame pointers (the closure AsmCallInfo fill's
-	// copy-on-write) sync the live context immediately instead of waiting for the next
-	// frame-change rebuild. Set alongside ctx.vm at population; only read while dispatching.
-	liveCtx *dispatchContext
+	// vmDispatchContexts holds the live assembly dispatch context and, where the assembly
+	// dispatch is built, the contexts the VM reuses.
+	vmDispatchContexts
+
+	// fmtArgsIdle holds the cleared variadic buffers of the fast-path fmt dispatchers, one
+	// per nesting depth of fmt calls on this VM (fmtArgsScratch); the first fmtArgsIdleCount
+	// are idle.
+	fmtArgsIdle [fmtArgsScratchDepth][]any
+
+	// fmtArgsIdleCount is the number of idle buffers in fmtArgsIdle.
+	fmtArgsIdleCount int
+
+	// asmClosurePins holds, for each VM-private AsmCallInfo entry whose closure-pointer
+	// guard names a closure, that closure.
+	asmClosurePins map[*AsmCallInfo]unsafe.Pointer
 
 	// symbols provides access to pre-registered native functions and values.
 	symbols *symtab.SymbolRegistry
@@ -238,9 +249,14 @@ type VM struct {
 	// when frame i returns, or nil when no swap happened at push time.
 	rootSnapshots []*frameRootSnapshot
 
-	// EvalAllResults holds all return values from handleReturn when the base frame returns,
-	// used by callClosureReflect to preserve multi-return values.
+	// EvalAllResults holds all return values from handleReturnBody when the base frame
+	// returns a function with several results, used by callClosureRaw and bound methods to
+	// preserve multi-return values.
 	EvalAllResults []any
+
+	// evalSingle is true when the base frame returned exactly one result, which
+	// setBaseFrameResults left in evalResult without building EvalAllResults.
+	evalSingle bool
 
 	// asmCallInfoBases is a parallel array to CallStack, holding the AsmCallInfo table base
 	// pointer for the function at each frame. Used by ASM to switch tables on call/return.
@@ -249,14 +265,17 @@ type VM struct {
 	// Limits holds resource constraints for DoS protection.
 	Limits VMLimits
 
-	// nativeState groups the native-call caches; its fields are promoted.
+	// nativeState groups the native-call caches.
 	nativeState
 
-	// goroutineState groups the goroutine and interpreter-lock state; its fields are
-	// promoted.
+	// goroutineState groups the goroutine and interpreter-lock state.
 	goroutineState
 
-	// deferState groups the defer and panic-unwind state; its fields are promoted.
+	// vmExportGates is the VM's part in the export gates that exclude its owner sections
+	// from exported guest code (register_arena_licence_export_gate.go).
+	vmExportGates
+
+	// deferState groups the defer and panic-unwind state.
 	deferState
 
 	// DispatchEntries counts the top-level and nested dispatch loops this VM has entered, so
@@ -281,19 +300,16 @@ type VM struct {
 	FramePointer int
 
 	// baseFramePointer is the base frame pointer for the current run() invocation, used by
-	// opReturn/opReturnVoid to detect when the base frame returns rather than hardcoding
-	// zero.
+	// isa.SubOpTier2Return and isa.SubOpTier3ReturnVoid to detect when the base frame
+	// returns rather than hardcoding zero.
 	baseFramePointer int
 
-	// ReturnGoDispatches counts opReturn instructions served by the Go return path after an
-	// assembly exit. Returns the inline handlers accept never reach it, so tests use it to
-	// prove the multi-value return fast path engaged.
+	// ReturnGoDispatches counts isa.SubOpTier2Return instructions served by the Go return
+	// path after an assembly exit.
 	ReturnGoDispatches int
 
-	// StructLiteralGoAllocations counts subOpAllocStructLiteral instructions served by the
-	// Go handler. The first execution in a function publishes the struct-literal table and
-	// every later allocation of a qualifying type stays in assembly, so tests use it to
-	// prove the fast path engaged.
+	// StructLiteralGoAllocations counts isa.SubOpTier2AllocateStructLiteral instructions
+	// served by the Go handler.
 	StructLiteralGoAllocations int
 
 	// yieldCounter counts instructions for Gosched() yielding.
@@ -315,6 +331,15 @@ type VM struct {
 	// as fault.ErrCallbackTimeout; nil otherwise.
 	pollCause error
 
+	// finaliserCandidate is the closure wrapper this VM last made in a program that sets
+	// finalisers, so that runtime.SetFinalizer and runtime.AddCleanup can run that closure
+	// under the finaliser deadline (boundedFinaliserFunction).
+	finaliserCandidate finaliserCandidate
+
+	// callbackDepthBase is the frames the callback runs below this VM's run on its goroutine
+	// hold, which count against the call depth limit (enterCallbackRun).
+	callbackDepthBase int
+
 	// pollsSinceYield counts pollContext calls, spacing its cooperative yields.
 	pollsSinceYield uint32
 
@@ -325,30 +350,462 @@ type VM struct {
 	// endExecution), whose link it builds and ends.
 	ownsLink bool
 
-	// spawnCtx is the context the goroutines this VM starts run under.
+	// spawnCtx is the context the goroutines this VM starts run under, either the execution
+	// context, or the callback link's.
 	spawnCtx context.Context
 
-	// blockCtx bounds this run's blocking waits by callbackDeadline; built on the first wait
-	// under a deadline (blockingDone) and cancelled when the run finishes.
+	// blockCtx bounds this run's blocking waits by callbackDeadline. It is built on the
+	// first wait under a deadline (blockingDone) and cancelled when the run finishes.
 	blockCtx context.Context
 
 	// blockCancel releases blockCtx.
 	blockCancel context.CancelFunc
 
 	// inlineDispatchExpectUintResult signals that the active vm.run invocation came from an
-	// inline-dispatch path that expects a uint64 result. handleReturn checks this flag at
-	// baseFramePointer to decide whether to populate inlineDispatchUintResult (fast path, no
-	// alloc) or fall back to vm.evalResult (slow path, any boxing).
+	// inline-dispatch path that expects a uint64 result.
 	inlineDispatchExpectUintResult bool
 
 	// checkpointFlags is a bitset of pending checkpoint signals raised by the VM's own
 	// goroutine, checked at the dispatch loop's safe-point.
 	checkpointFlags uint8
 
+	// activePollBudget points at the poll budget of the innermost running assembly dispatch
+	// context, or is nil outside one.
+	activePollBudget *int64
+
 	// usesTypedSliceBanks reports whether any reachable function uses a typed-slice or
 	// complex register bank, set monotonically and never cleared so
 	// repairRegisterBasesFromCallers is a no-op when false.
 	usesTypedSliceBanks bool
+
+	// identityPinned is set once an object that can outlive the run holds this VM (see
+	// pinIdentity); a pinned VM is never recycled.
+	identityPinned atomic.Bool
+
+	// watcherFired records that FinishWatcher found the context watcher already started, so
+	// it may still store into Cancelled; such a VM is never recycled.
+	watcherFired bool
+
+	// argumentRestores holds the VM's scratch records of the argument rewrites a native call
+	// undoes after it returns, made at the VM's first rewrite and kept across recycling
+	// (resetShell), so a VM that never rewrites an argument carries 8 bytes.
+	argumentRestores *vmArgumentRestores
+
+	// boundArena is the arena of this VM's last bound-method invocation, kept for the next
+	// (kept bound-method arenas, register_arena_licence_callbacks.go), or nil.
+	boundArena atomic.Pointer[RegisterArena]
+
+	// lockLedgerSeen holds the addresses of the last locks this VM recorded in its
+	// execution's lock ledger, one per address parity, so taking the same lock again records
+	// nothing (noteLockAcquired, sync_lock_ledger.go).
+	lockLedgerSeen [lockLedgerSeenSlots]uintptr
+
+	// lockLedgerEpoch is the ledger epoch lockLedgerSeen belongs to; each execution's ledger
+	// has a new epoch, which empties it.
+	lockLedgerEpoch uint64
+}
+
+// RuntimeClosure binds a compiled function to its captured upvalue cells.
+type RuntimeClosure struct {
+	// inlineCells stores the first inlineUpvalueCells captures inline to avoid a separate
+	// make([]*UpvalueCell, N) per closure.
+	inlineCells [inlineUpvalueCells]*program.UpvalueCell
+
+	// Function is the compiled body this closure invokes.
+	Function *program.CompiledFunction
+
+	// RootFunction is the top-level function whose dispatch context the closure belongs to;
+	// restored when the closure is reflectively invoked from outside its defining program.
+	RootFunction *program.CompiledFunction
+
+	// upvalues references the captured cells; aliases inlineCells when the count fits,
+	// otherwise points at an external slice.
+	upvalues []*program.UpvalueCell
+
+	// namedType is the registry ID (typemodel.NamedCompositeID) of the named func type this
+	// closure was converted to, or zero for a plain func value.
+	//
+	// Method dispatch, type assertions and %T key on it. An ID rather than the type keeps
+	// the closure free of interface words, which closure chunks and the walks would
+	// otherwise have to trace.
+	namedType uint32
+}
+
+// deferState is the defer and panic-unwind state of one VM: the deferred-call stack, the
+// frame allowed to recover, and the value and flag of the panic being unwound.
+type deferState struct {
+	// panicValue holds the current panic value during unwinding.
+	panicValue any
+
+	// callbackPanicStack holds the rendered frames of the callback VM the current panic came
+	// from, "" when the panic started in this VM. Rendered ahead of this VM's frames in the
+	// uncaught-panic report and cleared when the panic is recovered.
+	callbackPanicStack string
+
+	// deferStack holds deferred function calls. Each frame records its deferBase so that
+	// only defers from the current frame are run when the frame returns.
+	deferStack []deferredCall
+
+	// recoverEligibleFrame records the FramePointer of the running deferred function, where
+	// recover succeeds only when FramePointer matches and -1 means no defer is active.
+	recoverEligibleFrame int
+
+	// panicking is true when the VM is unwinding due to a panic.
+	panicking bool
+}
+
+// goroutineState is the spawned-goroutine and interpreter-lock state of one VM: the join
+// outcome, the safe-mode GIL handoff, the execution-scoped cancellation and the flags
+// that record whether goroutines were spawned, joined or leaked.
+type goroutineState struct {
+	// goroutineJoinError records the outcome of joinSpawnedGoroutines so repeated calls
+	// return the same result without waiting again.
+	goroutineJoinError error
+
+	// pendingGilHandoff is the safe-mode GIL handoff published for the currently marshalling
+	// reflect native call, or nil.
+	//
+	// pendingGilHandoff lets closure wrappers created during argument marshalling re-acquire
+	// the interpreter lock for their callback body. Always nil in fast mode.
+	pendingGilHandoff *gilHandoff
+
+	// executionCancel cancels the execution-scoped context shared with spawned goroutines.
+	// Set only on the VM running a top-level execution; nil on child and nested VMs.
+	executionCancel context.CancelCauseFunc
+
+	// debugThread is this VM's registration with Limits.Debug while it is inside a dispatch
+	// loop; nil otherwise and always nil without a debugger.
+	debugThread *DebugThread
+
+	// debugParkDone is closed when the execution this VM belongs to is cancelled, so a VM
+	// parked in the debugger wakes. For a callback VM it is the wrapping VM's cancellable
+	// context, not the callback's own uncancellable one.
+	debugParkDone <-chan struct{}
+
+	// stopWatcher deregisters the context.AfterFunc callback that sets the cancelled flag.
+	stopWatcher func() bool
+
+	// unwindDone closes when the current defer's wall slice ends, while abortUnwinding is
+	// set. The unwinding's periodic check and its interruptible waits follow it instead of
+	// the execution's context, so the execution's own cancellation cannot cut a defer.
+	unwindDone <-chan struct{}
+
+	// parkedMaker names the arena of the VM that made this callback VM's wrapper (a
+	// closure's or a bound method's), whose count of active callbacks includes this one
+	// while it runs (parked callers).
+	parkedMaker weak.Pointer[RegisterArena]
+
+	// panicDeferFrames lists the deferred calls currently running on behalf of a panic,
+	// innermost last, each with the frames the panic had already unwound when the call
+	// started; the caller-inspection intrinsics show Go's runtime.gopanic frame and those
+	// frames beneath each.
+	panicDeferFrames []panicDeferRecord
+
+	// panicUnwound lists the frames the current panic has popped, innermost first, cleared
+	// when a recover completes.
+	panicUnwound []unwoundFrame
+
+	// panicFrames is the stack when the current panic started, innermost first, so an
+	// uncaught panic can be reported the way Go reports one.
+	panicFrames []stackFrame
+
+	// servedChainRun is the VM's place on its goroutine's registry stack and its served
+	// chain (register_arena_licence_chain.go).
+	servedChainRun servedChainRunState
+
+	// goroutineID is the number stack dumps report for this VM's goroutine: 1 for the root
+	// VM, a fresh number per go statement, and the parent's for a VM that runs a callback on
+	// the parent's behalf.
+	goroutineID uint64
+
+	// debugRunDepth counts nested run() loops so the VM registers with the debugger once.
+	debugRunDepth int
+
+	// unwindNative counts the native calls this VM is inside while abortUnwinding is set, so
+	// the unwinding's supervisor can tell a defer blocked in native code from one running
+	// guest instructions under its cost slice.
+	unwindNative atomic.Int32
+
+	// unwindLeaked is set by the supervisor when a defer stayed blocked in native code past
+	// its deadline and the owner returned without it. The unwinding goroutine then leaves
+	// the VM untouched as soon as the native call returns.
+	unwindLeaked atomic.Bool
+
+	// goroutinesJoined is set once joinSpawnedGoroutines has run for this execution.
+	goroutinesJoined bool
+
+	// goroutinesLeaked is set when the join grace period elapsed with goroutines still
+	// running; the execution's arena must then be dropped rather than recycled.
+	goroutinesLeaked bool
+
+	// asmCallInfoBasesPrivate is set once publishCallInfoBaseFor() has copied
+	// asmCallInfoBasesByFunction out of the root's shared array, so later publishes write
+	// the private copy in place. Cleared with the array by dropRuntimeCallInfoFills().
+	asmCallInfoBasesPrivate bool
+
+	// hasGoroutines is set when the first opGo executes or at construction of a reentrant
+	// VM. When true, store barriers and closure caching switch to concurrent-safe paths.
+	hasGoroutines bool
+
+	// spawnedGoroutines is set when this VM's own first opGo set hasGoroutines.
+	spawnedGoroutines bool
+
+	// holdsInterpreterLock is true while this VM holds its family's interpreter lock in safe
+	// mode. Always false in fast mode.
+	holdsInterpreterLock bool
+
+	// abortUnwinding is true while unwindAfterAbort runs the VM's defers under their slices
+	// of the unwinding allowance, and on a callback or bound-method VM that adopted such a
+	// slice.
+	abortUnwinding bool
+
+	// abortUnwindExhausted is set when the current defer's cost slice ran out.
+	abortUnwindExhausted bool
+
+	// reentrantInterpreterVM marks a VM created to run a closure or method invoked by native
+	// code. Such a VM must never acquire the interpreter lock.
+	reentrantInterpreterVM bool
+
+	// callbackSpawned is set when a callback or bound-method VM starts a goroutine; such a
+	// VM's release revokes its epoch (epochReentrant) instead of the ordinary licensed
+	// release.
+	callbackSpawned bool
+
+	// guestCodeExported is set once native code can hold a way to run this VM's guest code
+	// (exportGuestCode).
+	//
+	// Written only on the VM's own goroutine (or one it is parked below), before the object
+	// that sets it is published.
+	guestCodeExported bool
+
+	// borrowingNativeCall is true while a native call whose callee keeps no reference to its
+	// arguments once it returns (BorrowBorrows, BorrowReadsOnly) prepares and runs, so the
+	// closure wrappers and adapters made for it run only inside the call and do not set
+	// guestCodeExported.
+	borrowingNativeCall bool
+
+	// topLevelRun marks a VM that runs a host-declared top-level call of an orphan wrapper
+	// as a root execution (register_arena_licence_callbacks.go).
+	topLevelRun bool
+
+	// debugWokenByCancel is set when a VM parked in the debugger was woken by cancellation
+	// rather than by a resume, so the dispatch loop reports the cancellation.
+	debugWokenByCancel bool
+
+	// debugKind and debugRole classify this VM for the debugger: how it came to run and
+	// which execution phase it serves.
+	debugKind DebugThreadKind
+
+	// debugRole is the execution phase this VM serves, as shown by the debugger.
+	debugRole DebugRole
+}
+
+// unwoundFrame is a frame a panic popped, kept for stack inspection.
+type unwoundFrame struct {
+	// function is the frame's compiled function.
+	function *program.CompiledFunction
+
+	// programCounter is the index of the instruction that was executing.
+	programCounter int
+}
+
+// panicDeferRecord describes a deferred call running on behalf of a panic.
+type panicDeferRecord struct {
+	// unwound holds the frames the panic had popped before this call started.
+	unwound []unwoundFrame
+
+	// frameIndex is the deferred call's position in the call stack.
+	frameIndex int
+}
+
+// pointerTypePair holds an element type and the pointer type to it.
+type pointerTypePair struct {
+	// element is the element type T.
+	element reflect.Type
+
+	// pointer is *T.
+	pointer reflect.Type
+}
+
+// nativeState holds the caches and buffers that calls across the Go boundary use.
+type nativeState struct {
+	// pointerTypeCache pairs element types T with their pointer types *T.
+	pointerTypeCache [pointerTypeCacheSlots]pointerTypePair
+
+	// mapAccessCacheLastType is a one-slot LRU for map reflect.Type, paired with
+	// mapAccessCacheLastEntry to avoid repeated Key/Elem lookups.
+	mapAccessCacheLastType reflect.Type
+
+	// boundarySnapshotChunks caches per-type chunked slabs for pointer-containing boundary
+	// copies, amortising reflect.New across multiple snapshots per type.
+	boundarySnapshotChunks map[unsafe.Pointer]*boundaryChunk
+
+	// pointerProvenance records the valid byte window per unsafe pointer for safe-mode
+	// bounds checking. Nil in fast mode.
+	pointerProvenance map[uintptr]pointerBound
+
+	// methodCache maps (reflect.Type, method name) to the method index so that
+	// handleBindMethodByNameBody can use reflect.Value.Method(index) on repeat calls instead
+	// of the allocating MethodByName lookup.
+	methodCache map[methodCacheKey]int
+
+	// methodValueClasses records how the native method values handleBindMethodByNameBody
+	// binds for the natives that prepare their `any` operands (nativeAnySink) are
+	// classified, keyed by the method value itself, which carries no symbol of its own.
+	methodValueClasses map[reflect.Value]methodValueClass
+
+	// typedHandleCache maps a chan/map pointer to its Go-typed handle, bypassing
+	// reflect.Value dispatch on repeat accesses.
+	typedHandleCache map[uintptr]any
+
+	// mapKeyScratch caches an addressable reflect.Value per key type so typed map fast paths
+	// reuse the scratch rather than allocating a fresh wrapper per call.
+	mapKeyScratch map[reflect.Type]reflect.Value
+
+	// nativeBackedErasurePointees holds valid erasure-boundary pointees, lazily built from
+	// registered NativeBackedGenericType sentinels. Nil until first use.
+	nativeBackedErasurePointees map[reflect.Type]struct{}
+
+	// mapAccessCacheLastEntry holds the key/elem types and fast-path eligibility for
+	// mapAccessCacheLastType. Read after a successful type-pointer equality check against
+	// mapAccessCacheLastType; a miss recomputes and refreshes both fields.
+	mapAccessCacheLastEntry mapAccessCacheEntry
+
+	// pointerProvenanceKeepAlive pins the pointees recorded in pointerProvenance so their
+	// addresses remain valid for the whole execution (the map holds only uintptrs, invisible
+	// to the GC). Safe mode only.
+	pointerProvenanceKeepAlive []reflect.Value
+
+	// closureCache caches reflect.Value wrappers for zero-upvalue closures, indexed by
+	// functionIndex.
+	closureCache []reflect.Value
+
+	// sliceSnapshotChunk is a chunked slab for detaching slice-field reads from their
+	// backing struct, amortising mallocgc across snapshotChunkSize allocations.
+	sliceSnapshotChunk []snapshotSliceHeader
+
+	// builtinArgumentsBuffer is a reusable buffer for handleCallBuiltin arguments. Safe
+	// because VM is per-goroutine and builtins are synchronous.
+	builtinArgumentsBuffer []any
+
+	// sliceSnapshotNext is the bump index into the active sliceSnapshotChunk slab.
+	sliceSnapshotNext int
+
+	// pointerTypeCacheNext is the slot of pointerTypeCache the next miss replaces.
+	pointerTypeCacheNext uint8
+}
+
+// arenaBytecodeHints counts byteSlab-writing and MakeSlice opcodes to drive arena
+// pre-sizing at warmup.
+type arenaBytecodeHints struct {
+	// Bytes is the cumulative byte budget for byteSlab writers.
+	Bytes int
+
+	// MakeSliceInt64 counts subOpMakeSliceInt64 occurrences.
+	MakeSliceInt64 int
+
+	// MakeSliceFloat64 counts subOpMakeSliceFloat64 occurrences.
+	MakeSliceFloat64 int
+
+	// MakeSliceString counts subOpMakeSliceString occurrences.
+	MakeSliceString int
+
+	// MakeSliceBool counts subOpMakeSliceBool occurrences.
+	MakeSliceBool int
+
+	// MakeSliceUint64 counts subOpMakeSliceUint64 occurrences.
+	MakeSliceUint64 int
+
+	// genericBytes is the byte budget for the composite snapshot slab.
+	genericBytes int
+
+	// sliceHeaders is the cumulative slot budget for arena-routed reflect.Value slice
+	// headers.
+	sliceHeaders int
+
+	// boxInts counts opBoxAsInterface/opBoxAsType sites whose source register kind feeds the
+	// int box slab. Multiplied by boxSlabPerOccurrenceFactor inside sizeArenaFromFunctions.
+	boxInts int
+
+	// boxUints counts pack sites feeding the uint box slab.
+	boxUints int
+
+	// boxFloats counts pack sites feeding the float box slab.
+	boxFloats int
+
+	// boxStrings counts pack sites feeding the string box slab.
+	boxStrings int
+
+	// boxComplexes counts pack sites feeding the complex box slab.
+	boxComplexes int
+
+	// upvalueCells is the cumulative descriptor count summed across every opMakeClosure
+	// occurrence, looked up via the instruction's function-index operand and the callee's
+	// upvalueDescriptors.
+	upvalueCells int
+
+	// upvalueReferences mirrors upvalueCells under the current ABI; kept separate so future
+	// shape changes (e.g. cell vs reference fanout) do not require a hint-struct churn.
+	upvalueReferences int
+
+	// appendOccurrences counts opAppend / opAppendSpread / opAppendInPlace /
+	// opAppendSpreadInPlace instructions.
+	appendOccurrences int
+
+	// makeSliceGeneric counts opMakeSlice instructions targeting the general bank (one
+	// slice-header slot per occurrence).
+	makeSliceGeneric int
+
+	// makeMapOccurrences counts isa.SubOpTier2MakeMap instructions.
+	makeMapOccurrences int
+
+	// allocateIndirectOccurrences counts opAllocateIndirect instructions (each charges one
+	// slice-header slot plus an estimated bytes budget on the generic byte slab).
+	allocateIndirectOccurrences int
+}
+
+// rangeIterator holds the state for a for-range loop over a slice, array, map, or
+// channel.
+type rangeIterator struct {
+	// mapIterator drives map ranges; nil for non-map collections.
+	mapIterator *reflect.MapIter
+
+	// collection is the reflect-typed source for general-kind ranges.
+	collection reflect.Value
+
+	// valueScratch is the reusable value destination for map ranges.
+	valueScratch reflect.Value
+
+	// keyScratch is the reusable key destination for map ranges.
+	keyScratch reflect.Value
+
+	// StringSource is the source string when ranging over a string; indexed by index to
+	// yield (rune, byte-offset) pairs.
+	StringSource string
+
+	// boolSlice is the source when ranging over a []bool fast path.
+	boolSlice []bool
+
+	// floatSlice is the source when ranging over a []float64 fast path.
+	floatSlice []float64
+
+	// stringSlice is the source when ranging over a []string fast path.
+	stringSlice []string
+
+	// intSlice is the source when ranging over a []int fast path.
+	intSlice []int
+
+	// index is the next slot to read; bumped on each Next.
+	index int
+
+	// isMap reports whether the iterator drives mapIterator.
+	isMap bool
+
+	// isChannel reports whether the iterator drives a channel recv.
+	isChannel bool
+
+	// IsString reports whether the iterator drives a string range.
+	IsString bool
 }
 
 // NewVM creates a new virtual machine ready to execute bytecode. Concurrent use of the
@@ -361,21 +818,19 @@ type VM struct {
 //
 // Returns the initialised VM.
 func NewVM(ctx context.Context, globals *GlobalStore, symbols *symtab.SymbolRegistry) *VM {
-	vm := &VM{
-		FramePointer:         -1,
-		goroutineID:          rootGoroutineID,
-		panicDeferFrames:     nil,
-		panicUnwound:         nil,
-		panicFrames:          nil,
-		recoverEligibleFrame: -1,
-		Globals:              globals,
-		symbols:              symbols,
-		ctx:                  ctx,
-		callbackVMs:          new(callbackVMCache),
-		debugParkDone:        ctx.Done(),
-		ctxDone:              ctx.Done(),
-		spawnCtx:             ctx,
+	vm := newVMShell()
+	vm.FramePointer = -1
+	vm.goroutineID = rootGoroutineID
+	vm.recoverEligibleFrame = -1
+	vm.Globals = globals
+	vm.symbols = symbols
+	vm.ctx = ctx
+	if vm.callbackVMs == nil {
+		vm.callbackVMs = new(callbackVMCache)
 	}
+	vm.debugParkDone = ctx.Done()
+	vm.ctxDone = ctx.Done()
+	vm.spawnCtx = ctx
 	if ctx.Done() != nil {
 		flag := &vm.Cancelled
 		vm.stopWatcher = context.AfterFunc(ctx, func() { flag.Store(1) })
@@ -390,7 +845,9 @@ func (vm *VM) SeedExecutionBudgets() {
 	vm.SeedCostBudget()
 	if vm.Limits.Tracker != nil {
 		vm.Limits.Tracker.ArenaBytes.Store(0)
+		vm.Limits.Tracker.locks.begin()
 	}
+	vm.dropStaleGoroutinePanic()
 }
 
 // EnsureCallStack sets up an arena and call stack for cold-path VMs (varinit, init) that
@@ -410,12 +867,32 @@ func (vm *VM) EnsureCallStack() {
 	}
 }
 
-// ReleaseArena returns the VM's arena to the global pool and clears the reference. The
-// arena is abandoned to the garbage collector instead when the VM's goroutines leaked.
+// EnsureOwnedCallStack prepares a top-level run of entry, a function of the bound file
+// set (BindFileSet) that does not go through Execute, such as a package's init function.
+//
+// The caller must defer vm.ReleaseArena(), which clears the owner.
+//
+// Takes entry (*program.CompiledFunction) which is the function the run starts with.
+func (vm *VM) EnsureOwnedCallStack(entry *program.CompiledFunction) {
+	root := vm.rootFunction
+	if root == nil {
+		root = entry
+	}
+	vm.prepareForExecution(root)
+	if table := vm.AsmCallInfoTables[entry]; len(table) > 0 {
+		vm.asmCallInfoBases[0] = uintptr(unsafe.Pointer(&table[0]))
+	}
+	vm.EnsureCallStack()
+}
+
+// ReleaseArena returns the VM's arena to the global pool and clears the reference.
 func (vm *VM) ReleaseArena() {
 	vm.drainCallbackVMs()
 	_ = vm.JoinSpawnedGoroutines()
 	if vm.Arena != nil {
+		if vm.Arena.ownerVM == vm {
+			vm.Arena.setOwnerVM(nil)
+		}
 		vm.CallStack = nil
 		vm.releaseArenaUnlessLeaked(vm.Arena)
 		vm.Arena = nil
@@ -429,6 +906,7 @@ func (vm *VM) ReleaseArena() {
 // Returns any which is the result of the function.
 // Returns error when execution fails.
 func (vm *VM) Execute(compiledFunction *program.CompiledFunction) (result any, err error) {
+	vm.applyLicenceCheck(compiledFunction)
 	if vm.Limits.SafeMode {
 		vm.resetPointerProvenance()
 	}
@@ -455,11 +933,14 @@ func (vm *VM) Execute(compiledFunction *program.CompiledFunction) (result any, e
 	if joinErr := vm.JoinSpawnedGoroutines(); joinErr != nil && err == nil {
 		err = joinErr
 	}
+	if info := vm.takeOwnGoroutinePanic(); info != nil && err == nil {
+		result, err = nil, newGoroutinePanicError(info.value)
+	}
 
 	if ownArena {
 		result = vm.finaliseOwnedArena(result)
 	} else if vm.Arena != nil {
-		vm.Arena.ownerVM = nil
+		vm.Arena.setOwnerVM(nil)
 	}
 
 	return result, err
@@ -475,28 +956,28 @@ func (vm *VM) PushFrame(compiledFunction *program.CompiledFunction) {
 	if vm.FramePointer >= len(vm.CallStack) {
 		vm.growCallStack()
 	}
-	f := &vm.CallStack[vm.FramePointer]
+	frame := &vm.CallStack[vm.FramePointer]
 	if vm.Arena != nil {
 		if depth := vm.FramePointer + 1; depth > vm.Arena.framesUsed {
 			vm.Arena.framesUsed = depth
 		}
-		vm.Arena.SaveInto(&f.arenaSave)
+		vm.Arena.SaveInto(&frame.arenaSave)
 		compiledFunction.EnsurePrecomputedAllocCounts()
-		vm.Arena.allocRegistersIntoCached(&f.Registers, compiledFunction.PrecomputedAllocCounts, compiledFunction.NonZeroBankMask)
+		vm.Arena.allocRegistersIntoCached(&frame.Registers, &compiledFunction.PrecomputedAllocCounts, compiledFunction.NonZeroBankMask)
 	} else {
-		f.arenaSave = ArenaSavePoint{}
-		f.Registers = NewRegisters(compiledFunction.NumRegisters)
+		frame.arenaSave = ArenaSavePoint{}
+		frame.Registers = NewRegisters(compiledFunction.NumRegisters)
 	}
-	f.Function = compiledFunction
-	f.ProgramCounter = 0
-	f.deferBase = len(vm.deferStack)
-	if f.simpleDefer != nil {
-		f.simpleDefer.active = false
+	frame.Function = compiledFunction
+	frame.ProgramCounter = 0
+	frame.deferBase = len(vm.deferStack)
+	if frame.simpleDefer != nil {
+		frame.simpleDefer.active = false
 	}
-	f.upvalues = nil
-	f.returnDestination = nil
-	releaseSharedCellMap(f.sharedCells)
-	f.sharedCells = nil
+	frame.upvalues = nil
+	frame.returnDestination = nil
+	releaseSharedCellMap(frame.sharedCells)
+	frame.sharedCells = nil
 }
 
 // BindFileSet points the VM at a compiled file set's function table and root.
@@ -505,6 +986,7 @@ func (vm *VM) PushFrame(compiledFunction *program.CompiledFunction) {
 // Takes rootFunction (*CompiledFunction) which owns the dispatch context.
 func (vm *VM) BindFileSet(functions []*program.CompiledFunction, rootFunction *program.CompiledFunction) {
 	vm.forgetClosureCacheForRoot(rootFunction)
+	vm.applyLicenceCheck(rootFunction)
 	vm.functions = functions
 	vm.rootFunction = rootFunction
 }
@@ -556,6 +1038,9 @@ func (vm *VM) ReleaseFileSetArena(arena *RegisterArena) {
 	vm.asmCallInfoBases = nil
 	vm.asmDispatchSaves = nil
 	vm.releaseArenaUnlessLeaked(arena)
+	if vm.Arena == arena && !vm.unwindLeaked.Load() {
+		vm.Arena = nil
+	}
 }
 
 // SetExecutionCancel records the cancel function that tears down the VM's execution
@@ -583,50 +1068,96 @@ func (vm *VM) SetStderrWriter(writer io.Writer) { vm.StderrWriter = writer }
 // Returns *GoroutinePanicInfo describing the panic, or nil when none was recorded.
 func (vm *VM) GoroutinePanic() *GoroutinePanicInfo { return vm.Globals.goroutinePanic.Load() }
 
+// TakeGoroutinePanic returns the panic recorded by a spawned goroutine and clears it, so
+// the next execution on the same globals starts without it. A top-level execution calls
+// it once it has joined its goroutines, to report the panic as its own failure.
+//
+// Returns *GoroutinePanicInfo describing the panic, or nil when none was recorded.
+func (vm *VM) TakeGoroutinePanic() *GoroutinePanicInfo { return vm.Globals.takeGoroutinePanic() }
+
 // FinishWatcher deregisters the context.AfterFunc callback that NewVM installs. Safe to
 // call more than once and on a VM with no callback.
 func (vm *VM) FinishWatcher() {
 	if vm.stopWatcher != nil {
-		vm.stopWatcher()
+		if !vm.stopWatcher() {
+			vm.watcherFired = true
+		}
+		vm.stopWatcher = nil
 	}
 }
 
+// takeOwnGoroutinePanic is TakeGoroutinePanic for a VM that owns its execution.
+//
+// A VM that shares another's execution leaves the panic for that execution to report.
+//
+// Returns *GoroutinePanicInfo which is the cleared panic, or nil.
+func (vm *VM) takeOwnGoroutinePanic() *GoroutinePanicInfo {
+	if !vm.ownsLink {
+		return nil
+	}
+	return vm.TakeGoroutinePanic()
+}
+
+// dropStaleGoroutinePanic clears a goroutine panic an earlier execution left on the
+// globals when none of its goroutines still runs.
+//
+// It belongs to an execution that has ended, however that execution ended, and must not
+// fail this one.
+func (vm *VM) dropStaleGoroutinePanic() {
+	if vm.Globals == nil || vm.Globals.goroutinePanic.Load() == nil {
+		return
+	}
+	if tracker := vm.Limits.Tracker; tracker != nil && tracker.GoroutineCount.Load() != 0 {
+		return
+	}
+	vm.Globals.takeGoroutinePanic()
+}
+
 // acquireArena returns a RegisterArena, using the custom factory if configured or the
-// global pool otherwise.
+// global pool otherwise. Under the abandon fallback a factory's arena is marked unpooled,
+// as the fallback's own arenas are, so every arena the fallback runs on reuses nothing.
 //
 // Returns a RegisterArena from the custom factory or the global pool.
 func (vm *VM) acquireArena() *RegisterArena {
 	var arena *RegisterArena
 	if vm.Limits.ArenaFactory != nil {
 		arena = vm.Limits.ArenaFactory()
+		if vm.Limits.abandonsArenas() {
+			arena.recycleChunks = false
+			arena.unpooled = true
+		}
 	} else {
-		arena = GetRegisterArena()
+		arena = acquireRegisterArena(vm.Limits.abandonsArenas())
 	}
-	arena.MaxArenaBytes = vm.Limits.MaxArenaBytes
+	arena.setRunBudget(vm.Limits.MaxArenaBytes)
 	arena.MaxAllocSize = vm.Limits.MaxAllocSize
-	arena.disableMinorGC = vm.Limits.DisableMinorGC
 	arena.cloneUnownedStrings = vm.reentrantInterpreterVM
 	arena.AttachBudgetTracker(vm.Limits.Tracker)
+	arena.attachLicencePolicy(&vm.Limits)
+	if arena.licensed {
+		arena.setLicenceVM(vm)
+		arena.licenceAlwaysShared = vm.reentrantInterpreterVM || vm.hasGoroutines && !vm.spawnedGoroutines
+	}
+	if arenaAuditEnabled {
+		arena.auditAcquired(vm.debugKind.String())
+	}
 	return arena
 }
 
 // releaseArenaUnlessLeaked returns arena to the pool, or abandons it to the garbage
-// collector when the execution's goroutines could not be joined.
+// collector when the execution's goroutines could not be joined or the abandon fallback
+// is in force.
 //
 // Takes arena (*RegisterArena) which is the arena to release.
 func (vm *VM) releaseArenaUnlessLeaked(arena *RegisterArena) {
 	if arena != nil && vm.rootFunction != nil {
 		vm.rootFunction.RecordObservedCallDepth(arena.frameStackPeak())
 	}
-	if vm.goroutinesLeaked {
+	if vm.goroutinesLeaked || (arena != nil && arena.unwindLeaked) {
 		arena.detachBudgetTracker()
 		return
 	}
-	if vm.reentrantInterpreterVM {
-		putRegisterArenaAbandoningEscapes(arena)
-		return
-	}
-	PutRegisterArena(arena)
+	releaseRegisterArena(vm.Limits.abandonsArenas(), arena, vm.reentrantInterpreterVM)
 }
 
 // sizeArenaFromFunctions pre-sizes the arena for an execution that starts at root, so
@@ -673,15 +1204,17 @@ func (vm *VM) stderr() io.Writer {
 	return os.Stderr
 }
 
-// callDepthLimit returns the effective maximum call stack depth.
+// callDepthLimit returns the effective maximum call stack depth of this VM's frames.
 //
 // Returns the configured maxCallDepth limit, or the default maxCallDepth constant if
-// unset.
+// unset, less the frames the callback runs below this one on its goroutine hold
+// (callbackDepthBase).
 func (vm *VM) callDepthLimit() int {
+	limit := maxCallDepth
 	if vm.Limits.MaxCallDepth > 0 {
-		return vm.Limits.MaxCallDepth
+		limit = vm.Limits.MaxCallDepth
 	}
-	return maxCallDepth
+	return max(1, limit-vm.callbackDepthBase)
 }
 
 // ensureGoroutineLimit returns the effective concurrent-goroutine cap and guarantees a
@@ -706,8 +1239,7 @@ func (vm *VM) ensureGoroutineLimit() int32 {
 //
 // Returns the wrapped stack-overflow error.
 func (vm *VM) stackOverflowError() error {
-	return fmt.Errorf("%w: call depth %d exceeded limit %d (raise via WithMaxCallDepth)",
-		fault.ErrStackOverflow, vm.FramePointer, vm.callDepthLimit())
+	return stackOverflowAt(vm.callbackDepthBase+vm.FramePointer, vm.callbackDepthBase+vm.callDepthLimit())
 }
 
 // guardCallDepth raises a stack-overflow panic when the call depth limit is reached.
@@ -786,7 +1318,7 @@ func (vm *VM) prepareForExecution(compiledFunction *program.CompiledFunction) bo
 		vm.Arena = vm.acquireArena()
 		vm.sizeArenaFromFunctions(compiledFunction)
 	}
-	vm.Arena.ownerVM = vm
+	vm.Arena.setOwnerVM(vm)
 
 	if vm.CallStack == nil {
 		vm.CallStack = vm.Arena.frameStack()
@@ -824,8 +1356,9 @@ func (vm *VM) runVariableInit(compiledFunction *program.CompiledFunction, ownAre
 	return nil
 }
 
-// finaliseOwnedArena materialises the dispatched result and any pending Eval-all results
-// onto the heap before releasing the execute-owned arena.
+// finaliseOwnedArena materialises the dispatched result onto the heap before releasing
+// the execute-owned arena. The root's EvalAllResults, whose first element is that result
+// and which no caller of Execute reads, are dropped rather than materialised again.
 //
 // Takes result (any) which is the value returned by runDispatched.
 //
@@ -835,9 +1368,8 @@ func (vm *VM) finaliseOwnedArena(result any) any {
 		materialiseGlobalStrings(vm.Globals, vm.Arena)
 	}
 	result = MaterialiseAnyForArena(vm.Arena, result)
-	for index, allResult := range vm.EvalAllResults {
-		vm.EvalAllResults[index] = MaterialiseAnyForArena(vm.Arena, allResult)
-	}
+	vm.EvalAllResults = nil
+	vm.evalSingle = false
 	vm.releaseOwnedArena()
 	return result
 }
@@ -853,14 +1385,12 @@ func (vm *VM) releaseOwnedArena() {
 	vm.dropRuntimeCallInfoFills()
 	vm.asmCallInfoBases = nil
 	vm.asmDispatchSaves = nil
-	vm.Arena.ownerVM = nil
+	vm.Arena.setOwnerVM(nil)
 	vm.releaseArenaUnlessLeaked(vm.Arena)
 	vm.Arena = nil
 }
 
-// popFrame pops the current call frame and restores the previous one. If the arena is in
-// use, restores it to the save point recorded when the frame was pushed, reclaiming the
-// frame's register slots.
+// popFrame pops the current call frame and restores the previous one.
 func (vm *VM) popFrame() {
 	frame := &vm.CallStack[vm.FramePointer]
 	if vm.FramePointer < len(vm.rootSnapshots) {
@@ -871,7 +1401,7 @@ func (vm *VM) popFrame() {
 	}
 	frame.rootSwapped = false
 	if vm.Arena != nil {
-		vm.Arena.Restore(frame.arenaSave)
+		vm.Arena.restoreFrom(&frame.arenaSave)
 	}
 
 	releaseSharedCellMap(frame.sharedCells)
@@ -926,94 +1456,6 @@ func (vm *VM) extractRegisterValue(registers *Registers, kind isa.RegisterKind, 
 	}
 }
 
-// extractAllResults extracts all return values from the final frame.
-//
-// Takes frame (*CallFrame) which specifies the call frame to extract results from.
-//
-// Returns a slice of all result values.
-func (vm *VM) extractAllResults(frame *CallFrame) []any {
-	resultKinds := frame.Function.ResultKinds
-	if len(resultKinds) == 0 {
-		return nil
-	}
-
-	results := make([]any, len(resultKinds))
-	var bankCounters [isa.NumRegisterKinds]uint8
-	registers := &frame.Registers
-
-	for i, kind := range resultKinds {
-		sourceRegister := int(bankCounters[kind])
-		bankCounters[kind]++
-		if hint := resultReflectTypeHint(frame.Function, i); hint != nil {
-			if value, ok := extractRegisterValueAs(vm.Arena, registers, kind, sourceRegister, hint); ok {
-				results[i] = value
-				continue
-			}
-		}
-		results[i] = vm.extractRegisterValue(registers, kind, sourceRegister)
-	}
-
-	return results
-}
-
-// callClosureReflect executes a compiled closure via reflect, pushing a new frame,
-// assigning arguments, and running the function to completion.
-//
-// Takes closure (*RuntimeClosure) which specifies the closure to call.
-// Takes arguments ([]reflect.Value) which provides the reflect.Value arguments to pass.
-// Takes functionType (reflect.Type) which defines the expected function signature for
-// result packaging.
-//
-// Returns the result values packaged as reflect.Values matching functionType's output
-// signature.
-func (vm *VM) callClosureReflect(closure *RuntimeClosure, arguments []reflect.Value, functionType reflect.Type) []reflect.Value {
-	callee := closure.Function
-
-	snapshot := vm.swapToClosureRoot(closure.RootFunction)
-
-	vm.guardCallDepth()
-	vm.FramePointer++
-	if vm.FramePointer >= len(vm.CallStack) {
-		vm.growCallStack()
-	}
-	closureFp := vm.FramePointer
-	f := &vm.CallStack[vm.FramePointer]
-	if vm.Arena != nil {
-		vm.Arena.SaveInto(&f.arenaSave)
-		callee.EnsurePrecomputedAllocCounts()
-		vm.Arena.allocRegistersIntoCached(&f.Registers, callee.PrecomputedAllocCounts, callee.NonZeroBankMask)
-	} else {
-		f.Registers = NewRegisters(callee.NumRegisters)
-	}
-	f.Function = callee
-	f.ProgramCounter = 0
-	f.returnDestination = nil
-	f.deferBase = len(vm.deferStack)
-	if f.simpleDefer != nil {
-		f.simpleDefer.active = false
-	}
-	f.upvalues = nil
-	f.hasGeneralAlloc = callee.NumRegisters[isa.RegisterGeneral] > 0
-	releaseSharedCellMap(f.sharedCells)
-	f.sharedCells = nil
-	vm.recordFrameSnapshot(closureFp, snapshot)
-	if closure.upvalues != nil {
-		f.initialiseUpvalues(closure.upvalues, vm.Arena)
-	}
-	vm.updateASMCallInfoBase()
-
-	assignReflectParams(&f.Registers, callee.ParameterKinds, callee.ParameterRegisters, arguments)
-
-	_, err := vm.RunDispatchedGuarded(closureFp)
-	if err != nil {
-		vm.evalError = err
-	}
-
-	allResults := vm.EvalAllResults
-	vm.EvalAllResults = nil
-	return buildReflectResults(allResults, functionType)
-}
-
 // writeRangeValue writes a reflect.Value to the appropriate register.
 //
 // A range assigns an element, whose kind is one of these seven. A typed-slice bank is the
@@ -1028,14 +1470,14 @@ func (*VM) writeRangeValue(registers *Registers, value reflect.Value, register u
 		value = unwrapInterfaceElement(value)
 	}
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		switch value.Kind() {
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 			registers.Ints[register] = safeconv.Uint64ToInt64Reinterpret(value.Uint())
 		default:
 			registers.Ints[register] = value.Int()
 		}
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		registers.Floats[register] = value.Float()
 	case isa.RegisterString:
 		registers.Strings[register] = value.String()
@@ -1043,9 +1485,9 @@ func (*VM) writeRangeValue(registers *Registers, value reflect.Value, register u
 		registers.General[register] = ValueCopyForBoundary(value)
 	case isa.RegisterBool:
 		registers.Bools[register] = value.Bool()
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.Uints[register] = value.Uint()
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		registers.Complex[register] = value.Complex()
 	default:
 	}
@@ -1090,9 +1532,6 @@ func (*VM) syncNamedResults(frame *CallFrame) {
 
 // acquireSliceSnapshot bump-allocates the next slice-header buffer.
 //
-// When an arena is attached, the slot is drawn from arena.SliceHeaderSlab and cleared on
-// arena.Reset. When no arena is attached, the fallback uses the per-VM chunked slab.
-//
 // Returns a pointer to the freshly bump-allocated slot.
 //
 //go:nosplit
@@ -1112,10 +1551,6 @@ func (vm *VM) acquireSliceSnapshot() *snapshotSliceHeader {
 
 // growCallStack doubles the call stack capacity, growing the arena slabs or independent
 // arrays to keep the parallel arrays (frames, CallInfoBases, asmDispatchSaves) in sync.
-//
-// When an arena is available, the arena's slabs are grown so all three parallel arrays
-// stay in sync. Without an arena, the CallStack and parallel arrays are grown
-// independently.
 //
 //go:noinline
 func (vm *VM) growCallStack() {
@@ -1156,18 +1591,19 @@ func (vm *VM) growCallStack() {
 // register to the caller frame at the destination.
 //
 // Takes calleeFrame (*CallFrame) which specifies the frame containing the source value.
+// Takes index (int) which is the result position, used to find its declared type.
 // Takes kind (isa.RegisterKind) which specifies the register bank of the source value.
 // Takes sourceRegister (uint8) which specifies the source register index within the
 // callee.
 // Takes dest (VarLocation) which specifies the destination location in the caller frame.
-func (vm *VM) copyReturnValueAt(calleeFrame *CallFrame, kind isa.RegisterKind, sourceRegister uint8, dest program.VarLocation) {
+func (vm *VM) copyReturnValueAt(calleeFrame *CallFrame, index int, kind isa.RegisterKind, sourceRegister uint8, dest program.VarLocation) {
 	callerFrame := &vm.CallStack[vm.FramePointer-1]
 	if kind == dest.Kind {
 		copySameKind(&callerFrame.Registers, &calleeFrame.Registers, kind, dest.Register, sourceRegister)
 	} else if kind == isa.RegisterGeneral && dest.Kind != isa.RegisterGeneral {
 		copyReturnFromGeneral(callerFrame, calleeFrame.Registers.General[sourceRegister], dest)
 	} else if dest.Kind == isa.RegisterGeneral && kind != isa.RegisterGeneral {
-		copyReturnToGeneral(callerFrame, &calleeFrame.Registers, kind, sourceRegister, dest.Register)
+		copyResultToGeneral(vm.Arena, callerFrame, calleeFrame, index, kind, sourceRegister, dest.Register)
 	}
 }
 
@@ -1176,28 +1612,6 @@ func (vm *VM) copyReturnValueAt(calleeFrame *CallFrame, kind isa.RegisterKind, s
 // Returns context.Context which is the VM's cancellation source.
 func (vm *VM) executionContext() context.Context { return vm.ctx }
 
-// RuntimeClosure binds a compiled function to its captured upvalue cells.
-type RuntimeClosure struct {
-	// inlineCells stores the first inlineUpvalueCells captures inline to avoid a separate
-	// make([]*UpvalueCell, N) per closure.
-	inlineCells [inlineUpvalueCells]*program.UpvalueCell
-
-	// Function is the compiled body this closure invokes.
-	Function *program.CompiledFunction
-
-	// RootFunction is the top-level function whose dispatch context the closure belongs to;
-	// restored when the closure is reflectively invoked from outside its defining program.
-	RootFunction *program.CompiledFunction
-
-	// upvalues references the captured cells; aliases inlineCells when the count fits,
-	// otherwise points at an external slice.
-	upvalues []*program.UpvalueCell
-
-	// namedType is the bare name of the named func type this closure was converted to, or ""
-	// for a plain func value. Method dispatch and %T key on it.
-	namedType string
-}
-
 // NewRuntimeClosure builds a closure value over a compiled function.
 //
 // Takes function (*CompiledFunction) which is the body to invoke.
@@ -1205,7 +1619,7 @@ type RuntimeClosure struct {
 //
 // Returns *RuntimeClosure ready to be handed to reflect.ValueOf.
 func NewRuntimeClosure(function, rootFunction *program.CompiledFunction) *RuntimeClosure {
-	return &RuntimeClosure{Function: function, RootFunction: rootFunction, inlineCells: [inlineUpvalueCells]*program.UpvalueCell{}, upvalues: nil, namedType: ""}
+	return &RuntimeClosure{Function: function, RootFunction: rootFunction, inlineCells: [inlineUpvalueCells]*program.UpvalueCell{}, upvalues: nil, namedType: 0}
 }
 
 // Format prints a closure the way Go prints a func value: as its address. %T never
@@ -1222,327 +1636,23 @@ func (closure *RuntimeClosure) Format(state fmt.State, verb rune) {
 	}
 }
 
-// deferState is the defer and panic-unwind state of one VM: the deferred-call stack, the
-// frame allowed to recover, and the value and flag of the panic being unwound.
-type deferState struct {
-	// panicValue holds the current panic value during unwinding.
-	panicValue any
-
-	// callbackPanicStack holds the rendered frames of the callback VM the current panic came
-	// from, "" when the panic started in this VM. Rendered ahead of this VM's frames in the
-	// uncaught-panic report and cleared when the panic is recovered.
-	callbackPanicStack string
-
-	// deferStack holds deferred function calls. Each frame records its deferBase so that
-	// only defers from the current frame are run when the frame returns.
-	deferStack []deferredCall
-
-	// recoverEligibleFrame records the FramePointer of the running deferred function, where
-	// recover succeeds only when FramePointer matches and -1 means no defer is active.
-	recoverEligibleFrame int
-
-	// panicking is true when the VM is unwinding due to a panic.
-	panicking bool
-}
-
-// goroutineState is the spawned-goroutine and interpreter-lock state of one VM: the join
-// outcome, the safe-mode GIL handoff, the execution-scoped cancellation and the flags
-// that record whether goroutines were spawned, joined or leaked.
-type goroutineState struct {
-	// goroutineJoinError records the outcome of joinSpawnedGoroutines so repeated calls
-	// return the same result without waiting again.
-	goroutineJoinError error
-
-	// pendingGilHandoff is the safe-mode GIL handoff published for the currently marshalling
-	// reflect native call, or nil.
-	//
-	// pendingGilHandoff lets closure wrappers created during argument marshalling re-acquire
-	// the interpreter lock for their callback body. Always nil in fast mode.
-	pendingGilHandoff *gilHandoff
-
-	// executionCancel cancels the execution-scoped context shared with spawned goroutines.
-	// Set only on the VM running a top-level execution; nil on child and nested VMs.
-	executionCancel context.CancelCauseFunc
-
-	// debugThread is this VM's registration with Limits.Debug while it is inside a dispatch
-	// loop; nil otherwise and always nil without a debugger.
-	debugThread *DebugThread
-
-	// debugParkDone is closed when the execution this VM belongs to is cancelled, so a VM
-	// parked in the debugger wakes. For a callback VM it is the wrapping VM's cancellable
-	// context, not the callback's own uncancellable one.
-	debugParkDone <-chan struct{}
-
-	// stopWatcher deregisters the context.AfterFunc callback that sets the cancelled flag.
-	stopWatcher func() bool
-
-	// panicDeferFrames lists the deferred calls currently running on behalf of a panic,
-	// innermost last, each with the frames the panic had already unwound when the call
-	// started; the caller-inspection intrinsics show Go's runtime.gopanic frame and those
-	// frames beneath each.
-	panicDeferFrames []panicDeferRecord
-
-	// panicUnwound lists the frames the current panic has popped, innermost first, cleared
-	// when a recover completes.
-	panicUnwound []unwoundFrame
-
-	// panicFrames is the stack when the current panic started, innermost first, so an
-	// uncaught panic can be reported the way Go reports one.
-	panicFrames []stackFrame
-
-	// goroutineID is the number stack dumps report for this VM's goroutine: 1 for the root
-	// VM, a fresh number per go statement, and the parent's for a VM that runs a callback on
-	// the parent's behalf.
-	goroutineID uint64
-
-	// goroutinesJoined is set once joinSpawnedGoroutines has run for this execution.
-	goroutinesJoined bool
-
-	// goroutinesLeaked is set when the join grace period elapsed with goroutines still
-	// running; the execution's arena must then be dropped rather than recycled.
-	goroutinesLeaked bool
-
-	// asmCallInfoBasesPrivate is set once publishCallInfoBaseFor() has copied
-	// asmCallInfoBasesByFunction out of the root's shared array, so later publishes write
-	// the private copy in place. Cleared with the array by dropRuntimeCallInfoFills().
-	asmCallInfoBasesPrivate bool
-
-	// hasGoroutines is set when the first opGo executes or at construction of a reentrant
-	// VM. When true, store barriers and closure caching switch to concurrent-safe paths.
-	hasGoroutines bool
-
-	// holdsInterpreterLock is true while this VM holds its family's interpreter lock in safe
-	// mode. Always false in fast mode.
-	holdsInterpreterLock bool
-
-	// reentrantInterpreterVM marks a VM created to run a closure or method invoked by native
-	// code. Such a VM must never acquire the interpreter lock.
-	reentrantInterpreterVM bool
-
-	// debugRunDepth counts nested run() loops so the VM registers with the debugger once.
-	debugRunDepth int
-
-	// debugWokenByCancel is set when a VM parked in the debugger was woken by cancellation
-	// rather than by a resume, so the dispatch loop reports the cancellation.
-	debugWokenByCancel bool
-
-	// debugKind and debugRole classify this VM for the debugger: how it came to run and
-	// which execution phase it serves.
-	debugKind DebugThreadKind
-
-	// debugRole is the execution phase this VM serves, as shown by the debugger.
-	debugRole DebugRole
-}
-
-// unwoundFrame is a frame a panic popped, kept for stack inspection.
-type unwoundFrame struct {
-	// function is the frame's compiled function.
-	function *program.CompiledFunction
-
-	// pc is the index of the instruction that was executing.
-	pc int
-}
-
-// panicDeferRecord describes a deferred call running on behalf of a panic.
-type panicDeferRecord struct {
-	// unwound holds the frames the panic had popped before this call started.
-	unwound []unwoundFrame
-
-	// frameIndex is the deferred call's position in the call stack.
-	frameIndex int
-}
-
-// nativeState holds the caches that calls across the Go boundary use: pointer-type and
-// map-access one-slot caches, pointer provenance, the method and typed-handle caches, the
-// erasure-boundary pointee set, and the reusable buffers for snapshots and builtin
-// arguments.
-type nativeState struct {
-	// ptrTypeCacheKey is the cached element type T for the one-slot LRU that bypasses
-	// reflect.PointerTo's sync.Map lookup for the hot ADDR-chain pattern (`&Struct{}` in
-	// tight constructors). A constructor that repeatedly allocates the same struct type hits
-	// the cache on every allocation after the first.
-	ptrTypeCacheKey reflect.Type
-
-	// ptrTypeCacheValue holds *T paired with ptrTypeCacheKey.
-	ptrTypeCacheValue reflect.Type
-
-	// mapAccessCacheLastType is a one-slot LRU for map reflect.Type, paired with
-	// mapAccessCacheLastEntry to avoid repeated Key/Elem lookups.
-	mapAccessCacheLastType reflect.Type
-
-	// boundarySnapshotChunks caches per-type chunked slabs for pointer-containing boundary
-	// copies, amortising reflect.New across multiple snapshots per type.
-	boundarySnapshotChunks map[unsafe.Pointer]*boundaryChunk
-
-	// pointerProvenance records the valid byte window per unsafe pointer for safe-mode
-	// bounds checking. Nil in fast mode.
-	pointerProvenance map[uintptr]pointerBound
-
-	// methodCache maps (reflect.Type, method name) to the method index so that
-	// handleGetMethod can use reflect.Value.Method(index) on repeat calls instead of the
-	// allocating MethodByName lookup.
-	methodCache map[methodCacheKey]int
-
-	// typedHandleCache maps a chan/map pointer to its Go-typed handle, bypassing
-	// reflect.Value dispatch on repeat accesses.
-	typedHandleCache map[uintptr]any
-
-	// mapKeyScratch caches an addressable reflect.Value per key type so typed map fast paths
-	// reuse the scratch rather than allocating a fresh wrapper per call.
-	mapKeyScratch map[reflect.Type]reflect.Value
-
-	// nativeBackedErasurePointees holds valid erasure-boundary pointees, lazily built from
-	// registered NativeBackedGenericType sentinels. Nil until first use.
-	nativeBackedErasurePointees map[reflect.Type]struct{}
-
-	// mapAccessCacheLastEntry holds the key/elem types and fast-path eligibility for
-	// mapAccessCacheLastType. Read after a successful type-pointer equality check against
-	// mapAccessCacheLastType; a miss recomputes and refreshes both fields.
-	mapAccessCacheLastEntry mapAccessCacheEntry
-
-	// pointerProvenanceKeepAlive pins the pointees recorded in pointerProvenance so their
-	// addresses remain valid for the whole execution (the map holds only uintptrs, invisible
-	// to the GC). Safe mode only.
-	pointerProvenanceKeepAlive []reflect.Value
-
-	// closureCache caches reflect.Value wrappers for zero-upvalue closures, indexed by
-	// functionIndex.
-	closureCache []reflect.Value
-
-	// sliceSnapshotChunk is a chunked slab for detaching slice-field reads from their
-	// backing struct, amortising mallocgc across snapshotChunkSize allocations.
-	sliceSnapshotChunk []snapshotSliceHeader
-
-	// builtinArgumentsBuffer is a reusable buffer for handleCallBuiltin arguments. Safe
-	// because VM is per-goroutine and builtins are synchronous.
-	builtinArgumentsBuffer []any
-
-	// sliceSnapshotNext is the bump index into the active sliceSnapshotChunk slab.
-	sliceSnapshotNext int
-}
-
-// arenaBytecodeHints counts byteSlab-writing and MakeSlice opcodes to drive arena
-// pre-sizing at warmup.
-type arenaBytecodeHints struct {
-	// Bytes is the cumulative byte budget for byteSlab writers.
-	Bytes int
-
-	// MakeSliceInt counts subOpMakeSliceInt occurrences.
-	MakeSliceInt int
-
-	// MakeSliceFloat counts subOpMakeSliceFloat occurrences.
-	MakeSliceFloat int
-
-	// MakeSliceString counts subOpMakeSliceString occurrences.
-	MakeSliceString int
-
-	// MakeSliceBool counts subOpMakeSliceBool occurrences.
-	MakeSliceBool int
-
-	// MakeSliceUint counts subOpMakeSliceUint occurrences.
-	MakeSliceUint int
-
-	// genericBytes is the byte budget for the composite snapshot slab.
-	genericBytes int
-
-	// sliceHeaders is the cumulative slot budget for arena-routed reflect.Value slice
-	// headers. Each opcode that wraps a typed slice into the general bank
-	// (opSubOpBoxSliceByte's arena form, pack-typed-slice paths, append fast-paths, slice
-	// snapshots) consumes one slot.
-	sliceHeaders int
-
-	// boxInts counts opPackInterface/opPackTyped sites whose source register kind feeds the
-	// int box slab. Multiplied by boxSlabPerOccurrenceFactor inside sizeArenaFromFunctions.
-	boxInts int
-
-	// boxUints counts pack sites feeding the uint box slab.
-	boxUints int
-
-	// boxFloats counts pack sites feeding the float box slab.
-	boxFloats int
-
-	// boxStrings counts pack sites feeding the string box slab.
-	boxStrings int
-
-	// boxComplexes counts pack sites feeding the complex box slab.
-	boxComplexes int
-
-	// upvalueCells is the cumulative descriptor count summed across every opMakeClosure
-	// occurrence, looked up via the instruction's function-index operand and the callee's
-	// upvalueDescriptors.
-	upvalueCells int
-
-	// upvalueReferences mirrors upvalueCells under the current ABI; kept separate so future
-	// shape changes (e.g. cell vs reference fanout) do not require a hint-struct churn.
-	upvalueReferences int
-
-	// appendOccurrences counts opAppend / opAppendSpread / opAppendInPlace /
-	// opAppendSpreadInPlace instructions.
-	appendOccurrences int
-
-	// makeSliceGeneric counts opMakeSlice instructions targeting the general bank (one
-	// slice-header slot per occurrence).
-	makeSliceGeneric int
-
-	// makeMapOccurrences counts isa.SubOpTier2MakeMap instructions.
-	makeMapOccurrences int
-
-	// allocIndirectOccurrences counts opAllocIndirect instructions (each charges one
-	// slice-header slot plus an estimated bytes budget on the generic byte slab).
-	allocIndirectOccurrences int
-}
-
-// rangeIterator holds the state for a for-range loop over a slice, array, map, or
-// channel.
-type rangeIterator struct {
-	// mapIterator drives map ranges; nil for non-map collections.
-	mapIterator *reflect.MapIter
-
-	// collection is the reflect-typed source for general-kind ranges.
-	collection reflect.Value
-
-	// valueScratch is the reusable value destination for map ranges.
-	valueScratch reflect.Value
-
-	// keyScratch is the reusable key destination for map ranges.
-	keyScratch reflect.Value
-
-	// StringSource is the source string when ranging over a string; indexed by index to
-	// yield (rune, byte-offset) pairs.
-	StringSource string
-
-	// boolSlice is the source when ranging over a []bool fast path.
-	boolSlice []bool
-
-	// floatSlice is the source when ranging over a []float64 fast path.
-	floatSlice []float64
-
-	// stringSlice is the source when ranging over a []string fast path.
-	stringSlice []string
-
-	// intSlice is the source when ranging over a []int fast path.
-	intSlice []int
-
-	// index is the next slot to read; bumped on each Next.
-	index int
-
-	// isMap reports whether the iterator drives mapIterator.
-	isMap bool
-
-	// isChannel reports whether the iterator drives a channel recv.
-	isChannel bool
-
-	// IsString reports whether the iterator drives a string range.
-	IsString bool
+// stackOverflowAt builds the stack-overflow error for a call at depth past limit.
+//
+// Takes depth (int) which is the call depth reached.
+// Takes limit (int) which is the call depth limit.
+//
+// Returns the wrapped stack-overflow error.
+func stackOverflowAt(depth, limit int) error {
+	return fmt.Errorf("%w: call depth %d exceeded limit %d (raise via WithMaxCallDepth)", fault.ErrStackOverflow, depth, limit)
 }
 
 // ClassifyRecoveredPanic inspects a value obtained from a directly-deferred recover()
 // call.
 //
-// Surfaces arena exhaustion as a normal evaluation error; any other non-nil panic is
-// re-raised to preserve host-visible behaviour, and a nil recovered value yields nil.
-// Call it only from a function that was itself deferred, so the recover result is
-// evaluated in that frame.
+// It surfaces arena exhaustion, or a callback's cost stop that crossed a native frame, as
+// a normal evaluation error. Any other non-nil panic is raised again to preserve
+// host-visible behaviour. A nil recovered value yields nil. Call it only from a function
+// that was itself deferred, so the recover result is evaluated in that frame.
 //
 // Takes recovered (any) which is the value returned by recover().
 //
@@ -1554,7 +1664,7 @@ func ClassifyRecoveredPanic(recovered any) error {
 	if recovered == nil {
 		return nil
 	}
-	if budgetErr, ok := recovered.(error); ok && errors.Is(budgetErr, fault.ErrArenaBudgetExceeded) {
+	if budgetErr, ok := recovered.(error); ok && unwindsAfter(budgetErr) {
 		return budgetErr
 	}
 	panic(recovered)
@@ -1685,28 +1795,28 @@ func extractGeneralRegisterValue(registers *Registers, index int) any {
 // bank.
 func extractScalarRegisterValue(registers *Registers, kind isa.RegisterKind, index int) any {
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		if index < len(registers.Ints) {
 			return int(registers.Ints[index])
 		}
 		return nil
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return boxRegisterAt(registers.Floats, index)
 	case isa.RegisterBool:
 		return boxRegisterAt(registers.Bools, index)
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return boxRegisterAt(registers.Uints, index)
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return boxRegisterAt(registers.Complex, index)
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		return boxRegisterAt(registers.SlicesInt, index)
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		return boxRegisterAt(registers.slicesFloat, index)
 	case isa.RegisterSliceString:
 		return boxRegisterAt(registers.slicesString, index)
 	case isa.RegisterSliceBool:
 		return boxRegisterAt(registers.slicesBool, index)
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		return boxRegisterAt(registers.slicesUint, index)
 	case isa.RegisterSliceByte:
 		return boxRegisterAt(registers.slicesByte, index)
@@ -1752,13 +1862,13 @@ func syncIndirectNamedResult(registers *Registers, location program.VarLocation,
 	if !target.IsValid() {
 		return
 	}
-	if unpackInterfaceSlice(registers, kind, destinationRegister, target) {
+	if unboxFromInterfaceSlice(registers, kind, destinationRegister, target) {
 		return
 	}
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		registers.Ints[destinationRegister] = target.Int()
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		registers.Floats[destinationRegister] = target.Float()
 	case isa.RegisterString:
 		registers.Strings[destinationRegister] = target.String()
@@ -1766,9 +1876,9 @@ func syncIndirectNamedResult(registers *Registers, location program.VarLocation,
 		registers.General[destinationRegister] = target
 	case isa.RegisterBool:
 		registers.Bools[destinationRegister] = target.Bool()
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.Uints[destinationRegister] = target.Uint()
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		registers.Complex[destinationRegister] = target.Complex()
 	default:
 	}

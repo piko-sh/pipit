@@ -25,8 +25,689 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerSliceIndexStructFieldFloat sets floats[A] = slice(general[B])[ints[C]].field(layout[ext]) for float64 leaves; other shapes fall back to handlerPathBShimSliceIndexStructFieldFloat.
-TEXT ·handlerSliceIndexStructFieldFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerGetGlobal loads the package variable B (shifted by the function's global base) of kind C into bank(C)[A] for the int, float, bool, uint and general banks of an unshared store, a general one under the write-barrier guard. Other kinds and shapes fall back to handlerPathBShimGetGlobal.
+TEXT ·handlerGetGlobal(SB), NOSPLIT|NOFRAME, $0
+	MOVD CTX_GLOBALS(R19), R5
+	CBZ  R5, global_shim
+	MOVBU GS_SHARED(R5), R4
+	CBNZ R4, global_shim
+	LSR  $24, R0, R6
+	AND  $0xFF, R6, R6
+	MOVD ZR, R8
+	MOVD CTX_CURRENT_FRAME(R19), R4
+	MOVD CF_FUNCTION(R4), R4
+	CBZ  R4, global_slot
+	MOVD FN_GLOBAL_BASES(R4), R4
+	CBZ  R4, global_slot
+	CMP  $REGKIND_UINT, R6
+	BHI  global_shim
+	MOVHU (R4)(R6<<1), R8
+global_slot:
+	LSR  $16, R0, R7
+	AND  $0xFF, R7, R7
+	ADD  R8, R7, R7
+	LSR  $8, R0, R3
+	AND  $0xFF, R3, R3
+	CMP  $REGKIND_INT, R6
+	BNE  global_not_int
+	MOVD (GS_INTS+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_INTS(R5), R8
+	MOVD (R8)(R7<<3), R9
+	MOVD R9, (R23)(R3<<3)
+	B    global_done
+global_not_int:
+	CMP  $REGKIND_UINT, R6
+	BNE  global_not_uint
+	MOVD (GS_UINTS+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_UINTS(R5), R8
+	MOVD (R8)(R7<<3), R9
+	MOVD CTX_UINTS_BASE(R19), R4
+	MOVD R9, (R4)(R3<<3)
+	B    global_done
+global_not_uint:
+	CMP  $REGKIND_FLOAT, R6
+	BNE  global_not_float
+	MOVD (GS_FLOATS+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_FLOATS(R5), R8
+	MOVD (R8)(R7<<3), R9
+	MOVD R9, (R24)(R3<<3)
+	B    global_done
+global_not_float:
+	CMP  $REGKIND_BOOL, R6
+	BNE  global_not_bool
+	MOVD (GS_BOOLS+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_BOOLS(R5), R8
+	MOVBU (R8)(R7), R9
+	MOVD CTX_BOOLS_BASE(R19), R4
+	MOVB R9, (R4)(R3)
+	B    global_done
+global_not_bool:
+	CMP  $REGKIND_GENERAL, R6
+	BNE  global_shim
+	MOVD (GS_GENERAL+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_GENERAL(R5), R8
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, global_shim
+	MOVD $24, R4
+	MUL  R4, R7, R7
+	MUL  R4, R3, R3
+	ADD  R7, R8, R8
+	MOVD CTX_GENERALS_BASE(R19), R4
+	ADD  R3, R4, R4
+	MOVD 0(R8), R9
+	MOVD R9, 0(R4)
+	MOVD 8(R8), R9
+	MOVD R9, 8(R4)
+	MOVD 16(R8), R9
+	MOVD R9, 16(R4)
+	B    global_done
+global_done:
+	DISPATCH_NEXT()
+global_shim:
+	B    ·handlerPathBShimGetGlobal(SB)
+
+// handlerGetGlobalWide loads the package variable whose index is in the extension word (shifted by the function's global base) of kind C into bank(C)[B], as handlerGetGlobal does.
+TEXT ·handlerGetGlobalWide(SB), NOSPLIT|NOFRAME, $0
+	MOVD CTX_GLOBALS(R19), R5
+	CBZ  R5, global_shim
+	MOVBU GS_SHARED(R5), R4
+	CBNZ R4, global_shim
+	LSR  $24, R0, R6
+	AND  $0xFF, R6, R6
+	MOVD ZR, R8
+	MOVD CTX_CURRENT_FRAME(R19), R4
+	MOVD CF_FUNCTION(R4), R4
+	CBZ  R4, global_slot
+	MOVD FN_GLOBAL_BASES(R4), R4
+	CBZ  R4, global_slot
+	CMP  $REGKIND_UINT, R6
+	BHI  global_shim
+	MOVHU (R4)(R6<<1), R8
+global_slot:
+	MOVWU (R22)(R20<<2), R7
+	LSR  $8, R7, R7
+	AND  $0xFFFF, R7, R7
+	ADD  R8, R7, R7
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	CMP  $REGKIND_INT, R6
+	BNE  global_not_int
+	MOVD (GS_INTS+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_INTS(R5), R8
+	MOVD (R8)(R7<<3), R9
+	MOVD R9, (R23)(R3<<3)
+	B    global_done
+global_not_int:
+	CMP  $REGKIND_UINT, R6
+	BNE  global_not_uint
+	MOVD (GS_UINTS+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_UINTS(R5), R8
+	MOVD (R8)(R7<<3), R9
+	MOVD CTX_UINTS_BASE(R19), R4
+	MOVD R9, (R4)(R3<<3)
+	B    global_done
+global_not_uint:
+	CMP  $REGKIND_FLOAT, R6
+	BNE  global_not_float
+	MOVD (GS_FLOATS+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_FLOATS(R5), R8
+	MOVD (R8)(R7<<3), R9
+	MOVD R9, (R24)(R3<<3)
+	B    global_done
+global_not_float:
+	CMP  $REGKIND_BOOL, R6
+	BNE  global_not_bool
+	MOVD (GS_BOOLS+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_BOOLS(R5), R8
+	MOVBU (R8)(R7), R9
+	MOVD CTX_BOOLS_BASE(R19), R4
+	MOVB R9, (R4)(R3)
+	B    global_done
+global_not_bool:
+	CMP  $REGKIND_GENERAL, R6
+	BNE  global_shim
+	MOVD (GS_GENERAL+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_GENERAL(R5), R8
+	MOVD $runtime·writeBarrier(SB), R4
+	MOVBU (R4), R4
+	CBNZ R4, global_shim
+	MOVD $24, R4
+	MUL  R4, R7, R7
+	MUL  R4, R3, R3
+	ADD  R7, R8, R8
+	MOVD CTX_GENERALS_BASE(R19), R4
+	ADD  R3, R4, R4
+	MOVD 0(R8), R9
+	MOVD R9, 0(R4)
+	MOVD 8(R8), R9
+	MOVD R9, 8(R4)
+	MOVD 16(R8), R9
+	MOVD R9, 16(R4)
+	B    global_done
+global_done:
+	ADD  $1, R20, R20
+	DISPATCH_NEXT()
+global_shim:
+	B    ·handlerPathBShimGetGlobalWide(SB)
+
+// handlerSetGlobal stores bank(C)[A] into the package variable B (shifted by the function's global base) of kind C, for the int, uint, float and bool banks of an unshared store.
+TEXT ·handlerSetGlobal(SB), NOSPLIT|NOFRAME, $0
+	MOVD CTX_GLOBALS(R19), R5
+	CBZ  R5, global_shim
+	MOVBU GS_SHARED(R5), R4
+	CBNZ R4, global_shim
+	LSR  $24, R0, R6
+	AND  $0xFF, R6, R6
+	MOVD ZR, R8
+	MOVD CTX_CURRENT_FRAME(R19), R4
+	MOVD CF_FUNCTION(R4), R4
+	CBZ  R4, global_slot
+	MOVD FN_GLOBAL_BASES(R4), R4
+	CBZ  R4, global_slot
+	CMP  $REGKIND_UINT, R6
+	BHI  global_shim
+	MOVHU (R4)(R6<<1), R8
+global_slot:
+	LSR  $16, R0, R7
+	AND  $0xFF, R7, R7
+	ADD  R8, R7, R7
+	LSR  $8, R0, R3
+	AND  $0xFF, R3, R3
+	CMP  $REGKIND_INT, R6
+	BNE  global_not_int
+	MOVD (GS_INTS+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_INTS(R5), R8
+	MOVD (R23)(R3<<3), R9
+	MOVD R9, (R8)(R7<<3)
+	B    global_done
+global_not_int:
+	CMP  $REGKIND_UINT, R6
+	BNE  global_not_uint
+	MOVD (GS_UINTS+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_UINTS(R5), R8
+	MOVD CTX_UINTS_BASE(R19), R4
+	MOVD (R4)(R3<<3), R9
+	MOVD R9, (R8)(R7<<3)
+	B    global_done
+global_not_uint:
+	CMP  $REGKIND_FLOAT, R6
+	BNE  global_not_float
+	MOVD (GS_FLOATS+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_FLOATS(R5), R8
+	MOVD (R24)(R3<<3), R9
+	MOVD R9, (R8)(R7<<3)
+	B    global_done
+global_not_float:
+	CMP  $REGKIND_BOOL, R6
+	BNE  global_shim
+	MOVD (GS_BOOLS+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_BOOLS(R5), R8
+	MOVD CTX_BOOLS_BASE(R19), R4
+	MOVBU (R4)(R3), R9
+	MOVB R9, (R8)(R7)
+	B    global_done
+global_done:
+	DISPATCH_NEXT()
+global_shim:
+	B    ·handlerPathBShimSetGlobal(SB)
+
+// handlerSetGlobalWide stores bank(C)[B] into the package variable whose index is in the extension word, as handlerSetGlobal does.
+TEXT ·handlerSetGlobalWide(SB), NOSPLIT|NOFRAME, $0
+	MOVD CTX_GLOBALS(R19), R5
+	CBZ  R5, global_shim
+	MOVBU GS_SHARED(R5), R4
+	CBNZ R4, global_shim
+	LSR  $24, R0, R6
+	AND  $0xFF, R6, R6
+	MOVD ZR, R8
+	MOVD CTX_CURRENT_FRAME(R19), R4
+	MOVD CF_FUNCTION(R4), R4
+	CBZ  R4, global_slot
+	MOVD FN_GLOBAL_BASES(R4), R4
+	CBZ  R4, global_slot
+	CMP  $REGKIND_UINT, R6
+	BHI  global_shim
+	MOVHU (R4)(R6<<1), R8
+global_slot:
+	MOVWU (R22)(R20<<2), R7
+	LSR  $8, R7, R7
+	AND  $0xFFFF, R7, R7
+	ADD  R8, R7, R7
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	CMP  $REGKIND_INT, R6
+	BNE  global_not_int
+	MOVD (GS_INTS+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_INTS(R5), R8
+	MOVD (R23)(R3<<3), R9
+	MOVD R9, (R8)(R7<<3)
+	B    global_done
+global_not_int:
+	CMP  $REGKIND_UINT, R6
+	BNE  global_not_uint
+	MOVD (GS_UINTS+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_UINTS(R5), R8
+	MOVD CTX_UINTS_BASE(R19), R4
+	MOVD (R4)(R3<<3), R9
+	MOVD R9, (R8)(R7<<3)
+	B    global_done
+global_not_uint:
+	CMP  $REGKIND_FLOAT, R6
+	BNE  global_not_float
+	MOVD (GS_FLOATS+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_FLOATS(R5), R8
+	MOVD (R24)(R3<<3), R9
+	MOVD R9, (R8)(R7<<3)
+	B    global_done
+global_not_float:
+	CMP  $REGKIND_BOOL, R6
+	BNE  global_shim
+	MOVD (GS_BOOLS+8)(R5), R9
+	CMP  R9, R7
+	BHS  global_shim
+	MOVD GS_BOOLS(R5), R8
+	MOVD CTX_BOOLS_BASE(R19), R4
+	MOVBU (R4)(R3), R9
+	MOVB R9, (R8)(R7)
+	B    global_done
+global_done:
+	ADD  $1, R20, R20
+	DISPATCH_NEXT()
+global_shim:
+	B    ·handlerPathBShimSetGlobalWide(SB)
+
+// handlerGetElementInt64 sets ints[A] = general[B][ints[C]] for an integer element of a slice, array or array pointer whose shape the typed element cache's front slot holds. Other shapes fall back to handlerPathBShimGetElementInt64.
+TEXT ·handlerGetElementInt64(SB), NOSPLIT|NOFRAME, $0
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	MOVD $24, R4
+	MUL  R4, R3, R3
+	MOVD CTX_GENERALS_BASE(R19), R4
+	ADD  R3, R4, R4
+	MOVD 0(R4), R5
+	CBZ  R5, element_shim
+	MOVD $TES_HASH_MULTIPLIER, R6
+	MUL  R6, R5, R6
+	LSR  $TES_SLOT_SHIFT, R6, R6
+	MOVD $·typedElementShapes(SB), R7
+	MOVD (R7)(R6<<3), R7
+	CBZ  R7, element_shim
+	MOVD TES_COLLECTION_TYPE(R7), R8
+	CMP  R8, R5
+	BNE  element_shim
+	MOVBU TES_ELEMENT_KIND(R7), R8
+	SUB  $REFLECT_INT, R8, R8
+	CMP  $(REFLECT_UINTPTR-REFLECT_INT), R8
+	BHI  element_shim
+
+	MOVD 8(R4), R5
+	CBZ  R5, element_shim
+	MOVD 16(R4), R9
+	AND  $FLAG_INDIR, R9, R9
+	MOVBU TES_CONTAINER(R7), R8
+	CMP  $TES_CONTAINER_SLICE, R8
+	BNE  element_not_slice
+	CBZ  R9, element_shim
+	MOVD 8(R5), R6
+	MOVD 0(R5), R5
+	B    element_data
+element_not_slice:
+	CMP  $TES_CONTAINER_ARRAY, R8
+	BNE  element_not_array
+	CBZ  R9, element_shim
+	B    element_array_length
+element_not_array:
+	CMP  $TES_CONTAINER_ARRAY_POINTER, R8
+	BNE  element_shim
+	CBZ  R9, element_array_length
+	MOVD 0(R5), R5
+element_array_length:
+	MOVD TES_ARRAY_LENGTH(R7), R6
+element_data:
+	CBZ  R5, element_shim
+
+	LSR  $24, R0, R8
+	AND  $0xFF, R8, R8
+	MOVD (R23)(R8<<3), R8
+	CMP  R6, R8
+	BHS  element_shim
+	MOVD TES_ELEMENT_SIZE(R7), R6
+	MOVBU TES_ELEMENT_KIND(R7), R9
+	CMP  $REFLECT_INT64, R9
+	BHI  element_unsigned
+element_signed:
+	CMP  $8, R6
+	BNE  element_signed_4
+	MOVD (R5)(R8<<3), R8
+	B    element_result
+element_signed_4:
+	CMP  $4, R6
+	BNE  element_signed_2
+	MOVW (R5)(R8<<2), R8
+	B    element_result
+element_signed_2:
+	CMP  $2, R6
+	BNE  element_signed_1
+	MOVH (R5)(R8<<1), R8
+	B    element_result
+element_signed_1:
+	MOVB (R5)(R8), R8
+	B    element_result
+element_unsigned:
+	CMP  $8, R6
+	BNE  element_unsigned_4
+	MOVD (R5)(R8<<3), R8
+	B    element_result
+element_unsigned_4:
+	CMP  $4, R6
+	BNE  element_unsigned_2
+	MOVWU (R5)(R8<<2), R8
+	B    element_result
+element_unsigned_2:
+	CMP  $2, R6
+	BNE  element_unsigned_1
+	MOVHU (R5)(R8<<1), R8
+	B    element_result
+element_unsigned_1:
+	MOVBU (R5)(R8), R8
+element_result:
+	LSR  $8, R0, R3
+	AND  $0xFF, R3, R3
+	MOVD R8, (R23)(R3<<3)
+	DISPATCH_NEXT()
+element_shim:
+	B    ·handlerPathBShimGetElementInt64(SB)
+
+// handlerGetElementUint64 sets uints[A] = general[B][ints[C]] for an unsigned element of a slice, array or array pointer whose shape the typed element cache's front slot holds. Other shapes fall back to handlerPathBShimGetElementUint64.
+TEXT ·handlerGetElementUint64(SB), NOSPLIT|NOFRAME, $0
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	MOVD $24, R4
+	MUL  R4, R3, R3
+	MOVD CTX_GENERALS_BASE(R19), R4
+	ADD  R3, R4, R4
+	MOVD 0(R4), R5
+	CBZ  R5, element_shim
+	MOVD $TES_HASH_MULTIPLIER, R6
+	MUL  R6, R5, R6
+	LSR  $TES_SLOT_SHIFT, R6, R6
+	MOVD $·typedElementShapes(SB), R7
+	MOVD (R7)(R6<<3), R7
+	CBZ  R7, element_shim
+	MOVD TES_COLLECTION_TYPE(R7), R8
+	CMP  R8, R5
+	BNE  element_shim
+	MOVBU TES_ELEMENT_KIND(R7), R8
+	SUB  $REFLECT_UINT, R8, R8
+	CMP  $(REFLECT_UINTPTR-REFLECT_UINT), R8
+	BHI  element_shim
+
+	MOVD 8(R4), R5
+	CBZ  R5, element_shim
+	MOVD 16(R4), R9
+	AND  $FLAG_INDIR, R9, R9
+	MOVBU TES_CONTAINER(R7), R8
+	CMP  $TES_CONTAINER_SLICE, R8
+	BNE  element_not_slice
+	CBZ  R9, element_shim
+	MOVD 8(R5), R6
+	MOVD 0(R5), R5
+	B    element_data
+element_not_slice:
+	CMP  $TES_CONTAINER_ARRAY, R8
+	BNE  element_not_array
+	CBZ  R9, element_shim
+	B    element_array_length
+element_not_array:
+	CMP  $TES_CONTAINER_ARRAY_POINTER, R8
+	BNE  element_shim
+	CBZ  R9, element_array_length
+	MOVD 0(R5), R5
+element_array_length:
+	MOVD TES_ARRAY_LENGTH(R7), R6
+element_data:
+	CBZ  R5, element_shim
+
+	LSR  $24, R0, R8
+	AND  $0xFF, R8, R8
+	MOVD (R23)(R8<<3), R8
+	CMP  R6, R8
+	BHS  element_shim
+	MOVD TES_ELEMENT_SIZE(R7), R6
+element_unsigned:
+	CMP  $8, R6
+	BNE  element_unsigned_4
+	MOVD (R5)(R8<<3), R8
+	B    element_result
+element_unsigned_4:
+	CMP  $4, R6
+	BNE  element_unsigned_2
+	MOVWU (R5)(R8<<2), R8
+	B    element_result
+element_unsigned_2:
+	CMP  $2, R6
+	BNE  element_unsigned_1
+	MOVHU (R5)(R8<<1), R8
+	B    element_result
+element_unsigned_1:
+	MOVBU (R5)(R8), R8
+element_result:
+	LSR  $8, R0, R3
+	AND  $0xFF, R3, R3
+	MOVD CTX_UINTS_BASE(R19), R4
+	MOVD R8, (R4)(R3<<3)
+	DISPATCH_NEXT()
+element_shim:
+	B    ·handlerPathBShimGetElementUint64(SB)
+
+// handlerSetElementInt64 stores ints[C] into integer element ints[B] of the slice, array or array pointer in general[A] whose shape the typed element cache's front slot holds.
+TEXT ·handlerSetElementInt64(SB), NOSPLIT|NOFRAME, $0
+	LSR  $8, R0, R3
+	AND  $0xFF, R3, R3
+	MOVD $24, R4
+	MUL  R4, R3, R3
+	MOVD CTX_GENERALS_BASE(R19), R4
+	ADD  R3, R4, R4
+	MOVD 0(R4), R5
+	CBZ  R5, element_shim
+	MOVD $TES_HASH_MULTIPLIER, R6
+	MUL  R6, R5, R6
+	LSR  $TES_SLOT_SHIFT, R6, R6
+	MOVD $·typedElementShapes(SB), R7
+	MOVD (R7)(R6<<3), R7
+	CBZ  R7, element_shim
+	MOVD TES_COLLECTION_TYPE(R7), R8
+	CMP  R8, R5
+	BNE  element_shim
+	MOVBU TES_ELEMENT_KIND(R7), R8
+	SUB  $REFLECT_INT, R8, R8
+	CMP  $(REFLECT_UINTPTR-REFLECT_INT), R8
+	BHI  element_shim
+
+	MOVD 8(R4), R5
+	CBZ  R5, element_shim
+	MOVD 16(R4), R9
+	AND  $FLAG_RO, R9, R3
+	CBNZ R3, element_shim
+	AND  $FLAG_ADDR, R9, R3
+	AND  $FLAG_INDIR, R9, R9
+	MOVBU TES_CONTAINER(R7), R8
+	CMP  $TES_CONTAINER_SLICE, R8
+	BNE  element_not_slice
+	CBZ  R9, element_shim
+	MOVD 8(R5), R6
+	MOVD 0(R5), R5
+	B    element_data
+element_not_slice:
+	CMP  $TES_CONTAINER_ARRAY, R8
+	BNE  element_not_array
+	CBZ  R9, element_shim
+	CBZ  R3, element_shim
+	B    element_array_length
+element_not_array:
+	CMP  $TES_CONTAINER_ARRAY_POINTER, R8
+	BNE  element_shim
+	CBZ  R9, element_array_length
+	MOVD 0(R5), R5
+element_array_length:
+	MOVD TES_ARRAY_LENGTH(R7), R6
+element_data:
+	CBZ  R5, element_shim
+
+	LSR  $16, R0, R8
+	AND  $0xFF, R8, R8
+	MOVD (R23)(R8<<3), R8
+	CMP  R6, R8
+	BHS  element_shim
+	MOVD TES_ELEMENT_SIZE(R7), R6
+	LSR  $24, R0, R3
+	AND  $0xFF, R3, R3
+	MOVD (R23)(R3<<3), R3
+store:
+	CMP  $8, R6
+	BNE  store_4
+	MOVD R3, (R5)(R8<<3)
+	B    store_done
+store_4:
+	CMP  $4, R6
+	BNE  store_2
+	MOVW R3, (R5)(R8<<2)
+	B    store_done
+store_2:
+	CMP  $2, R6
+	BNE  store_1
+	MOVH R3, (R5)(R8<<1)
+	B    store_done
+store_1:
+	MOVB R3, (R5)(R8)
+store_done:
+	DISPATCH_NEXT()
+element_shim:
+	B    ·handlerPathBShimSetElementInt64(SB)
+
+// handlerSetElementUint64 stores uints[C] into unsigned element ints[B] of the slice, array or array pointer in general[A] whose shape the typed element cache's front slot holds.
+TEXT ·handlerSetElementUint64(SB), NOSPLIT|NOFRAME, $0
+	LSR  $8, R0, R3
+	AND  $0xFF, R3, R3
+	MOVD $24, R4
+	MUL  R4, R3, R3
+	MOVD CTX_GENERALS_BASE(R19), R4
+	ADD  R3, R4, R4
+	MOVD 0(R4), R5
+	CBZ  R5, element_shim
+	MOVD $TES_HASH_MULTIPLIER, R6
+	MUL  R6, R5, R6
+	LSR  $TES_SLOT_SHIFT, R6, R6
+	MOVD $·typedElementShapes(SB), R7
+	MOVD (R7)(R6<<3), R7
+	CBZ  R7, element_shim
+	MOVD TES_COLLECTION_TYPE(R7), R8
+	CMP  R8, R5
+	BNE  element_shim
+	MOVBU TES_ELEMENT_KIND(R7), R8
+	SUB  $REFLECT_UINT, R8, R8
+	CMP  $(REFLECT_UINTPTR-REFLECT_UINT), R8
+	BHI  element_shim
+
+	MOVD 8(R4), R5
+	CBZ  R5, element_shim
+	MOVD 16(R4), R9
+	AND  $FLAG_RO, R9, R3
+	CBNZ R3, element_shim
+	AND  $FLAG_ADDR, R9, R3
+	AND  $FLAG_INDIR, R9, R9
+	MOVBU TES_CONTAINER(R7), R8
+	CMP  $TES_CONTAINER_SLICE, R8
+	BNE  element_not_slice
+	CBZ  R9, element_shim
+	MOVD 8(R5), R6
+	MOVD 0(R5), R5
+	B    element_data
+element_not_slice:
+	CMP  $TES_CONTAINER_ARRAY, R8
+	BNE  element_not_array
+	CBZ  R9, element_shim
+	CBZ  R3, element_shim
+	B    element_array_length
+element_not_array:
+	CMP  $TES_CONTAINER_ARRAY_POINTER, R8
+	BNE  element_shim
+	CBZ  R9, element_array_length
+	MOVD 0(R5), R5
+element_array_length:
+	MOVD TES_ARRAY_LENGTH(R7), R6
+element_data:
+	CBZ  R5, element_shim
+
+	LSR  $16, R0, R8
+	AND  $0xFF, R8, R8
+	MOVD (R23)(R8<<3), R8
+	CMP  R6, R8
+	BHS  element_shim
+	MOVD TES_ELEMENT_SIZE(R7), R6
+	LSR  $24, R0, R3
+	AND  $0xFF, R3, R3
+	MOVD CTX_UINTS_BASE(R19), R4
+	MOVD (R4)(R3<<3), R3
+store:
+	CMP  $8, R6
+	BNE  store_4
+	MOVD R3, (R5)(R8<<3)
+	B    store_done
+store_4:
+	CMP  $4, R6
+	BNE  store_2
+	MOVW R3, (R5)(R8<<2)
+	B    store_done
+store_2:
+	CMP  $2, R6
+	BNE  store_1
+	MOVH R3, (R5)(R8<<1)
+	B    store_done
+store_1:
+	MOVB R3, (R5)(R8)
+store_done:
+	DISPATCH_NEXT()
+element_shim:
+	B    ·handlerPathBShimSetElementUint64(SB)
+
+// handlerGetElementFieldFloat64 sets floats[A] = slice(general[B])[ints[C]].field(layout[ext]) for float64 leaves. Other shapes fall back to handlerPathBShimGetElementFieldFloat64.
+TEXT ·handlerGetElementFieldFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVWU (R22)(R20<<2), R3
 	LSR  $8, R3, R3
 	AND  $0xFFFF, R3, R3
@@ -38,13 +719,13 @@ TEXT ·handlerSliceIndexStructFieldFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVD CF_FUNCTION(R5), R10
 	MOVD FN_STRUCT_LAYOUT_TABLE_LEN(R10), R4
 	CMP  R4, R3
-	BHS  sif_shim
+	BHS  element_field_shim
 	MOVD FN_STRUCT_LAYOUT_TABLE(R10), R5
 	LSL  $4, R3, R3
 	ADD  R3, R5, R5
 	MOVBU OFF_LAYOUT_KIND(R5), R6
 	CMP  $14, R6
-	BNE  sif_shim
+	BNE  element_field_shim
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	MOVD $24, R4
@@ -52,32 +733,32 @@ TEXT ·handlerSliceIndexStructFieldFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVD CTX_GENERALS_BASE(R19), R6
 	ADD  R4, R6, R6
 	MOVD 0(R6), R7
-	CBZ  R7, sif_shim
+	CBZ  R7, element_field_shim
 	MOVD 16(R6), R8
-	AND  $0x1F, R8, R8
-	CMP  $23, R8
-	BNE  sif_shim
+	AND  $FLAG_KIND_MASK, R8, R8
+	CMP  $REFLECT_SLICE, R8
+	BNE  element_field_shim
 	MOVD 8(R6), R6
 	MOVD 48(R7), R7
 	MOVHU OFF_LAYOUT_TYPE_INDEX(R5), R3
 	MOVD FN_TYPE_TABLE_LEN(R10), R4
 	CMP  R4, R3
-	BHS  sif_shim
+	BHS  element_field_shim
 	MOVD FN_TYPE_TABLE(R10), R4
 	LSL  $4, R3, R3
 	ADD  R3, R4, R4
 	MOVD 8(R4), R4
 	CMP  R4, R7
-	BNE  sif_shim
+	BNE  element_field_shim
 	MOVD 0(R7), R4
 	LSR  $24, R0, R3
 	MOVD (R23)(R3<<3), R3
 	MOVD 8(R6), R8
 	CMP  R8, R3
-	BHS  sif_shim
+	BHS  element_field_shim
 	MUL  R3, R4, R4
 	MOVD (R6), R6
-	CBZ  R6, sif_shim
+	CBZ  R6, element_field_shim
 	ADD  R4, R6, R6
 	MOVWU OFF_LAYOUT_OFFSET(R5), R7
 	ADD  R7, R6, R6
@@ -87,11 +768,11 @@ TEXT ·handlerSliceIndexStructFieldFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVD R7, (R24)(R3<<3)
 	ADD  $1, R20, R20
 	DISPATCH_NEXT()
-sif_shim:
-	B    ·handlerPathBShimSliceIndexStructFieldFloat(SB)
+element_field_shim:
+	B    ·handlerPathBShimGetElementFieldFloat64(SB)
 
-// handlerSliceIndexStructFieldInt sets ints[A] = slice(general[B])[ints[C]].field(layout[ext]) for full-width int leaves; other shapes fall back to handlerPathBShimSliceIndexStructFieldInt.
-TEXT ·handlerSliceIndexStructFieldInt(SB), NOSPLIT|NOFRAME, $0
+// handlerGetElementFieldInt64 sets ints[A] = slice(general[B])[ints[C]].field(layout[ext]) for full-width int leaves. Other shapes fall back to handlerPathBShimGetElementFieldInt64.
+TEXT ·handlerGetElementFieldInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVWU (R22)(R20<<2), R3
 	LSR  $8, R3, R3
 	AND  $0xFFFF, R3, R3
@@ -103,16 +784,16 @@ TEXT ·handlerSliceIndexStructFieldInt(SB), NOSPLIT|NOFRAME, $0
 	MOVD CF_FUNCTION(R5), R10
 	MOVD FN_STRUCT_LAYOUT_TABLE_LEN(R10), R4
 	CMP  R4, R3
-	BHS  sif_shim
+	BHS  element_field_shim
 	MOVD FN_STRUCT_LAYOUT_TABLE(R10), R5
 	LSL  $4, R3, R3
 	ADD  R3, R5, R5
 	MOVBU OFF_LAYOUT_KIND(R5), R6
 	CMP  $2, R6
-	BEQ  sif_kind_ok
+	BEQ  element_field_kind_ok
 	CMP  $6, R6
-	BNE  sif_shim
-sif_kind_ok:
+	BNE  element_field_shim
+element_field_kind_ok:
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	MOVD $24, R4
@@ -120,32 +801,32 @@ sif_kind_ok:
 	MOVD CTX_GENERALS_BASE(R19), R6
 	ADD  R4, R6, R6
 	MOVD 0(R6), R7
-	CBZ  R7, sif_shim
+	CBZ  R7, element_field_shim
 	MOVD 16(R6), R8
-	AND  $0x1F, R8, R8
-	CMP  $23, R8
-	BNE  sif_shim
+	AND  $FLAG_KIND_MASK, R8, R8
+	CMP  $REFLECT_SLICE, R8
+	BNE  element_field_shim
 	MOVD 8(R6), R6
 	MOVD 48(R7), R7
 	MOVHU OFF_LAYOUT_TYPE_INDEX(R5), R3
 	MOVD FN_TYPE_TABLE_LEN(R10), R4
 	CMP  R4, R3
-	BHS  sif_shim
+	BHS  element_field_shim
 	MOVD FN_TYPE_TABLE(R10), R4
 	LSL  $4, R3, R3
 	ADD  R3, R4, R4
 	MOVD 8(R4), R4
 	CMP  R4, R7
-	BNE  sif_shim
+	BNE  element_field_shim
 	MOVD 0(R7), R4
 	LSR  $24, R0, R3
 	MOVD (R23)(R3<<3), R3
 	MOVD 8(R6), R8
 	CMP  R8, R3
-	BHS  sif_shim
+	BHS  element_field_shim
 	MUL  R3, R4, R4
 	MOVD (R6), R6
-	CBZ  R6, sif_shim
+	CBZ  R6, element_field_shim
 	ADD  R4, R6, R6
 	MOVWU OFF_LAYOUT_OFFSET(R5), R7
 	ADD  R7, R6, R6
@@ -155,11 +836,144 @@ sif_kind_ok:
 	MOVD R7, (R23)(R3<<3)
 	ADD  $1, R20, R20
 	DISPATCH_NEXT()
-sif_shim:
-	B    ·handlerPathBShimSliceIndexStructFieldInt(SB)
+element_field_shim:
+	B    ·handlerPathBShimGetElementFieldInt64(SB)
 
-// handlerDerefSliceGetInt sets ints[A] = (*general[B])[ints[C]] with a live bounds check; unsupported shapes and range panics fall back to handlerPathBShimDerefSliceGetInt.
-TEXT ·handlerDerefSliceGetInt(SB), NOSPLIT|NOFRAME, $0
+// handlerSetElementFieldInt64 stores ints[A] into slice(general[B])[ints[C]].field(layout[ext]) for full-width int fields.
+TEXT ·handlerSetElementFieldInt64(SB), NOSPLIT|NOFRAME, $0
+	MOVWU (R22)(R20<<2), R3
+	LSR  $8, R3, R3
+	AND  $0xFFFF, R3, R3
+	MOVD CTX_FRAME_POINTER(R19), R4
+	MOVD $CALLFRAME_SIZE, R5
+	MUL  R5, R4, R4
+	MOVD CTX_CSTACK_BASE(R19), R5
+	ADD  R4, R5, R5
+	MOVD CF_FUNCTION(R5), R10
+	MOVD FN_STRUCT_LAYOUT_TABLE_LEN(R10), R4
+	CMP  R4, R3
+	BHS  element_field_shim
+	MOVD FN_STRUCT_LAYOUT_TABLE(R10), R5
+	LSL  $4, R3, R3
+	ADD  R3, R5, R5
+	MOVBU OFF_LAYOUT_KIND(R5), R6
+	CMP  $2, R6
+	BEQ  element_field_kind_ok
+	CMP  $6, R6
+	BNE  element_field_shim
+element_field_kind_ok:
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	MOVD $24, R4
+	MUL  R4, R3, R4
+	MOVD CTX_GENERALS_BASE(R19), R6
+	ADD  R4, R6, R6
+	MOVD 0(R6), R7
+	CBZ  R7, element_field_shim
+	MOVD 16(R6), R8
+	AND  $FLAG_KIND_MASK, R8, R8
+	CMP  $REFLECT_SLICE, R8
+	BNE  element_field_shim
+	MOVD 8(R6), R6
+	MOVD 48(R7), R7
+	MOVHU OFF_LAYOUT_TYPE_INDEX(R5), R3
+	MOVD FN_TYPE_TABLE_LEN(R10), R4
+	CMP  R4, R3
+	BHS  element_field_shim
+	MOVD FN_TYPE_TABLE(R10), R4
+	LSL  $4, R3, R3
+	ADD  R3, R4, R4
+	MOVD 8(R4), R4
+	CMP  R4, R7
+	BNE  element_field_shim
+	MOVD 0(R7), R4
+	LSR  $24, R0, R3
+	MOVD (R23)(R3<<3), R3
+	MOVD 8(R6), R8
+	CMP  R8, R3
+	BHS  element_field_shim
+	MUL  R3, R4, R4
+	MOVD (R6), R6
+	CBZ  R6, element_field_shim
+	ADD  R4, R6, R6
+	MOVWU OFF_LAYOUT_OFFSET(R5), R7
+	ADD  R7, R6, R6
+	LSR  $8, R0, R3
+	AND  $0xFF, R3, R3
+	MOVD (R23)(R3<<3), R7
+	MOVD R7, (R6)
+	ADD  $1, R20, R20
+	DISPATCH_NEXT()
+element_field_shim:
+	B    ·handlerPathBShimSetElementFieldInt64(SB)
+
+// handlerSetElementFieldFloat64 stores floats[A] into slice(general[B])[ints[C]].field(layout[ext]) for float64 fields.
+TEXT ·handlerSetElementFieldFloat64(SB), NOSPLIT|NOFRAME, $0
+	MOVWU (R22)(R20<<2), R3
+	LSR  $8, R3, R3
+	AND  $0xFFFF, R3, R3
+	MOVD CTX_FRAME_POINTER(R19), R4
+	MOVD $CALLFRAME_SIZE, R5
+	MUL  R5, R4, R4
+	MOVD CTX_CSTACK_BASE(R19), R5
+	ADD  R4, R5, R5
+	MOVD CF_FUNCTION(R5), R10
+	MOVD FN_STRUCT_LAYOUT_TABLE_LEN(R10), R4
+	CMP  R4, R3
+	BHS  element_field_shim
+	MOVD FN_STRUCT_LAYOUT_TABLE(R10), R5
+	LSL  $4, R3, R3
+	ADD  R3, R5, R5
+	MOVBU OFF_LAYOUT_KIND(R5), R6
+	CMP  $14, R6
+	BNE  element_field_shim
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	MOVD $24, R4
+	MUL  R4, R3, R4
+	MOVD CTX_GENERALS_BASE(R19), R6
+	ADD  R4, R6, R6
+	MOVD 0(R6), R7
+	CBZ  R7, element_field_shim
+	MOVD 16(R6), R8
+	AND  $FLAG_KIND_MASK, R8, R8
+	CMP  $REFLECT_SLICE, R8
+	BNE  element_field_shim
+	MOVD 8(R6), R6
+	MOVD 48(R7), R7
+	MOVHU OFF_LAYOUT_TYPE_INDEX(R5), R3
+	MOVD FN_TYPE_TABLE_LEN(R10), R4
+	CMP  R4, R3
+	BHS  element_field_shim
+	MOVD FN_TYPE_TABLE(R10), R4
+	LSL  $4, R3, R3
+	ADD  R3, R4, R4
+	MOVD 8(R4), R4
+	CMP  R4, R7
+	BNE  element_field_shim
+	MOVD 0(R7), R4
+	LSR  $24, R0, R3
+	MOVD (R23)(R3<<3), R3
+	MOVD 8(R6), R8
+	CMP  R8, R3
+	BHS  element_field_shim
+	MUL  R3, R4, R4
+	MOVD (R6), R6
+	CBZ  R6, element_field_shim
+	ADD  R4, R6, R6
+	MOVWU OFF_LAYOUT_OFFSET(R5), R7
+	ADD  R7, R6, R6
+	LSR  $8, R0, R3
+	AND  $0xFF, R3, R3
+	MOVD (R24)(R3<<3), R7
+	MOVD R7, (R6)
+	ADD  $1, R20, R20
+	DISPATCH_NEXT()
+element_field_shim:
+	B    ·handlerPathBShimSetElementFieldFloat64(SB)
+
+// handlerGetElementInt64ViaPointer sets ints[A] = (*general[B])[ints[C]] with a live bounds check. Unsupported shapes and range panics fall back to handlerPathBShimGetElementInt64ViaPointer.
+TEXT ·handlerGetElementInt64ViaPointer(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	MOVD $24, R4
@@ -190,10 +1004,10 @@ ds_direct:
 	MOVD R4, (R23)(R3<<3)
 	DISPATCH_NEXT()
 ds_shim:
-	B    ·handlerPathBShimDerefSliceGetInt(SB)
+	B    ·handlerPathBShimGetElementInt64ViaPointer(SB)
 
-// handlerDerefSliceSetInt sets (*general[A])[ints[B]] = ints[C] with a live bounds check; unsupported shapes and range panics fall back to handlerPathBShimDerefSliceSetInt.
-TEXT ·handlerDerefSliceSetInt(SB), NOSPLIT|NOFRAME, $0
+// handlerSetElementInt64ViaPointer sets (*general[A])[ints[B]] = ints[C] with a live bounds check. Unsupported shapes and range panics fall back to handlerPathBShimSetElementInt64ViaPointer.
+TEXT ·handlerSetElementInt64ViaPointer(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	MOVD $24, R4
@@ -223,10 +1037,10 @@ ds_direct:
 	MOVD R4, (R6)(R3<<3)
 	DISPATCH_NEXT()
 ds_shim:
-	B    ·handlerPathBShimDerefSliceSetInt(SB)
+	B    ·handlerPathBShimSetElementInt64ViaPointer(SB)
 
-// handlerGetStructFieldGeneralT0 reads a plain pointer-kind struct field into general[A] under the write-barrier guard; other field kinds and receiver shapes fall back to handlerPathBShimGetStructFieldGeneralT0.
-TEXT ·handlerGetStructFieldGeneralT0(SB), NOSPLIT|NOFRAME, $0
+// handlerGetStructFieldGeneral reads a plain pointer-kind struct field into general[A] under the write-barrier guard. Other field kinds and receiver shapes fall back to handlerPathBShimGetStructFieldGeneral.
+TEXT ·handlerGetStructFieldGeneral(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R3
 	MOVBU (R3), R3
 	CBNZ R3, sf_shim
@@ -339,10 +1153,10 @@ gp_ptr_field:
 	MOVD R7, 16(R6)
 	B    gp_done
 sf_shim:
-	B    ·handlerPathBShimGetStructFieldGeneralT0(SB)
+	B    ·handlerPathBShimGetStructFieldGeneral(SB)
 
-// handlerSetStructFieldGeneralT0 stores general[B] into a plain pointer-kind or cycle-broken any field of receiver general[A] under the write-barrier guard; other field kinds, value kinds and receiver shapes fall back to handlerPathBShimSetStructFieldGeneralT0.
-TEXT ·handlerSetStructFieldGeneralT0(SB), NOSPLIT|NOFRAME, $0
+// handlerSetStructFieldGeneral stores general[B] into a pointer or any field of general[A] when the store can skip the barrier. It skips it for a nil pointer, or a pointer while the arena's epoch is revoked and local-blind. Every other store falls back to handlerPathBShimSetStructFieldGeneral and its store barrier.
+TEXT ·handlerSetStructFieldGeneral(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R3
 	MOVBU (R3), R3
 	CBNZ R3, sf_shim
@@ -421,6 +1235,34 @@ ssp_have_base:
 	TBZ  $7, R3, ss_ptr_store
 	MOVD (R4), R4
 ss_ptr_store:
+	CBZ  R4, ss_ptr_write
+	MOVD CTX_ARENA_ROUTE_STATE(R19), R2
+	CBZ  R2, sf_shim
+	MOVBU ROUTE_LOCAL_BLIND(R2), R7
+	CBZ  R7, sf_shim
+	AND  $FLAG_RO, R3, R7
+	CBNZ R7, sf_shim
+	MOVD CTX_FRAME_POINTER(R19), R7
+	MOVD $CALLFRAME_SIZE, R3
+	MUL  R3, R7, R7
+	MOVD CTX_CSTACK_BASE(R19), R3
+	ADD  R7, R3, R3
+	MOVD CF_FUNCTION(R3), R3
+	MOVD FN_FIELD_STORE_GRANTS(R3), R3
+	CBNZ R3, sf_shim
+	MOVD ROUTE_NOTE_SEQ(R2), R3
+	ADD  $1, R3, R3
+	MOVD R3, ROUTE_NOTE_SEQ(R2)
+	MOVD $·licenceCounting(SB), R3
+	MOVBU (R3), R3
+	CBZ  R3, ss_ptr_write
+	MOVD ROUTE_NOTES_UNTRACED(R2), R3
+	ADD  $1, R3, R3
+	MOVD R3, ROUTE_NOTES_UNTRACED(R2)
+	MOVD ROUTE_NOTES_BLIND(R2), R3
+	ADD  $1, R3, R3
+	MOVD R3, ROUTE_NOTES_BLIND(R2)
+ss_ptr_write:
 	MOVD R4, (R6)
 	B    ss_done
 ss_ptr_nil:
@@ -511,19 +1353,50 @@ ss_iface_data:
 	TBZ  $7, R3, ss_iface_store
 	MOVD (R4), R4
 ss_iface_store:
+	CBZ  R4, ss_iface_write
+	AND  $0x1F, R3, R7
+	CMP  $22, R7
+	BNE  sf_shim
+	MOVD CTX_ARENA_ROUTE_STATE(R19), R2
+	CBZ  R2, sf_shim
+	MOVBU ROUTE_LOCAL_BLIND(R2), R7
+	CBZ  R7, sf_shim
+	AND  $FLAG_RO, R3, R7
+	CBNZ R7, sf_shim
+	MOVD CTX_FRAME_POINTER(R19), R7
+	MOVD $CALLFRAME_SIZE, R3
+	MUL  R3, R7, R7
+	MOVD CTX_CSTACK_BASE(R19), R3
+	ADD  R7, R3, R3
+	MOVD CF_FUNCTION(R3), R3
+	MOVD FN_FIELD_STORE_GRANTS(R3), R3
+	CBNZ R3, sf_shim
+	MOVD ROUTE_NOTE_SEQ(R2), R3
+	ADD  $1, R3, R3
+	MOVD R3, ROUTE_NOTE_SEQ(R2)
+	MOVD $·licenceCounting(SB), R3
+	MOVBU (R3), R3
+	CBZ  R3, ss_iface_write
+	MOVD ROUTE_NOTES_UNTRACED(R2), R3
+	ADD  $1, R3, R3
+	MOVD R3, ROUTE_NOTES_UNTRACED(R2)
+	MOVD ROUTE_NOTES_BLIND(R2), R3
+	ADD  $1, R3, R3
+	MOVD R3, ROUTE_NOTES_BLIND(R2)
+ss_iface_write:
 	MOVD R9, 0(R6)
 	MOVD R4, 8(R6)
 	B    ss_done
 ss_iface_nil:
 	MOVD ZR, R4
-	B    ss_iface_store
+	B    ss_iface_write
 ss_done:
 	DISPATCH_NEXT()
 sf_shim:
-	B    ·handlerPathBShimSetStructFieldGeneralT0(SB)
+	B    ·handlerPathBShimSetStructFieldGeneral(SB)
 
-// handlerGetStructFieldRawPointerT0 re-wraps the cycle-broken eface field at layout[C] through receiver[B] into a direct pointer value in general[A] under the write-barrier guard.
-TEXT ·handlerGetStructFieldRawPointerT0(SB), NOSPLIT|NOFRAME, $0
+// handlerGetStructFieldRawPointer re-wraps the cycle-broken eface field at layout[C] through receiver[B] into a direct pointer value in general[A] under the write-barrier guard.
+TEXT ·handlerGetStructFieldRawPointer(SB), NOSPLIT|NOFRAME, $0
 	MOVD $runtime·writeBarrier(SB), R3
 	MOVBU (R3), R3
 	CBNZ R3, rp_shim
@@ -593,10 +1466,10 @@ rp_store_zero:
 rp_done:
 	DISPATCH_NEXT()
 rp_shim:
-	B    ·handlerPathBShimGetStructFieldRawPointerT0(SB)
+	B    ·handlerPathBShimGetStructFieldRawPointer(SB)
 
-// handlerEqGeneral sets ints[A] = (general[B] == general[C]) for invalid pairs, differing type words, and pointer-identity kinds; other shapes fall back to handlerPathBShimEqGeneral.
-TEXT ·handlerEqGeneral(SB), NOSPLIT|NOFRAME, $0
+// handlerEqualGeneral sets ints[A] = (general[B] == general[C]) for invalid pairs, differing type words, and pointer-identity kinds. Other shapes fall back to handlerPathBShimEqualGeneral.
+TEXT ·handlerEqualGeneral(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -652,9 +1525,9 @@ eqg_store:
 	MOVD R4, (R23)(R3<<3)
 	DISPATCH_NEXT()
 eqg_shim:
-	B    ·handlerPathBShimEqGeneral(SB)
+	B    ·handlerPathBShimEqualGeneral(SB)
 
-// handlerMoveGeneral copies general[B] to general[A] for alias mode under the write-barrier guard; other modes and marking phases fall back to handlerPathBShimMoveGeneral.
+// handlerMoveGeneral copies general[B] to general[A] for alias mode under the write-barrier guard. Other modes and marking phases fall back to handlerPathBShimMoveGeneral.
 TEXT ·handlerMoveGeneral(SB), NOSPLIT|NOFRAME, $0
 	LSR  $24, R0, R3
 	CMP  $1, R3
@@ -682,8 +1555,8 @@ TEXT ·handlerMoveGeneral(SB), NOSPLIT|NOFRAME, $0
 mg_shim:
 	B    ·handlerPathBShimMoveGeneral(SB)
 
-// handlerTestNilJumpTrue jumps by signed offset B|C<<8 when general[A] is invalid or a nil value of a nilable kind.
-TEXT ·handlerTestNilJumpTrue(SB), NOSPLIT|NOFRAME, $0
+// handlerJumpIfNil jumps by signed offset B|C<<8 when general[A] is invalid or a nil value of a nilable kind.
+TEXT ·handlerJumpIfNil(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	MOVD $24, R4
@@ -728,8 +1601,8 @@ tnj_take:
 tnj_skip:
 	DISPATCH_NEXT()
 
-// handlerTestNilJumpFalse jumps by signed offset B|C<<8 when general[A] is valid and non-nil.
-TEXT ·handlerTestNilJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerJumpIfNotNil jumps by signed offset B|C<<8 when general[A] is valid and non-nil.
+TEXT ·handlerJumpIfNotNil(SB), NOSPLIT|NOFRAME, $0
 	LSR  $8, R0, R3
 	AND  $0xFF, R3, R3
 	MOVD $24, R4

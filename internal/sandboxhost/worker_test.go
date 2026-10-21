@@ -19,6 +19,7 @@
 package sandboxhost
 
 import (
+	"context"
 	"errors"
 	"net"
 	"path/filepath"
@@ -48,7 +49,7 @@ func (process *isolatedFixture) Wait() error {
 	return errors.Join(process.serveErr, process.waitErr)
 }
 
-func (process *isolatedFixture) Close() error {
+func (process *isolatedFixture) Close(_ context.Context) error {
 	process.closes.Add(1)
 	_ = process.Conn.Close()
 	<-process.done
@@ -99,10 +100,10 @@ func TestIsolatedWatchdogApprovalRequired(t *testing.T) {
 func TestIsolatedWorkerSingleSubmission(t *testing.T) {
 	t.Parallel()
 	worker, _ := isolatedWorkerFixture(t)
-	result, err := worker.EvalFile("package main\nfunc answer() int { return 42 }", "answer")
+	result, err := worker.EvalFile(t.Context(), "package main\nfunc answer() int { return 42 }", "answer")
 	require.NoError(t, err, "result=%+v", result)
 	require.Equal(t, "42", string(result.Value))
-	_, err = worker.Eval("1")
+	_, err = worker.Eval(t.Context(), "1")
 	require.ErrorIs(t, err, ErrIsolatedUsed, "worker reuse accepted")
 }
 
@@ -114,7 +115,7 @@ func TestIsolatedWorkerConcurrentAdmission(t *testing.T) {
 	var calls sync.WaitGroup
 	for range 16 {
 		calls.Go(func() {
-			_, err := worker.Eval("1")
+			_, err := worker.Eval(t.Context(), "1")
 			switch {
 			case err == nil:
 				accepted.Add(1)
@@ -140,7 +141,7 @@ func TestIsolatedWorkerSuppressesUnreapedResults(t *testing.T) {
 		} else {
 			process.waitErr = failure
 		}
-		result, err := worker.Eval("42")
+		result, err := worker.Eval(t.Context(), "42")
 		require.ErrorIs(t, err, failure, "unverified result escaped: %+v", result)
 		require.Nil(t, result.Value)
 		require.Empty(t, result.Output)
@@ -151,16 +152,16 @@ func TestIsolatedWorkerSuppressesUnreapedResults(t *testing.T) {
 func TestIsolatedWorkerCloseAndInvalidConfiguration(t *testing.T) {
 	t.Parallel()
 	worker, _ := isolatedWorkerFixture(t)
-	require.NoError(t, worker.Close())
-	_, err := worker.Eval("1")
+	require.NoError(t, worker.Close(t.Context()))
+	_, err := worker.Eval(t.Context(), "1")
 	require.ErrorIs(t, err, ErrIsolatedUsed, "closed worker accepted source")
 	worker, err = NewIsolatedWorker(t.Context(), IsolatedConfig{Tenant: "test-tenant"})
 	require.Nil(t, worker, "missing approval accepted")
 	require.ErrorIs(t, err, ErrInvalidIsolatedConfig)
 	var absent *IsolatedWorker
-	require.NoError(t, absent.Close(), "nil worker cleanup is not safe")
+	require.NoError(t, absent.Close(t.Context()), "nil worker cleanup is not safe")
 	require.Empty(t, absent.Diagnostics())
-	_, err = absent.Eval("1")
+	_, err = absent.Eval(t.Context(), "1")
 	require.ErrorIs(t, err, ErrIsolatedUsed, "nil worker accepted source")
 }
 
@@ -172,9 +173,9 @@ func isolatedWorkerFixture(t *testing.T) (*IsolatedWorker, *isolatedFixture) {
 	process.done = make(chan struct{})
 	go func() {
 		defer peer.Close()
-		process.serveErr = sandboxworker.Serve(peer)
+		process.serveErr = sandboxworker.Serve(t.Context(), peer)
 		close(process.done)
 	}()
-	t.Cleanup(func() { _ = process.Close() })
+	t.Cleanup(func() { _ = process.Close(t.Context()) })
 	return &IsolatedWorker{process: &process, imports: nil, used: atomic.Bool{}}, &process
 }

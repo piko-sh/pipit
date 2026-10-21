@@ -73,15 +73,15 @@ func writeIndirectCellDirect(arena *RegisterArena, cell *program.UpvalueCell, re
 		return false
 	}
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		return storeIndirectScalar(target, cell.IndirectKind, reflect.Int, reflect.Int64, registers.Ints[index])
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		return storeIndirectScalar(target, cell.IndirectKind, reflect.Uint, reflect.Uint64, registers.Uints[index])
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		return storeIndirectScalar(target, cell.IndirectKind, reflect.Float64, reflect.Float64, registers.Floats[index])
 	case isa.RegisterBool:
 		return storeIndirectScalar(target, cell.IndirectKind, reflect.Bool, reflect.Bool, registers.Bools[index])
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		return storeIndirectScalar(target, cell.IndirectKind, reflect.Complex128, reflect.Complex128, registers.Complex[index])
 	case isa.RegisterString:
 		if cell.IndirectKind != reflect.String {
@@ -150,17 +150,17 @@ func writeIndirectSliceHeaderDirect(arena *RegisterArena, cell *program.UpvalueC
 // Returns the header address, the backing pointer and true on a layout match.
 func typedSliceBankHeader(registers *Registers, kind isa.RegisterKind, index byte, elemKind reflect.Kind) (header, backing unsafe.Pointer, ok bool) {
 	switch kind {
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		if elemKind == reflect.Int || elemKind == reflect.Int64 {
 			slot := &registers.SlicesInt[index]
 			return unsafe.Pointer(slot), unsafe.Pointer(unsafe.SliceData(*slot)), true
 		}
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		if elemKind == reflect.Uint || elemKind == reflect.Uint64 || elemKind == reflect.Uintptr {
 			slot := &registers.slicesUint[index]
 			return unsafe.Pointer(slot), unsafe.Pointer(unsafe.SliceData(*slot)), true
 		}
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		if elemKind == reflect.Float64 {
 			slot := &registers.slicesFloat[index]
 			return unsafe.Pointer(slot), unsafe.Pointer(unsafe.SliceData(*slot)), true

@@ -137,7 +137,7 @@ func callbackSpecFixture(t *testing.T) (*callbackVMSpec, *RuntimeClosure) {
 	parent := newTestVM(t)
 	parent.functions = root.Functions
 	parent.rootFunction = root
-	closure := &RuntimeClosure{Function: root, RootFunction: root, inlineCells: [inlineUpvalueCells]*program.UpvalueCell{}, upvalues: nil, namedType: ""}
+	closure := &RuntimeClosure{Function: root, RootFunction: root, inlineCells: [inlineUpvalueCells]*program.UpvalueCell{}, upvalues: nil, namedType: 0}
 	return newCallbackVMSpec(parent), closure
 }
 
@@ -147,19 +147,19 @@ func TestCallbackVMSpecReusesOneVMAndTurnsCollectorOffAfterEscapes(t *testing.T)
 
 	first := spec.acquire(closure)
 	require.False(t, first.Arena.disableMinorGC, "a fresh callback arena collects")
-	spec.finish(first)
+	spec.finish(first, false)
 	require.EqualValues(t, 1, spec.cache.built.Load())
 
 	second := spec.acquire(closure)
 	require.Same(t, first, second, "the idle VM is handed out again")
 	require.False(t, second.Arena.disableMinorGC, "a clean reused arena still collects")
 	second.Arena.AllocBytes(64, 8)
-	spec.finish(second)
+	spec.finish(second, false)
 
 	third := spec.acquire(closure)
 	require.Same(t, first, third)
 	require.True(t, third.Arena.disableMinorGC, "an arena holding escaped data stops collecting")
-	spec.finish(third)
+	spec.finish(third, false)
 	require.EqualValues(t, 1, spec.cache.built.Load(), "no rebuild across the three callbacks")
 	require.Zero(t, spec.cache.discarded.Load())
 }
@@ -171,14 +171,14 @@ func TestCallbackVMSpecRetiresPastThreshold(t *testing.T) {
 
 	first := spec.acquire(closure)
 	first.Arena.AllocBytes(64, 8)
-	spec.finish(first)
+	spec.finish(first, false)
 	require.EqualValues(t, 1, spec.cache.discarded.Load(), "an arena past the threshold is released")
 	require.Nil(t, spec.cache.slot.Load())
 	require.Nil(t, first.Arena, "the released VM gave its arena back")
 
 	second := spec.acquire(closure)
-	require.NotSame(t, first, second, "the next callback builds afresh")
-	spec.finish(second)
+	require.EqualValues(t, 2, spec.cache.built.Load(), "the next callback builds afresh, perhaps on the recycled shell")
+	spec.finish(second, false)
 	require.Same(t, second, spec.cache.slot.Load())
 }
 
@@ -187,7 +187,7 @@ func TestCallbackVMSpecDiscardsDirtyVM(t *testing.T) {
 	spec, closure := callbackSpecFixture(t)
 	dirty := spec.acquire(closure)
 	dirty.evalError = fault.ErrCostBudgetExceeded
-	spec.finish(dirty)
+	spec.finish(dirty, false)
 	require.Nil(t, spec.cache.slot.Load(), "a VM that finished with an error is not cached")
 	require.EqualValues(t, 1, spec.cache.discarded.Load())
 }
@@ -200,9 +200,9 @@ func TestCallbackVMSpecSafeModeNeverCaches(t *testing.T) {
 	parent.Limits.SafeMode = true
 	spec := newCallbackVMSpec(parent)
 	require.Nil(t, spec.cache)
-	closure := &RuntimeClosure{Function: root, RootFunction: root, inlineCells: [inlineUpvalueCells]*program.UpvalueCell{}, upvalues: nil, namedType: ""}
+	closure := &RuntimeClosure{Function: root, RootFunction: root, inlineCells: [inlineUpvalueCells]*program.UpvalueCell{}, upvalues: nil, namedType: 0}
 	vm := spec.acquire(closure)
-	spec.finish(vm)
+	spec.finish(vm, false)
 	require.Nil(t, vm.Arena, "safe mode releases every callback VM")
 	require.Zero(t, parent.CallbackVMStats().Built)
 }

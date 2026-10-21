@@ -562,7 +562,7 @@ func TestNewCompiledFunctionFromDataRoundTrip(t *testing.T) {
 		SourceFile:                 "test.go",
 		IsVariadic:                 true,
 		NumRegisters:               [isa.NumRegisterKinds]uint32{4, 2, 1, 3, 1, 1, 1},
-		ParamKinds:                 []isa.RegisterKind{isa.RegisterInt, isa.RegisterString},
+		ParamKinds:                 []isa.RegisterKind{isa.RegisterInt64, isa.RegisterString},
 		ResultKinds:                []isa.RegisterKind{isa.RegisterBool},
 		Body:                       []isa.Instruction{instr},
 		BoolConstants:              []bool{true, false},
@@ -613,7 +613,7 @@ func TestNewCompiledFunctionFromDataRoundTrip(t *testing.T) {
 		t.Parallel()
 		pk := codec.ParamKinds(compiledFunction)
 		require.Len(t, pk, 2)
-		require.Equal(t, uint8(isa.RegisterInt), pk[0])
+		require.Equal(t, uint8(isa.RegisterInt64), pk[0])
 		require.Equal(t, uint8(isa.RegisterString), pk[1])
 	})
 

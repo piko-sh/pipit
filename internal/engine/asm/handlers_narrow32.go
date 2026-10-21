@@ -30,11 +30,35 @@ import (
 func narrow32Handlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 		integer32BinaryHandler("handlerAddInt32", "handlerAddInt32 sets ints[A] = int64(int32(ints[B] + ints[C])).", "ADD"),
-		integer32BinaryHandler("handlerSubInt32", "handlerSubInt32 sets ints[A] = int64(int32(ints[B] - ints[C])).", "SUB"),
-		integer32BinaryHandler("handlerMulInt32", "handlerMulInt32 sets ints[A] = int64(int32(ints[B] * ints[C])).", "MUL"),
-		integer32ConstantHandler("handlerAddInt32Const", "handlerAddInt32Const sets ints[A] = int64(int32(ints[B] + intConstants[C])).", "ADD"),
-		integer32ConstantHandler("handlerSubInt32Const", "handlerSubInt32Const sets ints[A] = int64(int32(ints[B] - intConstants[C])).", "SUB"),
+		integer32BinaryHandler("handlerSubtractInt32", "handlerSubtractInt32 sets ints[A] = int64(int32(ints[B] - ints[C])).", "SUB"),
+		integer32BinaryHandler("handlerMultiplyInt32", "handlerMultiplyInt32 sets ints[A] = int64(int32(ints[B] * ints[C])).", "MUL"),
+		integer32ConstantHandler("handlerAddInt32Constant", "handlerAddInt32Constant sets ints[A] = int64(int32(ints[B] + intConstants[C])).", "ADD"),
+		integer32ConstantHandler("handlerSubtractInt32Constant", "handlerSubtractInt32Constant sets ints[A] = int64(int32(ints[B] - intConstants[C])).", "SUB"),
 		uint32BinaryHandler("handlerAddUint32", "handlerAddUint32 sets uints[A] = uint64(uint32(uints[B] + uints[C])).", "ADD"),
+		uint32BinaryHandler("handlerSubtractUint32", "handlerSubtractUint32 sets uints[A] = uint64(uint32(uints[B] - uints[C])).", "SUB"),
+		uint32BinaryHandler("handlerMultiplyUint32", "handlerMultiplyUint32 sets uints[A] = uint64(uint32(uints[B] * uints[C])).", "MUL"),
+		uint32ConstantHandler("handlerAddUint32Constant",
+			"handlerAddUint32Constant sets uints[B] = uint64(uint32(uints[C] + uintConstants[ext wide index])).", "add32"),
+		uint32ConstantHandler("handlerSubtractUint32Constant",
+			"handlerSubtractUint32Constant sets uints[B] = uint64(uint32(uints[C] - uintConstants[ext wide index])).", "sub32"),
+	}
+}
+
+// uint32ConstantHandler builds a tier-1 handler for uints[B] = uint64(uint32(uints[C] op
+// uintConstants[ext])), consuming the extension word.
+//
+// Takes name (string) which is the handler function name.
+// Takes comment (string) which is the handler's doc comment.
+// Takes operation (string) which is the narrowing selector EmitUintConstArith accepts.
+//
+// Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
+func uint32ConstantHandler(name, comment, operation string) asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
+		Name: name, Comment: comment,
+		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			architecture.EmitUintConstArith(emitter, operation)
+		},
 	}
 }
 

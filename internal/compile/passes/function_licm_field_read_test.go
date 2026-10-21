@@ -19,7 +19,6 @@
 package passes
 
 import (
-	"context"
 	"slices"
 	"testing"
 
@@ -36,13 +35,13 @@ func tier1Jump(offset int16) isa.Instruction {
 func TestLicmHoistsLoopInvariantRead(t *testing.T) {
 	t.Parallel()
 	body := []isa.Instruction{
-		mk(isa.OpLoadIntConst, 1, 0, 0),
+		mk(isa.OpLoadInt64Constant, 1, 0, 0),
 		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
-		mk(isa.OpLoadIntConst, 2, 0, 0),
+		mk(isa.OpLoadInt64Constant, 2, 0, 0),
 		tier1Jump(-3),
 	}
 	compiledFunction := &program.CompiledFunction{Body: body}
-	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
+	_ = HoistLoopInvariantStructFieldReads(t.Context(), compiledFunction)
 	require.Len(t, compiledFunction.Body, 4, "the body keeps its length: nothing is left at the original site")
 	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[1].Op, "read stays at the loop header, now the pre-header")
 	require.Equal(t, uint8(5), compiledFunction.Body[1].A)
@@ -57,14 +56,14 @@ func TestLicmHoistsLoopInvariantRead(t *testing.T) {
 func TestLicmRefusesWhenReceiverWrittenInLoop(t *testing.T) {
 	t.Parallel()
 	body := []isa.Instruction{
-		mk(isa.OpLoadIntConst, 1, 0, 0),
+		mk(isa.OpLoadInt64Constant, 1, 0, 0),
 		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
 		mk(isa.OpMoveGeneral, 4, 7, 0),
 		tier1Jump(-3),
 	}
 	originalLen := len(body)
 	compiledFunction := &program.CompiledFunction{Body: body}
-	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
+	_ = HoistLoopInvariantStructFieldReads(t.Context(), compiledFunction)
 	require.Len(t, compiledFunction.Body, originalLen, "no hoist when receiver mutated in loop")
 	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[1].Op, "read unchanged")
 }
@@ -72,42 +71,42 @@ func TestLicmRefusesWhenReceiverWrittenInLoop(t *testing.T) {
 func TestLicmRefusesWhenDestRewrittenInLoop(t *testing.T) {
 	t.Parallel()
 	body := []isa.Instruction{
-		mk(isa.OpLoadIntConst, 1, 0, 0),
+		mk(isa.OpLoadInt64Constant, 1, 0, 0),
 		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
 		mk(isa.OpMoveGeneral, 5, 7, 0),
 		tier1Jump(-3),
 	}
 	originalLen := len(body)
 	compiledFunction := &program.CompiledFunction{Body: body}
-	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
+	_ = HoistLoopInvariantStructFieldReads(t.Context(), compiledFunction)
 	require.Len(t, compiledFunction.Body, originalLen, "no hoist when dest reg clobbered in loop")
 }
 
 func TestLicmRefusesWhenCallInLoop(t *testing.T) {
 	t.Parallel()
 	body := []isa.Instruction{
-		mk(isa.OpLoadIntConst, 1, 0, 0),
+		mk(isa.OpLoadInt64Constant, 1, 0, 0),
 		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
 		isa.NewTier1Instruction(isa.SubOpCall, 0, 0),
 		tier1Jump(-3),
 	}
 	originalLen := len(body)
 	compiledFunction := &program.CompiledFunction{Body: body}
-	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
+	_ = HoistLoopInvariantStructFieldReads(t.Context(), compiledFunction)
 	require.Len(t, compiledFunction.Body, originalLen, "no hoist when call in loop")
 }
 
 func TestLicmRefusesWhenSetSameFieldInLoop(t *testing.T) {
 	t.Parallel()
 	body := []isa.Instruction{
-		mk(isa.OpLoadIntConst, 1, 0, 0),
+		mk(isa.OpLoadInt64Constant, 1, 0, 0),
 		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
 		mk(isa.OpSetStructFieldGeneral, 4, 9, 2),
 		tier1Jump(-3),
 	}
 	originalLen := len(body)
 	compiledFunction := &program.CompiledFunction{Body: body}
-	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
+	_ = HoistLoopInvariantStructFieldReads(t.Context(), compiledFunction)
 	require.Len(t, compiledFunction.Body, originalLen, "no hoist when same struct field written in loop")
 }
 
@@ -120,7 +119,7 @@ func TestLicmIgnoresForwardJumpsAsNonLoops(t *testing.T) {
 	}
 	originalLen := len(body)
 	compiledFunction := &program.CompiledFunction{Body: body}
-	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
+	_ = HoistLoopInvariantStructFieldReads(t.Context(), compiledFunction)
 	require.Len(t, compiledFunction.Body, originalLen, "forward jump is not a loop; no hoist")
 }
 
@@ -129,16 +128,16 @@ func TestLicmEntryJumpLandsOnHoistedRead(t *testing.T) {
 
 	body := []isa.Instruction{
 		mk(isa.OpJumpIfFalse, 0, 0, 0),
-		mk(isa.OpLoadIntConst, 7, 0, 0),
+		mk(isa.OpLoadInt64Constant, 7, 0, 0),
 		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
 		tier1Jump(-3),
 	}
 	compiledFunction := &program.CompiledFunction{Body: body}
-	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
+	_ = HoistLoopInvariantStructFieldReads(t.Context(), compiledFunction)
 	require.Len(t, compiledFunction.Body, 4)
 	require.Equal(t, isa.OpJumpIfFalse, compiledFunction.Body[0].Op)
 	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[1].Op, "hoisted read at the old header")
-	require.Equal(t, isa.OpLoadIntConst, compiledFunction.Body[2].Op, "the word that led the loop follows the read")
+	require.Equal(t, isa.OpLoadInt64Constant, compiledFunction.Body[2].Op, "the word that led the loop follows the read")
 	target, isJump := program.JumpTargetAt(compiledFunction.Body, 0)
 	require.True(t, isJump)
 	require.Equal(t, 1, target, "entry jump keeps landing on the hoisted read")
@@ -151,14 +150,14 @@ func TestLicmHoistsDominatingReadAfterConditional(t *testing.T) {
 	t.Parallel()
 	lo, hi := jumpOffset(1)
 	body := []isa.Instruction{
-		mk(isa.OpLoadIntConst, 1, 0, 0),
+		mk(isa.OpLoadInt64Constant, 1, 0, 0),
 		mk(isa.OpJumpIfTrue, 0, lo, hi),
-		mk(isa.OpLoadIntConst, 1, 0, 0),
+		mk(isa.OpLoadInt64Constant, 1, 0, 0),
 		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
 		tier1Jump(-4),
 	}
 	compiledFunction := &program.CompiledFunction{Body: body}
-	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
+	_ = HoistLoopInvariantStructFieldReads(t.Context(), compiledFunction)
 	require.Len(t, compiledFunction.Body, 5)
 	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[1].Op, "dominating read moved to the pre-header (the old loop header)")
 	require.Equal(t, isa.OpJumpIfTrue, compiledFunction.Body[2].Op)
@@ -175,12 +174,12 @@ func TestLicmRefusesHoistWhenPreHeaderUnconditionallyJumps(t *testing.T) {
 	body := []isa.Instruction{
 		tier1Jump(2),
 		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
-		mk(isa.OpLoadIntConst, 1, 0, 0),
+		mk(isa.OpLoadInt64Constant, 1, 0, 0),
 		tier1Jump(-2),
 	}
 	originalLen := len(body)
 	compiledFunction := &program.CompiledFunction{Body: body}
-	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
+	_ = HoistLoopInvariantStructFieldReads(t.Context(), compiledFunction)
 	require.Len(t, compiledFunction.Body, originalLen, "no hoist when the slot preceding the loop header unconditionally jumps elsewhere")
 	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[1].Op)
 }
@@ -188,14 +187,14 @@ func TestLicmRefusesHoistWhenPreHeaderUnconditionallyJumps(t *testing.T) {
 func TestLicmPreservesBackEdgeTargetAfterShift(t *testing.T) {
 	t.Parallel()
 	body := []isa.Instruction{
-		mk(isa.OpLoadIntConst, 1, 0, 0),
-		mk(isa.OpLoadIntConst, 2, 0, 0),
+		mk(isa.OpLoadInt64Constant, 1, 0, 0),
+		mk(isa.OpLoadInt64Constant, 2, 0, 0),
 		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
-		mk(isa.OpLoadIntConst, 3, 0, 0),
+		mk(isa.OpLoadInt64Constant, 3, 0, 0),
 		tier1Jump(-4),
 	}
 	compiledFunction := &program.CompiledFunction{Body: body}
-	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
+	_ = HoistLoopInvariantStructFieldReads(t.Context(), compiledFunction)
 	require.Len(t, compiledFunction.Body, 5)
 	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[1].Op)
 	require.Equal(t, uint8(2), compiledFunction.Body[2].A, "the header's word shifted down by the read's width")
@@ -300,30 +299,30 @@ func TestRemapPCKeyedSet(t *testing.T) {
 func TestLicmRemapsMethodNamesAndVariableScopes(t *testing.T) {
 	t.Parallel()
 	body := []isa.Instruction{
-		mk(isa.OpLoadIntConst, 1, 0, 0),
-		mk(isa.OpLoadIntConst, 2, 0, 0),
+		mk(isa.OpLoadInt64Constant, 1, 0, 0),
+		mk(isa.OpLoadInt64Constant, 2, 0, 0),
 		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
-		mk(isa.OpLoadIntConst, 3, 0, 0),
+		mk(isa.OpLoadInt64Constant, 3, 0, 0),
 		tier1Jump(-4),
 	}
 	compiledFunction := &program.CompiledFunction{
-		Body:                       body,
-		GetMethodReceiverTypeNames: map[uint32]string{1: "header", 3: "after"},
-		DebugVarTable:              &program.DebugVarTable{Entries: []program.DebugVarEntry{{StartPC: 1, EndPC: 3}, {StartPC: 3, EndPC: 0}}},
+		Body:                              body,
+		BindMethodByNameReceiverTypeNames: map[uint32]string{1: "header", 3: "after"},
+		DebugVarTable:                     &program.DebugVarTable{Entries: []program.DebugVarEntry{{StartPC: 1, EndPC: 3}, {StartPC: 3, EndPC: 0}}},
 	}
-	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
+	_ = HoistLoopInvariantStructFieldReads(t.Context(), compiledFunction)
 	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[1].Op)
-	require.Equal(t, map[uint32]string{2: "header", 3: "after"}, compiledFunction.GetMethodReceiverTypeNames)
+	require.Equal(t, map[uint32]string{2: "header", 3: "after"}, compiledFunction.BindMethodByNameReceiverTypeNames)
 	require.Equal(t, []program.DebugVarEntry{{StartPC: 2, EndPC: 3}, {StartPC: 3, EndPC: 0}}, compiledFunction.DebugVarTable.Entries)
 }
 
 func TestLicmRemapsArenaAnnotationsWithTheirInstructions(t *testing.T) {
 	t.Parallel()
 	body := []isa.Instruction{
-		mk(isa.OpLoadIntConst, 1, 0, 0),
-		mk(isa.OpLoadIntConst, 2, 0, 0),
+		mk(isa.OpLoadInt64Constant, 1, 0, 0),
+		mk(isa.OpLoadInt64Constant, 2, 0, 0),
 		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
-		mk(isa.OpLoadIntConst, 3, 0, 0),
+		mk(isa.OpLoadInt64Constant, 3, 0, 0),
 		tier1Jump(-4),
 	}
 
@@ -333,10 +332,134 @@ func TestLicmRemapsArenaAnnotationsWithTheirInstructions(t *testing.T) {
 		FieldStoreArenaSafePCs: map[int]bool{3: true},
 		InPlaceHeaderReusePCs:  map[int]bool{1: true, 4: true},
 	}
-	_ = HoistLoopInvariantStructFieldReads(context.Background(), compiledFunction)
+	_ = HoistLoopInvariantStructFieldReads(t.Context(), compiledFunction)
 	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[1].Op, "hoisted read sits at the header")
 	require.Equal(t, uint8(2), compiledFunction.Body[2].A, "the word that was at PC 1 now sits at PC 2")
 	require.Equal(t, map[int]bool{0: true, 2: true}, compiledFunction.ArenaSafeAllocPCs, "the header's key follows its word; the pre-header key stays")
 	require.Equal(t, map[int]bool{3: true}, compiledFunction.FieldStoreArenaSafePCs, "keys after the read stay")
 	require.Equal(t, map[int]bool{2: true, 4: true}, compiledFunction.InPlaceHeaderReusePCs)
+}
+
+func TestLicmKeepsAReadBehindAFaultingWordWhenNothingProvesItsReceiver(t *testing.T) {
+	t.Parallel()
+	body := []isa.Instruction{
+		mk(isa.OpLoadInt64Constant, 1, 0, 0),
+		mk(isa.OpDivideInt64, 2, 2, 1),
+		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
+		condJump(isa.OpJumpIfTrue, 1, -3),
+		returnVoid(),
+	}
+	original := slices.Clone(body)
+	compiledFunction := &program.CompiledFunction{Body: body}
+	require.NoError(t, HoistLoopInvariantStructFieldReads(t.Context(), compiledFunction))
+	require.Equal(t, original, compiledFunction.Body,
+		"a loop tested at the bottom divides before it reads, and a nil receiver must fault after a zero divisor does")
+}
+
+func TestLicmHoistsAReadBehindQuietWordsInALoopTestedAtTheBottom(t *testing.T) {
+	t.Parallel()
+	body := []isa.Instruction{
+		mk(isa.OpLoadInt64Constant, 1, 0, 0),
+		mk(isa.OpAddInt64, 2, 2, 1),
+		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
+		condJump(isa.OpJumpIfTrue, 1, -3),
+		returnVoid(),
+	}
+	compiledFunction := &program.CompiledFunction{Body: body}
+	require.NoError(t, HoistLoopInvariantStructFieldReads(t.Context(), compiledFunction))
+	require.Equal(t, isa.OpGetStructFieldGeneral, compiledFunction.Body[1].Op, "the read leaves the loop")
+	backEdge, isJump := program.JumpTargetAt(compiledFunction.Body, 3)
+	require.True(t, isJump)
+	require.Equal(t, 2, backEdge, "the latch skips the hoisted read")
+}
+
+func TestLicmHoistsAFieldReadPastAByteStoreOnlyWhenTheProgramAllowsIt(t *testing.T) {
+	t.Parallel()
+	loop := func() *program.CompiledFunction {
+		body := []isa.Instruction{
+			mk(isa.OpLoadInt64Constant, 1, 0, 0),
+			mk(isa.OpGetStructFieldInt64, 5, 4, 2),
+			mk(isa.OpLengthStructField, 6, 4, 1),
+			isa.NewTier1Instruction(isa.SubOpSetSliceByteElement, 0, 5),
+			mk(isa.OpExtension, 3, 0, 0),
+			mk(isa.OpSetElementUint64, 7, 5, 3),
+			condJump(isa.OpJumpIfTrue, 1, -6),
+			returnVoid(),
+		}
+		return &program.CompiledFunction{Body: body}
+	}
+
+	compiledFunction := loop()
+	original := slices.Clone(compiledFunction.Body)
+	require.NoError(t, hoistLoopInvariantStructFieldReads(t.Context(), compiledFunction, nil, false))
+	require.Equal(t, original, compiledFunction.Body, "without the program's word, an element store may have changed the field")
+
+	compiledFunction = loop()
+	require.NoError(t, hoistLoopInvariantStructFieldReads(t.Context(), compiledFunction, nil, true))
+	require.Equal(t, mk(isa.OpGetStructFieldInt64, 5, 4, 2), compiledFunction.Body[1], "the field read leaves the loop")
+	require.Equal(t, mk(isa.OpLengthStructField, 6, 4, 1), compiledFunction.Body[2], "and so does the length of a field")
+	backEdge, isJump := program.JumpTargetAt(compiledFunction.Body, 6)
+	require.True(t, isJump)
+	require.Equal(t, 3, backEdge, "the latch skips both")
+}
+
+func TestLicmKeepsAGeneralFieldReadBehindAnElementStore(t *testing.T) {
+	t.Parallel()
+	body := []isa.Instruction{
+		mk(isa.OpLoadInt64Constant, 1, 0, 0),
+		mk(isa.OpGetStructFieldGeneral, 5, 4, 2),
+		mk(isa.OpSetElementUint64, 7, 1, 3),
+		condJump(isa.OpJumpIfTrue, 1, -3),
+		returnVoid(),
+	}
+	original := slices.Clone(body)
+	compiledFunction := &program.CompiledFunction{Body: body}
+	require.NoError(t, hoistLoopInvariantStructFieldReads(t.Context(), compiledFunction, nil, true))
+	require.Equal(t, original, compiledFunction.Body, "a field read into the general bank may be the array the store writes into")
+}
+
+func TestLicmHoistsAReadOnAnArmWhenItsReceiverWasDereferencedAheadOfTheLoop(t *testing.T) {
+	t.Parallel()
+	loop := func(proof isa.Instruction) *program.CompiledFunction {
+		body := []isa.Instruction{
+			proof,
+			mk(isa.OpLoadInt64Constant, 1, 0, 0),
+			condJump(isa.OpJumpIfFalse, 2, 2),
+			mk(isa.OpGetStructFieldInt64, 5, 4, 2),
+			mk(isa.OpAddInt64, 6, 6, 5),
+			condJump(isa.OpJumpIfTrue, 1, -5),
+			returnVoid(),
+		}
+		return &program.CompiledFunction{Body: body}
+	}
+
+	compiledFunction := loop(mk(isa.OpGetStructFieldInt64, 9, 4, 0))
+	require.NoError(t, hoistLoopInvariantStructFieldReads(t.Context(), compiledFunction, nil, false))
+	require.Equal(t, mk(isa.OpGetStructFieldInt64, 5, 4, 2), compiledFunction.Body[1], "the earlier read of the receiver proves it non-nil, so the arm's read is lifted")
+
+	compiledFunction = loop(mk(isa.OpLoadInt64Constant, 9, 0, 0))
+	original := slices.Clone(compiledFunction.Body)
+	require.NoError(t, hoistLoopInvariantStructFieldReads(t.Context(), compiledFunction, nil, false))
+	require.Equal(t, original, compiledFunction.Body, "with nothing to prove the receiver, a read the loop might skip could fault where it did not")
+}
+
+func TestPostPurityPipelineLiftsFieldReadsAgainAfterCoalescingMoves(t *testing.T) {
+	t.Parallel()
+	position := func(pipeline []Pass, name string) int {
+		return slices.IndexFunc(pipeline, func(pass Pass) bool { return pass.Name() == name })
+	}
+	pipeline := PostPurityPipeline(DefaultOptions(), ProgramFacts{ElementStoresKeepFields: true}, nil)
+	late := position(pipeline, lateFieldReadsPass{}.Name())
+	require.Greater(t, late, position(pipeline, coalesceMovesPass{}.Name()), "the second lift follows move coalescing")
+	require.Equal(t, lateFieldReadsPass{elementStoresKeepFields: true}, pipeline[late])
+
+	withoutLicm := DefaultOptions()
+	withoutLicm.LICM = false
+	require.Negative(t, position(PostPurityPipeline(withoutLicm, ProgramFacts{}, nil), lateFieldReadsPass{}.Name()),
+		"the second lift is off when loop-invariant code motion is")
+
+	loop := []isa.Instruction{mk(isa.OpGetStructFieldInt64, 1, 0, 0), tier1Jump(-2)}
+	require.True(t, bodyHasFieldReadAndLoop(loop))
+	require.False(t, bodyHasFieldReadAndLoop(loop[:1]), "a read with no loop")
+	require.False(t, bodyHasFieldReadAndLoop([]isa.Instruction{mk(isa.OpAddInt64, 1, 2, 3), tier1Jump(-2)}), "a loop with no read")
 }

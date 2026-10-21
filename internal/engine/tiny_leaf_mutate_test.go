@@ -61,7 +61,7 @@ func leafSite(argumentKinds ...isa.RegisterKind) *program.CallSite {
 }
 
 func outOfRangeLayout() program.StructFieldLayout {
-	layout := program.StructFieldLayout{PathLength: 1, Kind: uint8(reflect.Int64), RegisterKind: uint8(isa.RegisterInt)}
+	layout := program.StructFieldLayout{PathLength: 1, Kind: uint8(reflect.Int64), RegisterKind: uint8(isa.RegisterInt64)}
 	layout.Path[0] = 9
 	return layout
 }
@@ -82,11 +82,11 @@ func TestTinyLeafReflectFieldWalksThePathItIsGiven(t *testing.T) {
 		layout   program.StructFieldLayout
 		want     bool
 	}{
-		{name: "a direct field of a pointer receiver", receiver: reflect.ValueOf(counter), layout: leafLayout(0, reflect.Int64, isa.RegisterInt), want: true},
-		{name: "a direct field of a value receiver", receiver: reflect.ValueOf(*counter), layout: leafLayout(0, reflect.Int64, isa.RegisterInt), want: true},
+		{name: "a direct field of a pointer receiver", receiver: reflect.ValueOf(counter), layout: leafLayout(0, reflect.Int64, isa.RegisterInt64), want: true},
+		{name: "a direct field of a value receiver", receiver: reflect.ValueOf(*counter), layout: leafLayout(0, reflect.Int64, isa.RegisterInt64), want: true},
 		{name: "a nested field is reached through its path", receiver: reflect.ValueOf(nested), layout: nestedLayout, want: true},
-		{name: "an invalid receiver has no field", receiver: reflect.Value{}, layout: leafLayout(0, reflect.Int64, isa.RegisterInt), want: false},
-		{name: "a non-struct receiver has no field", receiver: reflect.ValueOf(42), layout: leafLayout(0, reflect.Int64, isa.RegisterInt), want: false},
+		{name: "an invalid receiver has no field", receiver: reflect.Value{}, layout: leafLayout(0, reflect.Int64, isa.RegisterInt64), want: false},
+		{name: "a non-struct receiver has no field", receiver: reflect.ValueOf(42), layout: leafLayout(0, reflect.Int64, isa.RegisterInt64), want: false},
 		{name: "a field index past the struct has no field", receiver: reflect.ValueOf(counter), layout: outOfRangeLayout(), want: false},
 	}
 
@@ -110,9 +110,9 @@ func TestTinyLeafIncrementRunnersMutateThroughTheReceiver(t *testing.T) {
 		registers.General[0] = reflect.ValueOf(target)
 
 		callee := program.NewNamedFunction("inc")
-		callee.TinyLeafLayout = leafLayout(0, reflect.Int64, isa.RegisterInt)
+		callee.TinyLeafLayout = leafLayout(0, reflect.Int64, isa.RegisterInt64)
 
-		require.Equal(t, opContinue, runTinyLeafIncIntField(vm, registers, leafSite(isa.RegisterGeneral), callee))
+		require.Equal(t, opContinue, runTinyLeafIncrementIntField(vm, registers, leafSite(isa.RegisterGeneral), callee))
 		require.Equal(t, int64(42), target.Signed)
 	})
 
@@ -123,9 +123,9 @@ func TestTinyLeafIncrementRunnersMutateThroughTheReceiver(t *testing.T) {
 		registers.General[0] = reflect.ValueOf(target)
 
 		callee := program.NewNamedFunction("inc")
-		callee.TinyLeafLayout = leafLayout(1, reflect.Uint64, isa.RegisterUint)
+		callee.TinyLeafLayout = leafLayout(1, reflect.Uint64, isa.RegisterUint64)
 
-		require.Equal(t, opContinue, runTinyLeafIncUintField(vm, registers, leafSite(isa.RegisterGeneral), callee))
+		require.Equal(t, opContinue, runTinyLeafIncrementUintField(vm, registers, leafSite(isa.RegisterGeneral), callee))
 		require.Equal(t, uint64(42), target.Unsigned)
 	})
 
@@ -141,14 +141,14 @@ func TestTinyLeafIncrementRunnersMutateThroughTheReceiver(t *testing.T) {
 			Offset:       uint32(outer.Offset + inner.Offset),
 			PathLength:   2,
 			Kind:         uint8(reflect.Int64),
-			RegisterKind: uint8(isa.RegisterInt),
+			RegisterKind: uint8(isa.RegisterInt64),
 		}
 		layout.Path[0] = 0
 		layout.Path[1] = 0
 		callee := program.NewNamedFunction("inc")
 		callee.TinyLeafLayout = layout
 
-		require.Equal(t, opContinue, runTinyLeafIncIntField(vm, registers, leafSite(isa.RegisterGeneral), callee))
+		require.Equal(t, opContinue, runTinyLeafIncrementIntField(vm, registers, leafSite(isa.RegisterGeneral), callee))
 		require.Equal(t, int64(2), target.Inner.Signed)
 	})
 }
@@ -165,7 +165,7 @@ func TestTinyLeafScalarAssignmentWritesEveryScalarBank(t *testing.T) {
 		bank  isa.RegisterKind
 	}{
 		{
-			name: "a signed field", field: 0, kind: reflect.Int64, bank: isa.RegisterInt,
+			name: "a signed field", field: 0, kind: reflect.Int64, bank: isa.RegisterInt64,
 			seed: func(registers *Registers) { registers.Ints[1] = 42 },
 			check: func(t *testing.T, target *leafCounter) {
 				t.Helper()
@@ -173,7 +173,7 @@ func TestTinyLeafScalarAssignmentWritesEveryScalarBank(t *testing.T) {
 			},
 		},
 		{
-			name: "an unsigned field", field: 1, kind: reflect.Uint64, bank: isa.RegisterUint,
+			name: "an unsigned field", field: 1, kind: reflect.Uint64, bank: isa.RegisterUint64,
 			seed: func(registers *Registers) { registers.Uints[1] = 42 },
 			check: func(t *testing.T, target *leafCounter) {
 				t.Helper()
@@ -181,7 +181,7 @@ func TestTinyLeafScalarAssignmentWritesEveryScalarBank(t *testing.T) {
 			},
 		},
 		{
-			name: "a float field", field: 2, kind: reflect.Float64, bank: isa.RegisterFloat,
+			name: "a float field", field: 2, kind: reflect.Float64, bank: isa.RegisterFloat64,
 			seed: func(registers *Registers) { registers.Floats[1] = 1.5 },
 			check: func(t *testing.T, target *leafCounter) {
 				t.Helper()

@@ -24,6 +24,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	goversion "go/version"
 	"slices"
 	"strings"
 
@@ -39,6 +40,10 @@ import (
 	"pipit.sh/pipit/internal/policy"
 )
 
+// perIterationLoopVariablesVersion is the Go language version from which each loop
+// iteration has its own loop variables.
+const perIterationLoopVariablesVersion = "go1.22"
+
 // loopPostDeclKey identifies a register slot occupied by a for-stmt-init-declared
 // variable, scoped by its register-bank kind so the same numeric index in different banks
 // doesn't collide.
@@ -52,11 +57,6 @@ type loopPostDeclKey struct {
 
 // isTailCallEligible checks whether a return statement can be compiled as a tail call.
 //
-// Tail calls require: exactly one return expression, that expression is a direct
-// *ast.CallExpr (not type conversion), callee is a known compiled function (in
-// functionTable) that is not a generic template, no defers in the current function, and
-// callee and caller have matching result signatures.
-//
 // Takes statement (*ast.ReturnStmt) which is the return statement to check for tail call
 // eligibility.
 //
@@ -67,6 +67,9 @@ func (c *Compiler) isTailCallEligible(_ context.Context, statement *ast.ReturnSt
 	}
 	callExpression, ok := statement.Results[0].(*ast.CallExpr)
 	if !ok {
+		return nil
+	}
+	if _, retype := c.namedRetypes[statement.Results[0]]; retype {
 		return nil
 	}
 
@@ -316,16 +319,25 @@ func (c *Compiler) compileNamedExplicitReturn(ctx context.Context, statement *as
 		return program.VarLocation{}, err
 	}
 	for i, location := range locs {
-		dest := c.Function.NamedResultLocations[i]
-		c.emitMoveTyped(ctx, dest, location, c.returnValueStaticType(statement, locs, i))
-
-		if !dest.IsIndirect && !strings.HasPrefix(c.Function.NamedResultNames[i], scope.SyntheticNamePrefix) {
-			program.EmitTier1(c.Function, isa.SubOpWriteSharedCell, dest.Register, uint8(dest.Kind))
-		}
+		c.emitNamedResultStore(ctx, i, location, c.returnValueStaticType(statement, locs, i))
 	}
 
 	c.emitNamedResultReturn(ctx)
 	return program.VarLocation{}, nil
+}
+
+// emitNamedResultStore stores a returned value into the i-th named result, keeping the
+// closure cell of a captured result in step.
+//
+// Takes i (int) which is the result index.
+// Takes source (VarLocation) which holds the value.
+// Takes staticType (types.Type) which is the value's static type, or nil.
+func (c *Compiler) emitNamedResultStore(ctx context.Context, i int, source program.VarLocation, staticType types.Type) {
+	dest := c.Function.NamedResultLocations[i]
+	c.emitMoveTyped(ctx, dest, source, staticType)
+	if !dest.IsIndirect && !strings.HasPrefix(c.Function.NamedResultNames[i], scope.SyntheticNamePrefix) {
+		program.EmitTier1(c.Function, isa.SubOpSetSharedCell, dest.Register, uint8(dest.Kind))
+	}
 }
 
 // returnValueStaticType resolves the static type of the i-th returned value: the
@@ -507,15 +519,12 @@ func (c *Compiler) snapshotReturnValueIfNeeded(expression ast.Expr, location pro
 		return location
 	}
 	dest := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpDeref, dest, location.Register, engine.DerefSnapshot)
+	program.Emit(c.Function, isa.OpDereference, dest, location.Register, engine.DerefSnapshot)
 	return program.VarLocation{Register: dest, Kind: isa.RegisterGeneral}
 }
 
 // moveLocsToReturnPositions moves compiled expression locations into their return-slot
 // positions.
-//
-// Uses the function's declared ResultKinds so cross-bank conversions are emitted (e.g.
-// isa.RegisterInt -> isa.RegisterBool).
 //
 // Takes locs ([]VarLocation) which is the compiled expression locations to move.
 //
@@ -541,7 +550,8 @@ func (c *Compiler) moveLocsToReturnPositions(ctx context.Context, locs []program
 //
 // Takes statement (*ast.IfStmt) which is the if statement AST node to compile.
 //
-// Returns the compiled location and any error encountered.
+// Returns program.VarLocation which holds the compiled location.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileIf(ctx context.Context, statement *ast.IfStmt) (program.VarLocation, error) {
 	if statement.Init != nil {
 		c.Scopes.PushScope()
@@ -552,14 +562,14 @@ func (c *Compiler) compileIf(ctx context.Context, statement *ast.IfStmt) (progra
 	}
 
 	watermark := c.Scopes.Alloc.Snapshot()
-	condLocation, err := c.compileExpression(ctx, statement.Cond)
+	conditionLocation, err := c.compileExpression(ctx, statement.Cond)
 	if err != nil {
 		return program.VarLocation{}, err
 	}
 
-	condLocation = c.ensureIntForBranch(ctx, condLocation)
+	conditionLocation = c.ensureIntForBranch(ctx, conditionLocation)
 
-	jumpToElse := program.EmitJump(c.Function, isa.OpJumpIfFalse, condLocation.Register)
+	jumpToElse := program.EmitJump(c.Function, isa.OpJumpIfFalse, conditionLocation.Register)
 	c.Scopes.RestoreWatermark(watermark)
 
 	if _, err := c.compileStmt(ctx, statement.Body); err != nil {
@@ -599,24 +609,18 @@ func (c *Compiler) compileFor(ctx context.Context, statement *ast.ForStmt) (prog
 
 // compileForFallback is the scalar emission path for a for-statement.
 //
-// Extracted so AST-pattern recognisers can delegate back to it when their Emit declines
-// partway (e.g. an operand resolves to a register kind the SIMD opcode cannot index).
-// Mirrors compileFor's body sans the recogniser hook and the feature gate (already
-// enforced).
-//
 // Takes statement (*ast.ForStmt) which is the loop.
 //
-// Returns the loop's VarLocation (always zero) and any error.
+// Returns program.VarLocation which is zero.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileForFallback(ctx context.Context, statement *ast.ForStmt) (program.VarLocation, error) {
 	c.Scopes.PushScope()
 	defer c.Scopes.PopScope()
 	c.loopDepth++
 	defer func() { c.loopDepth-- }()
 
-	if statement.Init != nil {
-		if _, err := c.compileStmt(ctx, statement.Init); err != nil {
-			return program.VarLocation{}, err
-		}
+	if err := c.compileForInit(ctx, statement); err != nil {
+		return program.VarLocation{}, err
 	}
 
 	c.breakables = append(c.breakables, breakableContext{
@@ -631,6 +635,7 @@ func (c *Compiler) compileForFallback(ctx context.Context, statement *ast.ForStm
 		return program.VarLocation{}, err
 	}
 
+	bodyStart := program.CurrentPC(c.Function)
 	if bodyContainsFunctionLit(statement.Body) {
 		c.resetSharedCellsForInit(ctx, statement.Init)
 	}
@@ -640,13 +645,15 @@ func (c *Compiler) compileForFallback(ctx context.Context, statement *ast.ForStm
 	}
 
 	c.patchContinueJumps(ctx)
+	c.renewIndirectLoopVariables(ctx, statement.Init)
 
 	if err := c.compileForPost(ctx, statement); err != nil {
 		return program.VarLocation{}, err
 	}
 
-	lo, hi := program.EncodeJumpOffset(c.Function, loopStart-program.CurrentPC(c.Function)-1)
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpJump), lo, hi)
+	if err := c.emitForLatch(ctx, statement.Cond, loopStart, bodyStart); err != nil {
+		return program.VarLocation{}, err
+	}
 
 	if hasCondJump {
 		program.PatchJump(c.Function, jumpToEnd)
@@ -658,6 +665,74 @@ func (c *Compiler) compileForFallback(ctx context.Context, statement *ast.ForStm
 
 	c.breakables = c.breakables[:len(c.breakables)-1]
 	return program.VarLocation{}, nil
+}
+
+// compileForInit compiles the init statement of a for loop, and refuses variables it
+// declares that the file's Go version would share across iterations
+// (checkLoopVariableLanguageVersion).
+//
+// Takes statement (*ast.ForStmt) which is the loop.
+//
+// Returns any compilation error or the refusal.
+func (c *Compiler) compileForInit(ctx context.Context, statement *ast.ForStmt) error {
+	if statement.Init == nil {
+		return nil
+	}
+	if _, err := c.compileStmt(ctx, statement.Init); err != nil {
+		return err
+	}
+	if initAssign, ok := statement.Init.(*ast.AssignStmt); ok && initAssign.Tok == token.DEFINE {
+		return c.checkLoopVariableLanguageVersion(statement.For, initAssign.Lhs...)
+	}
+	return nil
+}
+
+// loopTestsAtBottom reports whether a loop tests its condition after the body.
+//
+// Returns true when loops are emitted that way.
+func (c *Compiler) loopTestsAtBottom() bool {
+	return c.passOptions.LICM
+}
+
+// emitForLatch closes a for loop after its post statement.
+//
+// Takes condition (ast.Expr) which is the loop condition, or nil.
+// Takes loopStart (int) which is the PC of the test at the top.
+// Takes bodyStart (int) which is the PC the test at the top falls into.
+//
+// Returns any error compiling the condition.
+func (c *Compiler) emitForLatch(ctx context.Context, condition ast.Expr, loopStart, bodyStart int) error {
+	if condition == nil || !c.loopTestsAtBottom() || expressionContainsFunctionLit(condition) {
+		c.emitJumpBack(loopStart)
+		return nil
+	}
+	watermark := c.Scopes.Alloc.Snapshot()
+	defer c.Scopes.RestoreWatermark(watermark)
+	conditionLocation, err := c.compileExpression(ctx, condition)
+	if err != nil {
+		return err
+	}
+	conditionLocation = c.ensureIntForBranch(ctx, conditionLocation)
+	c.emitJumpBackIfTrue(conditionLocation.Register, bodyStart)
+	return nil
+}
+
+// emitJumpBack emits an unconditional jump to an earlier PC.
+//
+// Takes target (int) which is the PC to jump to.
+func (c *Compiler) emitJumpBack(target int) {
+	lo, hi := program.EncodeJumpOffset(c.Function, target-program.CurrentPC(c.Function)-1)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpJump), lo, hi)
+}
+
+// emitJumpBackIfTrue emits a branch to an earlier PC, taken when an int register is not
+// zero.
+//
+// Takes conditionRegister (uint8) which is the int register tested.
+// Takes target (int) which is the PC to jump to.
+func (c *Compiler) emitJumpBackIfTrue(conditionRegister uint8, target int) {
+	lo, hi := program.EncodeJumpOffset(c.Function, target-program.CurrentPC(c.Function)-1)
+	program.Emit(c.Function, isa.OpJumpIfTrue, conditionRegister, lo, hi)
 }
 
 // compileForPost compiles the post statement of a for loop, tracking the init-declared
@@ -683,17 +758,19 @@ func (c *Compiler) compileForPost(ctx context.Context, statement *ast.ForStmt) e
 // Takes condition (ast.Expr) which is the condition expression to compile, or nil if
 // absent.
 //
-// Returns the jump-to-end offset, whether a condition jump was emitted, and any error.
+// Returns int which is the jump-to-end offset.
+// Returns bool which is true when a condition jump was emitted.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileForCondition(ctx context.Context, condition ast.Expr) (int, bool, error) {
 	if condition == nil {
 		return 0, false, nil
 	}
-	condLocation, err := c.compileExpression(ctx, condition)
+	conditionLocation, err := c.compileExpression(ctx, condition)
 	if err != nil {
 		return 0, false, err
 	}
-	condLocation = c.ensureIntForBranch(ctx, condLocation)
-	jumpToEnd := program.EmitJump(c.Function, isa.OpJumpIfFalse, condLocation.Register)
+	conditionLocation = c.ensureIntForBranch(ctx, conditionLocation)
+	jumpToEnd := program.EmitJump(c.Function, isa.OpJumpIfFalse, conditionLocation.Register)
 	return jumpToEnd, true, nil
 }
 
@@ -720,18 +797,154 @@ func (c *Compiler) resetSharedCellsForInit(_ context.Context, init ast.Stmt) {
 	}
 }
 
+// renewIndirectLoopVariables gives every variable declared by a three-clause loop's init
+// statement that lives in a heap cell a fresh cell for the following iteration, holding
+// the value the variable has when the iteration ends.
+//
+// The following iteration's copy is declared just before the post statement and
+// initialised from the current one, so pointers taken and closures created during an
+// iteration keep seeing that iteration's variable. Emitted at the point continue jumps
+// reach, so a continued iteration renews its variables too.
+//
+// Takes init (ast.Stmt) which is the loop's init statement. Anything but a short variable
+// declaration declares no per-iteration variables.
+func (c *Compiler) renewIndirectLoopVariables(ctx context.Context, init ast.Stmt) {
+	initAssign, ok := init.(*ast.AssignStmt)
+	if !ok || initAssign.Tok != token.DEFINE {
+		return
+	}
+	for _, leftHandSide := range initAssign.Lhs {
+		identifier, ok := leftHandSide.(*ast.Ident)
+		if !ok || identifier.Name == typemap.BlankIdentName {
+			continue
+		}
+		if err := c.renewIndirectLoopVariable(ctx, identifier); err != nil {
+			c.recordStickyError(err)
+			return
+		}
+	}
+}
+
+// renewIndirectLoopVariable gives one loop variable held in a heap cell a fresh cell
+// holding its current value. A variable held in a register is left alone.
+//
+// Takes identifier (*ast.Ident) which names the variable in the init statement.
+//
+// Returns any error resolving the variable's type.
+func (c *Compiler) renewIndirectLoopVariable(ctx context.Context, identifier *ast.Ident) error {
+	location, found := c.Scopes.LookupVar(identifier.Name)
+	if !found || !location.IsIndirect {
+		return nil
+	}
+	object := c.Info.Defs[identifier]
+	if object == nil {
+		return fmt.Errorf("%w: loop variable %s has no type", fault.ErrCompilePerIterationLoopVariable, identifier.Name)
+	}
+	reflectType := c.TypeToReflect(ctx, object.Type())
+	if reflectType == nil {
+		return fmt.Errorf("%w: loop variable %s of type %s", fault.ErrCompilePerIterationLoopVariable, identifier.Name, object.Type())
+	}
+	typeIndex, err := program.AddTypeRef(c.Function, reflectType)
+	if err != nil {
+		return err
+	}
+	watermark := c.Scopes.Alloc.Snapshot()
+	defer c.Scopes.RestoreWatermark(watermark)
+	cell := c.emitReloadIfSpilled(ctx, location)
+	current, err := c.emitLoopVariableSnapshot(ctx, cell.Register, location.OriginalKind)
+	if err != nil {
+		return err
+	}
+	program.Emit(c.Function, isa.OpAllocateIndirect, cell.Register, current.Register, uint8(current.Kind))
+	program.EmitExtension(c.Function, typeIndex, 0)
+	if location.IsSpilled {
+		c.emitSpillStore(ctx, cell.Register, isa.RegisterGeneral, location.SpillSlot)
+	}
+	return nil
+}
+
+// emitLoopVariableSnapshot reads the value a loop variable's heap cell holds into a fresh
+// register, as a value of its own, since a struct or array read in place would let the
+// following iteration's cell reuse the old storage.
+//
+// Takes cell (uint8) which is the general register holding the cell.
+// Takes originalKind (isa.RegisterKind) which is the variable's bank before promotion.
+//
+// Returns the location holding the value and any error.
+func (c *Compiler) emitLoopVariableSnapshot(ctx context.Context, cell uint8, originalKind isa.RegisterKind) (program.VarLocation, error) {
+	if originalKind != isa.RegisterGeneral {
+		return c.EmitIndirectRead(ctx, program.VarLocation{Register: cell, Kind: isa.RegisterGeneral, IsIndirect: true, OriginalKind: originalKind})
+	}
+	snapshot := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
+	program.Emit(c.Function, isa.OpDereference, snapshot, cell, 0)
+	program.Emit(c.Function, isa.OpDereference, snapshot, snapshot, engine.DerefSnapshot)
+	return program.VarLocation{Register: snapshot, Kind: isa.RegisterGeneral}, nil
+}
+
+// checkLoopVariableLanguageVersion refuses a loop whose variables need a variable per
+// iteration or one shared by every iteration to be told apart, in a file declaring a Go
+// version before 1.22.
+//
+// The name-based capture sets make the check conservative.
+//
+// Takes position (token.Pos) which is the loop's position.
+// Takes names ([]ast.Expr) which are the identifiers the loop declares.
+//
+// Returns fault.ErrCompileSharedLoopVariables wrapped with the position, or nil.
+func (c *Compiler) checkLoopVariableLanguageVersion(position token.Pos, names ...ast.Expr) error {
+	if !c.fileDeclaresSharedLoopVariables(position) {
+		return nil
+	}
+	for _, name := range names {
+		identifier, ok := name.(*ast.Ident)
+		if !ok || identifier.Name == typemap.BlankIdentName {
+			continue
+		}
+		if c.closureCapturedNames[identifier.Name] || c.localIsHeapPromoted(identifier.Name) {
+			return fmt.Errorf("%w: %s at %s", fault.ErrCompileSharedLoopVariables, identifier.Name, c.positionString(position))
+		}
+	}
+	return nil
+}
+
+// fileDeclaresSharedLoopVariables reports whether the file holding position declares a Go
+// language version before 1.22, whose loops share one variable across iterations.
+//
+// Takes position (token.Pos) which is a position in the file.
+//
+// Returns true for a file whose recorded version is before go1.22.
+func (c *Compiler) fileDeclaresSharedLoopVariables(position token.Pos) bool {
+	if c.Info == nil {
+		return false
+	}
+	if !c.sharedLoopVariableFilesKnown {
+		for file, fileVersion := range c.Info.FileVersions {
+			if goversion.IsValid(fileVersion) && goversion.Compare(fileVersion, perIterationLoopVariablesVersion) < 0 {
+				c.sharedLoopVariableFiles = append(c.sharedLoopVariableFiles, file)
+			}
+		}
+		c.sharedLoopVariableFilesKnown = true
+	}
+	for _, file := range c.sharedLoopVariableFiles {
+		if file.FileStart <= position && position <= file.FileEnd {
+			return true
+		}
+	}
+	return false
+}
+
 // collectForInitDeclaredRegisters returns init-declared registers.
 //
-// Used by emitWriteSharedCellIfCaptured to scope the isa.SubOpWriteSharedCell suppression
-// to variables that participate in Go 1.22+ per-iteration scoping; variables in the
+// Used by emitSetSharedCellIfCaptured to scope the isa.SubOpSetSharedCell suppression to
+// variables that participate in Go 1.22+ per-iteration scoping. Variables in the
 // enclosing scope (`for ; i < 3; i++`) are not in this set and continue to receive sync
 // writes so captured closures see post-loop state.
 //
-// Takes init (ast.Stmt) which is the for-stmt init clause; nil and non-DEFINE forms
+// Takes init (ast.Stmt) which is the for-stmt init clause. Nil and non-DEFINE forms
 // return an empty set.
 //
-// Returns a key -> struct{} set; nil when no DEFINE-declared names resolve to a register
-// location.
+// Returns a key -> struct{} set. It is nil when no DEFINE-declared names resolve to a
+// register location.
 func (c *Compiler) collectForInitDeclaredRegisters(init ast.Stmt) map[loopPostDeclKey]struct{} {
 	initAssign, ok := init.(*ast.AssignStmt)
 	if !ok || initAssign.Tok != token.DEFINE {
@@ -865,11 +1078,14 @@ func (c *Compiler) compileBranchContinue(ctx context.Context, statement *ast.Bra
 // Takes statement (*ast.BranchStmt) which is the goto statement AST node to compile.
 //
 // Returns the compiled location and any error encountered.
-func (c *Compiler) compileBranchGoto(_ context.Context, statement *ast.BranchStmt) (program.VarLocation, error) {
+func (c *Compiler) compileBranchGoto(ctx context.Context, statement *ast.BranchStmt) (program.VarLocation, error) {
 	if err := c.checkFeature(policy.InterpFeatureGoto, statement.TokPos); err != nil {
 		return program.VarLocation{}, err
 	}
 	label := statement.Label.Name
+	if c.rangeOverFunction != nil && !c.rangeOverFunction.bodyLabels[label] {
+		return c.emitRangeOverFunctionGotoExit(ctx, statement)
+	}
 	if pc, found := c.labelTable[label]; found {
 		lo, hi := program.EncodeJumpOffset(c.Function, pc-program.CurrentPC(c.Function)-1)
 		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpJump), lo, hi)
@@ -899,67 +1115,6 @@ func (c *Compiler) compileBranchFallthrough(_ context.Context) (program.VarLocat
 		}
 	}
 	return program.VarLocation{}, fault.ErrCompileFallthroughOutsideSwitch
-}
-
-// emitRangeOverFunctionBreak emits instructions to break out of a range-over-func loop.
-//
-// Returns the compiled location and any error encountered.
-func (c *Compiler) emitRangeOverFunctionBreak(ctx context.Context) (program.VarLocation, error) {
-	return c.emitRangeOverFunctionLabelledBreak(ctx, 1)
-}
-
-// emitRangeOverFunctionLabelledBreak emits instructions to set the state flag and return
-// false from the yield callback.
-//
-// Takes flagValue (int64) which is the state flag value to set (1 for plain break, 3+ for
-// labelled break/continue).
-//
-// Returns the compiled location and any error encountered.
-func (c *Compiler) emitRangeOverFunctionLabelledBreak(ctx context.Context, flagValue int64) (program.VarLocation, error) {
-	rangeContext := c.rangeOverFunction
-	index, err := program.AddIntConstant(c.Function, flagValue)
-	if err != nil {
-		return program.VarLocation{}, err
-	}
-	temporaryRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-	program.EmitWide(c.Function, isa.OpLoadIntConst, temporaryRegister, index)
-	program.Emit(c.Function, isa.OpSetUpvalue, temporaryRegister, safeconv.MustIntToUint8(rangeContext.stateFlagUpvalueIndex), uint8(isa.RegisterInt))
-	c.Scopes.Alloc.FreeTemp(isa.RegisterInt, temporaryRegister)
-	c.emitYieldReturn(ctx, false)
-	return program.VarLocation{}, nil
-}
-
-// compileRangeOverFunctionReturn compiles a return statement inside a range-over-func
-// yield body.
-//
-// Takes statement (*ast.ReturnStmt) which is the return statement to compile within the
-// yield body.
-//
-// Returns the compiled location and any error encountered.
-func (c *Compiler) compileRangeOverFunctionReturn(ctx context.Context, statement *ast.ReturnStmt) (program.VarLocation, error) {
-	rangeContext := c.rangeOverFunction
-
-	for i, result := range statement.Results {
-		watermark := c.Scopes.Alloc.Snapshot()
-		location, err := c.compileExpression(ctx, result)
-		if err != nil {
-			return program.VarLocation{}, err
-		}
-		program.Emit(c.Function, isa.OpSetUpvalue, location.Register, safeconv.MustIntToUint8(rangeContext.returnStashUpvalueIndices[i]), uint8(location.Kind))
-		c.Scopes.RestoreWatermark(watermark)
-	}
-
-	returnPendingIndex, err := program.AddIntConstant(c.Function, rangeOverFunctionReturnPendingFlag)
-	if err != nil {
-		return program.VarLocation{}, err
-	}
-	temporaryRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-	program.EmitWide(c.Function, isa.OpLoadIntConst, temporaryRegister, returnPendingIndex)
-	program.Emit(c.Function, isa.OpSetUpvalue, temporaryRegister, safeconv.MustIntToUint8(rangeContext.stateFlagUpvalueIndex), uint8(isa.RegisterInt))
-	c.Scopes.Alloc.FreeTemp(isa.RegisterInt, temporaryRegister)
-
-	c.emitYieldReturn(ctx, false)
-	return program.VarLocation{}, nil
 }
 
 // compileLabeledStmt compiles a labelled statement.
@@ -1129,8 +1284,8 @@ func (c *Compiler) patchAndClearFallthroughJumps(_ context.Context) {
 	breakable.fallthroughJumps = breakable.fallthroughJumps[:0]
 }
 
-// compileScopedBody compiles a statement list in a new scope, reclaiming temporaries
-// and dead locals after each statement.
+// compileScopedBody compiles a statement list in a new scope, reclaiming temporaries and
+// dead locals after each statement.
 //
 // Takes statements ([]ast.Stmt) which is the list of statement AST nodes to compile
 // within the new scope.
@@ -1163,8 +1318,8 @@ func (c *Compiler) compileCaseMatch(ctx context.Context, tagType types.Type, tag
 		return program.EmitJump(c.Function, isa.OpJumpIfFalse, cmpLocation.Register), nil
 	}
 
-	resultRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLoadBool), resultRegister, 0)
+	resultRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLoadBoolImmediateAsInt64), resultRegister, 0)
 
 	for _, expression := range exprs {
 		watermark := c.Scopes.Alloc.Snapshot()
@@ -1172,7 +1327,7 @@ func (c *Compiler) compileCaseMatch(ctx context.Context, tagType types.Type, tag
 		if err != nil {
 			return 0, err
 		}
-		program.Emit(c.Function, isa.OpBitOr, resultRegister, resultRegister, cmpLocation.Register)
+		program.Emit(c.Function, isa.OpBitOrInt64, resultRegister, resultRegister, cmpLocation.Register)
 		c.Scopes.RestoreWatermark(watermark)
 	}
 
@@ -1206,25 +1361,25 @@ func (c *Compiler) compileCaseValueMatch(ctx context.Context, equalityOps compar
 // Returns error when a case expression cannot be compiled.
 func (c *Compiler) compileCaseCondition(ctx context.Context, exprs []ast.Expr) (int, error) {
 	if len(exprs) == 1 {
-		condLocation, err := c.compileExpression(ctx, exprs[0])
+		conditionLocation, err := c.compileExpression(ctx, exprs[0])
 		if err != nil {
 			return 0, err
 		}
-		condLocation = c.ensureIntForBranch(ctx, condLocation)
-		return program.EmitJump(c.Function, isa.OpJumpIfFalse, condLocation.Register), nil
+		conditionLocation = c.ensureIntForBranch(ctx, conditionLocation)
+		return program.EmitJump(c.Function, isa.OpJumpIfFalse, conditionLocation.Register), nil
 	}
 
-	resultRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt)
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLoadBool), resultRegister, 0)
+	resultRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLoadBoolImmediateAsInt64), resultRegister, 0)
 
 	for _, expression := range exprs {
 		watermark := c.Scopes.Alloc.Snapshot()
-		condLocation, err := c.compileExpression(ctx, expression)
+		conditionLocation, err := c.compileExpression(ctx, expression)
 		if err != nil {
 			return 0, err
 		}
-		condLocation = c.ensureIntForBranch(ctx, condLocation)
-		program.Emit(c.Function, isa.OpBitOr, resultRegister, resultRegister, condLocation.Register)
+		conditionLocation = c.ensureIntForBranch(ctx, conditionLocation)
+		program.Emit(c.Function, isa.OpBitOrInt64, resultRegister, resultRegister, conditionLocation.Register)
 		c.Scopes.RestoreWatermark(watermark)
 	}
 
@@ -1294,4 +1449,37 @@ func branchLabelName(statement *ast.BranchStmt) string {
 		return statement.Label.Name
 	}
 	return ""
+}
+
+// returnAtEndOfVoidBody adds a return to a nonempty void body that can run off its end.
+//
+// A body with a defer of its own keeps running off the end. Its deferred calls can ask
+// for their caller's line, which is the closing brace, and a frame that runs its defers
+// from a return reports the line before the return instead.
+//
+// The return takes the position of the body's closing brace, the line Go reports for an
+// implicit return.
+//
+// Takes compiledFunction (*program.CompiledFunction) whose body is completed.
+// Takes body (*ast.BlockStmt) which supplies the closing brace.
+func (c *Compiler) returnAtEndOfVoidBody(compiledFunction *program.CompiledFunction, body *ast.BlockStmt) {
+	if len(compiledFunction.ResultKinds) != 0 {
+		return
+	}
+	words := compiledFunction.Body
+	if len(words) == 0 || c.hasDefers {
+		return
+	}
+	last := len(words) - 1
+	for last >= 0 && words[last].Op == isa.OpExtension {
+		last--
+	}
+	fallsThrough := last < 0 || isa.ShapeForInstruction(words[last]).Flags&isa.ShapeFlagTerminator == 0
+	if !fallsThrough && !program.JumpTargetsOf(words)[len(words)] {
+		return
+	}
+	if body != nil && body.Rbrace.IsValid() {
+		c.currentPosition = body.Rbrace
+	}
+	program.EmitTier3(compiledFunction, isa.SubOpTier3ReturnVoid)
 }

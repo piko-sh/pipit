@@ -27,36 +27,36 @@ import (
 // Returns []asmgen.HandlerDefinition[BytecodeArchitecturePort] covering string opcodes.
 func stringHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		handlerStringIndex(),
-		handlerEqString(),
-		handlerNeString(),
+		handlerGetStringByte(),
+		handlerEqualString(),
+		handlerNotEqualString(),
 		handlerSliceString(),
-		handlerStringIndexToInt(),
-		handlerLenStringLtJumpFalse(),
+		handlerGetStringByteAsInt64(),
+		handlerLessThanLengthStringThenJumpIfFalse(),
 	}
 }
 
-// handlerStringIndex returns the STRING_INDEX handler, setting uints[A] =
+// handlerGetStringByte returns the GET_STRING_BYTE handler, setting uints[A] =
 // uint64(strings[B][ints[C]]).
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerStringIndex() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerGetStringByte() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerStringIndex", Comment: "handlerStringIndex sets uints[A] = uint64(strings[B][ints[C]]).",
+		Name: "handlerGetStringByte", Comment: "handlerGetStringByte sets uints[A] = uint64(strings[B][ints[C]]).",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.StringOperations().EmitStringIndex(emitter)
+			architecture.StringOperations().EmitGetStringByte(emitter)
 		},
 	}
 }
 
-// handlerEqString returns the EQ_STRING handler, setting ints[A] = (strings[B] ==
+// handlerEqualString returns the EQUAL_STRING handler, setting ints[A] = (strings[B] ==
 // strings[C]) ? 1 : 0.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerEqString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerEqualString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerEqString", Comment: "handlerEqString sets ints[A] = (strings[B] == strings[C]) ? 1 : 0.",
+		Name: "handlerEqualString", Comment: "handlerEqualString sets ints[A] = (strings[B] == strings[C]) ? 1 : 0.",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.StringOperations().EmitEqualString(emitter)
@@ -64,13 +64,13 @@ func handlerEqString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	}
 }
 
-// handlerNeString returns the NE_STRING handler, setting ints[A] = (strings[B] !=
-// strings[C]) ? 1 : 0.
+// handlerNotEqualString returns the NOT_EQUAL_STRING handler, setting ints[A] =
+// (strings[B] != strings[C]) ? 1 : 0.
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerNeString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerNotEqualString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerNeString", Comment: "handlerNeString sets ints[A] = (strings[B] != strings[C]) ? 1 : 0.",
+		Name: "handlerNotEqualString", Comment: "handlerNotEqualString sets ints[A] = (strings[B] != strings[C]) ? 1 : 0.",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.StringOperations().EmitNotEqualString(emitter)
@@ -84,7 +84,7 @@ func handlerNeString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
 func handlerSliceString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return guardPointerBankWriter(asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerSliceString", Comment: "handlerSliceString sets strings[A] = strings[B][low:high].",
+		Name: "handlerSliceString", Comment: "handlerSliceString sets strings[A] = strings[B][low:high]. An empty result keeps strings[B]'s data pointer.",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
 			architecture.StringOperations().EmitSliceString(emitter)
@@ -92,30 +92,31 @@ func handlerSliceString() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	})
 }
 
-// handlerStringIndexToInt returns the STRING_INDEX_TO_INT handler, setting ints[A] =
-// int64(strings[B][ints[C]]).
+// handlerGetStringByteAsInt64 returns the GET_STRING_BYTE_AS_INT64 handler, setting
+// ints[A] = int64(strings[B][ints[C]]).
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerStringIndexToInt() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerGetStringByteAsInt64() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerStringIndexToInt", Comment: "handlerStringIndexToInt sets ints[A] = int64(strings[B][ints[C]]).",
+		Name: "handlerGetStringByteAsInt64", Comment: "handlerGetStringByteAsInt64 sets ints[A] = int64(strings[B][ints[C]]).",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.StringOperations().EmitStringIndexToInt(emitter)
+			architecture.StringOperations().EmitGetStringByteAsInt64(emitter)
 		},
 	}
 }
 
-// handlerLenStringLtJumpFalse returns the fused LEN_STRING_LT_JUMP_FALSE handler, jumping
-// when ints[A] >= len(strings[B]).
+// handlerLessThanLengthStringThenJumpIfFalse returns the fused
+// LESS_THAN_LENGTH_STRING_THEN_JUMP_IF_FALSE handler, jumping when ints[A] >=
+// len(strings[B]).
 //
 // Returns asmgen.HandlerDefinition[BytecodeArchitecturePort] for this opcode.
-func handlerLenStringLtJumpFalse() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+func handlerLessThanLengthStringThenJumpIfFalse() asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		Name: "handlerLenStringLtJumpFalse", Comment: "handlerLenStringLtJumpFalse jumps if ints[A] >= len(strings[B]).",
+		Name: "handlerLessThanLengthStringThenJumpIfFalse", Comment: "handlerLessThanLengthStringThenJumpIfFalse jumps if ints[A] >= len(strings[B]).",
 		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.StringOperations().EmitLenStringLtJumpFalse(emitter)
+			architecture.StringOperations().EmitLessThanLengthStringThenJumpIfFalse(emitter)
 		},
 	}
 }

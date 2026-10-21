@@ -61,7 +61,10 @@ var (
 	_ asmgen.InlineCallOperationsPort = (*arm64InlineCallOps)(nil)
 )
 
-// EmitTailCallInline emits the arm64 top-level body of handlerTailCallInline.
+// EmitTailCallInline emits the arm64 top-level body of handlerTailCall.
+//
+// The tail call ends with a back-edge poll. A tail recursion has no other back edge, so
+// without it the deadline and cancellation would never stop one.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 func (*arm64InlineCallOps) EmitTailCallInline(e *asmgen.Emitter) {
@@ -73,11 +76,12 @@ func (*arm64InlineCallOps) EmitTailCallInline(e *asmgen.Emitter) {
 
 	inst5(e, asmarm64.OperationMove64Bits, inlineCallLRRestoreOperand)
 	inst5(e, asmarm64.OperationAdd, inlineCallFrameTeardownOperand)
+	emitFramedBackEdgePoll(e)
 	e.Instruction(macroDispatchNext)
 }
 
 // EmitTailCallInlineSubroutine emits the arm64 body of the sub-routine that
-// handlerTailCallInline BLs into for the actual tail-call work.
+// handlerTailCall BLs into for the actual tail-call work.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 func (*arm64InlineCallOps) EmitTailCallInlineSubroutine(e *asmgen.Emitter) {
@@ -96,8 +100,8 @@ func (*arm64InlineCallOps) EmitTailCallInlineSubroutine(e *asmgen.Emitter) {
 	e.Instruction(asmarm64.OperationReturn)
 }
 
-// EmitCallInline emits the full handlerCallInline function body, attempting ASM-inlined
-// call for fast-path eligible sites and falling back to Go otherwise.
+// EmitCallInline emits the full handlerCall function body, attempting ASM-inlined call
+// for fast-path eligible sites and falling back to Go otherwise.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 func (o *arm64InlineCallOps) EmitCallInline(e *asmgen.Emitter) {
@@ -130,8 +134,8 @@ func (o *arm64InlineCallOps) EmitCallInlineScalar(e *asmgen.Emitter) {
 	o.emitCallInlineExitPaths(e)
 }
 
-// EmitReturnInline emits the full handlerReturnInline function body, attempting
-// ASM-inlined return for single-value fast-path cases.
+// EmitReturnInline emits the full handlerReturn function body, attempting ASM-inlined
+// return for single-value fast-path cases.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 func (o *arm64InlineCallOps) EmitReturnInline(e *asmgen.Emitter) {
@@ -144,8 +148,8 @@ func (o *arm64InlineCallOps) EmitReturnInline(e *asmgen.Emitter) {
 	o.emitReturnInlineExitPath(e)
 }
 
-// EmitReturnVoidInline emits the full handlerReturnVoidInline function body, skipping
-// return value copy and proceeding directly to arena cleanup.
+// EmitReturnVoidInline emits the full handlerReturnVoid function body, skipping return
+// value copy and proceeding directly to arena cleanup.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 func (o *arm64InlineCallOps) EmitReturnVoidInline(e *asmgen.Emitter) {
@@ -395,6 +399,7 @@ func (*arm64InlineCallOps) emitCallInlineAllocateCalleeFrame(e *asmgen.Emitter) 
 	inst5(e, asmarm64.OperationLogicalShiftLeft, "$3, R7, R11")
 	inst5(e, asmarm64.OperationAdd, "R11, R8, R8")
 	inst5(e, asmarm64.OperationMove64Bits, "ACI_CALLEE_NUM_INTS(R2), R10")
+	emitNilPointerForEmptyBankARM64(e)
 	inst5(e, asmarm64.OperationMove64Bits, "R8, CF_REGS_INTS_PTR(R9)")
 	inst5(e, asmarm64.OperationMove64Bits, "R10, CF_REGS_INTS_LEN(R9)")
 	inst5(e, asmarm64.OperationMove64Bits, "R10, CF_REGS_INTS_CAP(R9)")
@@ -407,6 +412,7 @@ func (*arm64InlineCallOps) emitCallInlineAllocateCalleeFrame(e *asmgen.Emitter) 
 	inst5(e, asmarm64.OperationLogicalShiftLeft, "$3, R7, R11")
 	inst5(e, asmarm64.OperationAdd, "R11, R8, R8")
 	inst5(e, asmarm64.OperationMove64Bits, "ACI_CALLEE_NUM_FLOATS(R2), R10")
+	emitNilPointerForEmptyBankARM64(e)
 	inst5(e, asmarm64.OperationMove64Bits, "R8, CF_REGS_FLOATS_PTR(R9)")
 	inst5(e, asmarm64.OperationMove64Bits, "R10, CF_REGS_FLOATS_LEN(R9)")
 	inst5(e, asmarm64.OperationMove64Bits, "R10, CF_REGS_FLOATS_CAP(R9)")
@@ -415,6 +421,19 @@ func (*arm64InlineCallOps) emitCallInlineAllocateCalleeFrame(e *asmgen.Emitter) 
 	inst5(e, asmarm64.OperationMove64Bits, "$1, R7")
 	inst5(e, asmarm64.OperationMove8Bits, "R7, CTX_ARENA_BANKS_DIRTY(R19)")
 	e.Blank()
+}
+
+// emitNilPointerForEmptyBankARM64 replaces the bank pointer in R8 with nil when the bank
+// length in R10 is zero.
+//
+// The pointer is slab+index, which is one past the slab's end when the index has reached
+// the slab's length; a frame that kept it would hold a pointer the GC resolves to the
+// next heap object ("found pointer to free object" under GOGC=1).
+//
+// Takes e (*asmgen.Emitter) which receives the emitted instructions.
+func emitNilPointerForEmptyBankARM64(e *asmgen.Emitter) {
+	inst5(e, asmarm64.OperationCompare, "$0, R10")
+	inst5(e, asmarm64.OperationConditionalSelect, "EQ, ZR, R8, R8")
 }
 
 // emitCallInlineAllocateRegisters allocates register banks for string, bool, and uint

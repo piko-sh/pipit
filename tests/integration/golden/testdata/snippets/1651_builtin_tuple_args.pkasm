@@ -5,7 +5,7 @@
 ; ═════════════════════════════════════════════════════════════
 ; function pair
 ;   registers: string=1 general=3 sliceByte=2
-;   dispatch:  asm=4 shim=0 exit=0 go=3
+;   dispatch:  asm=4 shim=2 exit=0 go=1
 ;   params:    (general)
 ;   returns:   (sliceByte, sliceByte)
 ; ═════════════════════════════════════════════════════════════
@@ -13,18 +13,18 @@
 ; constants:
 ;   strings: [0]="xyz"
 
-0000 A 0:MOVE_GENERAL               1   0   1
-0001 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "xyz"
-0002 G 1:STRING_TO_BYTES           71   2   0
-0003 A 0:MOVE_GENERAL               2   2   1
-0004 G 1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   1
-0005 G 1:ADOPT_GENERAL_TO_SLICES_BYTE 160   1   2
-0006 A 2:TIER2_RETURN               0  10   2    ; 2 values
+0000 A 0:MOVE_GENERAL                                         1   0   1
+0001 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "xyz"
+0002 G 1:CONVERT_STRING_TO_BYTES                             71   2   0
+0003 A 0:MOVE_GENERAL                                         2   2   1
+0004 S 1:UNBOX_SLICE_BYTE                                   160   0   1
+0005 S 1:UNBOX_SLICE_BYTE                                   160   1   2
+0006 A 2:RETURN                                               0  10   2    ; 2 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function mixed
 ;   registers: string=2 general=2 sliceByte=1
-;   dispatch:  asm=4 shim=0 exit=0 go=1
+;   dispatch:  asm=3 shim=1 exit=0 go=0
 ;   params:    (general)
 ;   returns:   (sliceByte, string)
 ; ═════════════════════════════════════════════════════════════
@@ -32,135 +32,145 @@
 ; constants:
 ;   strings: [0]="hello"
 
-0000 A 0:MOVE_GENERAL               1   0   1
-0001 A 0:LOAD_STRING_CONST          1   0   0    ; strings[1] = "hello"
-0002 G 1:ADOPT_GENERAL_TO_SLICES_BYTE 160   0   1
-0003 A 1:MOVE_STRING               37   0   1
-0004 A 2:TIER2_RETURN               0  10   2    ; 2 values
+0000 A 0:MOVE_GENERAL                                         1   0   1
+0001 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "hello"
+0002 S 1:UNBOX_SLICE_BYTE                                   160   0   1
+0003 A 2:RETURN                                               0  10   2    ; 2 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function entry
-;   registers: int=2 general=2
-;   dispatch:  asm=5 shim=0 exit=0 go=0
+;   registers: int64=2 general=2
+;   dispatch:  asm=4 shim=0 exit=0 go=0
 ;   params:    (general)
-;   returns:   (general, int)
+;   returns:   (general, int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=1
 
-0000 A 0:MOVE_GENERAL               1   0   1
-0001 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
-0002 A 0:MOVE_GENERAL               0   1   0
-0003 A 1:MOVE_INT                  35   0   1
-0004 A 2:TIER2_RETURN               0  10   2    ; 2 values
+0000 A 0:MOVE_GENERAL                                         1   0   1
+0001 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0002 A 0:MOVE_GENERAL                                         0   1   0
+0003 A 2:RETURN                                               0  10   2    ; 2 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function parts
-;   registers: float=4
-;   dispatch:  asm=5 shim=0 exit=0 go=0
+;   registers: float64=4
+;   dispatch:  asm=3 shim=0 exit=0 go=0
 ;   params:    (none)
-;   returns:   (float, float)
+;   returns:   (float64, float64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   floats:  [0]=1.5  [1]=-2
 
-0000 A 0:LOAD_FLOAT_CONST           2   0   0    ; floats[2] = 1.5
-0001 A 0:LOAD_FLOAT_CONST           3   1   0    ; floats[3] = -2
-0002 A 1:MOVE_FLOAT                36   0   2
-0003 A 1:MOVE_FLOAT                36   1   3
-0004 A 2:TIER2_RETURN               0  10   2    ; 2 values
+0000 A 0:LOAD_FLOAT64_CONSTANT                                0   0   0    ; floats[0] = 1.5
+0001 A 0:LOAD_FLOAT64_CONSTANT                                1   1   0    ; floats[1] = -2
+0002 A 2:RETURN                                               0  10   2    ; 2 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=2 float=2 string=2 general=5 uint=1 complex=1
-;   dispatch:  asm=28 shim=19 exit=4 go=19
+;   registers: int64=4 float64=6 string=5 general=10 uint64=1 complex128=1 sliceByte=3
+;   dispatch:  asm=35 shim=33 exit=4 go=11
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=4  [1]=0  [2]=1  [3]=2  [4]=3  [5]=10  [6]=20
-;   strings: [0]="%v %T"  [1]="\n"
+;   floats:  [0]=1.5  [1]=-2
+;   strings: [0]="%v %T"  [1]="\n"  [2]="xyz"  [3]="hello"
 ;   uints:   [0]=1  [1]=2  [2]=3  [3]=4
 
-0000 S 0:LOAD_GENERAL_CONST         0   0   0
-0001 A 1:LOAD_INT_CONST_SMALL      75   0   4    ; ints[0] = 4
-0002 S 0:MAKE_SLICE                 1   0   0
-0003   0:EXT                        0   0   1
-0004 A 1:LOAD_UINT_CONST_SMALL     99   0   1    ; uints[0] = 1
-0005 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0006 G 0:PACK_TYPED                 2   0   5
-0007   0:EXT                        1   0   0
-0008 S 0:INDEX_SET                  1   0   2
-0009 A 1:LOAD_UINT_CONST_SMALL     99   0   2    ; uints[0] = 2
-0010 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0011 G 0:PACK_TYPED                 2   0   5
-0012   0:EXT                        1   0   0
-0013 S 0:INDEX_SET                  1   0   2
-0014 A 1:LOAD_UINT_CONST_SMALL     99   0   3    ; uints[0] = 3
-0015 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
-0016 G 0:PACK_TYPED                 2   0   5
-0017   0:EXT                        1   0   0
-0018 S 0:INDEX_SET                  1   0   2
-0019 A 1:LOAD_UINT_CONST_SMALL     99   0   4    ; uints[0] = 4
-0020 A 1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
-0021 G 0:PACK_TYPED                 2   0   5
-0022   0:EXT                        1   0   0
-0023 S 0:INDEX_SET                  1   0   2
-0024 S 0:LOAD_GENERAL_CONST         2   1   0
-0025 A 1:CALL                     128   0   0    ; call (site 0)
-0026 S 0:COPY                       0   3   4
-0027 G 1:CALL_NATIVE              130   1   0    ; call native general[2] (site 1)
-0028 X 0:APPEND_STRING_FAST         0   0   0
-0029 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
-0030 S 0:MAKE_SLICE                 2   0   0
-0031   0:EXT                        0   0   1
-0032 A 1:LOAD_UINT_CONST_SMALL     99   0   1    ; uints[0] = 1
-0033 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0034 G 0:PACK_TYPED                 3   0   5
-0035   0:EXT                        1   0   0
-0036 S 0:INDEX_SET                  2   0   3
-0037 A 1:LOAD_UINT_CONST_SMALL     99   0   2    ; uints[0] = 2
-0038 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0039 G 0:PACK_TYPED                 3   0   5
-0040   0:EXT                        1   0   0
-0041 S 0:INDEX_SET                  2   0   3
-0042 A 0:MOVE_GENERAL               1   2   1
-0043 S 0:LOAD_GENERAL_CONST         2   2   0
-0044 A 1:CALL                     128   2   0    ; call (site 2)
-0045 G 1:MOVE_STRING_TO_GENERAL    44   4   0
-0046 S 0:COPY                       0   3   4
-0047 G 1:CALL_NATIVE              130   3   0    ; call native general[2] (site 3)
-0048 X 0:APPEND_STRING_FAST         0   0   1
-0049 G 2:MAKE_MAP                   0  12   2
-0050   0:EXT                        2   0   1
-0051 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0052 A 1:LOAD_INT_CONST_SMALL      75   1  10    ; ints[1] = 10
-0053 G 1:MOVE_INT_TO_GENERAL       40   3   0
-0054 G 1:MOVE_INT_TO_GENERAL       40   4   1
-0055 S 0:MAP_SET                    2   3   4
-0056 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
-0057 A 1:LOAD_INT_CONST_SMALL      75   1  20    ; ints[1] = 20
-0058 G 1:MOVE_INT_TO_GENERAL       40   3   0
-0059 G 1:MOVE_INT_TO_GENERAL       40   4   1
-0060 S 0:MAP_SET                    2   3   4
-0061 A 0:MOVE_GENERAL               1   2   1
-0062 A 1:CALL                     128   4   0    ; call (site 4)
-0063 G 1:MOVE_INT_TO_GENERAL       40   3   0
-0064 G 1:MAP_DELETE                81   2   3
-0065 S 0:LOAD_GENERAL_CONST         2   3   0
-0066 G 1:LEN                       70   0   1
-0067 G 1:CALL_NATIVE              130   5   0    ; call native general[2] (site 5)
-0068 X 0:APPEND_STRING_FAST         0   0   0
-0069 A 1:CALL                     128   6   0    ; call (site 6)
-0070 S 0:BUILD_COMPLEX              0   0   1
-0071 S 0:LOAD_GENERAL_CONST         2   4   0
-0072 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "%v %T"
-0073 G 1:CALL_NATIVE              130   7   0    ; call native general[2] (site 7)
-0074 X 0:APPEND_STRING_FAST         0   0   1
-0075 A 0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "\n"
-0076 S 0:STR_JOIN                   1   0   0
-0077 A 1:MOVE_STRING               37   0   1
-0078 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 0:LOAD_GENERAL_CONSTANT                                0   0   0
+0001 A 1:LOAD_INT64_IMMEDIATE                                75   0   4    ; ints[0] = 4
+0002 S 0:MAKE_SLICE                                           1   0   0
+0003   0:EXTENSION                                            0   0   1
+0004 A 1:LOAD_UINT64_IMMEDIATE                               99   0   1    ; uints[0] = 1
+0005 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0006 G 0:BOX_AS_TYPE                                          2   0   5
+0007   0:EXTENSION                                            1   0   0
+0008 S 0:SET_ELEMENT                                          1   0   2
+0009 A 1:LOAD_UINT64_IMMEDIATE                               99   0   2    ; uints[0] = 2
+0010 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0011 G 0:BOX_AS_TYPE                                          2   0   5
+0012   0:EXTENSION                                            1   0   0
+0013 S 0:SET_ELEMENT                                          1   0   2
+0014 A 1:LOAD_UINT64_IMMEDIATE                               99   0   3    ; uints[0] = 3
+0015 A 1:LOAD_INT64_IMMEDIATE                                75   0   2    ; ints[0] = 2
+0016 G 0:BOX_AS_TYPE                                          2   0   5
+0017   0:EXTENSION                                            1   0   0
+0018 S 0:SET_ELEMENT                                          1   0   2
+0019 A 1:LOAD_UINT64_IMMEDIATE                               99   0   4    ; uints[0] = 4
+0020 A 1:LOAD_INT64_IMMEDIATE                                75   0   3    ; ints[0] = 3
+0021 G 0:BOX_AS_TYPE                                          2   0   5
+0022   0:EXTENSION                                            1   0   0
+0023 S 0:SET_ELEMENT                                          1   0   2
+0024 S 0:LOAD_GENERAL_CONSTANT                                2   1   0
+0025 A 0:MOVE_GENERAL                                         5   1   1    ; inlined body of function 0 called at PC 25
+0026 A 0:LOAD_STRING_CONSTANT                                 2   2   0    ; strings[2] = "xyz"
+0027 G 1:CONVERT_STRING_TO_BYTES                             71   6   2
+0028 A 0:MOVE_GENERAL                                         6   6   1
+0029 S 1:UNBOX_SLICE_BYTE                                   160   0   5
+0030 S 1:UNBOX_SLICE_BYTE                                   160   1   6
+0031 S 1:BOX_SLICE_BYTE                                     148   3   0
+0032 S 1:BOX_SLICE_BYTE                                     148   4   1
+0033 S 0:COPY_GENERAL                                         0   3   4
+0034 G 1:CALL_NATIVE                                        130   1   0    ; call native general[2] (site 1)
+0035 X 0:APPEND_STRING                                        0   0   0
+0036 A 1:LOAD_INT64_IMMEDIATE                                75   0   2    ; ints[0] = 2
+0037 S 0:MAKE_SLICE                                           2   0   0
+0038   0:EXTENSION                                            0   0   1
+0039 A 1:LOAD_UINT64_IMMEDIATE                               99   0   1    ; uints[0] = 1
+0040 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0041 G 0:BOX_AS_TYPE                                          3   0   5
+0042   0:EXTENSION                                            1   0   0
+0043 S 0:SET_ELEMENT                                          2   0   3
+0044 A 1:LOAD_UINT64_IMMEDIATE                               99   0   2    ; uints[0] = 2
+0045 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0046 G 0:BOX_AS_TYPE                                          3   0   5
+0047   0:EXTENSION                                            1   0   0
+0048 S 0:SET_ELEMENT                                          2   0   3
+0049 A 0:MOVE_GENERAL                                         1   2   1
+0050 S 0:LOAD_GENERAL_CONSTANT                                2   2   0
+0051 A 0:MOVE_GENERAL                                         7   1   1    ; inlined body of function 1 called at PC 51
+0052 A 0:LOAD_STRING_CONSTANT                                 0   3   0    ; strings[0] = "hello"
+0053 S 1:UNBOX_SLICE_BYTE                                   160   2   7
+0054 S 1:BOX_SLICE_BYTE                                     148   3   2
+0055 S 1:BOX_STRING                                          44   4   0
+0056 S 0:COPY_GENERAL                                         0   3   4
+0057 G 1:CALL_NATIVE                                        130   3   0    ; call native general[2] (site 3)
+0058 X 0:APPEND_STRING                                        0   0   1
+0059 S 2:MAKE_MAP                                             0  12   2
+0060   0:EXTENSION                                            2   0   1
+0061 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0062 A 1:LOAD_INT64_IMMEDIATE                                75   1  10    ; ints[1] = 10
+0063 S 1:BOX_INT64                                           40   3   0
+0064 S 1:BOX_INT64                                           40   4   1
+0065 S 0:SET_MAP                                              2   3   4
+0066 A 1:LOAD_INT64_IMMEDIATE                                75   0   2    ; ints[0] = 2
+0067 A 1:LOAD_INT64_IMMEDIATE                                75   1  20    ; ints[1] = 20
+0068 S 1:BOX_INT64                                           40   3   0
+0069 S 1:BOX_INT64                                           40   4   1
+0070 S 0:SET_MAP                                              2   3   4
+0071 A 0:MOVE_GENERAL                                         1   2   1
+0072 A 0:MOVE_GENERAL                                         2   1   0
+0073 A 0:MOVE_GENERAL                                         9   2   1    ; inlined body of function 2 called at PC 72
+0074 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0075 A 0:MOVE_GENERAL                                         2   9   0
+0076 S 1:BOX_INT64                                           40   3   0
+0077 S 1:DELETE_FROM_MAP                                     81   2   3
+0078 S 0:LOAD_GENERAL_CONSTANT                                2   3   0
+0079 A 1:LENGTH_GENERAL                                      70   0   1
+0080 G 1:CALL_NATIVE                                        130   5   0    ; call native general[2] (site 5)
+0081 X 0:APPEND_STRING                                        0   0   0
+0082 A 0:LOAD_FLOAT64_CONSTANT                                0   0   0    ; inlined body of function 3 called at PC 82
+0083 A 0:LOAD_FLOAT64_CONSTANT                                1   1   0    ; floats[1] = -2
+0084 S 0:MAKE_COMPLEX128                                      0   0   1
+0085 S 0:LOAD_GENERAL_CONSTANT                                2   4   0
+0086 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "%v %T"
+0087 G 1:CALL_NATIVE                                        130   7   0    ; call native general[2] (site 7)
+0088 X 0:APPEND_STRING                                        0   0   1
+0089 A 0:LOAD_STRING_CONSTANT                                 0   1   0    ; strings[0] = "\n"
+0090 S 0:STRINGS_JOIN                                         0   0   0
+0091 A 2:RETURN                                               0  10   1    ; 1 values

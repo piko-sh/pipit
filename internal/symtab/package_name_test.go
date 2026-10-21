@@ -121,11 +121,11 @@ func TestSymbolRegistrySynthesisesDeclaredPackageName(t *testing.T) {
 		},
 	})
 
-	yaml, err := registry.Import("gopkg.in/yaml.v3")
+	yaml, err := registry.Import(t.Context(), "gopkg.in/yaml.v3")
 	require.NoError(t, err)
 	require.Equal(t, "yaml", yaml.Name())
 
-	widgets, err := registry.Import("github.com/example/go-widgets")
+	widgets, err := registry.Import(t.Context(), "github.com/example/go-widgets")
 	require.NoError(t, err)
 	require.Equal(t, "widgetkit", widgets.Name())
 	require.NotNil(t, widgets.Scope().Lookup("Count"))

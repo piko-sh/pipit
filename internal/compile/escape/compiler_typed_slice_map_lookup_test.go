@@ -69,12 +69,12 @@ func TestClassifyTypedSliceLocalsAdmitsMapLookups(t *testing.T) {
 		{
 			name: "comma-ok define pairs the value side only",
 			body: `m := map[int][]int{}; s, ok := m[1]; _ = ok; _ = s[0]`,
-			want: map[string]isa.RegisterKind{"s": isa.RegisterSliceInt},
+			want: map[string]isa.RegisterKind{"s": isa.RegisterSliceInt64},
 		},
 		{
 			name: "byte and float elements route to their banks",
 			body: `m := map[string][]byte{}; n := map[string][]float64{}; b := m["k"]; x := n["k"]; _ = b[0]; _ = x[0]`,
-			want: map[string]isa.RegisterKind{"b": isa.RegisterSliceByte, "x": isa.RegisterSliceFloat},
+			want: map[string]isa.RegisterKind{"b": isa.RegisterSliceByte, "x": isa.RegisterSliceFloat64},
 		},
 		{
 			name: "named slice element is refused",

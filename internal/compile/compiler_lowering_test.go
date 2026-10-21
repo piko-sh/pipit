@@ -35,24 +35,24 @@ func TestArithmeticLowersToTheBankOfItsOperands(t *testing.T) {
 		source string
 		want   isa.Opcode
 	}{
-		{name: "integer addition", source: "func f(a, b int) int { return a + b }", want: isa.OpAddInt},
-		{name: "integer subtraction", source: "func f(a, b int) int { return a - b }", want: isa.OpSubInt},
-		{name: "integer multiplication", source: "func f(a, b int) int { return a * b }", want: isa.OpMulInt},
-		{name: "integer division", source: "func f(a, b int) int { return a / b }", want: isa.OpDivInt},
-		{name: "integer remainder", source: "func f(a, b int) int { return a % b }", want: isa.OpRemInt},
-		{name: "unsigned addition", source: "func f(a, b uint64) uint64 { return a + b }", want: isa.OpAddUint},
-		{name: "unsigned subtraction", source: "func f(a, b uint64) uint64 { return a - b }", want: isa.OpSubUint},
-		{name: "unsigned multiplication", source: "func f(a, b uint64) uint64 { return a * b }", want: isa.OpMulUint},
-		{name: "float addition", source: "func f(a, b float64) float64 { return a + b }", want: isa.OpAddFloat},
-		{name: "float subtraction", source: "func f(a, b float64) float64 { return a - b }", want: isa.OpSubFloat},
-		{name: "float multiplication", source: "func f(a, b float64) float64 { return a * b }", want: isa.OpMulFloat},
-		{name: "float division", source: "func f(a, b float64) float64 { return a / b }", want: isa.OpDivFloat},
-		{name: "bitwise and", source: "func f(a, b int) int { return a & b }", want: isa.OpBitAnd},
-		{name: "bitwise or", source: "func f(a, b int) int { return a | b }", want: isa.OpBitOr},
-		{name: "bitwise exclusive or", source: "func f(a, b int) int { return a ^ b }", want: isa.OpBitXor},
-		{name: "bitwise and not", source: "func f(a, b int) int { return a &^ b }", want: isa.OpBitAndNot},
-		{name: "left shift", source: "func f(a, b int) int { return a << b }", want: isa.OpShiftLeft},
-		{name: "right shift", source: "func f(a, b int) int { return a >> b }", want: isa.OpShiftRight},
+		{name: "integer addition", source: "func f(a, b int) int { return a + b }", want: isa.OpAddInt64},
+		{name: "integer subtraction", source: "func f(a, b int) int { return a - b }", want: isa.OpSubtractInt64},
+		{name: "integer multiplication", source: "func f(a, b int) int { return a * b }", want: isa.OpMultiplyInt64},
+		{name: "integer division", source: "func f(a, b int) int { return a / b }", want: isa.OpDivideInt64},
+		{name: "integer remainder", source: "func f(a, b int) int { return a % b }", want: isa.OpRemainderInt64},
+		{name: "unsigned addition", source: "func f(a, b uint64) uint64 { return a + b }", want: isa.OpAddUint64},
+		{name: "unsigned subtraction", source: "func f(a, b uint64) uint64 { return a - b }", want: isa.OpSubtractUint64},
+		{name: "unsigned multiplication", source: "func f(a, b uint64) uint64 { return a * b }", want: isa.OpMultiplyUint64},
+		{name: "float addition", source: "func f(a, b float64) float64 { return a + b }", want: isa.OpAddFloat64},
+		{name: "float subtraction", source: "func f(a, b float64) float64 { return a - b }", want: isa.OpSubtractFloat64},
+		{name: "float multiplication", source: "func f(a, b float64) float64 { return a * b }", want: isa.OpMultiplyFloat64},
+		{name: "float division", source: "func f(a, b float64) float64 { return a / b }", want: isa.OpDivideFloat64},
+		{name: "bitwise and", source: "func f(a, b int) int { return a & b }", want: isa.OpBitAndInt64},
+		{name: "bitwise or", source: "func f(a, b int) int { return a | b }", want: isa.OpBitOrInt64},
+		{name: "bitwise exclusive or", source: "func f(a, b int) int { return a ^ b }", want: isa.OpBitXorInt64},
+		{name: "bitwise and not", source: "func f(a, b int) int { return a &^ b }", want: isa.OpBitAndNotInt64},
+		{name: "left shift", source: "func f(a, b int) int { return a << b }", want: isa.OpShiftLeftInt64},
+		{name: "right shift", source: "func f(a, b int) int { return a >> b }", want: isa.OpShiftRightInt64},
 	}
 
 	for _, tt := range tests {
@@ -76,18 +76,18 @@ func TestComparisonsLowerToTheBankOfTheirOperands(t *testing.T) {
 		source string
 		want   isa.Opcode
 	}{
-		{name: "integer equality", source: "func f(a, b int) bool { return a == b }", want: isa.OpEqInt},
-		{name: "integer inequality", source: "func f(a, b int) bool { return a != b }", want: isa.OpNeInt},
-		{name: "integer less than", source: "func f(a, b int) bool { return a < b }", want: isa.OpLtInt},
-		{name: "integer less or equal", source: "func f(a, b int) bool { return a <= b }", want: isa.OpLeInt},
-		{name: "integer greater than", source: "func f(a, b int) bool { return a > b }", want: isa.OpGtInt},
-		{name: "integer greater or equal", source: "func f(a, b int) bool { return a >= b }", want: isa.OpGeInt},
-		{name: "float equality", source: "func f(a, b float64) bool { return a == b }", want: isa.OpEqFloat},
-		{name: "float less than", source: "func f(a, b float64) bool { return a < b }", want: isa.OpLtFloat},
-		{name: "string equality", source: "func f(a, b string) bool { return a == b }", want: isa.OpEqString},
-		{name: "string less than", source: "func f(a, b string) bool { return a < b }", want: isa.OpLtString},
-		{name: "unsigned equality", source: "func f(a, b uint64) bool { return a == b }", want: isa.OpEqUint},
-		{name: "unsigned less than", source: "func f(a, b uint64) bool { return a < b }", want: isa.OpLtUint},
+		{name: "integer equality", source: "func f(a, b int) bool { return a == b }", want: isa.OpEqualInt64},
+		{name: "integer inequality", source: "func f(a, b int) bool { return a != b }", want: isa.OpNotEqualInt64},
+		{name: "integer less than", source: "func f(a, b int) bool { return a < b }", want: isa.OpLessThanInt64},
+		{name: "integer less or equal", source: "func f(a, b int) bool { return a <= b }", want: isa.OpLessOrEqualInt64},
+		{name: "integer greater than", source: "func f(a, b int) bool { return a > b }", want: isa.OpGreaterThanInt64},
+		{name: "integer greater or equal", source: "func f(a, b int) bool { return a >= b }", want: isa.OpGreaterOrEqualInt64},
+		{name: "float equality", source: "func f(a, b float64) bool { return a == b }", want: isa.OpEqualFloat64},
+		{name: "float less than", source: "func f(a, b float64) bool { return a < b }", want: isa.OpLessThanFloat64},
+		{name: "string equality", source: "func f(a, b string) bool { return a == b }", want: isa.OpEqualString},
+		{name: "string less than", source: "func f(a, b string) bool { return a < b }", want: isa.OpLessThanString},
+		{name: "unsigned equality", source: "func f(a, b uint64) bool { return a == b }", want: isa.OpEqualUint64},
+		{name: "unsigned less than", source: "func f(a, b uint64) bool { return a < b }", want: isa.OpLessThanUint64},
 	}
 
 	for _, tt := range tests {
@@ -115,12 +115,12 @@ func TestParameterAndResultKindsFollowTheDeclaredTypes(t *testing.T) {
 		{
 			name:       "two integers returning an integer",
 			source:     "func f(a, b int) int { return a + b }",
-			wantParams: []isa.RegisterKind{isa.RegisterInt, isa.RegisterInt}, wantResult: isa.RegisterInt,
+			wantParams: []isa.RegisterKind{isa.RegisterInt64, isa.RegisterInt64}, wantResult: isa.RegisterInt64,
 		},
 		{
 			name:       "two floats returning a float",
 			source:     "func f(a, b float64) float64 { return a + b }",
-			wantParams: []isa.RegisterKind{isa.RegisterFloat, isa.RegisterFloat}, wantResult: isa.RegisterFloat,
+			wantParams: []isa.RegisterKind{isa.RegisterFloat64, isa.RegisterFloat64}, wantResult: isa.RegisterFloat64,
 		},
 		{
 			name:       "two strings returning a string",
@@ -130,7 +130,7 @@ func TestParameterAndResultKindsFollowTheDeclaredTypes(t *testing.T) {
 		{
 			name:       "two unsigned values returning unsigned",
 			source:     "func f(a, b uint64) uint64 { return a + b }",
-			wantParams: []isa.RegisterKind{isa.RegisterUint, isa.RegisterUint}, wantResult: isa.RegisterUint,
+			wantParams: []isa.RegisterKind{isa.RegisterUint64, isa.RegisterUint64}, wantResult: isa.RegisterUint64,
 		},
 		{
 			name:       "two booleans returning a boolean",
@@ -140,7 +140,7 @@ func TestParameterAndResultKindsFollowTheDeclaredTypes(t *testing.T) {
 		{
 			name:       "a comparison returns a boolean",
 			source:     "func f(a, b int) bool { return a < b }",
-			wantParams: []isa.RegisterKind{isa.RegisterInt, isa.RegisterInt}, wantResult: isa.RegisterBool,
+			wantParams: []isa.RegisterKind{isa.RegisterInt64, isa.RegisterInt64}, wantResult: isa.RegisterBool,
 		},
 	}
 

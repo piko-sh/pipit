@@ -50,12 +50,12 @@ type inPlaceAppendMatch struct {
 	ok bool
 }
 
-// lookupInPlaceAppendTarget resolves a local that can safely receive an in-place
-// append, excluding captured, addressed, upvalue and spilled locations.
+// lookupInPlaceAppendTarget resolves a local that can safely receive an in-place append,
+// excluding captured, addressed, upvalue and spilled locations.
 //
 // Takes lhsIdent (*ast.Ident) which is the LHS identifier from the assignment.
-// Takes until (token.Pos) which is the end of the append call; the alias analysis
-// counts the events before it.
+// Takes until (token.Pos) which is the end of the append call; the alias analysis counts
+// the events before it.
 //
 // Returns VarLocation which is the resolved location.
 // Returns bool which is true when all safety checks pass.

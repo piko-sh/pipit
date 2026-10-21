@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/symtab/typemodel"
 )
@@ -66,7 +67,7 @@ func describeInterpretedType(vm *VM, value reflect.Value) string {
 		}
 		return name
 	}
-	return typemodel.NamedScalarDisplayType(value.Type())
+	return typemodel.NamedTypeDisplayType(value.Type())
 }
 
 // checkNativeInterfaceArguments verifies that every argument bound for an interface-typed
@@ -116,4 +117,31 @@ func checkInterfaceFieldValue(vm *VM, value reflect.Value, fieldType reflect.Typ
 	}
 	return fmt.Errorf("%w: interpreted type %s does not implement %s",
 		fault.ErrUnsupportedInterfaceField, describeInterpretedType(vm, value), fieldType.String())
+}
+
+// checkNativeCallArguments refuses a native call whose arguments the native cannot use as
+// it would in compiled Go.
+//
+// Takes vm (*VM) which owns the method tables.
+// Takes site (*program.CallSite) which describes the call and caches the callee's sink.
+// Takes reflectedFunction (reflect.Value) which is the native callee.
+// Takes arguments ([]reflect.Value) which are the prepared arguments.
+//
+// Returns error which names the first refused argument, or nil.
+func checkNativeCallArguments(vm *VM, site *program.CallSite, reflectedFunction reflect.Value, arguments []reflect.Value) error {
+	if err := checkNativeInterfaceArguments(vm, reflectedFunction, arguments, site.IsEllipsisSpread); err != nil {
+		return err
+	}
+	if err := checkNativeFunctionArguments(reflectedFunction, arguments, site.IsEllipsisSpread); err != nil {
+		return err
+	}
+	cache := site.NativeParamCacheLoad()
+	if cache == nil {
+		return nil
+	}
+	sink, callee := nativeAnySink(cache.AnySink), nativeCalleeName{receiverType: nil, methodName: "", description: ""}
+	if reflectedFunction.Pointer() == methodValueCallPC {
+		sink, callee = vm.calleeAnySink(reflectedFunction)
+	}
+	return checkAnySinkArguments(vm, sink, reflectedFunction, callee, arguments, site.IsEllipsisSpread)
 }

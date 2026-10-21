@@ -25,5 +25,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	leakcheck.VerifyTestMain(m)
+	SetLicenceCountingForTest(true)
+	leakcheck.VerifyTestMain(m, auditMainOptions()...)
 }

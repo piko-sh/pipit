@@ -80,7 +80,7 @@ func TestExtensionWordAgreesWithOperandShapes(t *testing.T) {
 
 	require.Emptyf(t, disagreements,
 		"inlinePoolShapes and isa.OperandShapes disagree about which operations carry a trailing\n"+
-			"isa.OpExt word; fix the wrong table. disagreements: %v", disagreements)
+			"isa.OpExtension word; fix the wrong table. disagreements: %v", disagreements)
 }
 
 func TestEveryInlineExtensionEntryCarriesAnExtensionWord(t *testing.T) {
@@ -98,7 +98,7 @@ func TestEveryInlineExtensionEntryCarriesAnExtensionWord(t *testing.T) {
 	}
 
 	require.Emptyf(t, stale,
-		"inlinePoolShapes expects a trailing isa.OpExt word the ISA says the operation does not carry;\n"+
+		"inlinePoolShapes expects a trailing isa.OpExtension word the ISA says the operation does not carry;\n"+
 			"a callee would then be refused or mis-spliced. stale entries: %v", stale)
 }
 
@@ -172,15 +172,15 @@ func TestInlineByteSliceOperandsUseCallerRegisters(t *testing.T) {
 	t.Parallel()
 
 	ctx := allMappingContext()
-	ctx.remap[isa.RegisterInt][3] = 19
-	ctx.remap[isa.RegisterUint][1] = 23
+	ctx.remap[isa.RegisterInt64][3] = 19
+	ctx.remap[isa.RegisterUint64][1] = 23
 	ctx.remap[isa.RegisterSliceByte][2] = 29
 	ctx.remap[isa.RegisterGeneral][4] = 31
-	read := isa.NewTier1Instruction(isa.SubOpSliceGetByteDirect, 1, 2)
+	read := isa.NewTier1Instruction(isa.SubOpGetSliceByteElement, 1, 2)
 	mapped, ok := remapOperands(read, ctx)
 	require.True(t, ok)
-	require.Equal(t, isa.NewTier1Instruction(isa.SubOpSliceGetByteDirect, 23, 29), mapped)
-	ext, ok := remapExtensionOperands(isa.NewInstruction(isa.OpExt, 3, 0, 0), inlinePoolShapeFor(read), ctx)
+	require.Equal(t, isa.NewTier1Instruction(isa.SubOpGetSliceByteElement, 23, 29), mapped)
+	ext, ok := remapExtensionOperands(isa.NewInstruction(isa.OpExtension, 3, 0, 0), inlinePoolShapeFor(read), ctx)
 	require.True(t, ok)
 	require.Equal(t, uint8(19), ext.A)
 
@@ -188,7 +188,7 @@ func TestInlineByteSliceOperandsUseCallerRegisters(t *testing.T) {
 	mapped, ok = remapOperands(field, ctx)
 	require.True(t, ok)
 	require.Equal(t, isa.NewTier1Instruction(isa.SubOpGetStructFieldSliceByte, 29, 31), mapped)
-	constant, ok := remapOperands(isa.NewTier1Instruction(isa.SubOpLoadUintConstSmall, 1, 255), ctx)
+	constant, ok := remapOperands(isa.NewTier1Instruction(isa.SubOpLoadUint64Immediate, 1, 255), ctx)
 	require.True(t, ok)
-	require.Equal(t, isa.NewTier1Instruction(isa.SubOpLoadUintConstSmall, 23, 255), constant)
+	require.Equal(t, isa.NewTier1Instruction(isa.SubOpLoadUint64Immediate, 23, 255), constant)
 }

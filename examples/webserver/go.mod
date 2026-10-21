@@ -44,11 +44,12 @@ require (
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
-	piko.sh/asmgen v0.2.0 // indirect
+	piko.sh/asmgen v0.3.0 // indirect
 	piko.sh/goastutil v0.2.0 // indirect
 	piko.sh/safeconv v0.1.0 // indirect
+	piko.sh/stablepool v0.3.0 // indirect
 	piko.sh/vectormaths v0.2.0 // indirect
 	pipit.sh/pipit v0.0.0 // indirect
 	pipit.sh/pipit/sdk/extract v0.0.0 // indirect

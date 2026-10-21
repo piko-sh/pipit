@@ -23,10 +23,10 @@ import (
 	"piko.sh/asmgen/asmarm64"
 )
 
-// EmitSetStructFieldGeneralT0 implements BytecodeArchPort.
+// EmitSetStructFieldGeneral implements BytecodeArchPort.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-func (*BytecodeARM64Arch) EmitSetStructFieldGeneralT0(e *asmgen.Emitter) {
+func (*BytecodeARM64Arch) EmitSetStructFieldGeneral(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationMove64Bits, "$runtime·writeBarrier(SB), R3")
 	inst5(e, asmarm64.OperationMove8BitsUnsigned, "(R3), R3")
 	inst5(e, asmarm64.OperationCompareAndBranchIfNotZero, "R3, sf_shim")
@@ -39,7 +39,7 @@ func (*BytecodeARM64Arch) EmitSetStructFieldGeneralT0(e *asmgen.Emitter) {
 	e.Label("ss_done")
 	e.Instruction(macroDispatchNext)
 	e.Label("sf_shim")
-	inst5(e, asmarm64.OperationBranch, "·handlerPathBShimSetStructFieldGeneralT0(SB)")
+	inst5(e, asmarm64.OperationBranch, "·handlerPathBShimSetStructFieldGeneral(SB)")
 }
 
 // emitSetStructFieldGeneralPointerArmARM64 emits the plain pointer-field store arm.
@@ -72,6 +72,9 @@ func emitSetStructFieldGeneralPointerArmARM64(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationTestBitAndBranchIfZero, "$7, R3, ss_ptr_store")
 	inst5(e, asmarm64.OperationMove64Bits, "(R4), R4")
 	e.Label("ss_ptr_store")
+	inst5(e, asmarm64.OperationCompareAndBranchIfZero, "R4, ss_ptr_write")
+	emitRevokedEpochStoreRouteARM64(e, "ss_ptr_write")
+	e.Label("ss_ptr_write")
 	inst5(e, asmarm64.OperationMove64Bits, "R4, (R6)")
 	inst5(e, asmarm64.OperationBranch, "ss_done")
 	e.Label("ss_ptr_nil")
@@ -133,13 +136,67 @@ func emitSetStructFieldGeneralCycleBrokenArmARM64(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationMove64Bits, "8(R8), R4")
 	inst5(e, asmarm64.OperationTestBitAndBranchIfZero, "$7, R3, ss_iface_store")
 	inst5(e, asmarm64.OperationMove64Bits, "(R4), R4")
+	emitSetStructFieldGeneralInterfaceStoreARM64(e)
+}
+
+// emitSetStructFieldGeneralInterfaceStoreARM64 emits the cycle-broken arm's store: a nil
+// data word goes straight to the write, and a pointer through the revoked-epoch route. R9
+// holds the value's type word, R4 its data word, R3 its flag word and R6 the field's
+// address.
+//
+// Takes e (*asmgen.Emitter) which receives the emitted instructions.
+func emitSetStructFieldGeneralInterfaceStoreARM64(e *asmgen.Emitter) {
 	e.Label("ss_iface_store")
+	inst5(e, asmarm64.OperationCompareAndBranchIfZero, "R4, ss_iface_write")
+	inst5(e, asmarm64.OperationBitwiseAnd, "$0x1F, R3, R7")
+	inst5(e, asmarm64.OperationCompare, "$22, R7")
+	inst5(e, asmarm64.OperationBranchIfNotEqual, "sf_shim")
+	emitRevokedEpochStoreRouteARM64(e, "ss_iface_write")
+	e.Label("ss_iface_write")
 	inst5(e, asmarm64.OperationMove64Bits, "R9, 0(R6)")
 	inst5(e, asmarm64.OperationMove64Bits, "R4, 8(R6)")
 	inst5(e, asmarm64.OperationBranch, "ss_done")
 	e.Label("ss_iface_nil")
 	inst5(e, asmarm64.OperationMove64Bits, "ZR, R4")
-	inst5(e, asmarm64.OperationBranch, "ss_iface_store")
+	inst5(e, asmarm64.OperationBranch, "ss_iface_write")
+}
+
+// emitRevokedEpochStoreRouteARM64 emits the revoked-epoch pointer-store tests and note.
+//
+// The non-nil pointer has already been checked to have the field's own type (or any
+// pointer type, for a cycle-broken any field). The tests allow a store without the Go
+// handler and follow the Go handler's revoked-epoch route in order
+// (storePointerFieldRevokedEpoch, storePointerInAnyFieldRevokedEpoch).
+//
+// Takes e (*asmgen.Emitter) which receives the emitted instructions.
+// Takes store (string) which is the label that stores the pointer.
+func emitRevokedEpochStoreRouteARM64(e *asmgen.Emitter, store string) {
+	inst5(e, asmarm64.OperationMove64Bits, "CTX_ARENA_ROUTE_STATE(R19), R2")
+	inst5(e, asmarm64.OperationCompareAndBranchIfZero, "R2, sf_shim")
+	inst5(e, asmarm64.OperationMove8BitsUnsigned, "ROUTE_LOCAL_BLIND(R2), R7")
+	inst5(e, asmarm64.OperationCompareAndBranchIfZero, "R7, sf_shim")
+	inst5(e, asmarm64.OperationBitwiseAnd, "$FLAG_RO, R3, R7")
+	inst5(e, asmarm64.OperationCompareAndBranchIfNotZero, "R7, sf_shim")
+	inst5(e, asmarm64.OperationMove64Bits, "CTX_FRAME_POINTER(R19), R7")
+	inst5(e, asmarm64.OperationMove64Bits, "$CALLFRAME_SIZE, R3")
+	inst5(e, asmarm64.OperationMultiply, "R3, R7, R7")
+	inst5(e, asmarm64.OperationMove64Bits, "CTX_CSTACK_BASE(R19), R3")
+	inst5(e, asmarm64.OperationAdd, "R7, R3, R3")
+	inst5(e, asmarm64.OperationMove64Bits, "CF_FUNCTION(R3), R3")
+	inst5(e, asmarm64.OperationMove64Bits, "FN_FIELD_STORE_GRANTS(R3), R3")
+	inst5(e, asmarm64.OperationCompareAndBranchIfNotZero, "R3, sf_shim")
+	inst5(e, asmarm64.OperationMove64Bits, "ROUTE_NOTE_SEQ(R2), R3")
+	inst5(e, asmarm64.OperationAdd, "$1, R3, R3")
+	inst5(e, asmarm64.OperationMove64Bits, "R3, ROUTE_NOTE_SEQ(R2)")
+	inst5(e, asmarm64.OperationMove64Bits, "$·licenceCounting(SB), R3")
+	inst5(e, asmarm64.OperationMove8BitsUnsigned, "(R3), R3")
+	inst5(e, asmarm64.OperationCompareAndBranchIfZero, "R3, "+store)
+	inst5(e, asmarm64.OperationMove64Bits, "ROUTE_NOTES_UNTRACED(R2), R3")
+	inst5(e, asmarm64.OperationAdd, "$1, R3, R3")
+	inst5(e, asmarm64.OperationMove64Bits, "R3, ROUTE_NOTES_UNTRACED(R2)")
+	inst5(e, asmarm64.OperationMove64Bits, "ROUTE_NOTES_BLIND(R2), R3")
+	inst5(e, asmarm64.OperationAdd, "$1, R3, R3")
+	inst5(e, asmarm64.OperationMove64Bits, "R3, ROUTE_NOTES_BLIND(R2)")
 }
 
 // emitSetStructFieldValueSlotARM64 loads the address of general[B] into R8. R3 and R4 are

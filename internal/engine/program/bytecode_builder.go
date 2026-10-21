@@ -372,8 +372,8 @@ func EmitWide(compiledFunction *CompiledFunction, op isa.Opcode, a uint8, wide u
 	return Emit(compiledFunction, op, a, lo, hi)
 }
 
-// EmitExtension emits an isa.OpExt instruction with a 16-bit payload in A (low byte) and
-// B (high byte), plus an extra byte in C.
+// EmitExtension emits an isa.OpExtension instruction with a 16-bit payload in A (low
+// byte) and B (high byte), plus an extra byte in C.
 //
 // Takes compiledFunction (*CompiledFunction) which receives the instruction.
 // Takes wide (uint16) which is the 16-bit payload.
@@ -382,7 +382,7 @@ func EmitWide(compiledFunction *CompiledFunction, op isa.Opcode, a uint8, wide u
 // Returns the instruction offset in the body.
 func EmitExtension(compiledFunction *CompiledFunction, wide uint16, c uint8) int {
 	lo, hi := isa.SplitWide(wide)
-	return Emit(compiledFunction, isa.OpExt, lo, hi, c)
+	return Emit(compiledFunction, isa.OpExtension, lo, hi, c)
 }
 
 // EmitJump emits a jump instruction whose offset is patched later by PatchJump.
@@ -491,7 +491,7 @@ func CurrentPC(compiledFunction *CompiledFunction) int {
 }
 
 // MayCreateSharedCells reports whether the body contains an isa.OpMakeClosure. When
-// false, every SyncClosureUpvalues in the function is provably a no-op.
+// false, every SynchroniseClosureCapturedVariables in the function is provably a no-op.
 //
 // Takes compiledFunction (*CompiledFunction) whose body is scanned.
 //

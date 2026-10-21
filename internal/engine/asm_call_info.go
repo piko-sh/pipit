@@ -24,17 +24,15 @@ import (
 
 var (
 	// maxASMArgsByKind maps each register kind to its maximum ASM argument count.
-	// isa.RegisterComplex and the typed-slice banks other than isa.RegisterSliceByte are
-	// unsupported by the ASM fast path.
 	maxASMArgsByKind = [isa.NumRegisterKinds]int{
-		isa.RegisterInt:       maxASMIntArgs,
-		isa.RegisterFloat:     maxASMFloatArgs,
-		isa.RegisterString:    maxASMStringArgs,
-		isa.RegisterGeneral:   maxASMGeneralArgs,
-		isa.RegisterBool:      maxASMBoolArgs,
-		isa.RegisterUint:      maxASMUintArgs,
-		isa.RegisterComplex:   0,
-		isa.RegisterSliceByte: maxASMSliceByteArgs,
+		isa.RegisterInt64:      maxASMIntArgs,
+		isa.RegisterFloat64:    maxASMFloatArgs,
+		isa.RegisterString:     maxASMStringArgs,
+		isa.RegisterGeneral:    maxASMGeneralArgs,
+		isa.RegisterBool:       maxASMBoolArgs,
+		isa.RegisterUint64:     maxASMUintArgs,
+		isa.RegisterComplex128: 0,
+		isa.RegisterSliceByte:  maxASMSliceByteArgs,
 	}
 )
 
@@ -125,8 +123,7 @@ type AsmCallInfo struct {
 	uintArgumentSources [8]int64
 
 	// calleeStringConstants is a pointer to the callee function's string constant table
-	// (16-byte Go string headers). Loaded into the dispatch context by the inline ASM call
-	// handler so the callee's opLoadStringConst handler reads the right table.
+	// (16-byte Go string headers).
 	calleeStringConstants uintptr
 
 	// calleeBoolConstants is a pointer to the callee function's bool constant table (1-byte

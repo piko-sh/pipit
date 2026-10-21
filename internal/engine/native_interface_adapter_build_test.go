@@ -39,7 +39,7 @@ func stringReturningMethod(t *testing.T, name, result string) *program.CompiledF
 	constant := builder.addStringConst(result)
 	builder.returnString()
 	builder.parameterKinds = []isa.RegisterKind{isa.RegisterGeneral}
-	builder.Emit(isa.OpLoadStringConst, 0, constant, 0)
+	builder.Emit(isa.OpLoadStringConstant, 0, constant, 0)
 	builder.body = append(builder.body, tier2Return(1))
 
 	method := builder.build()
@@ -295,9 +295,9 @@ func countingMethod(t *testing.T, count int64) *program.CompiledFunction {
 	builder := newBytecodeBuilder()
 	builder.numRegisters = wideRegCounts(4)
 	constant := builder.addIntConst(count)
-	builder.resultKinds = []isa.RegisterKind{isa.RegisterInt, isa.RegisterGeneral}
+	builder.resultKinds = []isa.RegisterKind{isa.RegisterInt64, isa.RegisterGeneral}
 	builder.parameterKinds = []isa.RegisterKind{isa.RegisterGeneral, isa.RegisterGeneral}
-	builder.Emit(isa.OpLoadIntConst, 0, constant, 0)
+	builder.Emit(isa.OpLoadInt64Constant, 0, constant, 0)
 	builder.body = append(builder.body, isa.NewTier2Instruction(isa.SubOpTier2LoadNil, 0))
 	builder.body = append(builder.body, tier2Return(2))
 

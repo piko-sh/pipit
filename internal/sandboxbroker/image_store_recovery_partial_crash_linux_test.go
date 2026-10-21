@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxbroker
 
@@ -52,7 +52,7 @@ func TestImageStoreRecoveryPartialDeletionCrash(t *testing.T) {
 			defer store.closeHandles()
 			_, _, err = store.AcquireDirectory()
 			require.Error(t, err, "partial deletion admitted new images before cleanup")
-			require.NoError(t, store.CleanupOrphans(context.Background()), "partial deletion recovery succeeds")
+			require.NoError(t, store.CleanupOrphans(t.Context()), "partial deletion recovery succeeds")
 			require.NoError(t, store.Close())
 			entries, err := os.ReadDir(directory)
 			require.NoError(t, err, "partial deletion recovery left orphan entries")
@@ -65,7 +65,7 @@ func crashPartialImageCleanup(t *testing.T, directory string, identity LinuxImag
 	t.Helper()
 	encoded, err := json.Marshal(identity)
 	require.NoError(t, err)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	command := sandboxtest.Command(ctx, "TestImageStoreRecoveryPartialDeletionCrash", "PIPIT_TEST_IMAGE_PARTIAL_CRASH="+string(encoded),
 		"PIPIT_TEST_IMAGE_PARTIAL_DIRECTORY="+directory, "PIPIT_TEST_IMAGE_PARTIAL_PHASE="+phase)
@@ -96,7 +96,7 @@ func partialImageCleanupChild(t *testing.T, encoded string) {
 	store, err := ReopenLinuxImageStore(os.Getenv("PIPIT_TEST_IMAGE_PARTIAL_DIRECTORY"), identity, nil, nil)
 	require.NoError(t, err)
 	defer store.closeHandles()
-	plan, err := store.orphanPlan(context.Background())
+	plan, err := store.orphanPlan(t.Context())
 	require.NoError(t, err, "partial cleanup lacks a complete original plan")
 	require.Len(t, plan, 2)
 	defer func() {

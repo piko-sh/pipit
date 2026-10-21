@@ -85,7 +85,10 @@ func validateFunctionExpansion(ctx context.Context, fileSet *schemagen.CompiledF
 		vectors: maximumDecodedVectorElements, strings: maximumDecodedStringBytes,
 	}
 	if err := remaining.chargeVectors(payloadLen, fileSet.EntrypointsLength(), fileSet.InitialisationFunctionsLength(),
-		fileSet.PackageVariablesLength()); err != nil {
+		fileSet.PackageVariablesLength(), fileSet.NamedInterfacesLength()); err != nil {
+		return err
+	}
+	if err := validateNamedInterfaceVectors(ctx, fileSet, payloadLen, &remaining); err != nil {
 		return err
 	}
 	if err := validateFileStrings(ctx, fileSet, &remaining); err != nil {

@@ -42,7 +42,7 @@ func TestWorkerRejectsExecutionGrantChanges(t *testing.T) {
 		fixtureMessage(t, sandboxwire.Close, 0, struct{}{}),
 	} {
 		stream := sourceFixture(t, config, source, grant)
-		require.ErrorIs(t, Serve(stream), sandboxwire.ErrProtocol, "invalid execution grant accepted")
+		require.ErrorIs(t, Serve(t.Context(), stream), sandboxwire.ErrProtocol, "invalid execution grant accepted")
 		require.False(t, bytes.Contains(stream.output.Bytes(), []byte("executed")), "source ran before a valid execution grant")
 	}
 }

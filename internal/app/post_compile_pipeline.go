@@ -42,12 +42,20 @@ func (s *Service) runPostCompilationChecks(ctx context.Context, root *program.Co
 			return fmt.Errorf(wrapFmt, err)
 		}
 	}
-	for _, step := range compile.ProgramPipeline(s.optimisations()) {
+	for _, step := range compile.ProgramPipeline(s.optimisationsFor(ctx)) {
 		if err := step.Run(ctx, root); err != nil {
 			return fmt.Errorf(wrapFmt, err)
 		}
 	}
 	return runBytecodeVerifier(ctx, s, root, wrapFmt)
+}
+
+// licenceCheckerStrict reports whether a licence checker defect fails the service's
+// compiles.
+//
+// Returns bool which is false for a service without configuration.
+func (s *Service) licenceCheckerStrict() bool {
+	return s != nil && s.config != nil && s.config.licenceCheckerStrict
 }
 
 // bytecodeVerificationEnabled reports whether the verifier should run for the given
@@ -81,6 +89,9 @@ func bytecodeVerificationEnabled(s *Service) bool {
 // otherwise.
 func runBytecodeVerifier(ctx context.Context, service *Service, root *program.CompiledFunction, wrapFmt string) error {
 	if !bytecodeVerificationEnabled(service) {
+		if err := runLicenceChecker(ctx, root, service.licenceCheckerStrict()); err != nil {
+			return fmt.Errorf(wrapFmt, err)
+		}
 		return nil
 	}
 	report, err := verify.VerifyBytecode(ctx, root)
@@ -88,6 +99,9 @@ func runBytecodeVerifier(ctx context.Context, service *Service, root *program.Co
 		return fmt.Errorf(wrapFmt, err)
 	}
 	if !report.HasErrors() {
+		if err := runLicenceChecker(ctx, root, service.licenceCheckerStrict()); err != nil {
+			return fmt.Errorf(wrapFmt, err)
+		}
 		return nil
 	}
 	return fmt.Errorf(wrapFmt, fmt.Errorf("%w:\n%w", fault.ErrBytecodeVerification, report.Err()))

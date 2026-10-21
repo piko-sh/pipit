@@ -19,6 +19,8 @@
 package engine
 
 import (
+	"context"
+
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/fault"
 )
@@ -140,10 +142,10 @@ func (vm *VM) debugCheck(frame *CallFrame) program.DebugAction {
 	}
 	if pc < len(frame.Function.Body) {
 		if breakpoint, ok := s.sourceBreakpointLocked(thread, frame.Function, pc, vm.FramePointer); ok {
-			return thread.fireBreakpoint(breakpoint, frame.Function, pc, program.DebugEventBreakpoint)
+			return thread.fireBreakpoint(vm.ctx, breakpoint, frame.Function, pc, program.DebugEventBreakpoint)
 		}
 		if breakpoint, ok := s.functionBreakpointLocked(frame.Function, pc); ok {
-			return thread.fireBreakpoint(breakpoint, frame.Function, pc, program.DebugEventFunctionBreakpoint)
+			return thread.fireBreakpoint(vm.ctx, breakpoint, frame.Function, pc, program.DebugEventFunctionBreakpoint)
 		}
 	}
 	if s.stepShouldPauseLocked(thread, frame.Function, pc, vm.FramePointer) {
@@ -236,8 +238,7 @@ func (s *DebugSession) functionBreakpointLocked(function *program.CompiledFuncti
 }
 
 // fireBreakpoint evaluates a breakpoint's condition and hit condition and pauses when
-// they hold. The mutex must be held on entry; it is released around the condition
-// evaluation and not held on return.
+// they hold.
 //
 // Takes breakpoint (*DebugBreakpoint) which fired.
 // Takes function (*program.CompiledFunction) which owns the instruction.
@@ -245,7 +246,10 @@ func (s *DebugSession) functionBreakpointLocked(function *program.CompiledFuncti
 // Takes event (program.DebugEvent) which is the pause reason.
 //
 // Returns program.DebugAction which is Stop when the debugger ended the execution.
-func (t *DebugThread) fireBreakpoint(breakpoint *DebugBreakpoint, function *program.CompiledFunction, pc int, event program.DebugEvent) program.DebugAction {
+//
+// Not safe for concurrent use. The caller must hold the mutex on entry. It is released
+// around the condition evaluation and not held on return.
+func (t *DebugThread) fireBreakpoint(ctx context.Context, breakpoint *DebugBreakpoint, function *program.CompiledFunction, pc int, event program.DebugEvent) program.DebugAction {
 	s := t.session
 	message := ""
 	if breakpoint.Condition != "" {
@@ -253,7 +257,7 @@ func (t *DebugThread) fireBreakpoint(breakpoint *DebugBreakpoint, function *prog
 		t.pausedPC = pc
 		t.pausedPCExact = true
 		s.mu.Unlock()
-		holds, err := evaluateBreakpointCondition(evaluator, t, breakpoint)
+		holds, err := evaluateBreakpointCondition(ctx, evaluator, t, breakpoint)
 		s.mu.Lock()
 		if err != nil {
 			message = err.Error()
@@ -284,11 +288,11 @@ func (t *DebugThread) fireBreakpoint(breakpoint *DebugBreakpoint, function *prog
 //
 // Returns bool which is the condition's value.
 // Returns error when the condition could not be evaluated.
-func evaluateBreakpointCondition(evaluator debugConditionEvaluator, thread *DebugThread, breakpoint *DebugBreakpoint) (bool, error) {
+func evaluateBreakpointCondition(ctx context.Context, evaluator debugConditionEvaluator, thread *DebugThread, breakpoint *DebugBreakpoint) (bool, error) {
 	if evaluator == nil {
 		return false, fault.ErrNoProgramBinding
 	}
-	return evaluator(thread, breakpoint)
+	return evaluator(ctx, thread, breakpoint)
 }
 
 // debugPauseAt describes a pause of this VM at an instruction.
@@ -365,7 +369,7 @@ func (vm *VM) debugFrames(topPC int) []DebugFrame {
 		if record, ok := vm.panicDeferRecord(index); ok {
 			frames = append(frames, DebugFrame{Function: nil, FunctionName: pseudoFrameGopanic, File: "", PC: 0, Line: 0, Column: 0, callStackIndex: -1})
 			for _, unwound := range record.unwound {
-				frames = append(frames, debugFrameFor(unwound.function, unwound.pc, -1))
+				frames = append(frames, debugFrameFor(unwound.function, unwound.programCounter, -1))
 			}
 		}
 	}

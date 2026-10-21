@@ -16,6 +16,6 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
-// Package sliceshare identifies expressions that copy a slice header without changing
-// its backing, for append lowering and escape analysis.
+// Package sliceshare identifies expressions that copy a slice header without changing its
+// backing, for append lowering and escape analysis.
 package sliceshare

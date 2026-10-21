@@ -29,7 +29,7 @@ import (
 // dispatch table.
 type AsmHandlerJumpTableEntry struct {
 	// Name is the Plan-9 ASM symbol name of the handler (without the leading middle dot).
-	// Example: "handlerAddInt".
+	// For example, "handlerAddInt64".
 	Name string
 
 	// TableSymbol identifies which dispatch table the handler is installed into, with an
@@ -95,17 +95,13 @@ type BytecodeArchitecturePort interface {
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	Return(emitter *asmgen.Emitter)
 
-	// EmitTruncateNarrow emits the body of handlerTruncateNarrow.
+	// EmitTruncateToWidth emits the body of handlerTruncateToWidth.
 	//
-	// This is the tier-0 ASM lift for opTruncateNarrow. The handler narrows the register
-	// slot at index A to B bits, sign-extending on the int bank (a shift-left then
-	// arithmetic shift-right by 64-B) and zero-masking on the uint bank (AND against
-	// (1<<B)-1). Operand bytes are A = register index, B = bit width (8/16/32), C =
-	// registerKind (0=int, 5=uint). Both branches terminate with DISPATCH_NEXT so the
-	// handler stays in the ASM dispatch loop.
+	// Operand bytes are A = register index, B = bit width (8/16/32), C = registerKind
+	// (0=int, 5=uint).
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	EmitTruncateNarrow(emitter *asmgen.Emitter)
+	EmitTruncateToWidth(emitter *asmgen.Emitter)
 
 	// EmitJumpTableBootstrap emits the body of a leaf function that copies handler addresses
 	// from one or more contiguous source jumpTables into a single destination jumpTable.
@@ -334,8 +330,7 @@ type BytecodeArchitecturePort interface {
 	//
 	// Direction is LEFT or RIGHT. The right shift is LOGICAL (SHRQ on amd64, LSR on arm64),
 	// preserving zero in the vacated high bits - distinct from IntegerShift's RIGHT which
-	// uses arithmetic shift (SARQ / ASR) to preserve sign. Both value and amount operands
-	// are read from the uint bank, matching opShiftLeftUint / opShiftRightUint semantics.
+	// uses arithmetic shift (SARQ / ASR) to preserve sign.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	//
@@ -390,14 +385,14 @@ type BytecodeArchitecturePort interface {
 	IntegerInPlace(emitter *asmgen.Emitter, operation string, indexRegister string)
 
 	// IntegerNarrow32 sign-extends the low 32 bits of an int bank slot back into the slot,
-	// which is what a 32-bit OpTruncateNarrow of the int bank does.
+	// which is what a 32-bit OpTruncateToWidth of the int bank does.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes indexRegister (string) which is the bank slot to narrow in place.
 	IntegerNarrow32(emitter *asmgen.Emitter, indexRegister string)
 
 	// UintNarrow32 zero-extends the low 32 bits of a uint bank slot back into the slot,
-	// which is what a 32-bit OpTruncateNarrow of the uint bank does.
+	// which is what a 32-bit OpTruncateToWidth of the uint bank does.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes indexRegister (string) which is the bank slot to narrow in place.
@@ -405,11 +400,6 @@ type BytecodeArchitecturePort interface {
 	UintNarrow32(emitter *asmgen.Emitter, indexRegister, baseScratch string)
 
 	// UintInPlace emits an in-place uint64 operation on the uint register bank.
-	//
-	// Covers INC and DEC. Mirrors IntegerInPlace but addresses the uint bank via
-	// CTX_UINTS_BASE (which is not pinned in a register, unlike int's R8 / float's R9), so
-	// the implementation needs a scratch register to hold the loaded base. Used by tier-2
-	// handlerSubOpTier2IncUint / handlerSubOpTier2DecUint.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes operation (string) which is the in-place operation name (INC, DEC).
@@ -459,6 +449,18 @@ type BytecodeArchitecturePort interface {
 	// Takes rightIndex (string) which is the right operand bank slot.
 	// Takes label (string) which is the branch target label.
 	IntegerCompareAndBranch(emitter *asmgen.Emitter, condition string, leftIndex, rightIndex, label string)
+
+	// UintCompareAndBranch emits an equality comparison and conditional branch for uint
+	// registers.
+	//
+	// Only "EQ" and "NE" are accepted.
+	//
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	// Takes condition (string) which is the condition, EQ or NE.
+	// Takes leftIndex (string) which is the register holding the left operand's index.
+	// Takes rightIndex (string) which is the register holding the right operand's index.
+	// Takes label (string) which is the branch target.
+	UintCompareAndBranch(emitter *asmgen.Emitter, condition string, leftIndex, rightIndex, label string)
 
 	// IntegerCompareConstantAndBranch emits instructions to compare an integer register
 	// value against a constant pool entry and branch if the condition holds.
@@ -683,8 +685,6 @@ type BytecodeArchitecturePort interface {
 	// EmitTypedSliceFloatGet with operand B being the destination slice (not source) and the
 	// extension word's A field being the source value register (not the index register).
 	//
-	// Used by handlerSubOpSliceSetFloatDirect.
-	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
@@ -692,11 +692,6 @@ type BytecodeArchitecturePort interface {
 
 	// EmitTypedSliceUintGet emits the entire body of a tier-1 umbrella sub-op of the form
 	// uints[B] = slicesUint[C][ints[ext.A]] with bounds checking.
-	//
-	// Element size is 8 bytes; the destination uint bank base is context-loaded from
-	// CTX_UINTS_BASE.
-	//
-	// Used by handlerSubOpSliceGetUintDirect.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
@@ -706,10 +701,6 @@ type BytecodeArchitecturePort interface {
 	// EmitTypedSliceUintSet emits the entire body of a tier-1 umbrella sub-op of the form
 	// slicesUint[B][ints[C]] = uints[ext.A] with bounds checking.
 	//
-	// Element size 8 bytes; the source uint bank base is context-loaded from CTX_UINTS_BASE.
-	//
-	// Used by handlerSubOpSliceSetUintDirect.
-	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
@@ -717,11 +708,6 @@ type BytecodeArchitecturePort interface {
 
 	// EmitTypedSliceBoolGet emits the entire body of a tier-1 umbrella sub-op of the form
 	// bools[B] = slicesBool[C][ints[ext.A]] with bounds checking.
-	//
-	// Element size is 1 byte; the destination bool bank base is context-loaded from
-	// CTX_BOOLS_BASE.
-	//
-	// Used by handlerSubOpSliceGetBoolDirect.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
@@ -731,22 +717,12 @@ type BytecodeArchitecturePort interface {
 	// EmitTypedSliceBoolSet emits the entire body of a tier-1 umbrella sub-op of the form
 	// slicesBool[B][ints[C]] = bools[ext.A] with bounds checking.
 	//
-	// Element size 1 byte; the source bool bank base is context-loaded from CTX_BOOLS_BASE.
-	//
-	// Used by handlerSubOpSliceSetBoolDirect.
-	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceBoolSet(emitter *asmgen.Emitter, contextOffset string)
 
 	// EmitTypedSliceByteGet emits the body of uints[B] = slicesByte[C][ints[ext.A]].
-	//
-	// Tier-1 umbrella sub-op with bounds checking. Element size is 1 byte; the destination
-	// uint bank base is context-loaded from CTX_UINTS_BASE. Byte values are zero-extended to
-	// uint64 matching the typed-slice routing convention.
-	//
-	// Used by handlerSubOpSliceGetByteDirect.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	//
@@ -756,52 +732,35 @@ type BytecodeArchitecturePort interface {
 
 	// EmitTypedSliceByteSet emits the body of slicesByte[B][ints[C]] = byte(uints[ext.A]).
 	//
-	// Tier-1 umbrella sub-op with bounds checking. Element size 1 byte; the source uint bank
-	// base is context-loaded from CTX_UINTS_BASE. Only the low byte of the uint64 source is
-	// stored.
-	//
-	// Used by handlerSubOpSliceSetByteDirect.
-	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceByteSet(emitter *asmgen.Emitter, contextOffset string)
 
-	// EmitTypedSliceByteSlice emits bounds-checked two-index byte slicing, falling back
-	// to Go for three-index slices or failed checks.
+	// EmitSliceSliceByte emits bounds-checked two-index byte slicing, falling back to Go for
+	// three-index slices or failed checks.
 	//
 	// Missing bounds default to zero and the source length. Data must stay within the
 	// backing array when the new capacity is zero.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	// Takes contextOffset (string) which is the dispatch context byte offset of the
-	// slice bank.
-	EmitTypedSliceByteSlice(emitter *asmgen.Emitter, contextOffset string)
+	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
+	// bank.
+	EmitSliceSliceByte(emitter *asmgen.Emitter, contextOffset string)
 
-	// EmitTypedSliceMove emits the body of subOpMoveSlice<Kind>.
-	//
-	// Implements slicesX[B] = slicesX[C].
-	//
-	// A same-bank typed-slice header move. Reads the 24-byte source slice header and writes
-	// it to the destination slot. No bounds check; pure register-to-register move. The
-	// contextOffset selects which typed-slice bank (slicesInt/Float/String/Bool/Uint/Byte)
-	// participates; all six banks share identical layout (24-byte slice header per slot) so
-	// one primitive parameterised on the bank base offset suffices.
-	//
-	// Used by handlerSubOpMoveSlice<Kind> for all six typed-slice banks.
+	// EmitTypedSliceMove emits the body of isa.SubOpMoveSlice<Kind>.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceMove(emitter *asmgen.Emitter, contextOffset string)
 
-	// EmitTypedSliceSliceSlice emits bounds-checked two-index slicing with a
-	// configurable element stride, following EmitTypedSliceByteSlice's bounds and
-	// fallback rules.
+	// EmitTypedSliceSliceSlice emits bounds-checked two-index slicing with a configurable
+	// element stride, following EmitSliceSliceByte's bounds and fallback rules.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	// Takes contextOffset (string) which is the dispatch context byte offset of the
-	// slice bank.
+	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
+	// bank.
 	// Takes elementSizeShift (uint8) which is the log2 element stride in bytes.
 	EmitTypedSliceSliceSlice(emitter *asmgen.Emitter, contextOffset string, elementSizeShift uint8)
 
@@ -821,35 +780,20 @@ type BytecodeArchitecturePort interface {
 	// bank.
 	EmitTypedRangeNextByte(emitter *asmgen.Emitter, contextOffset string)
 
-	// EmitEqUintConstJumpFalse emits the fused compare-and-branch for
-	// isa.SubOpEqUintConstJumpFalse, comparing uints[B] with the immediate byte in operand C
-	// and jumping on mismatch.
+	// EmitEqualUint64ImmediateThenJumpIfFalse emits the fused compare-and-branch for
+	// isa.SubOpEqualUint64ImmediateThenJumpIfFalse, comparing uints[B] with the immediate
+	// byte in operand C and jumping on mismatch.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	EmitEqUintConstJumpFalse(emitter *asmgen.Emitter)
+	EmitEqualUint64ImmediateThenJumpIfFalse(emitter *asmgen.Emitter)
 
-	// EmitRangeCheckUintJumpFalse emits the body of subOpRangeCheckUintJumpFalse.
-	//
-	// The fused range-check super-instruction. Reads uints[B] (the value), peeks the first
-	// extension word for (loConst, hiConst), and on out-of-range applies the 16-bit signed
-	// jump offset packed into the second extension word. The fused op also covers the 5
-	// trailing opNops that occupy the remaining bytecode slots, so on either path PC
-	// advances past all 7 trailing word slots before dispatching.
-	//
-	// Pure ASM; no bounds_fail path.
-	//
-	// Used by handlerSubOpRangeCheckUintJumpFalse.
+	// EmitInRangeUint64ThenJumpIfFalse emits the body of
+	// isa.SubOpTier2InRangeUint64ThenJumpIfFalse.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	EmitRangeCheckUintJumpFalse(emitter *asmgen.Emitter)
+	EmitInRangeUint64ThenJumpIfFalse(emitter *asmgen.Emitter)
 
 	// EmitTypedSliceStringGet emits the body of strings[B] = slicesString[C][ints[ext.A]].
-	//
-	// Tier-1 umbrella sub-op with bounds checking. Element size is 16 bytes (Go string
-	// header: data pointer + length); the destination string bank base is context-loaded
-	// from CTX_STRINGS_BASE. The 16-byte copy is emitted as two 8-byte loads/stores.
-	//
-	// Used by handlerSubOpSliceGetStringDirect.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
@@ -859,69 +803,44 @@ type BytecodeArchitecturePort interface {
 	// EmitTypedSliceFloatGet emits the entire body of a tier-1 umbrella sub-op of the form
 	// floats[B] = slicesFloat[C][ints[ext.A]] with bounds checking.
 	//
-	// The sequence extracts B (destination float bank index) and C (source slicesFloat slot
-	// index) from the current instruction word, loads the slice header at slicesFloat[C]
-	// from the typed-slice bank at contextOffset, peeks the next instruction word to read
-	// its A field as the int-bank register holding the element index (without advancing PC),
-	// loads the element index from ints[ext.A], performs an unsigned compare of index
-	// against length, and on failure branches to *pathBFallback so the Go-side handler can
-	// produce the proper error message. On success it loads the float64 element, stores it
-	// to floats[B], advances PC past the consumed extension word, and tail-calls
-	// DISPATCH_NEXT.
-	//
-	// Used by handlerSubOpSliceGetFloatDirect.
-	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
 	EmitTypedSliceFloatGet(emitter *asmgen.Emitter, contextOffset string)
 
-	// EmitTypedSliceIntGetDirect emits the entire body of the tier-0 opcode ints[A] =
+	// EmitGetSliceInt64Element emits the entire body of the tier-0 opcode ints[A] =
 	// slicesInt[B][ints[C]] with bounds checking.
 	//
-	// Unlike the tier-1 umbrella forms there is no extension word: all three operands come
-	// from the current instruction word, so PC is not advanced beyond the normal dispatch
-	// increment. An out-of-range index branches to *pathBFallback so the Go handler re-runs
-	// the op and raises the proper index-out-of-range panic.
-	//
-	// Used by handlerSliceGetIntDirect.
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
+	// bank.
+	EmitGetSliceInt64Element(emitter *asmgen.Emitter, contextOffset string)
+
+	// EmitSetSliceInt64Element emits the entire body of the tier-0 opcode
+	// slicesInt[A][ints[B]] = ints[C] with bounds checking. See EmitGetSliceInt64Element for
+	// the tier-0 conventions.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
-	EmitTypedSliceIntGetDirect(emitter *asmgen.Emitter, contextOffset string)
+	EmitSetSliceInt64Element(emitter *asmgen.Emitter, contextOffset string)
 
-	// EmitTypedSliceIntSetDirect emits the entire body of the tier-0 opcode
-	// slicesInt[A][ints[B]] = ints[C] with bounds checking. See EmitTypedSliceIntGetDirect
-	// for the tier-0 conventions.
-	//
-	// Used by handlerSliceSetIntDirect.
-	//
-	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
-	// bank.
-	EmitTypedSliceIntSetDirect(emitter *asmgen.Emitter, contextOffset string)
-
-	// EmitTypedSliceIntGetDirectUnchecked emits the tier-0 opcode ints[A] =
-	// slicesInt[B][ints[C]] without the bounds check: the compiler's BCE pass only emits the
+	// EmitGetSliceInt64ElementUnchecked emits the tier-0 opcode ints[A] =
+	// slicesInt[B][ints[C]] without the bounds check. The compiler's BCE pass only emits the
 	// unchecked form when a dominating comparison proves the index in range.
 	//
-	// Used by handlerSliceGetIntDirectUnchecked.
-	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
-	EmitTypedSliceIntGetDirectUnchecked(emitter *asmgen.Emitter, contextOffset string)
+	EmitGetSliceInt64ElementUnchecked(emitter *asmgen.Emitter, contextOffset string)
 
-	// EmitTypedSliceIntSetDirectUnchecked emits the tier-0 opcode slicesInt[A][ints[B]] =
-	// ints[C] without the bounds check. See EmitTypedSliceIntGetDirectUnchecked.
-	//
-	// Used by handlerSliceSetIntDirectUnchecked.
+	// EmitSetSliceInt64ElementUnchecked emits the tier-0 opcode slicesInt[A][ints[B]] =
+	// ints[C] without the bounds check. See EmitGetSliceInt64ElementUnchecked.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
 	// bank.
-	EmitTypedSliceIntSetDirectUnchecked(emitter *asmgen.Emitter, contextOffset string)
+	EmitSetSliceInt64ElementUnchecked(emitter *asmgen.Emitter, contextOffset string)
 
 	// EmitSliceIndexStructFieldScalar emits the tier-0 body for the fused slice[i].field
 	// scalar readers (float and int families), with the element-type identity check and shim
@@ -934,46 +853,65 @@ type BytecodeArchitecturePort interface {
 	// Takes shimSymbol (string) which is the Go shim symbol for unsupported shapes.
 	EmitSliceIndexStructFieldScalar(emitter *asmgen.Emitter, kindA, kindB string, destIsFloat bool, shimSymbol string)
 
-	// EmitDerefSliceIntAccess emits the tier-0 body for opDerefSliceGetInt (isSet=false) or
-	// opDerefSliceSetInt with a live bounds check, falling back to the Go shim for
-	// unsupported shapes and range panics.
+	// EmitSliceIndexStructFieldScalarStore emits the tier-0 body for fused scalar stores to
+	// slice[i].field.
+	//
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	// Takes kindA (string) which is the first accepted layout kind.
+	// Takes kindB (string) which is the second accepted layout kind, or empty.
+	// Takes sourceIsFloat (bool) which indicates whether the source bank is float.
+	// Takes shimSymbol (string) which is the Go shim symbol for unsupported shapes.
+	EmitSliceIndexStructFieldScalarStore(emitter *asmgen.Emitter, kindA, kindB string, sourceIsFloat bool, shimSymbol string)
+
+	// EmitElementInt64ViaPointerAccess emits the tier-0 body for opGetElementInt64ViaPointer
+	// (isSet=false) or opSetElementInt64ViaPointer with a live bounds check, falling back to
+	// the Go shim for unsupported shapes and range panics.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes isSet (bool) which selects set mode (true) or get mode (false).
 	// Takes shimSymbol (string) which is the Go shim symbol for fallback.
-	EmitDerefSliceIntAccess(emitter *asmgen.Emitter, isSet bool, shimSymbol string)
+	EmitElementInt64ViaPointerAccess(emitter *asmgen.Emitter, isSet bool, shimSymbol string)
 
-	// EmitGetStructFieldGeneralPointerT0 emits the tier-0 body for opGetStructFieldGeneral
+	// EmitGetStructFieldGeneralPointer emits the tier-0 body for opGetStructFieldGeneral
 	// restricted to plain pointer-kind fields, constructing the typed pointer destination
 	// value under the write-barrier guard.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	EmitGetStructFieldGeneralPointerT0(emitter *asmgen.Emitter)
+	EmitGetStructFieldGeneralPointer(emitter *asmgen.Emitter)
 
-	// EmitSetStructFieldGeneralT0 emits the tier-0 body for opSetStructFieldGeneral covering
+	// EmitSetStructFieldGeneral emits the tier-0 body for opSetStructFieldGeneral covering
 	// plain pointer-kind fields and cycle-broken `any` fields, storing the value's pointer
 	// words under the write-barrier guard.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	EmitSetStructFieldGeneralT0(emitter *asmgen.Emitter)
+	EmitSetStructFieldGeneral(emitter *asmgen.Emitter)
 
-	// EmitGetStructFieldRawPointerT0 emits the tier-0 body for opGetStructFieldRawPointerT0,
+	// EmitGetStructFieldRawPointer emits the tier-0 body for opGetStructFieldRawPointer,
 	// re-wrapping a cycle-broken eface field as a direct pointer-kind value under the
 	// write-barrier guard.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	EmitGetStructFieldRawPointerT0(emitter *asmgen.Emitter)
+	EmitGetStructFieldRawPointer(emitter *asmgen.Emitter)
 
-	// EmitEqGeneral emits the tier-0 body for opEqGeneral, testing fast general-equality
-	// arms (both invalid, differing type words, pointer-identity kinds) and storing 0/1 into
-	// ints[A], with interface operands and other kinds falling back to the Go shim.
+	// EmitLengthGeneral emits the tier-1 body for SubOpLengthGeneral.
+	//
+	// A valid slice value has its length read from the slice header it points at and stored
+	// into ints[B]. An invalid value, and every other kind, falls back to the Go shim.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	EmitEqGeneral(emitter *asmgen.Emitter)
+	EmitLengthGeneral(emitter *asmgen.Emitter)
 
-	// EmitWriteBarrierGuard runs body only while the garbage collector's write barrier
-	// is off, otherwise exiting through pathBFallback. The guard preserves registers
-	// required at handler entry.
+	// EmitEqualGeneral emits the tier-0 body for opEqualGeneral, testing fast
+	// general-equality arms (both invalid, differing type words, pointer-identity kinds) and
+	// storing 0/1 into ints[A], with interface operands and other kinds falling back to the
+	// Go shim.
+	//
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	EmitEqualGeneral(emitter *asmgen.Emitter)
+
+	// EmitWriteBarrierGuard runs body only while the garbage collector's write barrier is
+	// off, otherwise exiting through pathBFallback. The guard preserves registers required
+	// at handler entry.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes body (func()) which emits the guarded handler body.
@@ -986,15 +924,15 @@ type BytecodeArchitecturePort interface {
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	EmitMoveGeneralAlias(emitter *asmgen.Emitter)
 
-	// EmitTestNilJump emits the tier-0 body for opTestNilJumpTrue (jumpWhenNil=true) or
-	// opTestNilJumpFalse, nil-testing general[A] across the nilable kind range and branching
-	// by the signed 16-bit offset in B|C<<8 with the poll-budget back-edge exit.
+	// EmitTestNilJump emits the tier-0 body for opJumpIfNil (jumpWhenNil=true) or
+	// opJumpIfNotNil, nil-testing general[A] across the nilable kind range and branching by
+	// the signed 16-bit offset in B|C<<8 with the poll-budget back-edge exit.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes jumpWhenNil (bool) which selects jump-on-nil (true) or jump-on-non-nil (false).
 	EmitTestNilJump(emitter *asmgen.Emitter, jumpWhenNil bool)
 
-	// EmitStructFieldScalarGetT0 emits the tier-0 fast path for a scalar struct-field GET
+	// EmitStructFieldScalarGet emits the tier-0 fast path for a scalar struct-field GET
 	// opcode dest[A] = *(receiverBase + layout[C].Offset), with layout bounds/flags/kind
 	// gates and pointer/addressable-struct receiver resolution falling back to the named
 	// tier-2 shim for unsupported shapes.
@@ -1004,20 +942,20 @@ type BytecodeArchitecturePort interface {
 	// Takes kindB (string) which is the second operand kind selector.
 	// Takes bank (string) which names the destination register bank.
 	// Takes shimSymbol (string) which is the tier-2 shim symbol for unsupported shapes.
-	EmitStructFieldScalarGetT0(emitter *asmgen.Emitter, kindA, kindB, bank, shimSymbol string)
+	EmitStructFieldScalarGet(emitter *asmgen.Emitter, kindA, kindB, bank, shimSymbol string)
 
-	// EmitStructFieldScalarSetT0 emits the tier-0 fast path for a scalar struct-field SET
+	// EmitStructFieldScalarSet emits the tier-0 fast path for a scalar struct-field SET
 	// opcode *(receiverBase + layout[C].Offset) = source[B], mirroring
-	// EmitStructFieldScalarGetT0() with bank naming the source bank.
+	// EmitStructFieldScalarGet() with bank naming the source bank.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes kindA (string) which is the first operand kind selector.
 	// Takes kindB (string) which is the second operand kind selector.
 	// Takes bank (string) which names the source register bank.
 	// Takes shimSymbol (string) which is the tier-2 shim symbol for unsupported shapes.
-	EmitStructFieldScalarSetT0(emitter *asmgen.Emitter, kindA, kindB, bank, shimSymbol string)
+	EmitStructFieldScalarSet(emitter *asmgen.Emitter, kindA, kindB, bank, shimSymbol string)
 
-	// EmitStructFieldSliceLen emits the tier-0 fast path for opGetStructFieldSliceLen:
+	// EmitStructFieldSliceLen emits the tier-0 fast path for opLengthStructField, computing
 	// ints[A] = len(receiver[B].field(layout[C])) for slice-kind fields with zero layout
 	// flags, reading the header's length word in place with no allocation. Unsupported
 	// shapes jump to the named tier-2 shim.
@@ -1027,7 +965,7 @@ type BytecodeArchitecturePort interface {
 	EmitStructFieldSliceLen(emitter *asmgen.Emitter, shimSymbol string)
 
 	// EmitStructFieldSliceIndexScalar emits the tier-0 fast path for
-	// opGetStructFieldSliceIndexScalar, loading a full-width scalar sub-field from a slice
+	// opGetStructFieldElementField, loading a full-width scalar sub-field from a slice
 	// element within a struct field directly into the destination bank.
 	//
 	// bank(ext2.C)[A] = receiver[B].field(layout[C])[ints[ext1.C]].subfield(ext2.wide). The
@@ -1039,10 +977,66 @@ type BytecodeArchitecturePort interface {
 	// Takes shimSymbol (string) which is the tier-2 shim symbol for unsupported shapes.
 	EmitStructFieldSliceIndexScalar(emitter *asmgen.Emitter, shimSymbol string)
 
-	// EmitGetUpvalueScalar emits the tier-0 fast path for opGetUpvalue on direct scalar
-	// cells, loading bank(C)[A] from frame.upvalues[B].cellField(C) where C names the
-	// destination registerKind and selects both the upvalueCell scalar field to read and the
-	// bank to write.
+	// EmitLoadZero emits the tier-1 body that zeroes register B of the scalar bank named by
+	// C.
+	//
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	// Takes shimSymbol (string) which is the tier-2 shim symbol for everything else.
+	EmitLoadZero(emitter *asmgen.Emitter, shimSymbol string)
+
+	// EmitGetGlobal emits the tier-0 fast path for OpGetGlobal: bank(C)[A] = the package
+	// variable B + the function's global base for kind C, for the int, float, bool, uint and
+	// general banks.
+	//
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	// Takes shimSymbol (string) which is the tier-2 shim symbol for everything else.
+	EmitGetGlobal(emitter *asmgen.Emitter, shimSymbol string)
+
+	// EmitGetGlobalWide emits the tier-1 fast path for SubOpGetGlobalWide.
+	//
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	// Takes shimSymbol (string) which is the tier-2 shim symbol for everything else.
+	EmitGetGlobalWide(emitter *asmgen.Emitter, shimSymbol string)
+
+	// EmitSetGlobal emits a tier-0 scalar store to an unshared package variable.
+	//
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	// Takes shimSymbol (string) which is the tier-2 shim symbol for everything else.
+	EmitSetGlobal(emitter *asmgen.Emitter, shimSymbol string)
+
+	// EmitSetGlobalWide emits the tier-1 fast path for SubOpSetGlobalWide.
+	//
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	// Takes shimSymbol (string) which is the tier-2 shim symbol for everything else.
+	EmitSetGlobalWide(emitter *asmgen.Emitter, shimSymbol string)
+
+	// EmitSliceGetTypedElement emits the tier-0 fast path for OpGetElementInt64 (signed) or
+	// OpGetElementUint64, which computes bank[A] = element ints[C] of the collection in
+	// general[B], read through the front slot of the typed element shape cache
+	// (typedElementShapes) exactly as typedElementAt's front hit reads it.
+	//
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	// Takes signed (bool) which selects the OpGetElementInt64 form.
+	// Takes shimSymbol (string) which is the tier-2 shim symbol for everything else.
+	EmitSliceGetTypedElement(emitter *asmgen.Emitter, signed bool, shimSymbol string)
+
+	// EmitSliceSetTypedElement emits an integer store through the typed-element shape cache.
+	//
+	// The value in bank[C] is truncated to the element size and stored at
+	// general[A][ints[B]]. An index out of range, read-only values, unaddressable arrays and
+	// unsupported shapes fall back to the shim. The element holds no pointer, so the store
+	// needs no barrier.
+	//
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	// Takes signed (bool) which selects the OpSetElementInt64 form, which stores into any
+	// integer element. The other stores into unsigned elements only.
+	// Takes shimSymbol (string) which is the tier-2 shim symbol for everything else.
+	EmitSliceSetTypedElement(emitter *asmgen.Emitter, signed bool, shimSymbol string)
+
+	// EmitGetCapturedVariableScalar emits the tier-0 fast path for opGetCapturedVariable on
+	// direct scalar cells, loading bank(C)[A] from frame.upvalues[B].cellField(C) where C
+	// names the destination registerKind and selects both the upvalueCell scalar field to
+	// read and the bank to write.
 	//
 	// Indirect cells, out-of-range indexes, nil cell pointers and non-scalar kinds jump to
 	// the named tier-2 shim. Scalar bank stores carry no pointers, so no write barrier is
@@ -1050,41 +1044,33 @@ type BytecodeArchitecturePort interface {
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes shimSymbol (string) which is the tier-2 shim symbol for unsupported shapes.
-	EmitGetUpvalueScalar(emitter *asmgen.Emitter, shimSymbol string)
+	EmitGetCapturedVariableScalar(emitter *asmgen.Emitter, shimSymbol string)
 
-	// EmitLoadUintConst emits the tier-0 body for uints[A] = uintConstants[B|(C<<8)]. The
-	// pool base comes from CTX_UINT_CONSTS_BASE and the destination bank from
-	// CTX_UINTS_BASE; indexes are compiler-generated so no bounds check is emitted
-	// (mirroring the pinned-register int-const loader).
-	//
-	// Used by handlerLoadUintConst.
+	// EmitLoadUint64Constant emits the tier-0 body for uints[A] = uintConstants[B|(C<<8)].
+	// The pool base comes from CTX_UINT_CONSTS_BASE and the destination bank from
+	// CTX_UINTS_BASE.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	EmitLoadUintConst(emitter *asmgen.Emitter)
+	EmitLoadUint64Constant(emitter *asmgen.Emitter)
 
-	// EmitLoadUintConstSmall emits the tier-1 body for uints[B] = uint64(C), the
+	// EmitLoadUint64Immediate emits the tier-1 body for uints[B] = uint64(C), the
 	// immediate-operand small-constant loader.
 	//
-	// Used by handlerSubOpLoadUintConstSmall.
-	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	EmitLoadUintConstSmall(emitter *asmgen.Emitter)
+	EmitLoadUint64Immediate(emitter *asmgen.Emitter)
 
 	// EmitUintConstArith emits the tier-1 body for uints[B] = uints[C] op
 	// uintConstants[ext.A|(ext.B<<8)], consuming the extension word. The operation selector
-	// must be one of "add", "sub", or "and".
-	//
-	// Used by handlerSubOpAddUintConst / SubUintConst / BitAndUintConst.
+	// must be one of "add", "sub", "and", or "add32" and "sub32", which add and subtract and
+	// then keep the low 32 bits of the result.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	// Takes operation (string) which is the arithmetic operation (add, sub, or and).
+	// Takes operation (string) which is the arithmetic operation.
 	EmitUintConstArith(emitter *asmgen.Emitter, operation string)
 
 	// EmitUintDivide emits the tier-0 body for uints[A] = uints[B] / uints[C] with a
 	// zero-divisor guard that exits through DIV_BY_ZERO_EXIT so the Go side raises the
 	// interpreted panic.
-	//
-	// Used by handlerDivUint.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	EmitUintDivide(emitter *asmgen.Emitter)
@@ -1092,17 +1078,11 @@ type BytecodeArchitecturePort interface {
 	// EmitUintRemainder emits the tier-0 body for uints[A] = uints[B] % uints[C] with the
 	// same zero-divisor guard as EmitUintDivide.
 	//
-	// Used by handlerRemUint.
-	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	EmitUintRemainder(emitter *asmgen.Emitter)
 
 	// EmitComplexCopy emits the entire body of a tier-1 umbrella sub-op of the form
-	// complex[B] = complex[C]. Each complex128 slot is 16 bytes (real + imag); the copy is
-	// two 8-byte loads + two 8-byte stores from the complex bank base loaded from
-	// contextOffset.
-	//
-	// Used by handlerSubOpMoveComplex.
+	// complex[B] = complex[C]. Each complex128 slot is 16 bytes (real + imag).
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes contextOffset (string) which is the dispatch context byte offset of the complex
@@ -1111,13 +1091,6 @@ type BytecodeArchitecturePort interface {
 
 	// EmitComplexNegate emits the body of complex[B] = -complex[C].
 	//
-	// Tier-1 umbrella sub-op. Implemented as a 16-byte load + bitwise XOR of the IEEE 754
-	// sign bit (0x8000000000000000) on each float64 half + 16-byte store. Negating a
-	// complex128 negates both real and imag, equivalent to flipping the sign bit on each
-	// half.
-	//
-	// Used by handlerSubOpNegComplex.
-	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes contextOffset (string) which is the dispatch context byte offset of the complex
 	// bank.
@@ -1125,16 +1098,6 @@ type BytecodeArchitecturePort interface {
 
 	// LoadComplexHalfToFloatBank emits instructions to read one float64 half of a complex128
 	// element from the complex register bank into a destination float64 register.
-	//
-	// The complex bank base pointer lives at the given byte offset within the
-	// dispatchContext (R15 on amd64, R19 on arm64). Each complex128 slot is 16 bytes (real
-	// then imag). halfOffset is "0" for the real half or "8" for the imag half. The emitted
-	// sequence loads the bank base into an arch-chosen scratch, computes
-	// &complex[indexRegister] (multiplying by 16), reads the 8-byte float64 at halfOffset,
-	// and stores it into the float bank at destinationFloatIndexRegister.
-	//
-	// Used by tier-1 sub-ops handlerSubOpRealComplex and handlerSubOpImagComplex to read a
-	// single float64 half of a complex128 without leaving the ASM dispatch loop.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes contextOffset (string) which is the dispatch context byte offset of the complex
@@ -1146,17 +1109,6 @@ type BytecodeArchitecturePort interface {
 
 	// LoadTypedSliceHeaderLength emits instructions to read the length field of a slice
 	// header stored in a typed-slice register bank.
-	//
-	// The bank base pointer lives at the given byte offset within the dispatchContext (R15
-	// on amd64, R19 on arm64). Each slot is a Go slice header (24 bytes: data pointer +
-	// length + capacity). The emitted sequence loads the bank base into an arch-chosen
-	// scratch, computes &bank[indexRegister] (multiplying by 24), and writes the 8-byte
-	// length field at offset 8 into destinationRegister.
-	//
-	// Used by tier-1 sub-ops handlerSubOpLenSliceIntDirect / handlerSubOpLenSliceFloatDirect
-	// / handlerSubOpLenSliceStringDirect / handlerSubOpLenSliceBoolDirect /
-	// handlerSubOpLenSliceUintDirect to compute len() of typed-slice bank slots without
-	// leaving the ASM dispatch loop.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
@@ -1204,6 +1156,29 @@ type BytecodeArchitecturePort interface {
 	//
 	// Takes register (string) which is the register holding the signed offset.
 	AddToProgramCounter(emitter *asmgen.Emitter, register string)
+
+	// EmitTypedSliceByteGetInt emits the body of ints[B] = slicesByte[C][ints[ext.A]].
+	//
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	// Takes contextOffset (string) which is the dispatch context byte offset of the slice
+	// bank.
+	EmitTypedSliceByteGetInt(emitter *asmgen.Emitter, contextOffset string)
+
+	// EmitTypedSliceByteSetRun emits the body of SubOpSetSliceByteElementRun, two to four
+	// byte stores at consecutive positions, with the whole run bounds-checked first and a
+	// branch to the Go handler when it does not fit.
+	//
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	// Takes sliceContextOffset (string) which is the dispatch context byte offset of the
+	// slice bank.
+	EmitTypedSliceByteSetRun(emitter *asmgen.Emitter, sliceContextOffset string)
+
+	// EmitMultiplyConstantThenAdd emits ints[A] = ints[extension.A] + ints[B] *
+	// intConstants[C], consuming the extension word. Both source registers are loaded before
+	// the destination is stored, so the destination may be either of them.
+	//
+	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
+	EmitMultiplyConstantThenAdd(emitter *asmgen.Emitter)
 
 	// EmitBackEdgePoll emits a back-edge poll of ctx.pollBudget, storing the current PC and
 	// exitPoll into the dispatch context and returning to Go when the budget reaches zero so
@@ -1259,20 +1234,21 @@ type BytecodeArchitecturePort interface {
 	// Returns InlineCallOperationsPort which is the arch-specific inline call port.
 	InlineCallOperations() asmgen.InlineCallOperationsPort
 
-	// EmitCallMethodInline emits the body of handlerCallMethodInline: the inline call
-	// handler variant for SubOpCallMethod that selects the callee entry by the receiver's
-	// type word from the site's per-type table before pushing the frame in assembly, and
-	// exits to the Go tier-2 path on a miss.
+	// EmitCallMethodInline emits the body of handlerCallMethod, the inline call handler
+	// variant for SubOpCallMethod that selects the callee entry by the receiver's type word
+	// from the site's per-type table before pushing the frame in assembly, and exits to the
+	// Go tier-2 path on a miss.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
 	EmitCallMethodInline(emitter *asmgen.Emitter)
 
-	// EmitAllocStructLiteral emits the body of handlerSubOpAllocStructLiteral: general[C] =
-	// zeroed pointer-free struct of the type indexed by the extension word, carved from the
-	// arena generic-bytes slab, with EXIT_TIER2 fallbacks to the Go handler.
+	// EmitAllocateStructLiteral emits the body of handlerAllocateStructLiteral, which
+	// computes general[C] = zeroed pointer-free struct of the type indexed by the extension
+	// word, carved from the arena generic-bytes slab, with EXIT_TIER2 fallbacks to the Go
+	// handler.
 	//
 	// Takes emitter (*asmgen.Emitter) which receives the generated instructions.
-	EmitAllocStructLiteral(emitter *asmgen.Emitter)
+	EmitAllocateStructLiteral(emitter *asmgen.Emitter)
 
 	// EmitPathBCallShim emits the SHIM half of the tier-2 ASM-call shim+real split.
 	//

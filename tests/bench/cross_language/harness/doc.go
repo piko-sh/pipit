@@ -16,8 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
-//go:build crosslang
-
 // Package harness runs cross-language benchmarks, checks output digests and writes JSON
 // and Markdown reports.
+//
+// Everything but the output digest is built only under the crosslang tag.
 package harness

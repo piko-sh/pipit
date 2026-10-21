@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"pipit.sh/pipit/internal/sandboxtest"
+	"pipit.sh/pipit/internal/sandboxwire"
 )
 
 func TestNativeSupervisedHostWatchdog(t *testing.T) {
@@ -71,17 +72,17 @@ func TestNativeWorkerWatchdogAttachment(t *testing.T) {
 			if mode == "bad-digest" {
 				config.WatchdogDigest[0] ^= 1
 			}
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			process, err := LaunchWorker(ctx, config)
 			if process != nil {
-				defer process.Close()
+				defer process.Close(t.Context())
 			}
 			if mode == "missing-approval" || mode == "bad-digest" {
 				if !errors.Is(err, ErrInvalidWorker) || process == nil || process.image != nil {
 					t.Fatalf("worker prepared without approved watchdog: process=%+v error=%v", process, err)
 				}
-				if err := process.cleanup(); err != nil {
+				if err := process.cleanup(t.Context()); err != nil {
 					t.Fatal(err)
 				}
 				return
@@ -105,7 +106,7 @@ func TestNativeWorkerWatchdogAttachment(t *testing.T) {
 			if !errors.Is(process.Wait(), context.Canceled) {
 				t.Fatal("protected worker did not report cancellation")
 			}
-			if err := process.cleanup(); err != nil {
+			if err := process.cleanup(t.Context()); err != nil {
 				t.Fatal("protected resources retained:", err)
 			}
 			select {
@@ -114,6 +115,57 @@ func TestNativeWorkerWatchdogAttachment(t *testing.T) {
 				t.Fatal("supervisor not reaped after protected worker cleanup")
 			}
 		})
+	}
+}
+
+func TestNativeWorkerCleanupAfterCallerCancel(t *testing.T) {
+	parent := sandboxtest.CgroupParent(t)
+	workerPath := sandboxtest.RequiredBinary(t, "PIPIT_TEST_WORKER_BINARY", "the static worker fixture")
+	watchdogPath := sandboxtest.RequiredBinary(t, "PIPIT_TEST_HOST_WATCHDOG_BINARY", "the static watchdog fixture")
+	workerImage, err := os.ReadFile(workerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	watchdogImage, err := os.ReadFile(watchdogPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := WorkerConfig{Tenant: testTenant,
+		Executable: workerPath, Digest: sha256.Sum256(workerImage), CgroupParent: parent,
+		WatchdogExecutable: watchdogPath, WatchdogDigest: sha256.Sum256(watchdogImage),
+		Lifetime: 10 * time.Second,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	process, err := LaunchWorker(ctx, config)
+	if process != nil {
+		defer process.Close(t.Context())
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	group, container, service := process.group, process.container, process.serviceGroup
+	if group == nil || container == nil || service == nil || process.watchdog == nil {
+		t.Fatal("worker admitted without its groups and supervisor")
+	}
+	cancel()
+	select {
+	case <-process.Done():
+	case <-time.After(sandboxwire.CleanupTimeout + 3*time.Second):
+		t.Fatal("exit cleanup outlived the cleanup bound")
+	}
+	if process.cleanupErr != nil || !process.Released() {
+		t.Fatal("exit cleanup on the cancelled context retained resources:", process.cleanupErr)
+	}
+	for role, owned := range map[string]*Group{"worker": group, "container": container, "service": service} {
+		if !owned.closed {
+			t.Fatal(role, "group not removed after the caller's context ended")
+		}
+	}
+	select {
+	case <-process.watchdog.Done():
+	default:
+		t.Fatal("supervisor not reaped after the caller's context ended")
 	}
 }
 
@@ -131,14 +183,14 @@ func exerciseSupervisedWatchdog(t *testing.T, parent, executable, mode string) {
 	if mode == "bad-digest" {
 		config.Digest[0] ^= 1
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	aggregate, err := newGroup(parent, Limits{})
+	aggregate, err := newGroup(t.Context(), parent, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer aggregate.closeGroup(ctx)
-	target, err := aggregate.newChild(Limits{})
+	target, err := aggregate.newChild(t.Context(), Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +204,7 @@ func exerciseSupervisedWatchdog(t *testing.T, parent, executable, mode string) {
 	defer cancelStartup()
 	watchdog, launchErr := launchHostWatchdog(startup, config, aggregate)
 	if watchdog != nil {
-		defer watchdog.Close()
+		defer watchdog.Close(t.Context())
 	}
 	if mode == "bad-digest" || mode == "wrong-role" {
 		if launchErr == nil {
@@ -176,7 +228,7 @@ func exerciseSupervisedWatchdog(t *testing.T, parent, executable, mode string) {
 	if mode == "caller-cancelled" {
 		cancelStartup()
 		select {
-		case <-watchdog.context.Done():
+		case <-watchdog.lifetimeDone:
 			t.Fatal("caller cancellation disarmed independent watchdog")
 		case <-time.After(25 * time.Millisecond):
 		}
@@ -187,7 +239,7 @@ func exerciseSupervisedWatchdog(t *testing.T, parent, executable, mode string) {
 	if err := watchdog.Wait(); err == nil {
 		t.Fatal("watchdog did not terminate with its protected aggregate")
 	}
-	if err := watchdog.cleanup(); err != nil {
+	if err := watchdog.cleanup(t.Context()); err != nil {
 		t.Fatal("watchdog retained resources:", err)
 	}
 	if err := target.waitEmpty(ctx); err != nil {

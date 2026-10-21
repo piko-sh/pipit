@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxlinux
 
@@ -66,7 +66,7 @@ func (process *WorkerProcess) SetDeadline(deadline time.Time) error {
 	if process.phaseFinished || process.stream == nil {
 		return os.ErrClosed
 	}
-	if err := process.context.Err(); err != nil {
+	if err := process.lifetimeErr(); err != nil {
 		return err
 	}
 	if deadline.IsZero() {

@@ -31,8 +31,13 @@ import (
 // executionLink connects callbacks, bound methods and goroutines to their originating
 // execution without retaining its VM.
 //
-// Callbacks follow cancellation while the execution runs and use a detached context
-// after it ends. Returning from main lets existing callbacks finish.
+// Callbacks follow cancellation while the execution runs and use a detached context after
+// it ends. Returning from main lets existing callbacks finish.
+//
+// The link holds contexts because native code calls a callback through a Go function
+// value whose signature the host chose (reflect.MakeFunc), which carries no context. The
+// link is how such a call finds the execution it belongs to. From there the context is
+// passed as a parameter.
 type executionLink struct {
 	// ctx is the execution's context.
 	ctx context.Context
@@ -69,7 +74,6 @@ type executionLink struct {
 
 // newExecutionLink returns a live link for an execution running under ctx.
 //
-// Takes ctx (context.Context) which is the execution's context.
 // Takes cancel (context.CancelCauseFunc) which fails the execution; may be nil.
 //
 // Returns the link.
@@ -90,8 +94,6 @@ func newExecutionLink(ctx context.Context, cancel context.CancelCauseFunc) *exec
 
 // endedExecutionLink returns a detached link for code running outside an execution.
 //
-// Takes ctx (context.Context) which supplies the values the detached context keeps.
-//
 // Returns the ended link.
 func endedExecutionLink(ctx context.Context) *executionLink {
 	link := newExecutionLink(ctx, nil)
@@ -106,9 +108,9 @@ func (l *executionLink) live() bool {
 	return !l.ended.Load()
 }
 
-// callbackContext returns the execution's cancellation relay while it runs, or a
-// detached context after it ends. The relay excludes fault.ErrMainReturned so existing
-// callbacks can finish.
+// callbackContext returns the execution's cancellation relay while it runs, or a detached
+// context after it ends. The relay excludes fault.ErrMainReturned so existing callbacks
+// can finish.
 //
 // Returns context.Context which the run polls.
 //
@@ -152,8 +154,8 @@ func (l *executionLink) relay() {
 	l.relayCancel(cause)
 }
 
-// spawnContext returns the execution's context while it runs, including cancellation
-// when main returns, or a detached context after it ends.
+// spawnContext returns the execution's context while it runs, including cancellation when
+// main returns, or a detached context after it ends.
 //
 // Returns context.Context which the goroutine's VM follows.
 func (l *executionLink) spawnContext() context.Context {
@@ -178,8 +180,8 @@ func (l *executionLink) end() {
 	}
 }
 
-// fail records the first failure and cancels a live execution. Without a cancel
-// function, the failure is reported when the main run returns.
+// fail records the first failure and cancels a live execution. Without a cancel function,
+// the failure is reported when the main run returns.
 //
 // Takes cause (error) which becomes the execution's failure and its context's cause.
 //

@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64) && !race
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64) && !race
 
 package sandboxlinux
 
@@ -53,7 +53,7 @@ func TestNativeWorkerNamespaces(t *testing.T) {
 	if _, err := io.Copy(digest, source); err != nil {
 		t.Fatal(err)
 	}
-	image, err := PrepareWorkerImage(context.Background(), executable, [sha256.Size]byte(digest.Sum(nil)))
+	image, err := PrepareWorkerImage(t.Context(), executable, [sha256.Size]byte(digest.Sum(nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestNativeWorkerNamespaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, "/worker", "-test.run=^TestNativeWorkerNamespaces$")
 	command.Dir = "/"

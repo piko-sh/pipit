@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +16,11 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
-	"context"
 	"crypto/sha256"
 	"os"
 	"path/filepath"
@@ -53,7 +52,7 @@ func runJournalledBrokerClient(t *testing.T, config WorkerConfig, process *Worke
 	defer journal.Close()
 	var checkpoint nativeRecoveryCheckpoint
 	if mode == "journalled-recovery-checkpoint" {
-		binding, bindingErr := RecoveryHostBinding(context.Background(), config.Digest)
+		binding, bindingErr := RecoveryHostBinding(t.Context(), config.Digest)
 		if bindingErr != nil {
 			t.Fatal(bindingErr)
 		}
@@ -88,17 +87,17 @@ func runJournalledBrokerClient(t *testing.T, config WorkerConfig, process *Worke
 			t.Fatal(err)
 		}
 	}
-	client, err := sandboxbroker.OpenJournalledFilesystemClient(context.Background(), process, authority, journal)
+	client, err := sandboxbroker.OpenJournalledFilesystemClient(t.Context(), process, authority, journal)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer client.Close(t.Context())
 	if mode == "journalled-failure" {
 		if err := journal.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}
-	response, err := client.Execute(context.Background(), []byte(`{"operation":"fs.write","root":"data","path":"file","data":"bmV3"}`))
+	response, err := client.Execute(t.Context(), []byte(`{"operation":"fs.write","root":"data","path":"file","data":"bmV3"}`))
 	expected := "new"
 	if mode == "journalled-failure" {
 		expected = "original"
@@ -125,11 +124,11 @@ func runJournalledBrokerClient(t *testing.T, config WorkerConfig, process *Worke
 			t.Cleanup(func() { _ = unix.Unlinkat(int(process.group.directory.Fd()), "recovery-blocker", unix.AT_REMOVEDIR) })
 		}
 		if mode == "journalled-recovery-failed-broker" {
-			if _, err := client.Execute(context.Background(), []byte("{}")); err == nil {
+			if _, err := client.Execute(t.Context(), []byte("{}")); err == nil {
 				t.Fatal("invalid request did not terminate original broker")
 			}
 		}
-		closeErr := client.Close()
+		closeErr := client.Close(t.Context())
 		expectedFailure := mode == "journalled-recovery-failed-broker" || mode == "journalled-recovery-cleanup"
 		if (closeErr != nil) != expectedFailure {
 			t.Fatal("unexpected original shutdown status:", closeErr)

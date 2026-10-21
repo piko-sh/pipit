@@ -42,6 +42,9 @@ func (vm *VM) AssignFrameArguments(arguments []reflect.Value) error {
 		return fmt.Errorf("%w: %s takes %d argument(s), %d given",
 			fault.ErrCallArgumentCount, function.FunctionName(), len(function.ParameterKinds), len(arguments))
 	}
+	if storeCensusBuilt {
+		censusNotePublished(arguments)
+	}
 	assignReflectParams(&frame.Registers, function.ParameterKinds, function.ParameterRegisters, arguments)
 	return nil
 }

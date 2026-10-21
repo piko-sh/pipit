@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerStringIndex sets uints[A] = uint64(strings[B][ints[C]]).
-TEXT ·handlerStringIndex(SB), NOSPLIT|NOFRAME, $0
+// handlerGetStringByte sets uints[A] = uint64(strings[B][ints[C]]).
+TEXT ·handlerGetStringByte(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -56,8 +56,8 @@ si_fallback:
 	MOVQ    R14, CTX_EXIT_PC(R15)
 	RET     
 
-// handlerEqString sets ints[A] = (strings[B] == strings[C]) ? 1 : 0.
-TEXT ·handlerEqString(SB), NOSPLIT|NOFRAME, $0
+// handlerEqualString sets ints[A] = (strings[B] == strings[C]) ? 1 : 0.
+TEXT ·handlerEqualString(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -97,8 +97,8 @@ eqs_done:
 	MOVQ    BX, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerNeString sets ints[A] = (strings[B] != strings[C]) ? 1 : 0.
-TEXT ·handlerNeString(SB), NOSPLIT|NOFRAME, $0
+// handlerNotEqualString sets ints[A] = (strings[B] != strings[C]) ? 1 : 0.
+TEXT ·handlerNotEqualString(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -138,7 +138,7 @@ nes_done:
 	MOVQ    BX, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSliceString sets strings[A] = strings[B][low:high].
+// handlerSliceString sets strings[A] = strings[B][low:high]. An empty result keeps strings[B]'s data pointer.
 TEXT ·handlerSliceString(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
@@ -183,8 +183,10 @@ sl_got_high:
 	JL      sl_bounds_fail
 	CMPQ    CX, BX
 	JG      sl_bounds_fail
-	ADDQ    SI, DI
 	SUBQ    SI, CX
+	TESTQ   CX, CX
+	CMOVQEQ CX, SI
+	ADDQ    SI, DI
 	MOVQ    CTX_STRINGS_BASE(R15), SI
 	SHLQ    $4, AX
 	MOVQ    DI, (SI)(AX*1)
@@ -200,8 +202,8 @@ sl_bounds_fail:
 wb_fallback:
 	JMP     ·pathBFallback(SB)
 
-// handlerStringIndexToInt sets ints[A] = int64(strings[B][ints[C]]).
-TEXT ·handlerStringIndexToInt(SB), NOSPLIT|NOFRAME, $0
+// handlerGetStringByteAsInt64 sets ints[A] = int64(strings[B][ints[C]]).
+TEXT ·handlerGetStringByteAsInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $8, AX
 	MOVBLZX AL, AX
@@ -230,8 +232,8 @@ sit_fallback:
 	MOVQ    R14, CTX_EXIT_PC(R15)
 	RET     
 
-// handlerLenStringLtJumpFalse jumps if ints[A] >= len(strings[B]).
-TEXT ·handlerLenStringLtJumpFalse(SB), NOSPLIT|NOFRAME, $0
+// handlerLessThanLengthStringThenJumpIfFalse jumps if ints[A] >= len(strings[B]).
+TEXT ·handlerLessThanLengthStringThenJumpIfFalse(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX

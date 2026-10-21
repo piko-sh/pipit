@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/engine/program"
+	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/symtab/typemodel"
 )
@@ -135,13 +136,13 @@ func TestGlobalStoreLengthsTrackEveryAllocation(t *testing.T) {
 	store.AllocComplex(1)
 
 	lengths := store.Lengths()
-	require.Equal(t, uint16(2), lengths[isa.RegisterInt])
-	require.Equal(t, uint16(1), lengths[isa.RegisterFloat])
+	require.Equal(t, uint16(2), lengths[isa.RegisterInt64])
+	require.Equal(t, uint16(1), lengths[isa.RegisterFloat64])
 	require.Equal(t, uint16(1), lengths[isa.RegisterString])
 	require.Equal(t, uint16(1), lengths[isa.RegisterGeneral])
 	require.Equal(t, uint16(1), lengths[isa.RegisterBool])
-	require.Equal(t, uint16(1), lengths[isa.RegisterUint])
-	require.Equal(t, uint16(1), lengths[isa.RegisterComplex])
+	require.Equal(t, uint16(1), lengths[isa.RegisterUint64])
+	require.Equal(t, uint16(1), lengths[isa.RegisterComplex128])
 }
 
 func TestReserveSlotsReturnsTheBasesBeforeItGrows(t *testing.T) {
@@ -151,14 +152,14 @@ func TestReserveSlotsReturnsTheBasesBeforeItGrows(t *testing.T) {
 		t.Parallel()
 		store := NewGlobalStore()
 		request := program.SlotAllocation{}
-		request[isa.RegisterInt] = 3
+		request[isa.RegisterInt64] = 3
 		request[isa.RegisterString] = 2
 
 		bases := store.ReserveSlots(request)
 
-		require.Equal(t, uint16(0), bases[isa.RegisterInt])
+		require.Equal(t, uint16(0), bases[isa.RegisterInt64])
 		require.Equal(t, uint16(0), bases[isa.RegisterString])
-		require.Equal(t, uint16(3), store.Lengths()[isa.RegisterInt])
+		require.Equal(t, uint16(3), store.Lengths()[isa.RegisterInt64])
 		require.Equal(t, uint16(2), store.Lengths()[isa.RegisterString])
 	})
 
@@ -166,20 +167,20 @@ func TestReserveSlotsReturnsTheBasesBeforeItGrows(t *testing.T) {
 		t.Parallel()
 		store := NewGlobalStore()
 		request := program.SlotAllocation{}
-		request[isa.RegisterInt] = 3
+		request[isa.RegisterInt64] = 3
 
 		store.ReserveSlots(request)
 		bases := store.ReserveSlots(request)
 
-		require.Equal(t, uint16(3), bases[isa.RegisterInt], "the base is the length before growth")
-		require.Equal(t, uint16(6), store.Lengths()[isa.RegisterInt])
+		require.Equal(t, uint16(3), bases[isa.RegisterInt64], "the base is the length before growth")
+		require.Equal(t, uint16(6), store.Lengths()[isa.RegisterInt64])
 	})
 
 	t.Run("reserved slots read back as their zero value", func(t *testing.T) {
 		t.Parallel()
 		store := NewGlobalStore()
 		request := program.SlotAllocation{}
-		request[isa.RegisterInt] = 2
+		request[isa.RegisterInt64] = 2
 		request[isa.RegisterString] = 1
 
 		store.ReserveSlots(request)
@@ -195,8 +196,8 @@ func TestReserveSlotsReturnsTheBasesBeforeItGrows(t *testing.T) {
 
 		bases := store.ReserveSlots(program.SlotAllocation{})
 
-		require.Equal(t, uint16(1), bases[isa.RegisterInt])
-		require.Equal(t, uint16(1), store.Lengths()[isa.RegisterInt])
+		require.Equal(t, uint16(1), bases[isa.RegisterInt64])
+		require.Equal(t, uint16(1), store.Lengths()[isa.RegisterInt64])
 	})
 }
 
@@ -216,12 +217,12 @@ func TestSnapshotVarReadsTheSlotInItsOwnType(t *testing.T) {
 		name  string
 		slot  program.GlobalVariableInfo
 	}{
-		{name: "an integer slot", slot: program.GlobalVariableInfo{Index: intIndex, Kind: isa.RegisterInt},
+		{name: "an integer slot", slot: program.GlobalVariableInfo{Index: intIndex, Kind: isa.RegisterInt64},
 			check: func(t *testing.T, got reflect.Value) {
 				t.Helper()
 				require.Equal(t, int64(42), got.Int())
 			}},
-		{name: "a float slot", slot: program.GlobalVariableInfo{Index: floatIndex, Kind: isa.RegisterFloat},
+		{name: "a float slot", slot: program.GlobalVariableInfo{Index: floatIndex, Kind: isa.RegisterFloat64},
 			check: func(t *testing.T, got reflect.Value) {
 				t.Helper()
 				require.InDelta(t, 1.5, got.Float(), 0)
@@ -236,7 +237,7 @@ func TestSnapshotVarReadsTheSlotInItsOwnType(t *testing.T) {
 				t.Helper()
 				require.True(t, got.Bool())
 			}},
-		{name: "an unsigned slot", slot: program.GlobalVariableInfo{Index: uintIndex, Kind: isa.RegisterUint},
+		{name: "an unsigned slot", slot: program.GlobalVariableInfo{Index: uintIndex, Kind: isa.RegisterUint64},
 			check: func(t *testing.T, got reflect.Value) {
 				t.Helper()
 				require.Equal(t, uint64(7), got.Uint())
@@ -269,8 +270,8 @@ func TestSnapshotVarRefusesSlotsOutsideTheBank(t *testing.T) {
 		name string
 		slot program.GlobalVariableInfo
 	}{
-		{name: "an index past the integer bank", slot: program.GlobalVariableInfo{Index: 5, Kind: isa.RegisterInt}},
-		{name: "a negative index", slot: program.GlobalVariableInfo{Index: -1, Kind: isa.RegisterInt}},
+		{name: "an index past the integer bank", slot: program.GlobalVariableInfo{Index: 5, Kind: isa.RegisterInt64}},
+		{name: "a negative index", slot: program.GlobalVariableInfo{Index: -1, Kind: isa.RegisterInt64}},
 		{name: "an index into an empty bank", slot: program.GlobalVariableInfo{Index: 0, Kind: isa.RegisterString}},
 		{name: "an indirect slot with no cell", slot: program.GlobalVariableInfo{Index: 0, Kind: isa.RegisterGeneral, IsIndirect: true}},
 	}
@@ -293,7 +294,7 @@ func TestSnapshotVarAsConvertsToTheRequestedType(t *testing.T) {
 
 	t.Run("an integer slot converts to a named integer type", func(t *testing.T) {
 		t.Parallel()
-		got, ok := store.SnapshotVarAs(program.GlobalVariableInfo{Index: intIndex, Kind: isa.RegisterInt}, reflect.TypeFor[globalNamedInt]())
+		got, ok := store.SnapshotVarAs(program.GlobalVariableInfo{Index: intIndex, Kind: isa.RegisterInt64}, reflect.TypeFor[globalNamedInt]())
 
 		require.True(t, ok)
 		require.Equal(t, reflect.TypeFor[globalNamedInt](), got.Type())
@@ -302,14 +303,14 @@ func TestSnapshotVarAsConvertsToTheRequestedType(t *testing.T) {
 
 	t.Run("a nil target type is refused", func(t *testing.T) {
 		t.Parallel()
-		_, ok := store.SnapshotVarAs(program.GlobalVariableInfo{Index: intIndex, Kind: isa.RegisterInt}, nil)
+		_, ok := store.SnapshotVarAs(program.GlobalVariableInfo{Index: intIndex, Kind: isa.RegisterInt64}, nil)
 
 		require.False(t, ok)
 	})
 
 	t.Run("a slot outside the bank is refused", func(t *testing.T) {
 		t.Parallel()
-		_, ok := store.SnapshotVarAs(program.GlobalVariableInfo{Index: 99, Kind: isa.RegisterInt}, reflect.TypeFor[int64]())
+		_, ok := store.SnapshotVarAs(program.GlobalVariableInfo{Index: 99, Kind: isa.RegisterInt64}, reflect.TypeFor[int64]())
 
 		require.False(t, ok)
 	})
@@ -588,4 +589,97 @@ func TestSnapshotGeneralSlotAsTypesTheZeroSlot(t *testing.T) {
 	require.Equal(t, "s", snapshotGeneralSlotAs(reflect.ValueOf("s"), reflect.TypeFor[string]()).Interface())
 	require.Equal(t, []int{1}, snapshotGeneralSlotAs(reflect.ValueOf([]int{1}), reflect.TypeFor[string]()).Interface(),
 		"an impossible conversion must not be forced")
+}
+
+func TestTakeGoroutinePanicClearsTheStoreForTheNextExecution(t *testing.T) {
+	store := NewGlobalStore()
+	store.markShared()
+	store.recordGoroutinePanic("from an aborted goroutine", "")
+	signal := store.goroutinePanicWakeChan()
+	require.NotNil(t, store.takeGoroutinePanic())
+	require.Nil(t, store.goroutinePanic.Load())
+	select {
+	case <-store.goroutinePanicWakeChan():
+		require.FailNow(t, "the next execution's signal must start open")
+	default:
+	}
+	select {
+	case <-signal:
+	default:
+		require.FailNow(t, "the recorded panic closed its own signal")
+	}
+	store.recordGoroutinePanic("a later panic", "")
+	require.NotNil(t, store.goroutinePanic.Load(), "a later panic is recorded again")
+}
+
+func TestTryReserveSlotsRefusesToPassTheSlotLimit(t *testing.T) {
+	t.Parallel()
+	store := NewGlobalStore()
+	request := program.SlotAllocation{}
+	request[isa.RegisterInt64] = math.MaxUint16 - 1
+
+	bases, err := store.TryReserveSlots(request)
+	require.NoError(t, err)
+	require.Equal(t, uint16(0), bases[isa.RegisterInt64])
+
+	two := program.SlotAllocation{}
+	two[isa.RegisterInt64] = 2
+	_, err = store.TryReserveSlots(two)
+	require.ErrorIs(t, err, fault.ErrGlobalSlotsExhausted, "a bank never reaches slot 65535")
+	require.Equal(t, uint16(math.MaxUint16-1), store.Lengths()[isa.RegisterInt64], "a refused reservation reserves nothing")
+
+	one := program.SlotAllocation{}
+	one[isa.RegisterInt64] = 1
+	bases, err = store.TryReserveSlots(one)
+	require.NoError(t, err, "the last slot below the limit is reserved")
+	require.Equal(t, uint16(math.MaxUint16-1), bases[isa.RegisterInt64])
+}
+
+func TestTruncateSlotsDropsAndClearsTheSlotsPastEachLength(t *testing.T) {
+	t.Parallel()
+	store := NewGlobalStore()
+	store.AllocString("kept")
+	store.AllocGeneral(reflect.ValueOf("kept"))
+	store.AllocComplex(1)
+	before := store.Lengths()
+	store.AllocString("dropped")
+	store.AllocGeneral(reflect.ValueOf("dropped"))
+	store.AllocComplex(2)
+	store.AllocInt(3)
+
+	store.TruncateSlots(before)
+
+	require.Equal(t, before, store.Lengths())
+	require.Equal(t, "kept", store.GetString(0))
+	require.Empty(t, store.Strings[:2][1], "a dropped string slot holds no reference")
+	require.False(t, store.general[:2][1].IsValid(), "a dropped general slot holds no reference")
+
+	longer := store.Lengths()
+	longer[isa.RegisterInt64] = 10
+	store.TruncateSlots(longer)
+	require.Equal(t, before, store.Lengths(), "a bank no longer than its length is left as it is")
+}
+
+func TestZeroSlotsClearsARegionOfEveryBank(t *testing.T) {
+	t.Parallel()
+	store := NewGlobalStore()
+	for range 3 {
+		store.AllocComplex(1 + 2i)
+		store.AllocString("value")
+	}
+
+	require.NoError(t, store.ZeroSlots(isa.RegisterComplex128, 1, 5))
+	require.NoError(t, store.ZeroSlots(isa.RegisterString, 0, 1))
+
+	require.Equal(t, 1+2i, store.getComplex(0))
+	require.Zero(t, store.getComplex(1))
+	require.Zero(t, store.getComplex(2))
+	require.Empty(t, store.GetString(0))
+	require.Equal(t, "value", store.GetString(1))
+	require.NoError(t, store.ZeroSlots(isa.RegisterBool, 7, 2), "slots past the end are ignored")
+	require.ErrorIs(t, store.ZeroSlots(isa.RegisterSliceInt64, 0, 1), errGlobalSlotRange)
+	require.ErrorIs(t, store.ZeroSlots(isa.RegisterInt64, -1, 1), errGlobalSlotRange)
+
+	store.SetComplex(2, 3i)
+	require.Equal(t, 3i, store.getComplex(2))
 }

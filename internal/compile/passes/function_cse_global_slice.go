@@ -30,8 +30,6 @@ const globalSliceChainWords = 3
 // elideRepeatedGlobalSliceFieldRead reuses a byte-slice field loaded from an unchanged
 // global receiver within a basic block. Byte element stores preserve the header.
 //
-// A repeated chain becomes NOPs, which the final compaction deletes.
-//
 // Takes compiledFunction (*program.CompiledFunction) which receives rewrite provenance.
 // Takes body ([]isa.Instruction) which is the instruction stream.
 // Takes first (int) which is the global load preceding the field read.
@@ -47,7 +45,7 @@ func elideRepeatedGlobalSliceFieldRead(compiledFunction *program.CompiledFunctio
 		}
 		if globalSliceChainRepeats(body, pc, chain, targets) {
 			for offset := range globalSliceChainWords {
-				body[pc+offset] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+				body[pc+offset] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 			}
 			RecordPeepholeRewrite(compiledFunction, pc, peepholeRewriteCseGlobalSlice, first)
 			pc += globalSliceChainWords - 1
@@ -73,7 +71,7 @@ func globalSliceChainAt(body []isa.Instruction, first int, targets map[int]bool)
 	}
 	global, read, layout := body[first], body[first+1], body[first+2]
 	return global.Op == isa.OpGetGlobal && isa.RegisterKind(global.C) == isa.RegisterGeneral &&
-		isa.InstrIsTier1SubOp(read, isa.SubOpGetStructFieldSliceByte) && read.C == global.A && layout.Op == isa.OpExt
+		isa.InstrIsTier1SubOp(read, isa.SubOpGetStructFieldSliceByte) && read.C == global.A && layout.Op == isa.OpExtension
 }
 
 // globalSliceChainRepeats reports whether the words at pc repeat chain exactly, with no
@@ -106,7 +104,7 @@ func globalSliceChainRepeats(body []isa.Instruction, pc int, chain []isa.Instruc
 //
 // Returns true when a later repeat must reload.
 func globalSliceChainInvalidated(compiledFunction *program.CompiledFunction, inst isa.Instruction, chain []isa.Instruction) bool {
-	if invalidatesCachedFieldReads(compiledFunction, inst) && !isa.InstrIsTier1SubOp(inst, isa.SubOpSliceSetByteDirect) {
+	if invalidatesCachedFieldReads(compiledFunction, inst) && !isa.InstrIsTier1SubOp(inst, isa.SubOpSetSliceByteElement) {
 		return true
 	}
 	return !instructionShapeAllowsCseScan(inst) ||

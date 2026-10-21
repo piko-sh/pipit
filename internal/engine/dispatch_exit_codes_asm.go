@@ -21,8 +21,8 @@
 package engine
 
 const (
-	// exitEndOfCode indicates that the program counter reached the end of the code.
-	// Exit values must also be distinct from those in dispatch_exit_codes.go.
+	// exitEndOfCode indicates that the program counter reached the end of the code. Exit
+	// values must also be distinct from those in dispatch_exit_codes.go.
 	exitEndOfCode int64 = 0
 
 	// exitPathB indicates the dispatch loop exited because a tier 2 opcode requires Go-side
@@ -49,38 +49,38 @@ const (
 	// exceeded.
 	exitCallOverflow int64 = 7
 
-	// exitGetStructFieldIntT0 is the direct-exit reason for the tier-0 int struct-field
+	// exitGetStructFieldInt64 is the direct-exit reason for the tier-0 int struct-field
 	// reader. The matching processExit dispatcher calls the existing Go handler directly,
 	// skipping the handlerTable[op] indirect.
-	exitGetStructFieldIntT0 int64 = 13
+	exitGetStructFieldInt64 int64 = 13
 
-	// exitGetStructFieldUintT0 is the direct-exit reason for the tier-0 uint struct-field
+	// exitGetStructFieldUint64 is the direct-exit reason for the tier-0 uint struct-field
 	// reader.
-	exitGetStructFieldUintT0 int64 = 14
+	exitGetStructFieldUint64 int64 = 14
 
-	// exitGetStructFieldFloatT0 is the direct-exit reason for the tier-0 float struct-field
+	// exitGetStructFieldFloat64 is the direct-exit reason for the tier-0 float struct-field
 	// reader.
-	exitGetStructFieldFloatT0 int64 = 15
+	exitGetStructFieldFloat64 int64 = 15
 
-	// exitGetStructFieldBoolT0 is the direct-exit reason for the tier-0 bool struct-field
+	// exitGetStructFieldBool is the direct-exit reason for the tier-0 bool struct-field
 	// reader.
-	exitGetStructFieldBoolT0 int64 = 16
+	exitGetStructFieldBool int64 = 16
 
-	// exitSetStructFieldIntT0 is the direct-exit reason for the tier-0 int struct-field
-	// writer. Primitive kind only; no GC barrier required (primitives carry no pointers).
-	exitSetStructFieldIntT0 int64 = 17
+	// exitSetStructFieldInt64 is the direct-exit reason for the tier-0 int struct-field
+	// writer. Primitive kind only.
+	exitSetStructFieldInt64 int64 = 17
 
-	// exitSetStructFieldUintT0 is the direct-exit reason for the tier-0 uint struct-field
+	// exitSetStructFieldUint64 is the direct-exit reason for the tier-0 uint struct-field
 	// writer.
-	exitSetStructFieldUintT0 int64 = 18
+	exitSetStructFieldUint64 int64 = 18
 
-	// exitSetStructFieldFloatT0 is the direct-exit reason for the tier-0 float struct-field
+	// exitSetStructFieldFloat64 is the direct-exit reason for the tier-0 float struct-field
 	// writer.
-	exitSetStructFieldFloatT0 int64 = 19
+	exitSetStructFieldFloat64 int64 = 19
 
-	// exitSetStructFieldBoolT0 is the direct-exit reason for the tier-0 bool struct-field
+	// exitSetStructFieldBool is the direct-exit reason for the tier-0 bool struct-field
 	// writer.
-	exitSetStructFieldBoolT0 int64 = 20
+	exitSetStructFieldBool int64 = 20
 
 	// exitFrameChanged is the tier-2 ASM-lift exit code for opFrameChanged.
 	exitFrameChanged int64 = 21
@@ -89,31 +89,31 @@ const (
 	// exitFrameChanged for the OpResult-to-exitReason mapping table.
 	exitPanicErrorPathB int64 = 22
 
-	// exitStackOverflowPathB is the tier-2 ASM-lift exit code for OpStackOverflow. See
+	// exitStackOverflowPathB is the tier-2 ASM-lift exit code for opStackOverflow. See
 	// exitFrameChanged for the OpResult-to-exitReason mapping table.
 	exitStackOverflowPathB int64 = 23
 
-	// exitDonePathB is the tier-2 ASM-lift exit code for OpDone. See exitFrameChanged for
+	// exitDonePathB is the tier-2 ASM-lift exit code for opDone. See exitFrameChanged for
 	// the OpResult-to-exitReason mapping table.
 	exitDonePathB int64 = 24
 
-	// exitGetStructFieldGeneralT0 requests the tier-0 general-bank struct-field reader.
-	exitGetStructFieldGeneralT0 int64 = 25
+	// exitGetStructFieldGeneral requests the tier-0 general-bank struct-field reader.
+	exitGetStructFieldGeneral int64 = 25
 
-	// exitSetStructFieldGeneralT0 requests the tier-0 general-bank struct-field writer.
-	exitSetStructFieldGeneralT0 int64 = 26
+	// exitSetStructFieldGeneral requests the tier-0 general-bank struct-field writer.
+	exitSetStructFieldGeneral int64 = 26
 
-	// exitTestNilJumpFalse requests the tier-2 nil test that branches when the pointer
-	// is non-nil.
-	exitTestNilJumpFalse int64 = 27
+	// exitJumpIfNotNil requests the tier-2 nil test that branches when the pointer is
+	// non-nil.
+	exitJumpIfNotNil int64 = 27
 
-	// exitTestNilJumpTrue mirrors exitTestNilJumpFalse for the inverted-sense nil test.
-	exitTestNilJumpTrue int64 = 28
+	// exitJumpIfNil mirrors exitJumpIfNotNil for the inverted-sense nil test.
+	exitJumpIfNil int64 = 28
 
 	// exitPoll returns to Go to check cancellation and deadlines in assembly loops.
 	exitPoll int64 = 29
 
-	// dispatchPollBudget sets the assembly poll interval to match
-	// cancellationCheckMask+1 in the Go loop.
+	// dispatchPollBudget sets the assembly poll interval to match cancellationCheckMask+1 in
+	// the Go loop.
 	dispatchPollBudget int64 = 1024
 )

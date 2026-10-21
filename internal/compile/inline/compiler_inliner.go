@@ -83,6 +83,9 @@ type inlineContext struct {
 	// callee can write to its parameter slot without clobbering the caller's argument.
 	paramPreCopies []paramPreCopy
 
+	// resultInPlace marks callee result slots mapped directly onto caller result registers.
+	resultInPlace []bool
+
 	// opCallPC is the PC of the opCall instruction in caller.body being inlined.
 	opCallPC int
 
@@ -199,15 +202,14 @@ func (w *bottomUpWalker) unvisitedCallee(site *program.CallSite) (int, bool) {
 	return j, true
 }
 
-// RunBytecodeInliner is the top-level inliner pass entry. It walks the call graph
-// bottom-up, splicing eligible callees into their callers.
+// RunBytecodeInliner splices eligible callees into their callers in call-graph order.
 //
 // Takes root (*CompiledFunction) which is the program's top-level compiled function whose
 // nested closures are walked.
 // Takes opts (passes.Options) whose UnrollSelfRecursive field gates one-level
 // self-recursive unrolling.
 //
-// Returns nil when inlining is disabled or no callee is eligible; errors only surface on
+// Returns nil when inlining is disabled or no callee is eligible. Errors only surface on
 // internal-consistency failures.
 func RunBytecodeInliner(ctx context.Context, root *program.CompiledFunction, opts passes.Options) error {
 	if root == nil {
@@ -217,17 +219,17 @@ func RunBytecodeInliner(ctx context.Context, root *program.CompiledFunction, opt
 		return fmt.Errorf("runBytecodeInliner cancelled: %w", err)
 	}
 	allFuncs := CollectReachableFunctions(root)
+	if root.Functions != nil {
+		markRecursionCycles(root.Functions)
+		if err := demoteTailCallsThatSaveNoStack(ctx, root.Functions); err != nil {
+			return err
+		}
+	}
 	if !anyInlineableCallSite(allFuncs) {
 		return nil
 	}
-	if root.Functions != nil {
-		adjacency := program.BuildCallAdjacency(root.Functions)
-		inSCC := program.FindCallGraphSCCs(adjacency)
-		for i, compiledFunction := range root.Functions {
-			if i < len(inSCC) {
-				compiledFunction.InRecursionCycle = inSCC[i]
-			}
-		}
+	if err := markFunctionsThatCannotObserveCallers(ctx, allFuncs); err != nil {
+		return err
 	}
 	order := bottomUpOrder(allFuncs)
 	for _, caller := range order {
@@ -238,6 +240,19 @@ func RunBytecodeInliner(ctx context.Context, root *program.CompiledFunction, opt
 		}
 	}
 	return nil
+}
+
+// markRecursionCycles records on each function whether it takes part in direct or mutual
+// recursion.
+//
+// Takes functions ([]*program.CompiledFunction) which are the program's functions.
+func markRecursionCycles(functions []*program.CompiledFunction) {
+	inCycle := program.FindCallGraphSCCs(program.BuildCallAdjacency(functions))
+	for index, compiledFunction := range functions {
+		if index < len(inCycle) {
+			compiledFunction.InRecursionCycle = inCycle[index]
+		}
+	}
 }
 
 // CollectReachableFunctions returns every function reachable from root.
@@ -294,9 +309,9 @@ func CanInlineSelfRecursive(site *program.CallSite, callee *program.CompiledFunc
 
 // reoptimiseAfterInline re-runs peephole fusion after a splice.
 //
-// Re-runs peephole fusion on the caller only (not its nested functions) and recomputes
-// precomputedAllocCounts so the new caller-side register slots are properly allocated at
-// run time.
+// A pass that runs in between must follow the control flow and not take the order of the
+// words for the order they run in. Only the caller is reoptimised, leaving its nested
+// functions unchanged.
 //
 // Takes compiledFunction (*program.CompiledFunction) which is the function to
 // re-optimise.
@@ -315,19 +330,21 @@ func reoptimiseAfterInline(ctx context.Context, compiledFunction *program.Compil
 				return fmt.Errorf("reoptimiseAfterInline cancelled: %w", err)
 			}
 		}
-		if passes.FuseCopyStructFieldGeneralT0(compiledFunction, body, i, n, jumpTargets) {
+		if passes.FuseCopyStructFieldGeneral(compiledFunction, body, i, n, jumpTargets) {
 			continue
 		}
 		if passes.FuseThreeInstrPatterns(compiledFunction, body, i, n, jumpTargets) ||
+			passes.FuseCompareRegJump(compiledFunction, body, i, n, jumpTargets) ||
 			passes.FuseArithConst(compiledFunction, body, i, n, jumpTargets) ||
-			passes.FuseAddIntJump(compiledFunction, body, i, n, jumpTargets) ||
+			passes.FuseAddInt64ConstantThenJump(compiledFunction, body, i, n, jumpTargets) ||
 			passes.FuseConcatRune(compiledFunction, body, i, n, jumpTargets) ||
 			passes.FuseAppendMove(compiledFunction, body, i, n, jumpTargets) ||
-			passes.FuseStringIndexToInt(compiledFunction, body, i, n, jumpTargets) {
+			passes.FuseGetStringByteAsInt64(compiledFunction, body, i, n, jumpTargets) ||
+			passes.FuseGetElementUint64AsInt64(compiledFunction, body, i, n, jumpTargets) {
 			continue
 		}
-		passes.OptimiseLoadIntConst(compiledFunction, body, i)
-		passes.OptimiseLoadUintConst(compiledFunction, body, i)
+		passes.OptimiseLoadInt64Constant(compiledFunction, body, i)
+		passes.OptimiseLoadUint64Constant(compiledFunction, body, i)
 	}
 	passes.SyncSourceMapAfterOptimise(compiledFunction, body)
 	compiledFunction.PrecomputedAllocCountsValid = false
@@ -366,6 +383,11 @@ func anyInlineableCallSite(allFuncs []*program.CompiledFunction) bool {
 
 // inlineCallsIn drives the splice for every eligible site in caller.
 //
+// A splice appends the callee's own call sites to the caller's table, so the walk runs to
+// the table's current end. A function spliced in has the calls it makes considered too.
+// The sites the caller started with come first and so have first claim on
+// maxInlinesPerCaller.
+//
 // Takes caller (*CompiledFunction) whose body is mutated by each successful splice.
 // Takes opts (passes.Options) whose UnrollSelfRecursive field gates self-recursive sites.
 //
@@ -377,18 +399,34 @@ func inlineCallsIn(caller *program.CompiledFunction, opts passes.Options) int {
 	inLoopMask := computeInLoopMask(caller)
 	sitePCs := buildSitePCTable(caller)
 	spliced := 0
-	for siteIndex := range caller.CallSites {
-		if spliced >= maxInlinesPerCaller {
-			break
+	for siteIndex := 0; siteIndex < len(caller.CallSites) && spliced < maxInlinesPerCaller; siteIndex++ {
+		opCallPC := -1
+		if siteIndex < len(sitePCs) {
+			opCallPC = sitePCs[siteIndex]
 		}
-		if !trySpliceSite(caller, siteIndex, sitePCs, inLoopMask, opts) {
+		inLoop := opCallPC >= 0 && opCallPC < len(inLoopMask) && inLoopMask[opCallPC]
+		bodyBefore := len(caller.Body)
+		if !trySpliceSite(caller, siteIndex, opCallPC, inLoop, opts) {
 			continue
 		}
 		spliced++
 		extendInLoopMaskForAppendedBody(caller, &inLoopMask)
+		if inLoop {
+			markInLoop(inLoopMask, bodyBefore)
+		}
 		sitePCs = buildSitePCTable(caller)
 	}
 	return spliced
+}
+
+// markInLoop marks every PC from start onwards as inside a loop.
+//
+// Takes mask ([]bool) which is the per-PC loop mask.
+// Takes start (int) which is the first appended PC.
+func markInLoop(mask []bool, start int) {
+	for pc := start; pc < len(mask); pc++ {
+		mask[pc] = true
+	}
 }
 
 // trySpliceSite evaluates the inliner gates for one call site and, on success, performs
@@ -396,47 +434,40 @@ func inlineCallsIn(caller *program.CompiledFunction, opts passes.Options) int {
 //
 // Takes caller (*CompiledFunction) which is the function being optimised.
 // Takes siteIndex (int) which is the index of the call site within caller.callSites.
-// Takes sitePCs ([]int) which lists the program counters of each call site's
-// isa.SubOpCall within the caller body.
-// Takes inLoopMask ([]bool) which is the parallel mask marking sites that reside inside a
-// loop.
+// Takes opCallPC (int) which is the PC of the site's spliceable call, negative when it
+// has none.
+// Takes inLoop (bool) which is true when the call runs inside a loop.
 // Takes opts (passes.Options) whose UnrollSelfRecursive field refuses self-recursive
 // sites outright when false.
 //
 // Returns true when the splice landed and false otherwise.
-func trySpliceSite(caller *program.CompiledFunction, siteIndex int, sitePCs []int, inLoopMask []bool, opts passes.Options) bool {
+func trySpliceSite(caller *program.CompiledFunction, siteIndex, opCallPC int, inLoop bool, opts passes.Options) bool {
 	site := &caller.CallSites[siteIndex]
-	opCallPC := -1
-	if siteIndex < len(sitePCs) {
-		opCallPC = sitePCs[siteIndex]
-	}
 	if opCallPC < 0 {
 		return false
 	}
 	if site.CachedCallee == caller && !opts.UnrollSelfRecursive {
 		return false
 	}
-	inLoop := opCallPC < len(inLoopMask) && inLoopMask[opCallPC]
 	if reason := canInline(caller, site, opCallPC, inLoop); reason != program.InlineEligible {
 		return false
 	}
+	selfRecursive := site.CachedCallee == caller
 	result := trySpliceCallAt(caller, safeconv.IntToUint16(siteIndex), opCallPC)
 	if !result.Spliced {
 		return false
 	}
-	if site.CachedCallee == caller {
-		site.RecursionUnrolled = true
+	if selfRecursive {
+		caller.CallSites[siteIndex].RecursionUnrolled = true
 	}
 	return true
 }
 
-// buildSitePCTable maps each call-site index to its isa.SubOpCall PC.
+// buildSitePCTable maps each call-site index to the PC of its spliceable call.
 //
 // Takes caller (*CompiledFunction) whose body is scanned.
 //
-// Returns a slice indexed by call-site index with the PC of that site's isa.SubOpCall, or
-// -1 when the site has no matching isa.SubOpCall (already inlined, or another call
-// variant).
+// Returns []int which holds each call's PC, or -1 when the site has no spliceable call.
 func buildSitePCTable(caller *program.CompiledFunction) []int {
 	n := len(caller.CallSites)
 	if n == 0 {
@@ -448,7 +479,7 @@ func buildSitePCTable(caller *program.CompiledFunction) []int {
 	}
 	for pc := range caller.Body {
 		instr := caller.Body[pc]
-		if !isa.InstrIsTier1SubOp(instr, isa.SubOpCall) {
+		if !isSpliceableCall(caller, instr) {
 			continue
 		}
 		index := int(uint16(instr.B) | uint16(instr.C)<<8)
@@ -661,7 +692,7 @@ func scanCalleeForRefusal(callee *program.CompiledFunction) program.InlineRefusa
 		return refusal
 	}
 	if callee.EmittedInlineBlocker != program.InlineRefusalUnknown {
-		if callee.EmittedInlineBlocker == program.InlineRefusalTailCall && calleeTailCallsAreAllCrossTarget(callee) {
+		if callee.EmittedInlineBlocker == program.InlineRefusalTailCall && calleeTailCallsCanBecomeCalls(callee) {
 			return program.InlineEligible
 		}
 		return callee.EmittedInlineBlocker
@@ -671,12 +702,24 @@ func scanCalleeForRefusal(callee *program.CompiledFunction) program.InlineRefusa
 		if r == program.InlineRefusalUnknown {
 			continue
 		}
-		if r == program.InlineRefusalTailCall && calleeTailCallsAreAllCrossTarget(callee) {
+		if r == program.InlineRefusalTailCall && calleeTailCallsCanBecomeCalls(callee) {
 			continue
 		}
 		return r
 	}
 	return program.InlineEligible
+}
+
+// calleeTailCallsCanBecomeCalls reports whether the tail calls of callee can run as plain
+// calls once its body is spliced into a caller, which appendCalleeBody() does to them.
+//
+// Only a function without results qualifies.
+//
+// Takes callee (*CompiledFunction) which is the function being considered for inlining.
+//
+// Returns true when every tail call in callee may become a plain call.
+func calleeTailCallsCanBecomeCalls(callee *program.CompiledFunction) bool {
+	return len(callee.ResultKinds) == 0 && calleeTailCallsAreAllCrossTarget(callee)
 }
 
 // calleeTailCallsAreAllCrossTarget reports whether every isa.SubOpTailCall in callee
@@ -728,14 +771,14 @@ func calleeHairyness(callee *program.CompiledFunction) int {
 //
 // Takes op (opcode) which is the opcode being weighed.
 //
-// Returns 0 for isa.OpNop, 2 for allocation-driven ops, or 1 for all others.
+// Returns 0 for isa.OpNoOperation, 2 for allocation-driven ops, or 1 for all others.
 func hairyOpcodeCost(op isa.Opcode) int {
 	switch op {
 	case isa.OpMakeSlice, isa.OpMakeClosure,
 		isa.OpAppend, isa.OpAppendSpread,
-		isa.OpMapSet:
+		isa.OpSetMap:
 		return 2
-	case isa.OpNop:
+	case isa.OpNoOperation:
 		return 0
 	default:
 	}
@@ -758,20 +801,16 @@ func countParamsInBank(callee *program.CompiledFunction, bank isa.RegisterKind) 
 	return n
 }
 
-// findOpCallPC locates the isa.SubOpCall instruction for a given call-site index.
-//
-// For the common isa.SubOpCall case the site index lives in instruction.b |
-// (instruction.c << 8). Matching is restricted to isa.SubOpCall because other call
-// variants encode the site index differently.
+// findOpCallPC locates a spliceable call with the given call-site index.
 //
 // Takes caller (*CompiledFunction) whose body is searched.
 // Takes siteIndex (uint16) which is the call-site index to find.
 //
-// Returns the PC of the matching isa.SubOpCall, or -1 when none is found.
+// Returns the PC of the matching call, or -1 when none is found.
 func findOpCallPC(caller *program.CompiledFunction, siteIndex uint16) int {
 	for i := range caller.Body {
 		instr := caller.Body[i]
-		if !isa.InstrIsTier1SubOp(instr, isa.SubOpCall) {
+		if !isSpliceableCall(caller, instr) {
 			continue
 		}
 		index := uint16(instr.B) | uint16(instr.C)<<program.InstructionByteShift
@@ -810,4 +849,40 @@ func computeInLoopMask(caller *program.CompiledFunction) []bool {
 		}
 	}
 	return mask
+}
+
+// isSpliceableCall reports whether the inliner accepts a direct call.
+//
+// Takes caller (*program.CompiledFunction) which holds the call.
+// Takes instr (isa.Instruction) which is the instruction.
+//
+// Returns bool which is true for isa.SubOpCall, and for isa.SubOpCallScalar of a
+// loop-free callee outside a debug build.
+func isSpliceableCall(caller *program.CompiledFunction, instr isa.Instruction) bool {
+	if isa.InstrIsTier1SubOp(instr, isa.SubOpCall) {
+		return true
+	}
+	if caller.DebugVarTable != nil || !isa.InstrIsTier1SubOp(instr, isa.SubOpCallScalar) {
+		return false
+	}
+	siteIndex := int(uint16(instr.B) | uint16(instr.C)<<program.InstructionByteShift)
+	if siteIndex >= len(caller.CallSites) {
+		return false
+	}
+	callee := caller.CallSites[siteIndex].CachedCallee
+	return callee != nil && !hasBackwardJump(callee.Body)
+}
+
+// hasBackwardJump reports whether the body contains a backward jump.
+//
+// Takes body ([]isa.Instruction) which is the instruction stream.
+//
+// Returns bool which is true when the body has a loop.
+func hasBackwardJump(body []isa.Instruction) bool {
+	for pc := range body {
+		if target, ok := program.JumpTargetAt(body, pc); ok && target <= pc {
+			return true
+		}
+	}
+	return false
 }

@@ -34,7 +34,7 @@ func newTypeTableFrame(t *testing.T, extC uint8, types ...reflect.Type) (*VM, *C
 	builder.numRegisters = wideRegCounts(8)
 	builder.typeTable = types
 	builder.Emit(isa.OpMakeSlice, 0, 1, 2)
-	builder.body = append(builder.body, isa.NewInstruction(isa.OpExt, 0, 0, extC))
+	builder.body = append(builder.body, isa.NewInstruction(isa.OpExtension, 0, 0, extC))
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
 
 	vm, frame, registers := newFramedVM(t, builder.build())
@@ -135,7 +135,7 @@ func TestMakeMapHandlerBuildsAnEmptyMap(t *testing.T) {
 			t.Parallel()
 			vm, frame, registers := newTypeTableFrame(t, tt.hintLog, tt.mapType)
 
-			require.Equal(t, opContinue, handleMakeMap(vm, frame, registers, op(0, 1, 2)))
+			require.Equal(t, opContinue, handleMakeMapBody(vm, frame, registers, op(0, 1, 2)))
 			require.Equal(t, tt.mapType, registers.General[0].Type())
 			require.Equal(t, 0, registers.General[0].Len())
 		})
@@ -146,7 +146,7 @@ func TestMakeMapHandlerBuildsAnEmptyMap(t *testing.T) {
 		vm, frame, registers := newTypeTableFrame(t, 6, reflect.TypeFor[map[string]int]())
 		vm.Limits.MaxAllocSize = 8
 
-		got := handleMakeMap(vm, frame, registers, op(0, 1, 2))
+		got := handleMakeMapBody(vm, frame, registers, op(0, 1, 2))
 
 		require.Equal(t, opPanicError, got)
 		require.ErrorIs(t, vm.evalError, fault.ErrAllocationLimit,
@@ -157,7 +157,7 @@ func TestMakeMapHandlerBuildsAnEmptyMap(t *testing.T) {
 		t.Parallel()
 		vm, frame, registers := newTypeTableFrame(t, 0, reflect.TypeFor[leafCounter]())
 
-		require.Equal(t, opContinue, handleMakeMap(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleMakeMapBody(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, reflect.Struct, registers.General[0].Kind())
 	})
 
@@ -165,7 +165,7 @@ func TestMakeMapHandlerBuildsAnEmptyMap(t *testing.T) {
 		t.Parallel()
 		vm, frame, registers := newTypeTableFrame(t, 0)
 
-		require.Equal(t, opPanicError, handleMakeMap(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opPanicError, handleMakeMapBody(vm, frame, registers, op(0, 1, 2)))
 	})
 }
 
@@ -177,7 +177,7 @@ func TestMakeChannelHandlerHonoursTheBufferCap(t *testing.T) {
 		vm, frame, registers := newTypeTableFrame(t, 0, reflect.TypeFor[chan int]())
 		registers.Ints[1] = 0
 
-		require.Equal(t, opContinue, handleMakeChannel(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleMakeChannelBody(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, reflect.Chan, registers.General[0].Kind())
 		require.Equal(t, 0, registers.General[0].Cap())
 	})
@@ -187,7 +187,7 @@ func TestMakeChannelHandlerHonoursTheBufferCap(t *testing.T) {
 		vm, frame, registers := newTypeTableFrame(t, 0, reflect.TypeFor[chan int]())
 		registers.Ints[1] = 4
 
-		require.Equal(t, opContinue, handleMakeChannel(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleMakeChannelBody(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, 4, registers.General[0].Cap())
 	})
 
@@ -196,7 +196,7 @@ func TestMakeChannelHandlerHonoursTheBufferCap(t *testing.T) {
 		vm, frame, registers := newTypeTableFrame(t, 0, reflect.TypeFor[chan int]())
 		registers.Ints[1] = -1
 
-		require.NotEqual(t, opContinue, handleMakeChannel(vm, frame, registers, op(0, 1, 2)))
+		require.NotEqual(t, opContinue, handleMakeChannelBody(vm, frame, registers, op(0, 1, 2)))
 		require.Error(t, vm.evalError)
 	})
 
@@ -206,7 +206,7 @@ func TestMakeChannelHandlerHonoursTheBufferCap(t *testing.T) {
 		vm.Limits.MaxAllocSize = 2
 		registers.Ints[1] = 8
 
-		require.Equal(t, opPanicError, handleMakeChannel(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opPanicError, handleMakeChannelBody(vm, frame, registers, op(0, 1, 2)))
 		require.ErrorIs(t, vm.evalError, fault.ErrAllocationLimit)
 	})
 }

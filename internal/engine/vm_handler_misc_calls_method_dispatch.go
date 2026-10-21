@@ -19,16 +19,20 @@
 package engine
 
 import (
+	"errors"
 	"reflect"
 	"sync/atomic"
 	"unsafe"
 
-	"pipit.sh/pipit/internal/engine/program"
-	"pipit.sh/pipit/internal/symtab/typemodel"
-
 	"piko.sh/safeconv"
+	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
+	"pipit.sh/pipit/internal/symtab/typemodel"
 )
+
+// methodKeyBufferSize is the size of the stack buffer a "TypeName.MethodName" lookup key
+// is built in. A longer key is built on the heap.
+const methodKeyBufferSize = 96
 
 // methodCallReceiver bundles the receiver-side state passed into resolveMethodCallSlow so
 // the function signature stays within the argument-limit.
@@ -41,6 +45,149 @@ type methodCallReceiver struct {
 
 	// register is the general-bank register holding the receiver.
 	register uint8
+}
+
+// promotionSearch is one search for a method promoted through embedded fields.
+//
+// Go reaches a method promoted through an embedded interface by a wrapper that calls the
+// interface's method on the field's current value, so each embedded interface the search
+// crosses starts a fresh promotion from the concrete value it holds. The static depth
+// bound (maxPromotedMethodDepth) applies between crossings, and the crossings are bounded
+// by the call depth limit, as Go's wrapper frames are by the stack.
+type promotionSearch struct {
+	// vm provides the method table and the call depth limit.
+	vm *VM
+
+	// methodName is the unqualified method being searched for.
+	methodName string
+
+	// interfaceHops counts the embedded interfaces crossed so far.
+	interfaceHops int
+
+	// reachedNil records that the search met a nil embedded interface or a nil pointer,
+	// which in Go dereferences nil when the method is reached through it.
+	reachedNil bool
+}
+
+// at searches receiver and its embedded fields.
+//
+// Takes receiver (reflect.Value) which is the value whose embedded fields are searched.
+// Takes depth (int) which is the static embedding depth since the last interface.
+//
+// Returns uint16 which is the function index when found.
+// Returns reflect.Value which is the receiver the method binds to.
+// Returns bool which is true when the method was found.
+func (s *promotionSearch) at(receiver reflect.Value, depth int) (uint16, reflect.Value, bool) {
+	if depth >= maxPromotedMethodDepth || !receiver.IsValid() {
+		return 0, receiver, false
+	}
+	if closure := closureFromValue(receiver); closure != nil {
+		return s.closureMethod(closure, receiver)
+	}
+	value := receiver
+	if value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			s.reachedNil = true
+			return 0, receiver, false
+		}
+		value = value.Elem()
+	}
+	if value.Kind() == reflect.Interface {
+		return s.throughInterface(value, receiver)
+	}
+	if value.Kind() != reflect.Struct {
+		return 0, receiver, false
+	}
+	structType := value.Type()
+	for index := range structType.NumField() {
+		ft := structType.Field(index)
+		if !program.IsAnonymousField(ft) {
+			continue
+		}
+		field := launderReadOnlyFieldValue(value.Field(index))
+		if functionIndex, resolved, ok := s.throughEmbeddedField(ft, field, depth); ok {
+			return functionIndex, resolved, true
+		}
+	}
+	return 0, receiver, false
+}
+
+// closureMethod finds the method of the named func type a closure reached through an
+// interface was converted to. A closure has no fields to promote methods from.
+//
+// Takes closure (*RuntimeClosure) which is the closure.
+// Takes receiver (reflect.Value) which holds it and is returned as the receiver.
+//
+// Returns uint16 which is the function index when found.
+// Returns reflect.Value which is the receiver the method binds to.
+// Returns bool which is true when the closure's named type declares the method.
+func (s *promotionSearch) closureMethod(closure *RuntimeClosure, receiver reflect.Value) (uint16, reflect.Value, bool) {
+	name := closureNamedTypeName(closure)
+	if name == "" {
+		return 0, receiver, false
+	}
+	functionIndex, ok := s.vm.rootFunction.MethodTable()[name+"."+s.methodName]
+	return functionIndex, receiver, ok
+}
+
+// throughInterface continues the search from the concrete value an interface holds.
+//
+// Takes value (reflect.Value) which is the interface value.
+// Takes fallback (reflect.Value) which is returned when nothing is found.
+//
+// Returns uint16 which is the function index when found.
+// Returns reflect.Value which is the receiver the method binds to.
+// Returns bool which is true when the method was found.
+func (s *promotionSearch) throughInterface(value, fallback reflect.Value) (uint16, reflect.Value, bool) {
+	if value.IsNil() {
+		s.reachedNil = true
+		return 0, fallback, false
+	}
+	s.interfaceHops++
+	if s.interfaceHops > s.vm.callDepthLimit() {
+		return 0, fallback, false
+	}
+	concrete := value.Elem()
+	if functionIndex, ok := lookupMethodTableForReceiver(s.vm, concrete, s.methodName); ok {
+		return functionIndex, concrete, true
+	}
+	if functionIndex, embedded, ok := s.at(concrete, 0); ok {
+		return functionIndex, embedded, true
+	}
+	return 0, fallback, false
+}
+
+// throughEmbeddedField searches one anonymous field, the method set of its own type first
+// and then its embedded fields.
+//
+// Takes ft (reflect.StructField) which is the field metadata.
+// Takes field (reflect.Value) which is the field value.
+// Takes depth (int) which is the static embedding depth of the field's parent.
+//
+// Returns uint16 which is the function index when found.
+// Returns reflect.Value which is the receiver the method binds to.
+// Returns bool which is true when the field produced a match.
+func (s *promotionSearch) throughEmbeddedField(ft reflect.StructField, field reflect.Value, depth int) (uint16, reflect.Value, bool) {
+	if ft.Type.Kind() == reflect.Interface {
+		return s.throughInterface(field, field)
+	}
+	if ft.Type.Kind() == reflect.Pointer {
+		if field.IsNil() {
+			s.reachedNil = true
+			return 0, field, false
+		}
+		field = field.Elem()
+		if field.Kind() == reflect.Interface {
+			return s.throughInterface(field, field)
+		}
+	}
+	if functionIndex, ok := lookupMethodTableForReceiver(s.vm, field, s.methodName); ok {
+		return functionIndex, field, true
+	}
+	if functionIndex, ok := s.vm.rootFunction.MethodTable()[ft.Name+"."+s.methodName]; ok {
+		return functionIndex, field, true
+	}
+	return s.at(field, depth+1)
 }
 
 // handleCallMethod dispatches a compiled method call by resolving the method from the
@@ -65,9 +212,7 @@ func handleCallMethod(vm *VM, frame *CallFrame, registers *Registers, instructio
 }
 
 // dispatchMethodCallSite performs the receiver lookup, IC walk, and callee invocation for
-// an already-resolved call site. Extracted from handleCallMethod so paths that arrive at
-// a *CallSite by other means (handleCallMethodInlineable, inline-binop inner-call
-// dispatch) reuse the same dispatch flow without re-reading from the bytecode stream.
+// an already-resolved call site.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes frame (*CallFrame) which is the current call frame.
@@ -84,24 +229,16 @@ func dispatchMethodCallSite(vm *VM, frame *CallFrame, registers *Registers, site
 	receiverLocation := site.Arguments[0]
 	receiver := registers.General[receiverLocation.Register]
 	typeWord := receiverDispatchTypeWord(&receiver)
-	hit := lookupMethodInlineCache(site, typeWord)
-	if hit != nil {
+	if hit := lookupMethodInlineCache(site, typeWord); hit != nil {
 		vm.MethodCallGoDispatches++
-
 		valueMethodThroughPointer := !hit.IsPointerReceiver && receiver.IsValid() && receiver.Kind() == reflect.Pointer
 		if !valueMethodThroughPointer {
 			vm.tryPopulateMethodASMInfo(frame.Function, site, hit, typeWord)
-			if hit.TinyLeafShape != program.TinyLeafNone {
-				return runTinyLeafInline(vm, registers, site, hit)
-			}
-		}
-		classifyFusedEvalShape(hit)
-		if hit.EvalShape > program.FusedEvalNone {
-			if result, fused := runFusedEvalShape(registers, site, hit); fused {
+			if result, ran := runCachedLeaf(vm, registers, site, hit); ran {
 				return result
 			}
 		}
-		return pushCompiledFrame(vm, registers, site, hit)
+		return runFusedOrFramed(vm, registers, site, hit)
 	}
 	if isNilInterfaceReceiver(receiver) {
 		return raiseNilPointerDereference(vm)
@@ -139,27 +276,31 @@ func resolveMethodCallSlow(vm *VM, frame *CallFrame, registers *Registers, site 
 	closureReceiver := false
 	if closure := closureFromValue(receiver.value); closure != nil {
 		closureReceiver = true
-		if closure.namedType != "" {
-			typeName = closure.namedType
+		if name := closureNamedTypeName(closure); name != "" {
+			typeName = name
 		}
 	}
-	tableName := typeName + "." + methodName
-	functionIndex, ok := vm.rootFunction.MethodTable()[tableName]
+	functionIndex, ok := lookupMethodKey(vm.rootFunction.MethodTable(), typeName, methodName)
 	wasPromoted := false
 	receiverValue := receiver.value
+	search := promotionSearch{vm: vm, methodName: methodName, interfaceHops: 0, reachedNil: false}
 	if !ok {
-		functionIndex, receiverValue, ok = resolvePromotedMethod(vm, receiverValue, methodName)
+		functionIndex, receiverValue, ok = search.at(receiverValue, 0)
 		wasPromoted = ok
 	}
 	if !ok {
 		receiver.value = receiverValue
-		return resolveMethodCallExternalFallback(vm, registers, site, receiver, methodName, tableName, wasPromoted)
+		return resolveMethodCallExternalFallback(vm, registers, site, receiver, typeName, methodName, &search)
 	}
 	if int(functionIndex) >= len(vm.functions) {
 		vMBoundsError(vm, frame, boundsTableFunction, int(functionIndex), len(vm.functions))
 		return opPanicError
 	}
-	callee := vm.functions[functionIndex]
+	callee, err := receiverMethodBody(vm.rootFunction, receiverValue, vm.functions[functionIndex])
+	if err != nil {
+		vm.evalError = err
+		return opPanicError
+	}
 
 	updateMethodIC(site, receiver.typ, functionIndex, callee, wasPromoted || closureReceiver)
 	if !wasPromoted {
@@ -167,7 +308,7 @@ func resolveMethodCallSlow(vm *VM, frame *CallFrame, registers *Registers, site 
 	}
 
 	original := registers.General[receiver.register]
-	registers.General[receiver.register] = receiverValue
+	registers.General[receiver.register] = receiverValueFor(callee, receiverValue)
 	result := pushCompiledFrame(vm, registers, site, callee)
 	registers.General[receiver.register] = original
 	return result
@@ -177,7 +318,7 @@ func resolveMethodCallSlow(vm *VM, frame *CallFrame, registers *Registers, site 
 //
 // Used by resolveMethodCallSlow when the local MethodTable and the promoted-method lookup
 // both miss. Split out so the parent stays within the cognitive-complexity and
-// function-length budgets; this slow path is only taken on IC misses for methods that the
+// function-length budgets. This slow path is only taken on IC misses for methods that the
 // local RootFunction does not own, so the function-call overhead is irrelevant.
 //
 // It tries GlobalStore.externalMethods first (cross-package dispatch such as
@@ -191,9 +332,11 @@ func resolveMethodCallSlow(vm *VM, frame *CallFrame, registers *Registers, site 
 // Takes site (*CallSite) which is the call descriptor.
 // Takes receiver (methodCallReceiver) whose .value holds the (possibly promoted)
 // receiver.
+// Takes typeName (string) which is the receiver's type name in the method tables.
 // Takes methodName (string) which is the unqualified method name.
-// Takes tableName (string) which is the "TypeName.MethodName" key.
-// Takes wasPromoted (bool) which signals promotion through embedded fields.
+// Takes search (*promotionSearch) which is the promotion search that missed, so the
+// receiver is not a promoted one. When every fallback misses too, it decides the panic
+// (promotedMethodFailure).
 //
 // Returns the dispatch OpResult.
 func resolveMethodCallExternalFallback(
@@ -201,11 +344,11 @@ func resolveMethodCallExternalFallback(
 	registers *Registers,
 	site *program.CallSite,
 	receiver methodCallReceiver,
+	typeName string,
 	methodName string,
-	tableName string,
-	wasPromoted bool,
+	search *promotionSearch,
 ) OpResult {
-	if result, dispatched := tryExternalMethodTable(vm, registers, site, receiver, tableName, wasPromoted); dispatched {
+	if result, dispatched := tryExternalMethodTable(vm, registers, site, receiver, typeName, methodName, false); dispatched {
 		return result
 	}
 	if result, intercepted := tryInterceptPipitReflectTypeMethod(vm, registers, site, receiver.value, methodName); intercepted {
@@ -218,15 +361,35 @@ func resolveMethodCallExternalFallback(
 		return result
 	}
 	nativeMethod, lookupErr := safeMethodByName(receiver.value, methodName)
-	if lookupErr != nil {
-		vm.evalError = newInvariantError("undefined method: %s", tableName)
-		return opPanicError
+	if lookupErr == nil && nativeMethod.IsValid() {
+		receiverType := receiver.value.Type()
+		return handleCallBoundMethodReflect(vm, registers, site, nativeMethod, nativeMethodAnySink(receiverType, methodName),
+			nativeCalleeName{receiverType: receiverType, methodName: methodName, description: ""})
 	}
-	if nativeMethod.IsValid() {
-		return handleCallBoundMethodReflect(vm, registers, site, nativeMethod)
+	result := promotedMethodFailure(vm, search, typeName+"."+methodName)
+	if lookupErr != nil && vm.evalError != nil {
+		vm.evalError = errors.Join(vm.evalError, lookupErr)
 	}
-	vm.evalError = newInvariantError("undefined method: %s", tableName)
-	return opPanicError
+	return result
+}
+
+// lookupMethodKey looks up the "TypeName.MethodName" key in a method table without
+// building the key as a string. The key is assembled in a stack buffer and indexed with
+// m[string(bytes)], which Go does not allocate for.
+//
+// Takes table (map[string]V) which is the method table.
+// Takes typeName (string) which is the receiver's type name.
+// Takes methodName (string) which is the method name.
+//
+// Returns V which is the entry.
+// Returns bool which is true when the key is present.
+func lookupMethodKey[V any](table map[string]V, typeName, methodName string) (V, bool) {
+	var buffer [methodKeyBufferSize]byte
+	key := append(buffer[:0], typeName...)
+	key = append(key, '.')
+	key = append(key, methodName...)
+	entry, ok := table[string(key)]
+	return entry, ok
 }
 
 // tryExternalMethodTable consults GlobalStore.externalMethods.
@@ -239,23 +402,26 @@ func resolveMethodCallExternalFallback(
 // Takes registers (*Registers) which is the active register file.
 // Takes site (*CallSite) which is the call descriptor.
 // Takes receiver (methodCallReceiver) which bundles the receiver value/type/register.
-// Takes tableName (string) which is the "TypeName.MethodName" key.
+// Takes typeName (string) which is the receiver's type name in the method tables.
+// Takes methodName (string) which is the method name.
 // Takes wasPromoted (bool) which is the IC-cache hint forwarded to updateMethodIC.
 //
-// Returns the dispatch OpResult and true when the lookup hit and the call was queued;
-// otherwise (_, false) so the caller continues with the reflect-fallback chain.
+// Returns the dispatch OpResult and true when the lookup hit and the call was queued.
+// Otherwise it returns (_, false) so the caller continues with the reflect-fallback
+// chain.
 func tryExternalMethodTable(
 	vm *VM,
 	registers *Registers,
 	site *program.CallSite,
 	receiver methodCallReceiver,
-	tableName string,
+	typeName string,
+	methodName string,
 	wasPromoted bool,
 ) (OpResult, bool) {
 	if vm.Globals == nil {
 		return opContinue, false
 	}
-	entry, ok := vm.Globals.lookupExternalMethod(tableName)
+	entry, ok := vm.Globals.lookupExternalMethodOf(typeName, methodName)
 	if !ok || entry.rootFunction == nil {
 		return opContinue, false
 	}
@@ -313,9 +479,42 @@ func updateMethodIC(site *program.CallSite, recvType reflect.Type, functionIndex
 	atomic.StorePointer(&site.MethodICSlots[victim], unsafe.Pointer(entry))
 }
 
-// pushCompiledFrame pushes a new call frame for a compiled function.
+// runCachedLeaf runs the tiny-leaf method named by an inline cache in place.
 //
-// Copies arguments from the caller's registers to the callee's frame.
+// Takes vm (*VM) which carries the panic machinery.
+// Takes registers (*Registers) which holds the caller's register banks.
+// Takes site (*CallSite) which describes argument and return locations.
+// Takes callee (*CompiledFunction) which is the cached method.
+//
+// Returns OpResult which indicates the next execution step when the leaf ran.
+// Returns bool which is false when the method is no tiny leaf or could not run in place.
+func runCachedLeaf(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) (OpResult, bool) {
+	if callee.TinyLeafShape == program.TinyLeafNone {
+		return opContinue, false
+	}
+	return runTinyLeafInline(vm, registers, site, callee)
+}
+
+// runFusedOrFramed calls the method an inline cache named through the fused evaluator
+// when its body is one of that evaluator's shapes, and in a frame otherwise.
+//
+// Takes vm (*VM) which provides the call stack.
+// Takes registers (*Registers) which holds the caller's register banks.
+// Takes site (*CallSite) which describes argument and return locations.
+// Takes callee (*CompiledFunction) which is the cached method.
+//
+// Returns OpResult indicating the next execution step.
+func runFusedOrFramed(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) OpResult {
+	classifyFusedEvalShape(callee)
+	if callee.EvalShape > program.FusedEvalNone {
+		if result, fused := runFusedEvalShape(registers, site, callee); fused {
+			return result
+		}
+	}
+	return pushCompiledFrame(vm, registers, site, callee)
+}
+
+// pushCompiledFrame pushes a compiled-function frame and copies its arguments.
 //
 // Takes vm (*VM) which provides the call stack.
 // Takes registers (*Registers) which holds the caller's register banks.
@@ -335,7 +534,7 @@ func pushCompiledFrame(vm *VM, registers *Registers, site *program.CallSite, cal
 	if vm.Arena != nil {
 		vm.Arena.SaveInto(&f.arenaSave)
 		callee.EnsurePrecomputedAllocCounts()
-		vm.Arena.allocRegistersIntoCached(&f.Registers, callee.PrecomputedAllocCounts, callee.NonZeroBankMask)
+		vm.Arena.allocRegistersIntoCached(&f.Registers, &callee.PrecomputedAllocCounts, callee.NonZeroBankMask)
 	} else {
 		f.Registers = NewRegisters(callee.NumRegisters)
 	}
@@ -402,119 +601,32 @@ func copyValueReceiverThroughPointer(vm *VM, frame *CallFrame, callee *program.C
 // Returns reflect.Value which is the embedded receiver value.
 // Returns bool which is true when the method was found.
 func resolvePromotedMethod(vm *VM, receiver reflect.Value, methodName string) (uint16, reflect.Value, bool) {
-	return resolvePromotedMethodAtDepth(vm, receiver, methodName, 0)
+	search := promotionSearch{vm: vm, methodName: methodName, interfaceHops: 0, reachedNil: false}
+	return search.at(receiver, 0)
 }
 
-// resolvePromotedMethodAtDepth is the depth-bounded implementation.
+// promotedMethodFailure raises a panic when a promoted method cannot be reached.
 //
-// Provides the recursive body for resolvePromotedMethod.
+// As in Go, it raises a nil pointer dereference when the path ran into a nil embedded
+// interface or pointer, or a stack overflow when it crossed more embedded interfaces than
+// the call depth limit allows (each crossing is a wrapper frame in Go). Otherwise it
+// raises an internal error, since the type checker accepted the selector.
 //
-// Takes vm (*VM) which provides the method table.
-// Takes receiver (reflect.Value) which is the value whose embedded fields are searched.
-// Takes methodName (string) which is the method name to locate.
-// Takes depth (int) which tracks the current recursion depth.
+// Takes vm (*VM) which receives the error.
+// Takes search (*promotionSearch) which is the finished search.
+// Takes tableName (string) which names the method in the internal error.
 //
-// Returns uint16 which is the function index when found.
-// Returns reflect.Value which is the embedded receiver value.
-// Returns bool which is true when the method was found.
-func resolvePromotedMethodAtDepth(vm *VM, receiver reflect.Value, methodName string, depth int) (uint16, reflect.Value, bool) {
-	if depth >= maxPromotedMethodDepth {
-		return 0, receiver, false
+// Returns OpResult which propagates the raised panic.
+func promotedMethodFailure(vm *VM, search *promotionSearch, tableName string) OpResult {
+	switch {
+	case search.reachedNil:
+		return raiseNilPointerDereference(vm)
+	case search.interfaceHops > vm.callDepthLimit():
+		vm.evalError = vm.stackOverflowError()
+	default:
+		vm.evalError = newInvariantError("undefined method: %s", tableName)
 	}
-	value := receiver
-	if value.Kind() == reflect.Pointer {
-		value = value.Elem()
-	}
-	if value.Kind() == reflect.Interface {
-		return resolvePromotedMethodOnInterface(vm, value, receiver, methodName, depth)
-	}
-	if value.Kind() != reflect.Struct {
-		return 0, receiver, false
-	}
-	for ft, field := range value.Fields() {
-		if !program.IsAnonymousField(ft) {
-			continue
-		}
-
-		if functionIndex, resolved, ok := resolvePromotedMethodOnEmbeddedField(vm, ft, launderReadOnlyFieldValue(field), methodName, depth); ok {
-			return functionIndex, resolved, true
-		}
-	}
-	return 0, receiver, false
-}
-
-// resolvePromotedMethodOnInterface unwraps an interface receiver.
-//
-// Resolves the method against the concrete value, recursing for further promotion via
-// embedded fields.
-//
-// Takes vm (*VM) which provides the method table.
-// Takes value (reflect.Value) which is the unwrapped value at the current depth.
-// Takes receiver (reflect.Value) which is the original receiver to return on failure.
-// Takes methodName (string) which is the method name to locate.
-// Takes depth (int) which tracks the current recursion depth.
-//
-// Returns uint16 which is the function index when found.
-// Returns reflect.Value which is the resolved concrete receiver.
-// Returns bool which is true when the method was found.
-func resolvePromotedMethodOnInterface(vm *VM, value, receiver reflect.Value, methodName string, depth int) (uint16, reflect.Value, bool) {
-	if value.IsNil() {
-		return 0, receiver, false
-	}
-	concrete := value.Elem()
-	if functionIndex, ok := lookupMethodTableForReceiver(vm, concrete, methodName); ok {
-		return functionIndex, concrete, true
-	}
-	return resolvePromotedMethodAtDepth(vm, concrete, methodName, depth+1)
-}
-
-// resolvePromotedMethodOnEmbeddedField walks an anonymous field.
-//
-// Handles both interface-typed and concrete-typed embeddings and recurses into the
-// field's own embedded chain on miss.
-//
-// Takes vm (*VM) which provides the method table.
-// Takes ft (reflect.StructField) which is the field metadata.
-// Takes field (reflect.Value) which is the field value.
-// Takes methodName (string) which is the method name to locate.
-// Takes depth (int) which tracks the current recursion depth.
-//
-// Returns uint16 which is the function index when found.
-// Returns reflect.Value which is the resolved receiver.
-// Returns bool which is true when the field produced a match.
-func resolvePromotedMethodOnEmbeddedField(vm *VM, ft reflect.StructField, field reflect.Value, methodName string, depth int) (uint16, reflect.Value, bool) {
-	fieldType := ft.Type
-	if fieldType.Kind() == reflect.Pointer {
-		fieldType = fieldType.Elem()
-		field = field.Elem()
-	}
-	if fieldType.Kind() == reflect.Interface {
-		if !field.IsValid() || field.IsNil() {
-			return 0, field, false
-		}
-		concrete := field.Elem()
-		if functionIndex, ok := lookupMethodTableForReceiver(vm, concrete, methodName); ok {
-			return functionIndex, concrete, true
-		}
-		if functionIndex, embedded, ok := resolvePromotedMethodAtDepth(vm, concrete, methodName, depth+1); ok {
-			return functionIndex, embedded, true
-		}
-		return 0, field, false
-	}
-	if !field.IsValid() {
-		return 0, field, false
-	}
-	if functionIndex, ok := lookupMethodTableForReceiver(vm, field, methodName); ok {
-		return functionIndex, field, true
-	}
-
-	if functionIndex, ok := vm.rootFunction.MethodTable()[ft.Name+"."+methodName]; ok {
-		return functionIndex, field, true
-	}
-	if functionIndex, embedded, ok := resolvePromotedMethodAtDepth(vm, field, methodName, depth+1); ok {
-		return functionIndex, embedded, true
-	}
-	return 0, field, false
+	return opPanicError
 }
 
 // lookupMethodTableForReceiver returns the method-table func index.
@@ -534,7 +646,7 @@ func lookupMethodTableForReceiver(vm *VM, receiver reflect.Value, methodName str
 		receiverType = receiverType.Elem()
 	}
 	typeName := receiverType.Name()
-	if info, ok := typemodel.LookupNamedScalarPoolInfo(receiverType); ok {
+	if info, ok := typemodel.LookupNamedTypeInfo(receiverType); ok {
 		typeName = info.BareName
 	}
 	if typeName == "" && vm.rootFunction.TypeNames != nil {
@@ -548,27 +660,6 @@ func lookupMethodTableForReceiver(vm *VM, receiver reflect.Value, methodName str
 	}
 	functionIndex, ok := vm.rootFunction.MethodTable()[typeName+"."+methodName]
 	return functionIndex, ok
-}
-
-// receiverDispatchTypeWord returns the type word the method inline cache keys on.
-//
-// A pointer receiver is keyed on its element type, so *T and T reach the same cache
-// entry: the method set the call site resolved against is the same either way.
-//
-// Takes receiver (*reflect.Value) which is the receiver register's value, taken by
-// pointer so the raw header can be read without copying it.
-//
-// Returns the type word, or zero when the receiver carries no type.
-func receiverDispatchTypeWord(receiver *reflect.Value) uintptr {
-	raw := (*unsafeReflectValue)(unsafe.Pointer(receiver))
-	typeWord := uintptr(raw.typ)
-	if typeWord == 0 {
-		return 0
-	}
-	if reflect.Kind(*(*uint8)(unsafe.Add(raw.typ, program.AbiTypeKindByteOffset))&uint8(flagKindMask)) == reflect.Pointer {
-		typeWord = *(*uintptr)(unsafe.Add(raw.typ, program.AbiTypePointerElemOffset))
-	}
-	return typeWord
 }
 
 // lookupMethodInlineCache resolves a receiver type word against the call site's cache.

@@ -18,68 +18,18 @@
 
 package engine
 
-import "pipit.sh/pipit/internal/engine/program"
-
-// putRegisterArenaAbandoningEscapes returns a callback VM's arena to the pool after
-// replacing every slab whose values may have escaped into the parent VM, leaving replaced
-// slabs to the collector.
+// putRegisterArenaAbandoningEscapes returns a callback or bound-method VM's arena to the
+// pool.
 //
 // Takes a (*RegisterArena) which may be nil.
 func putRegisterArenaAbandoningEscapes(a *RegisterArena) {
 	if a == nil {
 		return
 	}
-	if a.holdsEscapableData() {
-		a.abandonEscapedSlabs()
+	if a.holdsEscapableData() && !a.reentrantHandedOff {
+		a.revokeEpoch(epochReentrant, noHandOffCause)
 	}
 	PutRegisterArena(a)
-}
-
-// abandonEscapedSlabs replaces every slab that may be referenced by an escaped value with
-// a fresh one, so Reset never touches memory a live value still reads.
-func (a *RegisterArena) abandonEscapedSlabs() {
-	for _, slab := range a.oldByteSlabs {
-		forgetArenaSlab(slab)
-	}
-	a.oldByteSlabs = nil
-	a.replaceByteSlab(make([]byte, InitialByteSlabSize), false)
-	a.byteIndex = 0
-	a.genericBytesSlab = nil
-	a.oldGenericByteSlabs = nil
-	a.genericBytesIndex = 0
-	a.freeGenericByteChunks = nil
-	a.sliceHeaderSlab = make([]arenaSliceHeader, initialSliceHeaderCapacity)
-	a.oldSliceHeaderSlabs = nil
-	a.sliceHeaderIndex = 0
-	a.freeSliceHeaderChunks = nil
-	a.abandonBackingSlabs()
-	a.abandonBoxSlabs()
-	a.upvalueCellSlab = make([]program.UpvalueCell, initialUpvalueCellSlabs)
-	a.UpvalueCellIndex = 0
-	a.upvalueReferenceSlab = make([]upvalue, initialUpvalueRefSlabs)
-	a.UpvalueReferenceIndex = 0
-	a.slabRetiredSinceReset = noSlabUsage
-	a.slabGeneration++
-}
-
-// abandonBackingSlabs replaces the typed-slice backing slabs, current and retired, with
-// fresh ones at their initial sizes.
-func (a *RegisterArena) abandonBackingSlabs() {
-	a.intBackingSlab = make([]int64, InitialIntBackingSize)
-	a.oldIntBackings = nil
-	a.intBackingIndex = 0
-	a.floatBackingSlab = make([]float64, initialFloatBackingSize)
-	a.oldFloatBackings = nil
-	a.floatBackingIndex = 0
-	a.stringBackingSlab = make([]string, initialStringBackingSize)
-	a.oldStringBackings = nil
-	a.stringBackingIndex = 0
-	a.boolBackingSlab = make([]bool, initialBoolBackingSize)
-	a.oldBoolBackings = nil
-	a.boolBackingIndex = 0
-	a.uintBackingSlab = make([]uint64, initialUintBackingSize)
-	a.oldUintBackings = nil
-	a.uintBackingIndex = 0
 }
 
 // abandonBoxSlabs drops the scalar box slabs. A fresh arena has none, so they are left
@@ -95,4 +45,27 @@ func (a *RegisterArena) abandonBoxSlabs() {
 	a.uintBoxIndex = 0
 	a.complexBoxSlab = nil
 	a.complexBoxIndex = 0
+}
+
+// holdsEscapableBytes reports whether the arena used any byte storage since the last
+// reset: string bytes, mutable bytes, generic bytes or slice headers, current or retired.
+//
+// Returns bool which is true when it did.
+func (a *RegisterArena) holdsEscapableBytes() bool {
+	return a.byteIndex != 0 || len(a.oldByteSlabs) != 0 ||
+		a.mutByteIndex != 0 || len(a.oldMutByteSlabs) != 0 ||
+		a.slabRetiredSinceReset != noSlabUsage ||
+		a.genericBytesIndex != 0 || a.sliceHeaderIndex != 0 || len(a.oldSliceHeaderSlabs) != 0
+}
+
+// holdsEscapableBackings reports whether the arena used any typed backing array, scalar
+// box or upvalue cell since the last reset.
+//
+// Returns bool which is true when it did.
+func (a *RegisterArena) holdsEscapableBackings() bool {
+	return a.intBackingIndex != 0 || a.floatBackingIndex != 0 || a.stringBackingIndex != 0 ||
+		a.boolBackingIndex != 0 || a.uintBackingIndex != 0 ||
+		a.stringBoxIndex != 0 || a.intBoxIndex != 0 || a.floatBoxIndex != 0 ||
+		a.uintBoxIndex != 0 || a.complexBoxIndex != 0 ||
+		a.UpvalueCellIndex != 0 || a.UpvalueReferenceIndex != 0
 }

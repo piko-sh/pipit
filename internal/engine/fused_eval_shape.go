@@ -37,30 +37,6 @@ const (
 	// execution.
 	maxFusedEvalDepth = 200
 
-	// fusedChildFetchInstrs is the instruction span of one interface-child fetch sequence.
-	fusedChildFetchInstrs = 3
-
-	// fusedTruncateWidth is the operand bit width the masked-arithmetic families truncate
-	// to.
-	fusedTruncateWidth = 32
-
-	// fusedMaskedBinaryBodyLen is the recognised body length for add/sub/mul masked shapes.
-	fusedMaskedBinaryBodyLen = 10
-
-	// fusedMinMaxBodyLen is the recognised body length for the min/max comparison-select
-	// shape.
-	fusedMinMaxBodyLen = 11
-
-	// fusedIfPosBodyLen is the recognised body length for the compact three-way conditional
-	// shape.
-	fusedIfPosBodyLen = 13
-
-	// fusedModGuardedBodyLenMin is the minimum body length for the guarded-modulo shape.
-	fusedModGuardedBodyLenMin = 14
-
-	// fusedModGuardedBodyLenMax is the maximum body length for the guarded-modulo shape.
-	fusedModGuardedBodyLenMax = 15
-
 	// fusedEnvWideStrideBytes is the 64-bit element width the fused environment reader
 	// supports.
 	fusedEnvWideStrideBytes = 8
@@ -68,13 +44,6 @@ const (
 	// fusedEnvNarrowStrideBytes is the 32-bit element width the fused environment reader
 	// supports.
 	fusedEnvNarrowStrideBytes = 4
-
-	// fusedModGuardChildBOffset is the dividend child's fetch offset in the guarded-modulo
-	// body.
-	fusedModGuardChildBOffset = 8
-
-	// fusedIfPosChildCOffset is the else-child's fetch offset in the compact if-pos body.
-	fusedIfPosChildCOffset = 10
 )
 
 // fusedEnv captures the environment slice argument the shaped evaluators thread through
@@ -105,272 +74,6 @@ func (e *fusedEnv) at(index int64) (uint64, bool) {
 		return *(*uint64)(unsafe.Add(e.data, uintptr(index)*8)), true
 	}
 	return uint64(*(*uint32)(unsafe.Add(e.data, uintptr(index)*4))), true
-}
-
-// classifyFusedEvalShape classifies a compiled function's body against the recognised
-// evaluator families.
-//
-// Takes compiledFunction (*program.CompiledFunction) which is the function whose
-// EvalShape fields are populated on a match.
-func classifyFusedEvalShape(compiledFunction *program.CompiledFunction) {
-	compiledFunction.EvalShapeOnce.Do(func() { classifyFusedEvalShapeOnce(compiledFunction) })
-}
-
-// classifyFusedEvalShapeOnce runs the classification body exactly once per function under
-// evalShapeOnce.
-//
-// Takes compiledFunction (*program.CompiledFunction) which is the function to classify.
-func classifyFusedEvalShapeOnce(compiledFunction *program.CompiledFunction) {
-	compiledFunction.EvalShape = program.FusedEvalNone
-	body := effectiveOps(compiledFunction.Body)
-	switch len(body) {
-	case fusedMaskedBinaryBodyLen:
-		tryClassifyMaskedBinary(compiledFunction, body)
-		if compiledFunction.EvalShape == program.FusedEvalNone {
-			tryClassifyMinMax(compiledFunction, body)
-		}
-
-	case fusedMinMaxBodyLen:
-		tryClassifyMinMax(compiledFunction, body)
-	case fusedModGuardedBodyLenMin, fusedModGuardedBodyLenMax:
-		tryClassifyModGuarded(compiledFunction, body)
-		if compiledFunction.EvalShape == program.FusedEvalNone {
-			tryClassifyIfPos(compiledFunction, body)
-		}
-	case fusedIfPosBodyLen:
-		tryClassifyIfPos(compiledFunction, body)
-	}
-}
-
-// effectiveOps strips tier-3 NOP words from a body so matchers see a consistent
-// instruction stream.
-//
-// Takes body ([]isa.Instruction) which is the raw instruction sequence to filter.
-//
-// Returns []isa.Instruction which is the filtered stream with NOP words removed.
-func effectiveOps(body []isa.Instruction) []isa.Instruction {
-	out := make([]isa.Instruction, 0, len(body))
-	for _, inst := range body {
-		if inst.Op == isa.OpDrillTier1 && inst.A == 0 && inst.B == 0 && inst.C == 0 {
-			continue
-		}
-		out = append(out, inst)
-	}
-	return out
-}
-
-// fusedChildFetch matches the instruction triple that loads an interface child and
-// evaluates it.
-//
-// Takes compiledFunction (*program.CompiledFunction) which owns the struct layout table.
-// Takes body ([]isa.Instruction) which is the instruction stream to match.
-// Takes at (int) which is the offset into body where the triple starts.
-//
-// Returns program.StructFieldLayout which is the matched child field layout.
-// Returns uint16 which is the call-site index.
-// Returns bool which is true when the triple matched.
-func fusedChildFetch(compiledFunction *program.CompiledFunction, body []isa.Instruction, at int) (program.StructFieldLayout, uint16, bool) {
-	if at+2 >= len(body) {
-		return program.StructFieldLayout{}, 0, false
-	}
-	get, call, ext := body[at], body[at+1], body[at+2]
-	if get.Op != isa.OpGetStructFieldGeneral || get.B != 0 {
-		return program.StructFieldLayout{}, 0, false
-	}
-	if !isa.InstrIsTier1SubOp(call, isa.SubOpCallMethodInlineable) || ext.Op != isa.OpExt {
-		return program.StructFieldLayout{}, 0, false
-	}
-	layoutIndex := int(get.C)
-	if layoutIndex >= len(compiledFunction.StructLayoutTable) {
-		return program.StructFieldLayout{}, 0, false
-	}
-	siteIndex := uint16(call.B)
-	if int(siteIndex) >= len(compiledFunction.CallSites) {
-		return program.StructFieldLayout{}, 0, false
-	}
-	return compiledFunction.StructLayoutTable[layoutIndex], siteIndex, true
-}
-
-// tryClassifyMaskedBinary matches the add/sub/mul family.
-//
-// Takes compiledFunction (*program.CompiledFunction) which receives the classification
-// result.
-// Takes body ([]isa.Instruction) which is the effective instruction stream.
-func tryClassifyMaskedBinary(compiledFunction *program.CompiledFunction, body []isa.Instruction) {
-	layoutA, siteA, ok := fusedChildFetch(compiledFunction, body, 0)
-	if !ok {
-		return
-	}
-	layoutB, siteB, ok := fusedChildFetch(compiledFunction, body, fusedChildFetchInstrs)
-	if !ok {
-		return
-	}
-	arith, trunc, move := body[2*fusedChildFetchInstrs], body[2*fusedChildFetchInstrs+1], body[2*fusedChildFetchInstrs+2]
-	if trunc.Op != isa.OpTruncateNarrow || trunc.B != fusedTruncateWidth {
-		return
-	}
-	if move.Op != isa.OpDrillTier1 || isa.SubOpcode(move.A) != isa.SubOpMoveUint {
-		return
-	}
-	if !isTier2Return(body[9]) {
-		return
-	}
-	var shape program.FusedEvalShape
-	switch arith.Op {
-	case isa.OpAddUint:
-		shape = program.FusedEvalAddMasked
-	case isa.OpSubUint:
-		shape = program.FusedEvalSubMasked
-	case isa.OpMulUint:
-		shape = program.FusedEvalMulMasked
-	default:
-		return
-	}
-	setEvalShape(compiledFunction, shape,
-		[fusedEvalChildren]program.StructFieldLayout{layoutA, layoutB, {
-			Offset:         0,
-			TypeIndex:      0,
-			Path:           [isa.StructFieldLayoutMaxPathDepth]uint8{},
-			PathLength:     0,
-			Kind:           0,
-			RegisterKind:   0,
-			Flags:          0,
-			FieldTypeIndex: 0,
-		}},
-		[fusedEvalChildren]uint16{siteA, siteB, 0})
-}
-
-// tryClassifyMinMax matches the comparison-select family.
-//
-// Takes compiledFunction (*program.CompiledFunction) which receives the classification
-// result.
-// Takes body ([]isa.Instruction) which is the effective instruction stream.
-func tryClassifyMinMax(compiledFunction *program.CompiledFunction, body []isa.Instruction) {
-	layoutA, siteA, ok := fusedChildFetch(compiledFunction, body, 0)
-	if !ok {
-		return
-	}
-	layoutB, siteB, ok := fusedChildFetch(compiledFunction, body, fusedChildFetchInstrs)
-	if !ok {
-		return
-	}
-	if len(body) < fusedMaskedBinaryBodyLen {
-		return
-	}
-	cmp, jump := body[2*fusedChildFetchInstrs], body[2*fusedChildFetchInstrs+1]
-	if jump.Op != isa.OpJumpIfFalse {
-		return
-	}
-	if !isTier2Return(body[8]) {
-		return
-	}
-	var shape program.FusedEvalShape
-	switch cmp.Op {
-	case isa.OpLtUint:
-		shape = program.FusedEvalMin
-	case isa.OpGtUint:
-		shape = program.FusedEvalMax
-	default:
-		return
-	}
-	setEvalShape(compiledFunction, shape,
-		[fusedEvalChildren]program.StructFieldLayout{layoutA, layoutB, {
-			Offset:         0,
-			TypeIndex:      0,
-			Path:           [isa.StructFieldLayoutMaxPathDepth]uint8{},
-			PathLength:     0,
-			Kind:           0,
-			RegisterKind:   0,
-			Flags:          0,
-			FieldTypeIndex: 0,
-		}},
-		[fusedEvalChildren]uint16{siteA, siteB, 0})
-}
-
-// tryClassifyModGuarded matches the guarded-modulo family.
-//
-// Takes compiledFunction (*program.CompiledFunction) which receives the classification
-// result.
-// Takes body ([]isa.Instruction) which is the effective instruction stream.
-func tryClassifyModGuarded(compiledFunction *program.CompiledFunction, body []isa.Instruction) {
-	layoutA, siteA, ok := fusedChildFetch(compiledFunction, body, 0)
-	if !ok {
-		return
-	}
-	guard := body[fusedChildFetchInstrs]
-	if guard.Op != isa.OpDrillTier1 || isa.SubOpcode(guard.A) != isa.SubOpEqUintConstJumpFalse {
-		return
-	}
-	if body[fusedChildFetchInstrs+1].Op != isa.OpExt {
-		return
-	}
-	layoutB, siteB, ok := fusedChildFetch(compiledFunction, body, fusedModGuardChildBOffset)
-	if !ok {
-		return
-	}
-	if body[fusedModGuardChildBOffset+fusedChildFetchInstrs].Op != isa.OpRemUint || !isTier2Return(body[len(body)-1]) {
-		return
-	}
-	setEvalShape(compiledFunction, program.FusedEvalModGuarded,
-		[fusedEvalChildren]program.StructFieldLayout{layoutA, layoutB, {
-			Offset:         0,
-			TypeIndex:      0,
-			Path:           [isa.StructFieldLayoutMaxPathDepth]uint8{},
-			PathLength:     0,
-			Kind:           0,
-			RegisterKind:   0,
-			Flags:          0,
-			FieldTypeIndex: 0,
-		}},
-		[fusedEvalChildren]uint16{siteA, siteB, 0})
-}
-
-// tryClassifyIfPos matches the three-way conditional family.
-//
-// Takes compiledFunction (*program.CompiledFunction) which receives the classification
-// result.
-// Takes body ([]isa.Instruction) which is the effective instruction stream.
-func tryClassifyIfPos(compiledFunction *program.CompiledFunction, body []isa.Instruction) {
-	layoutA, siteA, ok := fusedChildFetch(compiledFunction, body, 0)
-	if !ok {
-		return
-	}
-	if body[fusedChildFetchInstrs+1].Op != isa.OpNeUint || body[fusedChildFetchInstrs+2].Op != isa.OpJumpIfFalse {
-		return
-	}
-	layoutB, siteB, ok := fusedChildFetch(compiledFunction, body, 2*fusedChildFetchInstrs)
-	if !ok {
-		return
-	}
-	elseAt := fusedIfPosChildCOffset
-	if _, _, probe := fusedChildFetch(compiledFunction, body, fusedIfPosChildCOffset+1); probe {
-		elseAt = fusedIfPosChildCOffset + 1
-	}
-	layoutC, siteC, ok := fusedChildFetch(compiledFunction, body, elseAt)
-	if !ok {
-		return
-	}
-	setEvalShape(compiledFunction, program.FusedEvalIfPos,
-		[fusedEvalChildren]program.StructFieldLayout{layoutA, layoutB, layoutC},
-		[fusedEvalChildren]uint16{siteA, siteB, siteC})
-}
-
-// setEvalShape records a successful classification.
-//
-// Takes compiledFunction (*program.CompiledFunction) which receives the shape and child
-// metadata.
-// Takes shape (program.FusedEvalShape) which is the classified family.
-// Takes layouts ([fusedEvalChildren]program.StructFieldLayout) which are the child field
-// layouts.
-// Takes sites ([fusedEvalChildren]uint16) which are the child call-site indices.
-func setEvalShape(compiledFunction *program.CompiledFunction, shape program.FusedEvalShape, layouts [fusedEvalChildren]program.StructFieldLayout, sites [fusedEvalChildren]uint16) {
-	compiledFunction.EvalChildALayout = layouts[0]
-	compiledFunction.EvalChildBLayout = layouts[1]
-	compiledFunction.EvalChildCLayout = layouts[2]
-	compiledFunction.EvalSiteA = sites[0]
-	compiledFunction.EvalSiteB = sites[1]
-	compiledFunction.EvalSiteC = sites[2]
-	compiledFunction.EvalShape = shape
 }
 
 // fusedResolveChildCallee resolves a child receiver type word through the call site's
@@ -406,9 +109,13 @@ func fusedResolveChildCallee(site *program.CallSite, typeWord uintptr) *program.
 // Takes layout (program.StructFieldLayout) which describes the child field offset and
 // type.
 //
+// Only a pointer child is taken. A channel, a map and a function are held in the data
+// word too, but the word read as the element type means something else in each of their
+// types, so the callee would be looked up under a type the child does not have.
+//
 // Returns uintptr which is the held element type word.
 // Returns unsafe.Pointer which is the held data pointer.
-// Returns bool which is false when the child is nil or not a direct pointer.
+// Returns bool which is false when the child is nil or not a pointer.
 func fusedChildEface(base unsafe.Pointer, layout program.StructFieldLayout) (uintptr, unsafe.Pointer, bool) {
 	fieldPointer := unsafe.Add(base, uintptr(layout.Offset))
 	heldType := *(*unsafe.Pointer)(fieldPointer)
@@ -416,7 +123,7 @@ func fusedChildEface(base unsafe.Pointer, layout program.StructFieldLayout) (uin
 		return 0, nil, false
 	}
 	heldKind := reflect.Kind(*(*uint8)(unsafe.Add(heldType, program.AbiTypeKindByteOffset)) & uint8(flagKindMask))
-	if !program.HeldKindIsDirectPointer(heldKind) {
+	if heldKind != reflect.Pointer {
 		return 0, nil, false
 	}
 	pointerWord := *(*unsafe.Pointer)(unsafe.Add(fieldPointer, program.EfaceDataPointerOffset))
@@ -462,7 +169,7 @@ func fusedEvalNode(callee *program.CompiledFunction, data unsafe.Pointer, env *f
 			return 0, false
 		}
 		return fusedCombineBinary(callee.EvalShape, left, right), true
-	case program.FusedEvalModGuarded:
+	case program.FusedEvalModGuarded, program.FusedEvalModGuardedWhole:
 		return fusedEvalModGuardedNode(callee, data, env, depth)
 	case program.FusedEvalIfPos:
 		return fusedEvalIfPosNode(callee, data, env, depth)
@@ -485,14 +192,30 @@ func fusedEvalModGuardedNode(callee *program.CompiledFunction, data unsafe.Point
 	if !ok {
 		return 0, false
 	}
-	if mask32(divisor) == 0 {
+	if divisor == 0 {
 		return 0, true
 	}
 	dividend, ok := fusedEvalChild(callee, callee.EvalChildBLayout, callee.EvalSiteB, data, env, depth)
 	if !ok {
 		return 0, false
 	}
-	return uint64(mask32(dividend) % mask32(divisor)), true
+	return fusedGuardedRemainder(callee.EvalShape, dividend, divisor), true
+}
+
+// fusedGuardedRemainder takes the remainder the guarded-modulo family returns once its
+// divisor is known not to be zero.
+//
+// Takes shape (program.FusedEvalShape) which says whether the body truncates.
+// Takes dividend (uint64) which is the whole dividend.
+// Takes divisor (uint64) which is the whole divisor, not zero.
+//
+// Returns uint64 which is the remainder, cut to 32 bits for FusedEvalModGuarded.
+func fusedGuardedRemainder(shape program.FusedEvalShape, dividend, divisor uint64) uint64 {
+	remainder := dividend % divisor
+	if shape == program.FusedEvalModGuardedWhole {
+		return remainder
+	}
+	return uint64(mask32(remainder))
 }
 
 // fusedEvalIfPosNode evaluates the three-way conditional family.
@@ -509,7 +232,7 @@ func fusedEvalIfPosNode(callee *program.CompiledFunction, data unsafe.Pointer, e
 	if !ok {
 		return 0, false
 	}
-	if mask32(condition) != 0 {
+	if condition != 0 {
 		return fusedEvalChild(callee, callee.EvalChildBLayout, callee.EvalSiteB, data, env, depth)
 	}
 	return fusedEvalChild(callee, callee.EvalChildCLayout, callee.EvalSiteC, data, env, depth)
@@ -610,12 +333,12 @@ func runFusedEvalShape(registers *Registers, site *program.CallSite, callee *pro
 	}
 	var env fusedEnv
 	switch envArg := site.Arguments[1]; envArg.Kind {
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		envSlice := registers.slicesUint[envArg.Register]
 		if len(envSlice) > 0 {
 			env = fusedEnv{data: unsafe.Pointer(&envSlice[0]), length: len(envSlice), wide: true}
 		}
-	default:
+	case isa.RegisterGeneral:
 		envValue := registers.General[envArg.Register]
 		envRaw := (*unsafeReflectValue)(unsafe.Pointer(&envValue))
 		if envRaw.typ == nil || reflect.Kind(envRaw.flag&flagKindMask) != reflect.Slice {
@@ -627,6 +350,8 @@ func runFusedEvalShape(registers *Registers, site *program.CallSite, callee *pro
 		}
 		header := (*snapshotSliceHeader)(envRaw.ptr)
 		env = fusedEnv{data: header.Data, length: header.Len, wide: wideEnv}
+	default:
+		return opContinue, false
 	}
 	result, ok := fusedEvalNode(callee, base, &env, 0)
 	if !ok {

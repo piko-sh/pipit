@@ -45,7 +45,7 @@ func TestWideOperandPackingRoundTrips(t *testing.T) {
 			low, high := SplitWide(tt.value)
 
 			require.Equal(t, tt.value, JoinWide(low, high))
-			require.Equal(t, tt.value, NewInstruction(OpAddInt, 0, low, high).WideIndex(),
+			require.Equal(t, tt.value, NewInstruction(OpAddInt64, 0, low, high).WideIndex(),
 				"a wide operand is decoded from operands B and C")
 		})
 	}
@@ -95,7 +95,7 @@ func TestDecodeExtension24ReadsAllThreeOperands(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			extension := NewInstruction(OpExt,
+			extension := NewInstruction(OpExtension,
 				uint8(tt.value&0xFF),
 				uint8((tt.value>>8)&0xFF),
 				uint8((tt.value>>16)&0xFF),
@@ -111,9 +111,9 @@ func TestInstructionConstructorsBuildTheDrillEncoding(t *testing.T) {
 
 	t.Run("a main-tier instruction keeps its opcode and operands", func(t *testing.T) {
 		t.Parallel()
-		instruction := NewInstruction(OpAddInt, 1, 2, 3)
+		instruction := NewInstruction(OpAddInt64, 1, 2, 3)
 
-		require.Equal(t, OpAddInt, instruction.Op)
+		require.Equal(t, OpAddInt64, instruction.Op)
 		require.Equal(t, uint8(1), instruction.A)
 		require.Equal(t, uint8(2), instruction.B)
 		require.Equal(t, uint8(3), instruction.C)
@@ -121,10 +121,10 @@ func TestInstructionConstructorsBuildTheDrillEncoding(t *testing.T) {
 
 	t.Run("a first-tier instruction spends operand A on the sub-opcode", func(t *testing.T) {
 		t.Parallel()
-		instruction := NewTier1Instruction(SubOpNegInt, 2, 3)
+		instruction := NewTier1Instruction(SubOpNegateInt64, 2, 3)
 
 		require.Equal(t, OpDrillTier1, instruction.Op)
-		require.Equal(t, uint8(SubOpNegInt), instruction.A)
+		require.Equal(t, uint8(SubOpNegateInt64), instruction.A)
 		require.Equal(t, uint8(2), instruction.B)
 		require.Equal(t, uint8(3), instruction.C)
 	})
@@ -159,10 +159,10 @@ func TestInstrIsTier1SubOpMatchesOnlyItsOwnSubOpcode(t *testing.T) {
 		subOp       SubOpcode
 		want        bool
 	}{
-		{name: "the matching sub-opcode", instruction: NewTier1Instruction(SubOpNegInt, 0, 0), subOp: SubOpNegInt, want: true},
-		{name: "a different sub-opcode", instruction: NewTier1Instruction(SubOpNegInt, 0, 0), subOp: SubOpMoveUint, want: false},
-		{name: "a main-tier instruction is never a tier-one sub-op", instruction: NewInstruction(OpAddInt, 0, 0, 0), subOp: SubOpNegInt, want: false},
-		{name: "an extension word is never a tier-one sub-op", instruction: NewInstruction(OpExt, 0, 0, 0), subOp: SubOpNegInt, want: false},
+		{name: "the matching sub-opcode", instruction: NewTier1Instruction(SubOpNegateInt64, 0, 0), subOp: SubOpNegateInt64, want: true},
+		{name: "a different sub-opcode", instruction: NewTier1Instruction(SubOpNegateInt64, 0, 0), subOp: SubOpMoveUint64, want: false},
+		{name: "a main-tier instruction is never a tier-one sub-op", instruction: NewInstruction(OpAddInt64, 0, 0, 0), subOp: SubOpNegateInt64, want: false},
+		{name: "an extension word is never a tier-one sub-op", instruction: NewInstruction(OpExtension, 0, 0, 0), subOp: SubOpNegateInt64, want: false},
 	}
 
 	for _, tt := range tests {
@@ -181,18 +181,18 @@ func TestIsTypedSliceKindPartitionsTheBanks(t *testing.T) {
 		kind RegisterKind
 		want bool
 	}{
-		{name: "the integer bank is a scalar bank", kind: RegisterInt, want: false},
-		{name: "the float bank is a scalar bank", kind: RegisterFloat, want: false},
+		{name: "the integer bank is a scalar bank", kind: RegisterInt64, want: false},
+		{name: "the float bank is a scalar bank", kind: RegisterFloat64, want: false},
 		{name: "the string bank is a scalar bank", kind: RegisterString, want: false},
 		{name: "the general bank is a scalar bank", kind: RegisterGeneral, want: false},
 		{name: "the boolean bank is a scalar bank", kind: RegisterBool, want: false},
-		{name: "the unsigned bank is a scalar bank", kind: RegisterUint, want: false},
-		{name: "the complex bank is a scalar bank", kind: RegisterComplex, want: false},
-		{name: "the integer slice bank is typed", kind: RegisterSliceInt, want: true},
-		{name: "the float slice bank is typed", kind: RegisterSliceFloat, want: true},
+		{name: "the unsigned bank is a scalar bank", kind: RegisterUint64, want: false},
+		{name: "the complex bank is a scalar bank", kind: RegisterComplex128, want: false},
+		{name: "the integer slice bank is typed", kind: RegisterSliceInt64, want: true},
+		{name: "the float slice bank is typed", kind: RegisterSliceFloat64, want: true},
 		{name: "the string slice bank is typed", kind: RegisterSliceString, want: true},
 		{name: "the boolean slice bank is typed", kind: RegisterSliceBool, want: true},
-		{name: "the unsigned slice bank is typed", kind: RegisterSliceUint, want: true},
+		{name: "the unsigned slice bank is typed", kind: RegisterSliceUint64, want: true},
 		{name: "the byte slice bank is typed", kind: RegisterSliceByte, want: true},
 	}
 
@@ -212,11 +212,11 @@ func TestElementKindForTypedSliceNamesTheScalarBank(t *testing.T) {
 		kind RegisterKind
 		want RegisterKind
 	}{
-		{name: "an integer slice holds integers", kind: RegisterSliceInt, want: RegisterInt},
-		{name: "a float slice holds floats", kind: RegisterSliceFloat, want: RegisterFloat},
+		{name: "an integer slice holds integers", kind: RegisterSliceInt64, want: RegisterInt64},
+		{name: "a float slice holds floats", kind: RegisterSliceFloat64, want: RegisterFloat64},
 		{name: "a string slice holds strings", kind: RegisterSliceString, want: RegisterString},
 		{name: "a boolean slice holds booleans", kind: RegisterSliceBool, want: RegisterBool},
-		{name: "an unsigned slice holds unsigned values", kind: RegisterSliceUint, want: RegisterUint},
+		{name: "an unsigned slice holds unsigned values", kind: RegisterSliceUint64, want: RegisterUint64},
 	}
 
 	for _, tt := range tests {

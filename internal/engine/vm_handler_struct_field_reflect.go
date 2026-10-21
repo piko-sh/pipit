@@ -45,28 +45,37 @@ func structLayoutAtWide(frame *CallFrame, index uint16) program.StructFieldLayou
 	return frame.Function.StructLayoutTable[index]
 }
 
-// Reflect-based helpers shared between the unsafe and safe build variants of the
-// struct-field fast path. The unsafe build uses these only as a fallback when the
-// receiver struct is not addressable (e.g. global var literal, function-return value);
-// the safe build uses them for every access.
-//
-// Walking via reflect.Value.Field at each level is slower than the unsafe pointer
-// arithmetic but avoids the per-access struct rehome that would otherwise dominate
-// hot-loop cost on non-addressable receivers without loop-invariant code motion.
-
-// structFieldReflectRead walks the layout's path through a reflect.Value of the receiver
-// struct and returns the leaf field as a reflect.Value. Auto-derefs pointers and unwraps
-// interfaces.
+// structFieldReflectRead returns the leaf field selected by a layout.
 //
 // Takes registers (*Registers) which provides the general bank.
 // Takes frame (*CallFrame) which is the active call frame.
 // Takes generalRegister (uint8) which is the general register holding the source struct.
 // Takes layout (program.StructFieldLayout) which carries the field path.
 //
-// Returns the leaf reflect.Value and true on success; (zero Value, false) when the source
-// is invalid or not a struct.
+// Returns reflect.Value which is the leaf field, or a zero Value on failure.
+// Returns bool which is true when the field was found.
 func structFieldReflectRead(registers *Registers, frame *CallFrame, generalRegister uint8, layout program.StructFieldLayout) (reflect.Value, bool) {
 	value := registers.General[generalRegister]
+	if value.Kind() == reflect.Pointer && !value.IsNil() {
+		value = value.Elem()
+	}
+	if value.Kind() == reflect.Struct && layout.PathLength == 1 {
+		if field := int(layout.Path[0]); field < value.NumField() {
+			return value.Field(field), true
+		}
+	}
+	return structFieldReflectWalk(value, frame, layout)
+}
+
+// structFieldReflectWalk unwraps a receiver and walks its field path.
+//
+// Takes value (reflect.Value) which is the receiver, already through one pointer.
+// Takes frame (*CallFrame) which is the active call frame.
+// Takes layout (program.StructFieldLayout) which carries the field path.
+//
+// Returns reflect.Value which is the leaf field, or a zero Value on failure.
+// Returns bool which is true when the field was found.
+func structFieldReflectWalk(value reflect.Value, frame *CallFrame, layout program.StructFieldLayout) (reflect.Value, bool) {
 	if !value.IsValid() {
 		return reflect.Value{}, false
 	}
@@ -186,7 +195,7 @@ func structFieldReceiverIsNilPointer(value reflect.Value) bool {
 // raiseNilPointerDereference raises Go's nil-pointer dereference runtime panic as an
 // interpreted panic that deferred recover() can observe, matching what native Go raises
 // when a struct field is read or written through a nil receiver. Mirrors the message and
-// unwind path handleDeref uses for explicit pointer dereferences.
+// unwind path handleDereference uses for explicit pointer dereferences.
 //
 // Takes vm (*VM) which carries the panic machinery.
 //
@@ -339,8 +348,8 @@ func makeStructAddressable(registers *Registers, generalRegister uint8, value re
 	return value, true
 }
 
-// readFusedArrayFieldExtensions consumes the two isa.OpExt words that follow the fused
-// array-field index opcodes.
+// readFusedArrayFieldExtensions consumes the two isa.OpExtension words that follow the
+// fused array-field index opcodes.
 //
 // Takes frame (*CallFrame) which provides the bytecode body and PC.
 //
@@ -356,8 +365,7 @@ func readFusedArrayFieldExtensions(frame *CallFrame) (uint8, int, uintptr, refle
 }
 
 // readFusedSliceFieldExtensions decodes the two extension words of
-// isa.OpGetStructFieldSliceIndexScalar and advances the frame's program counter past
-// them.
+// isa.OpGetStructFieldElementField and advances the frame's program counter past them.
 //
 // Takes frame (*CallFrame) which provides the bytecode body and program counter.
 //
@@ -375,8 +383,8 @@ func readFusedSliceFieldExtensions(frame *CallFrame) (indexRegister uint8, eleme
 
 // storeScalarSubFieldFromReflect reads the scalar sub-field at the given byte offset of a
 // struct element reflect.Value and stores it into the destination register bank. Used by
-// the reflect fallback arms of isa.OpGetStructFieldSliceIndexScalar, resolving the
-// sub-field by matching its byte offset against the element type's fields.
+// the reflect fallback arms of isa.OpGetStructFieldElementField, resolving the sub-field
+// by matching its byte offset against the element type's fields.
 //
 // Defined on the scalar banks a struct sub-field can occupy. The default leaves the
 // register alone and the caller falls back to the generic field read.
@@ -394,11 +402,11 @@ func storeScalarSubFieldFromReflect(registers *Registers, element reflect.Value,
 		}
 		field := element.Field(i)
 		switch subKind {
-		case isa.RegisterInt:
+		case isa.RegisterInt64:
 			registers.Ints[destination] = field.Int()
-		case isa.RegisterFloat:
+		case isa.RegisterFloat64:
 			registers.Floats[destination] = field.Float()
-		case isa.RegisterUint:
+		case isa.RegisterUint64:
 			registers.Uints[destination] = field.Uint()
 		case isa.RegisterBool:
 			registers.Bools[destination] = field.Bool()

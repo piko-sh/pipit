@@ -26,6 +26,11 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
+// handlerResultCheckpoint is the non-zero handler result a tier-2 trampoline reports when
+// its handler continued but raised a checkpoint flag. The shim then returns to Go with
+// exitPoll, at the boundary after the handler's instruction.
+const handlerResultCheckpoint uint8 = 0xFF
+
 // opResultToExitReason maps an OpResult to its ctx.exitReason code.
 //
 // Takes rc (OpResult) which is the handler's return code.
@@ -46,6 +51,21 @@ func opResultToExitReason(rc OpResult) int64 {
 	default:
 	}
 	return exitPanicErrorPathB
+}
+
+// exitForCheckpoint turns a continuing tier-2 trampoline into an exitPoll exit at the
+// next instruction, so the dispatch loop services the checkpoint the handler raised. The
+// handler has returned, so no handler local holds an arena value across the collection.
+//
+// Takes ctx (*dispatchContext) which carries the next program counter.
+// Takes vm (*VM) which owns the defer stack.
+//
+//go:nosplit
+func exitForCheckpoint(ctx *dispatchContext, vm *VM) {
+	ctx.deferStackLength = int64(len(vm.deferStack))
+	ctx.handlerResult = handlerResultCheckpoint
+	ctx.exitReason = exitPoll
+	ctx.exitProgramCounter = ctx.programCounter
 }
 
 // pathBTrampoline is the shared body of every per-opcode tier-2 ASM-call trampoline,
@@ -73,6 +93,9 @@ func pathBTrampoline(ctx *dispatchContext, instWord uint32, handler opcodeHandle
 	if rc == opContinue && vm.FramePointer == startFramePointer {
 		ctx.programCounter = int64(frame.ProgramCounter)
 		ctx.handlerResult = 0
+		if vm.checkpointFlags != 0 {
+			exitForCheckpoint(ctx, vm)
+		}
 		return
 	}
 	if rc == opFrameChanged {
@@ -111,6 +134,9 @@ func pathBTrampolineNarrow(ctx *dispatchContext, instWord uint32, handler opcode
 	rc := handler(vm, frame, registers, inst)
 	ctx.handlerResult = uint8(rc)
 	if rc == opContinue {
+		if vm.checkpointFlags != 0 {
+			exitForCheckpoint(ctx, vm)
+		}
 		return
 	}
 	if rc == opFrameChanged {

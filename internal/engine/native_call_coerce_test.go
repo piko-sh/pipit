@@ -57,7 +57,7 @@ func TestFmtVerbsForCallOnlyFireForAFormatParameter(t *testing.T) {
 		{
 			name:           "a call whose format parameter is not a string has no verbs",
 			parameterTypes: []reflect.Type{reflect.TypeFor[int](), reflect.TypeFor[[]any]()},
-			arguments:      []program.VarLocation{{Kind: isa.RegisterInt}, {Kind: isa.RegisterGeneral}},
+			arguments:      []program.VarLocation{{Kind: isa.RegisterInt64}, {Kind: isa.RegisterGeneral}},
 			format:         "%d",
 		},
 		{

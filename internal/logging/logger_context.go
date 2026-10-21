@@ -26,17 +26,15 @@ import (
 // loggerContextKey keys the logger a host attaches to a context.
 type loggerContextKey struct{}
 
-// ContextWithLogger returns a copy of ctx carrying logger.
+// WithLogger returns a copy of ctx carrying logger.
 //
-// The interpreter logs only warnings and errors, and it resolves the logger per call
-// rather than capturing one at construction, so a host can scope a logger to a single
-// request or evaluation. Passing a nil logger returns ctx unchanged.
+// Passing a nil logger returns ctx unchanged.
 //
 // Takes logger (*slog.Logger) which the interpreter should use for work performed under
 // the returned context.
 //
 // Returns context.Context which carries the logger.
-func ContextWithLogger(ctx context.Context, logger *slog.Logger) context.Context {
+func WithLogger(ctx context.Context, logger *slog.Logger) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -48,20 +46,47 @@ func ContextWithLogger(ctx context.Context, logger *slog.Logger) context.Context
 	return context.WithValue(ctx, loggerContextKey{}, logger)
 }
 
-// LoggerFrom returns the logger attached to ctx, falling back to the process default.
+// WithFallbackLogger returns ctx carrying logger only when ctx carries no logger yet. A
+// logger the caller bound into ctx wins over the fallback, so a host's per-request logger
+// overrides a service-wide default.
 //
-// Resolution happens at the call site rather than at construction so that a host calling
-// slog.SetDefault() after the interpreter starts is still honoured.
+// Takes logger (*slog.Logger) which is used when ctx carries none. Nil returns ctx
+// unchanged.
 //
+// Returns context.Context which carries a logger when either ctx or logger had one.
+func WithFallbackLogger(ctx context.Context, logger *slog.Logger) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if logger == nil {
+		return ctx
+	}
+	if bound, ok := ctx.Value(loggerContextKey{}).(*slog.Logger); ok && bound != nil {
+		return ctx
+	}
+	return context.WithValue(ctx, loggerContextKey{}, logger)
+}
+
+// From returns the logger attached to ctx, together with a context that carries it.
+//
+// When ctx carries no logger, the process default is bound into the returned context, so
+// every call further down the same chain resolves to one logger without looking the
+// default up again.
+//
+// Returns context.Context which carries the resolved logger and is never nil.
 // Returns *slog.Logger which is never nil.
-func LoggerFrom(ctx context.Context) *slog.Logger {
-	if ctx != nil {
-		if logger, ok := ctx.Value(loggerContextKey{}).(*slog.Logger); ok && logger != nil {
-			return logger
-		}
+func From(ctx context.Context) (context.Context, *slog.Logger) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
-	return slog.Default()
+	if logger, ok := ctx.Value(loggerContextKey{}).(*slog.Logger); ok && logger != nil {
+		return ctx, logger
+	}
+
+	logger := slog.Default()
+
+	return context.WithValue(ctx, loggerContextKey{}, logger), logger
 }
 
 // ErrAttr builds the structured attribute the interpreter uses to report an error.

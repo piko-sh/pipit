@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,9 +16,12 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
+	"context"
 	"crypto/sha256"
 	"errors"
 
@@ -50,7 +51,7 @@ type WorkerCheckpoint struct {
 // Takes config (WorkerConfig) whose Checkpoint is nil when nothing is recorded.
 //
 // Returns error which fails the launch closed when the record cannot be written.
-func (process *WorkerProcess) persistLaunchCheckpoint(config WorkerConfig) (result error) {
+func (process *WorkerProcess) persistLaunchCheckpoint(ctx context.Context, config WorkerConfig) (result error) {
 	if config.Checkpoint == nil {
 		return nil
 	}
@@ -79,6 +80,7 @@ func (process *WorkerProcess) persistLaunchCheckpoint(config WorkerConfig) (resu
 		return err
 	}
 	process.checkpoint = checkpoint
-	logging.LoggerFrom(process.context).Info("isolated.checkpoint")
+	_, logger := logging.From(ctx)
+	logger.Info("isolated.checkpoint")
 	return nil
 }

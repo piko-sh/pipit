@@ -28,9 +28,11 @@ import (
 
 	"pipit.sh/pipit/internal/clock"
 	"pipit.sh/pipit/internal/engine/program"
+	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/policy"
 	"pipit.sh/pipit/internal/symtab"
+	"pipit.sh/pipit/internal/symtab/typemodel"
 )
 
 const (
@@ -388,4 +390,66 @@ func TestOverlayPackageOnAbsentPackageCreatesIt(t *testing.T) {
 	value, ok := got["X"]
 	require.True(t, ok, "the overlay stores its entry")
 	require.Equal(t, 42, value.Interface())
+}
+
+func TestWithFinaliserTimeout_PlumbedToLimits(t *testing.T) {
+	t.Parallel()
+	service := NewService(WithFinaliserTimeout(3 * time.Second))
+	require.NoError(t, service.checkOpen())
+	require.Equal(t, 3*time.Second, service.limits.FinaliserTimeout, "every execution VM takes the bound from the service limits")
+
+	require.Zero(t, NewService().limits.FinaliserTimeout, "no option leaves the engine's default")
+	require.ErrorIs(t, NewService(WithFinaliserTimeout(0)).checkOpen(), ErrInvalidOption)
+}
+
+func TestWithMaxNamedCompositeTypes_ChargesEveryRegistryTheServiceBuilds(t *testing.T) {
+	t.Parallel()
+	service := NewService(WithMaxNamedCompositeTypes(7))
+	quota := service.namedCompositeQuota
+	require.Equal(t, 7, quota.Limit())
+	require.Same(t, quota, service.symbols.NamedCompositeQuota())
+
+	require.NoError(t, service.UseSymbolProviders(&mockSymbolProvider{exports: symtab.SymbolExports{}}))
+	require.Same(t, quota, service.symbols.NamedCompositeQuota(), "a registry built from providers keeps the quota")
+	require.Same(t, quota, service.Clone().symbols.NamedCompositeQuota(), "a clone shares the symbols and the quota")
+
+	require.Equal(t, typemodel.DefaultNamedCompositeQuota, NewService().namedCompositeQuota.Limit())
+	require.ErrorIs(t, NewService(WithMaxNamedCompositeTypes(-1)).checkOpen(), ErrInvalidOption)
+}
+
+func TestWithMaxNamedCompositeTypes_RefusesAProgramPastTheCap(t *testing.T) {
+	t.Parallel()
+	if !typemodel.NamedCompositeTypesSupported() {
+		t.Skip("this build gives named composite types no runtime types of their own")
+	}
+	source := `package main
+
+type quotaOptionCells []int64
+
+type quotaOptionIndex map[string]quotaOptionCells
+
+func Main() int { return len(quotaOptionIndex{"a": quotaOptionCells{1, 2}}["a"]) }
+`
+	_, err := NewService(WithMaxNamedCompositeTypes(1)).CompileFileSet(t.Context(), map[string]string{"main.go": source})
+	require.ErrorIs(t, err, fault.ErrNamedCompositeQuota)
+
+	roomy := NewService(WithMaxNamedCompositeTypes(2))
+	compiled, err := roomy.CompileFileSet(t.Context(), map[string]string{"main.go": source})
+	require.NoError(t, err)
+	result, err := roomy.ExecuteEntrypoint(t.Context(), compiled, "Main")
+	require.NoError(t, err)
+	require.EqualValues(t, 2, result)
+}
+
+func TestWithNamedCompositeProcessLimit_SetsTheProcessCap(t *testing.T) {
+	previous := typemodel.SetNamedCompositeProcessLimit(0)
+	t.Cleanup(func() { typemodel.SetNamedCompositeProcessLimit(previous) })
+
+	require.NoError(t, NewService(WithNamedCompositeProcessLimit(typemodel.DefaultNamedCompositeProcessLimit+1)).checkOpen())
+	require.Equal(t, typemodel.DefaultNamedCompositeProcessLimit+1, typemodel.SetNamedCompositeProcessLimit(0))
+
+	require.NoError(t, NewService().checkOpen())
+	require.Equal(t, typemodel.DefaultNamedCompositeProcessLimit, typemodel.SetNamedCompositeProcessLimit(0),
+		"a service built without the option leaves the cap alone")
+	require.ErrorIs(t, NewService(WithNamedCompositeProcessLimit(0)).checkOpen(), ErrInvalidOption)
 }

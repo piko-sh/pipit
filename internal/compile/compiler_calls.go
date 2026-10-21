@@ -61,6 +61,7 @@ var errSpecialisationPendingTypeParam = errors.New("specialisation type argument
 //
 // Returns VarLocation holding the call result and any compilation error.
 func (c *Compiler) compileCallExpression(ctx context.Context, expression *ast.CallExpr) (program.VarLocation, error) {
+	c.noteNamedRetypes(expression)
 	savedParen := c.callParen
 	c.callParen = expression.Lparen
 	defer func() { c.callParen = savedParen }()
@@ -158,7 +159,7 @@ func (c *Compiler) resolveIndirectIdent(ctx context.Context, identifier *ast.Ide
 	}
 	if reference, ok := c.upvalueMap[identifier.Name]; ok {
 		dest := c.Scopes.Alloc.Alloc(reference.kind)
-		program.Emit(c.Function, isa.OpGetUpvalue, dest, safeconv.MustIntToUint8(reference.index), uint8(reference.kind))
+		program.Emit(c.Function, isa.OpGetCapturedVariable, dest, safeconv.MustIntToUint8(reference.index), uint8(reference.kind))
 		upvalLocation := program.VarLocation{Register: dest, Kind: reference.kind}
 		return c.compileClosureCall(ctx, identifier, expression, upvalLocation)
 	}
@@ -174,18 +175,12 @@ func (c *Compiler) resolveIndirectIdent(ctx context.Context, identifier *ast.Ide
 
 // compileDirectCall compiles a direct call to a compiled function.
 //
-// Resolves the callee via functionTable index. When the callee is a generic function and
-// the type-args at this call site can be resolved from c.Info.Instances, triggers full
-// body specialisation: a fresh CompiledFunction with typed-bank parameter and result
-// kinds is compiled (or reused from the generic's specialisation cache) and the call
-// dispatches to it directly. The boxing/unboxing dance that the type-erased path would
-// otherwise Emit is skipped.
-//
 // Takes expression (*ast.CallExpr) which is the AST call expression node.
 // Takes functionIndex (uint16) which is the index of the target function in the
 // functionTable.
 //
-// Returns VarLocation holding the call result and any compilation error.
+// Returns program.VarLocation which holds the call result.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileDirectCall(ctx context.Context, expression *ast.CallExpr, functionIndex uint16) (program.VarLocation, error) {
 	specialised, err := c.maybeSpecialiseCallee(ctx, expression, functionIndex)
 	if err != nil {
@@ -207,24 +202,30 @@ func (c *Compiler) compileDirectCall(ctx context.Context, expression *ast.CallEx
 		resultLocation = returnLocations[0]
 	}
 
-	site := program.CallSite{
-		FunctionIndex: functionIndex,
-		Arguments:     argumentLocations,
-		Returns:       returnLocations,
-	}
-	if int(functionIndex) < len(c.RootFunction.Functions) {
-		site.CachedCallee = c.RootFunction.Functions[functionIndex]
-	}
-	if site.CachedCallee != nil {
-		site.ArgCopyProgram = program.BuildCallArgCopyProgram(site.Arguments, site.CachedCallee.ParameterKinds, site.CachedCallee.ParameterRegisters)
-	}
+	site := c.siteCalling(functionIndex, argumentLocations, returnLocations)
 	siteIndex, err := program.AddCallSite(c.Function, &site)
 	if err != nil {
 		return program.VarLocation{}, err
 	}
-	c.emitCall(selectDirectCallOpcode(&site, callee), siteIndex)
+	c.emitCall(program.DirectCallSubOpcode(&site, callee), siteIndex)
 
 	return c.unpackGenericResult(ctx, expression, resultLocation), nil
+}
+
+// siteCalling builds the call site of a direct call to the function at functionIndex.
+//
+// Takes functionIndex (uint16) which is the callee's index in the function table.
+// Takes argumentLocations ([]program.VarLocation) which hold the compiled arguments.
+// Takes returnLocations ([]program.VarLocation) which receive the results.
+//
+// Returns program.CallSite which is the site, not yet added to the function. It names no
+// callee when the index is outside the table.
+func (c *Compiler) siteCalling(functionIndex uint16, argumentLocations, returnLocations []program.VarLocation) program.CallSite {
+	var callee *program.CompiledFunction
+	if int(functionIndex) < len(c.RootFunction.Functions) {
+		callee = c.RootFunction.Functions[functionIndex]
+	}
+	return directCallSite(functionIndex, callee, argumentLocations, returnLocations)
 }
 
 // maybeSpecialiseCallee returns a specialised functionIndex when the callee is generic
@@ -298,7 +299,7 @@ func (c *Compiler) emitRequiresSpecialisationTrap(ctx context.Context, methodNam
 		return
 	}
 	register := c.Scopes.Alloc.Alloc(isa.RegisterString)
-	program.EmitWide(c.Function, isa.OpLoadStringConst, register, index)
+	program.EmitWide(c.Function, isa.OpLoadStringConstant, register, index)
 	location := program.VarLocation{Register: register, Kind: isa.RegisterString}
 	c.boxElementToGeneral(ctx, &location)
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpDrillTier2),
@@ -392,6 +393,9 @@ func (c *Compiler) specialiseGenericValue(ctx context.Context, identifier *ast.I
 //
 // Returns the index to call, or an error when a generic method cannot be monomorphised.
 func (c *Compiler) maybeSpecialiseMethod(ctx context.Context, selectorExpression *ast.SelectorExpr, functionIndex uint16) (uint16, error) {
+	if callee, ok := c.genericTypeMethodCandidate(functionIndex); ok {
+		return c.maybeSpecialiseGenericTypeMethod(ctx, selectorExpression, functionIndex, callee)
+	}
 	callee, ok := c.specialisationCandidate(functionIndex)
 	if !ok || !callee.HasReceiver {
 		return functionIndex, nil
@@ -416,6 +420,99 @@ func (c *Compiler) maybeSpecialiseMethod(ctx context.Context, selectorExpression
 			callee.Name, c.positionString(selectorExpression.Pos()))
 	}
 	return specFunctionIndex, nil
+}
+
+// genericTypeMethodCandidate reports whether functionIndex names a method of a generic
+// type that declares no type parameters of its own.
+//
+// Takes functionIndex (uint16) which is the candidate method's index.
+//
+// Returns the method and true when it is such a method with its declaration retained.
+func (c *Compiler) genericTypeMethodCandidate(functionIndex uint16) (*program.CompiledFunction, bool) {
+	if int(functionIndex) >= len(c.RootFunction.Functions) {
+		return nil, false
+	}
+	callee := c.RootFunction.Functions[functionIndex]
+	if callee.IsGenericFunction || !callee.HasReceiver || callee.GenericDeclaration == nil {
+		return nil, false
+	}
+	if callee.GenericRecvTypeParams == nil || callee.GenericRecvTypeParams.Len() == 0 {
+		return nil, false
+	}
+	return callee, true
+}
+
+// maybeSpecialiseGenericTypeMethod resolves a call or value of a method of a generic type
+// to a body compiled for the receiver's type arguments.
+//
+// Takes selectorExpression (*ast.SelectorExpr) which names the method.
+// Takes functionIndex (uint16) which is the method's index in the function table.
+// Takes callee (*program.CompiledFunction) which is the method.
+//
+// Returns uint16 which is the index to call, or functionIndex when the erased body
+// serves.
+// Returns error when compiling the specialised body fails.
+func (c *Compiler) maybeSpecialiseGenericTypeMethod(
+	ctx context.Context,
+	selectorExpression *ast.SelectorExpr,
+	functionIndex uint16,
+	callee *program.CompiledFunction,
+) (uint16, error) {
+	receiverArgs, ok := c.resolveReceiverTypeArgs(selectorExpression, callee)
+	if !ok {
+		receiverArgs, ok = c.promotedReceiverTypeArgs(selectorExpression, callee)
+	}
+	if !ok {
+		return functionIndex, nil
+	}
+	specFunctionIndex, specialised, err := c.specialiseForReceiverArgs(ctx, callee, receiverArgs)
+	if err != nil {
+		return functionIndex, fmt.Errorf(errWrapNameAtPosition, err, callee.Name, c.positionString(selectorExpression.Pos()))
+	}
+	if !specialised {
+		return functionIndex, nil
+	}
+	return specFunctionIndex, nil
+}
+
+// specialiseForReceiverArgs returns the body of a generic type's method compiled for the
+// receiver type arguments receiverArgs, compiling it on first use.
+//
+// Takes callee (*program.CompiledFunction) which is the method's shared body.
+// Takes receiverArgs ([]types.Type) which are the receiver's type arguments in
+// declaration order.
+//
+// Returns uint16 which is the specialised body's function index.
+// Returns bool which is false when an argument is not concrete, so the shared body is the
+// one whose types match the receiver.
+// Returns error which is fault.ErrCompileGenericMethodTypeArgLimit or
+// fault.ErrCompileGenericMethodSpecialisationLimit when a cap declines specialisation, or
+// the error compiling the specialised body.
+func (c *Compiler) specialiseForReceiverArgs(ctx context.Context, callee *program.CompiledFunction, receiverArgs []types.Type) (uint16, bool, error) {
+	if len(receiverArgs) != callee.GenericRecvTypeParams.Len() {
+		return 0, false, nil
+	}
+	if len(receiverArgs) > program.MaxSpecialisationTypeArgs {
+		return 0, false, fault.ErrCompileGenericMethodTypeArgLimit
+	}
+	var key program.SpecialisationKey
+	subs := make(map[*types.TypeParam]types.Type, len(receiverArgs))
+	for slot, receiverArg := range receiverArgs {
+		if err := c.assignSpecialisationSlot(ctx, &key, slot, callee.GenericRecvTypeParams.At(slot), receiverArg, subs); err != nil {
+			if errors.Is(err, errSpecialisationPendingTypeParam) {
+				return 0, false, nil
+			}
+			return 0, false, err
+		}
+	}
+	specFunctionIndex, specialised, err := c.specialiseInto(ctx, callee, subs, &key)
+	if err != nil {
+		return 0, false, err
+	}
+	if !specialised {
+		return 0, false, fault.ErrCompileGenericMethodSpecialisationLimit
+	}
+	return specFunctionIndex, true, nil
 }
 
 // buildMethodSpecialisationKey combines the receiver's type arguments with the method's
@@ -520,6 +617,40 @@ func (c *Compiler) resolveReceiverTypeArgs(selectorExpression *ast.SelectorExpr,
 		return nil, true
 	}
 	receiverType := c.substitutedType(c.staticTypeOf(selectorExpression.X))
+	if pointer, isPointer := types.Unalias(receiverType).(*types.Pointer); isPointer {
+		receiverType = pointer.Elem()
+	}
+	named, isNamed := types.Unalias(receiverType).(*types.Named)
+	if !isNamed || named.TypeArgs() == nil || named.TypeArgs().Len() != callee.GenericRecvTypeParams.Len() {
+		return nil, false
+	}
+	return slices.Collect(named.TypeArgs().Types()), true
+}
+
+// promotedReceiverTypeArgs reads the receiver's type arguments from the method the
+// selector selects, for a method promoted from an embedded generic type. The selector's
+// operand is then the embedding struct, while the selected method's receiver is the
+// instantiated embedded type.
+//
+// Takes selectorExpression (*ast.SelectorExpr) which names the method.
+// Takes callee (*CompiledFunction) which is the generic method.
+//
+// Returns the receiver's type arguments, and false when the selection names no method of
+// an instantiation of callee's receiver type.
+func (c *Compiler) promotedReceiverTypeArgs(selectorExpression *ast.SelectorExpr, callee *program.CompiledFunction) ([]types.Type, bool) {
+	selection, ok := c.Info.Selections[selectorExpression]
+	if !ok {
+		return nil, false
+	}
+	method, ok := selection.Obj().(*types.Func)
+	if !ok {
+		return nil, false
+	}
+	signature, ok := method.Type().(*types.Signature)
+	if !ok || signature.Recv() == nil {
+		return nil, false
+	}
+	receiverType := c.substitutedType(signature.Recv().Type())
 	if pointer, isPointer := types.Unalias(receiverType).(*types.Pointer); isPointer {
 		receiverType = pointer.Elem()
 	}
@@ -646,9 +777,6 @@ func (c *Compiler) allocReturnRegisters(_ context.Context, resultKinds []isa.Reg
 // unpackGenericResult unboxes a generic call result into a concrete scalar register when
 // needed.
 //
-// When the location is isa.RegisterGeneral but the call expression type maps to a scalar
-// kind, emits an isa.OpUnpackInterface to unbox the value.
-//
 // Takes expression (*ast.CallExpr) which is the call expression used to determine the
 // concrete type.
 // Takes location (VarLocation) which is the current VarLocation of the call result.
@@ -667,7 +795,7 @@ func (c *Compiler) unpackGenericResult(_ context.Context, expression *ast.CallEx
 		return location
 	}
 	scalarRegister := c.Scopes.Alloc.Alloc(expressionKind)
-	program.Emit(c.Function, isa.OpUnpackInterface, scalarRegister, location.Register, uint8(expressionKind))
+	program.Emit(c.Function, isa.OpUnboxFromInterface, scalarRegister, location.Register, uint8(expressionKind))
 	resultLocation := program.VarLocation{Register: scalarRegister, Kind: expressionKind}
 	c.EmitNarrowIntegerTruncation(resultLocation, tv.Type)
 	return resultLocation
@@ -1088,7 +1216,8 @@ func (c *Compiler) resolveMethodTableName(_ context.Context, selectorExpression 
 // Takes fieldPath ([]int) which contains embedding field indices for promoted methods, or
 // nil for direct methods.
 //
-// Returns VarLocation holding the method call result and any compilation error.
+// Returns program.VarLocation which holds the method call result.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileMethodCall(ctx context.Context, selectorExpression *ast.SelectorExpr, expression *ast.CallExpr, functionIndex uint16, fieldPath []int) (program.VarLocation, error) {
 	callee := c.RootFunction.Functions[functionIndex]
 
@@ -1112,19 +1241,8 @@ func (c *Compiler) compileMethodCall(ctx context.Context, selectorExpression *as
 	}
 
 	staticTypeNames, staticTypeStrings := c.resolveMethodCallStaticTypes(selectorExpression, expression)
-	site := program.CallSite{
-		FunctionIndex:             functionIndex,
-		Arguments:                 argumentLocations,
-		Returns:                   returnLocations,
-		ArgumentStaticTypeNames:   staticTypeNames,
-		ArgumentStaticTypeStrings: staticTypeStrings,
-	}
-	if int(functionIndex) < len(c.RootFunction.Functions) {
-		site.CachedCallee = c.RootFunction.Functions[functionIndex]
-	}
-	if site.CachedCallee != nil {
-		site.ArgCopyProgram = program.BuildCallArgCopyProgram(site.Arguments, site.CachedCallee.ParameterKinds, site.CachedCallee.ParameterRegisters)
-	}
+	site := c.siteCalling(functionIndex, argumentLocations, returnLocations)
+	site.ArgumentStaticTypeNames, site.ArgumentStaticTypeStrings = staticTypeNames, staticTypeStrings
 	siteIndex, err := program.AddCallSite(c.Function, &site)
 	if err != nil {
 		return program.VarLocation{}, err
@@ -1180,43 +1298,6 @@ func (c *Compiler) hasCompleteInstance(identifier *ast.Ident, callee *program.Co
 	return ok && instance.TypeArgs != nil && instance.TypeArgs.Len() == callee.GenericTypeParams.Len()
 }
 
-// CalleeUsesScalarBanksOnly reports whether every parameter and result of callee maps to
-// a scalar typed register kind (int, uint, float, bool, string, complex), which gates the
-// lean SubOpCallScalar dispatcher.
-//
-// Takes callee (*CompiledFunction) which carries the compiled parameter and result kinds.
-//
-// Returns true when every entry of parameterKinds and resultKinds is a scalar typed kind.
-func CalleeUsesScalarBanksOnly(callee *program.CompiledFunction) bool {
-	for _, kind := range callee.ParameterKinds {
-		if kind == isa.RegisterGeneral || isa.IsTypedSliceKind(kind) {
-			return false
-		}
-	}
-	for _, kind := range callee.ResultKinds {
-		if kind == isa.RegisterGeneral || isa.IsTypedSliceKind(kind) {
-			return false
-		}
-	}
-	return true
-}
-
-// selectDirectCallOpcode picks between SubOpCall and SubOpCallScalar for a direct call.
-//
-// Takes site (*CallSite) which is the populated call site.
-// Takes callee (*CompiledFunction) which is the resolved callee.
-//
-// Returns the sub-opcode to emit.
-func selectDirectCallOpcode(site *program.CallSite, callee *program.CompiledFunction) isa.SubOpcode {
-	if callee == nil || callee.IsVariadic || len(site.LinkedTypeArgs) > 0 {
-		return isa.SubOpCall
-	}
-	if !CalleeUsesScalarBanksOnly(callee) {
-		return isa.SubOpCall
-	}
-	return isa.SubOpCallScalar
-}
-
 // unwrapInstanceIdent returns the *ast.Ident from a function expression for
 // c.Info.Instances lookup. Handles bare identifiers, selector expressions (returns the
 // selector's Sel), and returns nil for unsupported shapes.
@@ -1251,4 +1332,25 @@ func bareNamedTypeName(t types.Type) string {
 		return ""
 	}
 	return named.Obj().Name()
+}
+
+// directCallSite builds a call site with a known callee and an argument copy plan.
+//
+// Takes functionIndex (uint16) which is the callee's index in the function table.
+// Takes callee (*program.CompiledFunction) which is the function at that index.
+// Takes argumentLocations ([]program.VarLocation) which hold the compiled arguments.
+// Takes returnLocations ([]program.VarLocation) which receive the results.
+//
+// Returns program.CallSite which is the site, not yet added to the function.
+func directCallSite(functionIndex uint16, callee *program.CompiledFunction, argumentLocations, returnLocations []program.VarLocation) program.CallSite {
+	site := program.CallSite{
+		FunctionIndex: functionIndex,
+		Arguments:     argumentLocations,
+		Returns:       returnLocations,
+		CachedCallee:  callee,
+	}
+	if callee != nil {
+		site.ArgCopyProgram = program.BuildCallArgCopyProgram(argumentLocations, callee.ParameterKinds, callee.ParameterRegisters)
+	}
+	return site
 }

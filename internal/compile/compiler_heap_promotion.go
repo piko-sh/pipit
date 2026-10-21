@@ -58,7 +58,7 @@ func (c *Compiler) compileLocalInitialiser(ctx context.Context, name string, val
 	}
 
 	extensionPC := program.CurrentPC(c.Function) - 1
-	if extensionPC >= 1 && c.Function.Body[extensionPC-1].Op == isa.OpMakeSlice && c.Function.Body[extensionPC].Op == isa.OpExt {
+	if extensionPC >= 1 && c.Function.Body[extensionPC-1].Op == isa.OpMakeSlice && c.Function.Body[extensionPC].Op == isa.OpExtension {
 		if c.escapeMakeSitePCs == nil {
 			c.escapeMakeSitePCs = make(map[string]int)
 		}
@@ -81,7 +81,7 @@ func (c *Compiler) compileHeapPlacedSliceLiteral(ctx context.Context, literal as
 	}
 	body := c.Function.Body
 	for pc := start; pc+1 < len(body); pc++ {
-		if body[pc].Op == isa.OpMakeSlice && body[pc].A == location.Register && body[pc+1].Op == isa.OpExt {
+		if body[pc].Op == isa.OpMakeSlice && body[pc].A == location.Register && body[pc+1].Op == isa.OpExtension {
 			body[pc+1].C |= isa.MakeSliceExtHeapFlag
 			break
 		}
@@ -171,13 +171,6 @@ func (c *Compiler) makeSliceCall(expression ast.Expr) (*ast.CallExpr, bool) {
 // tryHeapPromoteCapturedLocal heap-promotes a captured local when flagged in
 // c.heapPromotedNames.
 //
-// Looks up the name's static type from go/types and emits isa.OpAllocIndirect via
-// promoteToIndirect. No-ops when the name is not flagged, when the variable is already
-// indirect, or when the static type is unknown.
-//
-// Called from each declareVar site that introduces a function-scope local: parameters,
-// named results, var-spec declarations, and short variable declarations.
-//
 // Takes name (string) which is the freshly declared variable name.
 // Takes ident (*ast.Ident) which is the AST identifier whose static type drives the heap
 // cell's element type.
@@ -208,8 +201,8 @@ func (c *Compiler) tryHeapPromoteCapturedLocal(ctx context.Context, name string,
 
 // refreshNamedResultLocation rewrites the function's named-result location entry for name
 // when the variable was just promoted, so the runtime sync paths (syncNamedResults,
-// handleReturn) recover the up-to-date value via emitIndirectRead semantics rather than
-// reading the typed-bank slot held before the promotion.
+// handleReturnBody) recover the up-to-date value via emitIndirectRead semantics rather
+// than reading the typed-bank slot held before the promotion.
 //
 // Takes name (string) which is the named-result identifier.
 // Takes promoted (VarLocation) which is the post-promotion location the Compiler scope

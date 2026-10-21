@@ -28,6 +28,10 @@ import (
 // Takes globals (*GlobalStore) which is the store to scrub.
 // Takes arena (*RegisterArena) which is the arena whose slabs are checked for ownership.
 func materialiseGlobalStrings(globals *GlobalStore, arena *RegisterArena) {
+	if optimisticArena(arena) {
+		countOptimistic(OptimisticGlobalSweepSkipped)
+		return
+	}
 	globals.materialise(arena.OwnsString, func(value reflect.Value) reflect.Value {
 		return materialiseArenaValueUnconditional(arena, value)
 	})

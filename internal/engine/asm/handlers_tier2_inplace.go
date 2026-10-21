@@ -28,18 +28,18 @@ import (
 // for this group.
 func tier2InPlaceHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		tier2IntegerInPlaceHandler("handlerSubOpTier2IncInt", "INC",
-			"handlerSubOpTier2IncInt increments ints[C] by one (tier-2 in-place sub-op)."),
-		tier2IntegerInPlaceHandler("handlerSubOpTier2DecInt", "DEC",
-			"handlerSubOpTier2DecInt decrements ints[C] by one (tier-2 in-place sub-op)."),
-		tier2UintInPlaceHandler("handlerSubOpTier2IncUint", "INC",
-			"handlerSubOpTier2IncUint increments uints[C] by one (tier-2 in-place sub-op)."),
-		tier2UintInPlaceHandler("handlerSubOpTier2DecUint", "DEC",
-			"handlerSubOpTier2DecUint decrements uints[C] by one (tier-2 in-place sub-op)."),
-		tier2Integer32InPlaceHandler("handlerSubOpTier2IncInt32", "INC",
-			"handlerSubOpTier2IncInt32 increments ints[C] by one with int32 wrap-around."),
-		tier2Integer32InPlaceHandler("handlerSubOpTier2DecInt32", "DEC",
-			"handlerSubOpTier2DecInt32 decrements ints[C] by one with int32 wrap-around."),
+		tier2IntegerInPlaceHandler("handlerIncrementInt64", "INC",
+			"handlerIncrementInt64 increments ints[C] by one (tier-2 in-place sub-op)."),
+		tier2IntegerInPlaceHandler("handlerDecrementInt64", "DEC",
+			"handlerDecrementInt64 decrements ints[C] by one (tier-2 in-place sub-op)."),
+		tier2UintInPlaceHandler("handlerIncrementUint64", "INC",
+			"handlerIncrementUint64 increments uints[C] by one (tier-2 in-place sub-op)."),
+		tier2UintInPlaceHandler("handlerDecrementUint64", "DEC",
+			"handlerDecrementUint64 decrements uints[C] by one (tier-2 in-place sub-op)."),
+		tier2Integer32InPlaceHandler("handlerIncrementInt32", "INC",
+			"handlerIncrementInt32 increments ints[C] by one with int32 wrap-around."),
+		tier2Integer32InPlaceHandler("handlerDecrementInt32", "DEC",
+			"handlerDecrementInt32 decrements ints[C] by one with int32 wrap-around."),
 	}
 }
 

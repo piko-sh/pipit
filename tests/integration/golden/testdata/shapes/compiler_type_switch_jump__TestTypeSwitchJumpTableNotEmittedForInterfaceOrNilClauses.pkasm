@@ -4,83 +4,125 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function classify
-;   registers: int=2 general=2
-;   dispatch:  asm=43 shim=6 exit=0 go=0
+;   registers: int64=2 general=2
+;   dispatch:  asm=37 shim=6 exit=0 go=0
 ;   params:    (general)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=1  [1]=2  [2]=3  [3]=4  [4]=5  [5]=6  [6]=0
 
-0000 A 1:LOAD_BOOL                 76   0   0    ; ints[0] = false
-0001 S 0:TYPE_ASSERT                1   0   1
-0002   0:EXT                        0   0   2
-0003 A 0:BIT_OR                     0   0   1
-0004 A 0:JUMP_IF_FALSE              0   4   0    ; if ints[0] == 0 goto +4
-0005 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
-0006 A 1:MOVE_INT                  35   0   1
-0007 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0008 A 1:JUMP                      74  44   0    ; goto 44
-0009 A 1:LOAD_BOOL                 76   0   0    ; ints[0] = false
-0010 S 0:TYPE_ASSERT                1   0   1
-0011   0:EXT                        1   0   2
-0012 A 0:BIT_OR                     0   0   1
-0013 A 0:JUMP_IF_FALSE              0   4   0    ; if ints[0] == 0 goto +4
-0014 A 1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
-0015 A 1:MOVE_INT                  35   0   1
-0016 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0017 A 1:JUMP                      74  35   0    ; goto 35
-0018 A 1:LOAD_BOOL                 76   0   0    ; ints[0] = false
-0019 S 0:TYPE_ASSERT                1   0   1
-0020   0:EXT                        2   0   2
-0021 A 0:BIT_OR                     0   0   1
-0022 A 0:JUMP_IF_FALSE              0   4   0    ; if ints[0] == 0 goto +4
-0023 A 1:LOAD_INT_CONST_SMALL      75   1   3    ; ints[1] = 3
-0024 A 1:MOVE_INT                  35   0   1
-0025 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0026 A 1:JUMP                      74  26   0    ; goto 26
-0027 A 1:LOAD_BOOL                 76   0   0    ; ints[0] = false
-0028 S 0:TYPE_ASSERT                1   0   1
-0029   0:EXT                        3   0   2
-0030 A 0:BIT_OR                     0   0   1
-0031 A 0:JUMP_IF_FALSE              0   4   0    ; if ints[0] == 0 goto +4
-0032 A 1:LOAD_INT_CONST_SMALL      75   1   4    ; ints[1] = 4
-0033 A 1:MOVE_INT                  35   0   1
-0034 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0035 A 1:JUMP                      74  17   0    ; goto 17
-0036 A 1:LOAD_BOOL                 76   0   0    ; ints[0] = false
-0037 S 0:TYPE_ASSERT                1   0   1
-0038   0:EXT                        4   0   2
-0039 A 0:BIT_OR                     0   0   1
-0040 A 0:JUMP_IF_FALSE              0   4   0    ; if ints[0] == 0 goto +4
-0041 A 1:LOAD_INT_CONST_SMALL      75   1   5    ; ints[1] = 5
-0042 A 1:MOVE_INT                  35   0   1
-0043 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0044 A 1:JUMP                      74   8   0    ; goto 8
-0045 A 1:LOAD_BOOL                 76   0   0    ; ints[0] = false
-0046 S 0:TYPE_ASSERT                1   0   1
-0047   0:EXT                        5   0   2
-0048 A 0:BIT_OR                     0   0   1
-0049 A 0:JUMP_IF_FALSE              0   3   0    ; if ints[0] == 0 goto +3
-0050 A 1:LOAD_INT_CONST_SMALL      75   1   6    ; ints[1] = 6
-0051 A 1:MOVE_INT                  35   0   1
-0052 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0053 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0054 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 1:LOAD_BOOL_IMMEDIATE_AS_INT64                        76   0   0    ; ints[0] = false
+0001 S 0:TYPE_ASSERT                                          1   0   1
+0002   0:EXTENSION                                            0   0   2
+0003 A 0:BIT_OR_INT64                                         0   0   1
+0004 A 0:JUMP_IF_FALSE                                        0   3   0    ; if ints[0] == 0 goto +3
+0005 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0006 A 2:RETURN                                               0  10   1    ; 1 values
+0007 A 1:JUMP                                                74  39   0    ; goto 39
+0008 A 1:LOAD_BOOL_IMMEDIATE_AS_INT64                        76   0   0    ; ints[0] = false
+0009 S 0:TYPE_ASSERT                                          1   0   1
+0010   0:EXTENSION                                            1   0   2
+0011 A 0:BIT_OR_INT64                                         0   0   1
+0012 A 0:JUMP_IF_FALSE                                        0   3   0    ; if ints[0] == 0 goto +3
+0013 A 1:LOAD_INT64_IMMEDIATE                                75   0   2    ; ints[0] = 2
+0014 A 2:RETURN                                               0  10   1    ; 1 values
+0015 A 1:JUMP                                                74  31   0    ; goto 31
+0016 A 1:LOAD_BOOL_IMMEDIATE_AS_INT64                        76   0   0    ; ints[0] = false
+0017 S 0:TYPE_ASSERT                                          1   0   1
+0018   0:EXTENSION                                            2   0   2
+0019 A 0:BIT_OR_INT64                                         0   0   1
+0020 A 0:JUMP_IF_FALSE                                        0   3   0    ; if ints[0] == 0 goto +3
+0021 A 1:LOAD_INT64_IMMEDIATE                                75   0   3    ; ints[0] = 3
+0022 A 2:RETURN                                               0  10   1    ; 1 values
+0023 A 1:JUMP                                                74  23   0    ; goto 23
+0024 A 1:LOAD_BOOL_IMMEDIATE_AS_INT64                        76   0   0    ; ints[0] = false
+0025 S 0:TYPE_ASSERT                                          1   0   1
+0026   0:EXTENSION                                            3   0   2
+0027 A 0:BIT_OR_INT64                                         0   0   1
+0028 A 0:JUMP_IF_FALSE                                        0   3   0    ; if ints[0] == 0 goto +3
+0029 A 1:LOAD_INT64_IMMEDIATE                                75   0   4    ; ints[0] = 4
+0030 A 2:RETURN                                               0  10   1    ; 1 values
+0031 A 1:JUMP                                                74  15   0    ; goto 15
+0032 A 1:LOAD_BOOL_IMMEDIATE_AS_INT64                        76   0   0    ; ints[0] = false
+0033 S 0:TYPE_ASSERT                                          1   0   1
+0034   0:EXTENSION                                            4   0   2
+0035 A 0:BIT_OR_INT64                                         0   0   1
+0036 A 0:JUMP_IF_FALSE                                        0   3   0    ; if ints[0] == 0 goto +3
+0037 A 1:LOAD_INT64_IMMEDIATE                                75   0   5    ; ints[0] = 5
+0038 A 2:RETURN                                               0  10   1    ; 1 values
+0039 A 1:JUMP                                                74   7   0    ; goto 7
+0040 A 1:LOAD_BOOL_IMMEDIATE_AS_INT64                        76   0   0    ; ints[0] = false
+0041 S 0:TYPE_ASSERT                                          1   0   1
+0042   0:EXTENSION                                            5   0   2
+0043 A 0:BIT_OR_INT64                                         0   0   1
+0044 A 0:JUMP_IF_FALSE                                        0   2   0    ; if ints[0] == 0 goto +2
+0045 A 1:LOAD_INT64_IMMEDIATE                                75   0   6    ; ints[0] = 6
+0046 A 2:RETURN                                               0  10   1    ; 1 values
+0047 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0048 A 2:RETURN                                               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun
-;   registers: int=1 general=1
-;   dispatch:  asm=2 shim=0 exit=0 go=1
+;   registers: int64=3 general=2
+;   dispatch:  asm=38 shim=6 exit=0 go=1
 ;   params:    (none)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=1
 
-0000 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0001 G 0:PACK_TYPED                 0   0   0
-0002   0:EXT                        0   0   0
-0003 A 1:TAIL_CALL                129   0   0    ; tail call (site 0)
+0000 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0001 G 0:BOX_AS_TYPE                                          0   0   0
+0002   0:EXTENSION                                            0   0   0
+0003 A 1:LOAD_BOOL_IMMEDIATE_AS_INT64                        76   0   0    ; inlined body of function 0 called at PC 3
+0004 S 0:TYPE_ASSERT                                          1   0   2
+0005   0:EXTENSION                                            0   0   2
+0006 A 0:BIT_OR_INT64                                         0   0   2
+0007 A 0:JUMP_IF_FALSE                                        0   3   0    ; if ints[0] == 0 goto +3
+0008 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0009 A 1:JUMP                                                74  41   0    ; goto 41
+0010 A 1:JUMP                                                74  39   0    ; goto 39
+0011 A 1:LOAD_BOOL_IMMEDIATE_AS_INT64                        76   0   0    ; ints[0] = false
+0012 S 0:TYPE_ASSERT                                          1   0   2
+0013   0:EXTENSION                                            1   0   2
+0014 A 0:BIT_OR_INT64                                         0   0   2
+0015 A 0:JUMP_IF_FALSE                                        0   3   0    ; if ints[0] == 0 goto +3
+0016 A 1:LOAD_INT64_IMMEDIATE                                75   0   2    ; ints[0] = 2
+0017 A 1:JUMP                                                74  33   0    ; goto 33
+0018 A 1:JUMP                                                74  31   0    ; goto 31
+0019 A 1:LOAD_BOOL_IMMEDIATE_AS_INT64                        76   0   0    ; ints[0] = false
+0020 S 0:TYPE_ASSERT                                          1   0   2
+0021   0:EXTENSION                                            2   0   2
+0022 A 0:BIT_OR_INT64                                         0   0   2
+0023 A 0:JUMP_IF_FALSE                                        0   3   0    ; if ints[0] == 0 goto +3
+0024 A 1:LOAD_INT64_IMMEDIATE                                75   0   3    ; ints[0] = 3
+0025 A 1:JUMP                                                74  25   0    ; goto 25
+0026 A 1:JUMP                                                74  23   0    ; goto 23
+0027 A 1:LOAD_BOOL_IMMEDIATE_AS_INT64                        76   0   0    ; ints[0] = false
+0028 S 0:TYPE_ASSERT                                          1   0   2
+0029   0:EXTENSION                                            3   0   2
+0030 A 0:BIT_OR_INT64                                         0   0   2
+0031 A 0:JUMP_IF_FALSE                                        0   3   0    ; if ints[0] == 0 goto +3
+0032 A 1:LOAD_INT64_IMMEDIATE                                75   0   4    ; ints[0] = 4
+0033 A 1:JUMP                                                74  17   0    ; goto 17
+0034 A 1:JUMP                                                74  15   0    ; goto 15
+0035 A 1:LOAD_BOOL_IMMEDIATE_AS_INT64                        76   0   0    ; ints[0] = false
+0036 S 0:TYPE_ASSERT                                          1   0   2
+0037   0:EXTENSION                                            4   0   2
+0038 A 0:BIT_OR_INT64                                         0   0   2
+0039 A 0:JUMP_IF_FALSE                                        0   3   0    ; if ints[0] == 0 goto +3
+0040 A 1:LOAD_INT64_IMMEDIATE                                75   0   5    ; ints[0] = 5
+0041 A 1:JUMP                                                74   9   0    ; goto 9
+0042 A 1:JUMP                                                74   7   0    ; goto 7
+0043 A 1:LOAD_BOOL_IMMEDIATE_AS_INT64                        76   0   0    ; ints[0] = false
+0044 S 0:TYPE_ASSERT                                          1   0   2
+0045   0:EXTENSION                                            5   0   2
+0046 A 0:BIT_OR_INT64                                         0   0   2
+0047 A 0:JUMP_IF_FALSE                                        0   2   0    ; if ints[0] == 0 goto +2
+0048 A 1:LOAD_INT64_IMMEDIATE                                75   0   6    ; ints[0] = 6
+0049 A 1:JUMP                                                74   1   0    ; goto 1
+0050 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0051 A 2:RETURN                                               0  10   1    ; 1 values

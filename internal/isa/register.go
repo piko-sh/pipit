@@ -23,16 +23,15 @@ const (
 	NumRegisterKinds = int(RegisterSliceByte) + 1
 
 	// NarrowIntegerBitWidth8 selects an 8-bit truncation for int8 and uint8 arithmetic
-	// results emitted via OpTruncateNarrow.
+	// results emitted via OpTruncateToWidth.
 	NarrowIntegerBitWidth8 uint8 = 8
 
 	// NarrowIntegerBitWidth16 selects a 16-bit truncation for int16 and uint16 arithmetic
-	// results emitted via OpTruncateNarrow.
+	// results emitted via OpTruncateToWidth.
 	NarrowIntegerBitWidth16 uint8 = 16
 
 	// NarrowIntegerBitWidth32 selects a 32-bit truncation for int32 and uint32 arithmetic
-	// results emitted via OpTruncateNarrow. Width 64 is intentionally absent because
-	// int64/uint64 already hold the full declared width.
+	// results emitted via OpTruncateToWidth.
 	NarrowIntegerBitWidth32 uint8 = 32
 )
 
@@ -42,13 +41,14 @@ const (
 type RegisterKind uint8
 
 const (
-	// RegisterInt stores int64 values. All Go signed integer types (int, int8, int16, int32,
-	// int64) and untyped int/rune are stored here, using int64 as the common representation.
-	RegisterInt RegisterKind = iota
+	// RegisterInt64 stores int64 values. All Go signed integer types (int, int8, int16,
+	// int32, int64) and untyped int/rune are stored here, using int64 as the common
+	// representation.
+	RegisterInt64 RegisterKind = iota
 
-	// RegisterFloat stores float64 values. Both float32 and float64 are stored here, with
+	// RegisterFloat64 stores float64 values. Both float32 and float64 are stored here, with
 	// float32 promoted to float64.
-	RegisterFloat
+	RegisterFloat64
 
 	// RegisterString stores string values natively.
 	RegisterString
@@ -60,22 +60,20 @@ const (
 	// RegisterBool stores bool values natively.
 	RegisterBool
 
-	// RegisterUint stores uint64 values. All Go unsigned integer types (uint, uint8, uint16,
-	// uint32, uint64, uintptr) are stored here.
-	RegisterUint
+	// RegisterUint64 stores uint64 values. All Go unsigned integer types (uint, uint8,
+	// uint16, uint32, uint64, uintptr) are stored here.
+	RegisterUint64
 
-	// RegisterComplex stores complex128 values. Both complex64 and complex128 are stored
+	// RegisterComplex128 stores complex128 values. Both complex64 and complex128 are stored
 	// here, with complex64 promoted to complex128.
-	RegisterComplex
+	RegisterComplex128
 
-	// RegisterSliceInt stores []int64 slice headers natively. The compiler selects this bank
-	// when the slice element kind resolves to RegisterInt at compile time, eliminating
-	// reflect.Value boxing for the slice header and per-element access.
-	RegisterSliceInt
+	// RegisterSliceInt64 stores []int64 slice headers natively.
+	RegisterSliceInt64
 
-	// RegisterSliceFloat stores []float64 slice headers natively for slices whose element
-	// kind resolves to RegisterFloat.
-	RegisterSliceFloat
+	// RegisterSliceFloat64 stores []float64 slice headers natively for slices whose element
+	// kind resolves to RegisterFloat64.
+	RegisterSliceFloat64
 
 	// RegisterSliceString stores []string slice headers natively for slices whose element
 	// kind resolves to RegisterString.
@@ -85,12 +83,13 @@ const (
 	// resolves to RegisterBool.
 	RegisterSliceBool
 
-	// RegisterSliceUint stores []uint64 slice headers natively for slices whose element kind
-	// resolves to RegisterUint.
-	RegisterSliceUint
+	// RegisterSliceUint64 stores []uint64 slice headers natively for slices whose element
+	// kind resolves to RegisterUint64.
+	RegisterSliceUint64
 
 	// RegisterSliceByte stores []byte slice headers natively. Distinct from
-	// RegisterSliceUint because the 1-byte element width enables tighter ASM element access.
+	// RegisterSliceUint64 because the 1-byte element width enables tighter ASM element
+	// access.
 	RegisterSliceByte
 )
 
@@ -99,30 +98,30 @@ const (
 // Returns the register kind name as a string.
 func (k RegisterKind) String() string {
 	switch k {
-	case RegisterInt:
-		return "int"
-	case RegisterFloat:
-		return "float"
+	case RegisterInt64:
+		return "int64"
+	case RegisterFloat64:
+		return "float64"
 	case RegisterString:
 		return "string"
 	case RegisterGeneral:
 		return "general"
 	case RegisterBool:
 		return "bool"
-	case RegisterUint:
-		return "uint"
-	case RegisterComplex:
-		return "complex"
-	case RegisterSliceInt:
-		return "sliceInt"
-	case RegisterSliceFloat:
-		return "sliceFloat"
+	case RegisterUint64:
+		return "uint64"
+	case RegisterComplex128:
+		return "complex128"
+	case RegisterSliceInt64:
+		return "sliceInt64"
+	case RegisterSliceFloat64:
+		return "sliceFloat64"
 	case RegisterSliceString:
 		return "sliceString"
 	case RegisterSliceBool:
 		return "sliceBool"
-	case RegisterSliceUint:
-		return "sliceUint"
+	case RegisterSliceUint64:
+		return "sliceUint64"
 	case RegisterSliceByte:
 		return "sliceByte"
 	default:
@@ -137,7 +136,7 @@ func (k RegisterKind) String() string {
 // Returns true when kind matches one of the typed-slice banks.
 func IsTypedSliceKind(kind RegisterKind) bool {
 	switch kind {
-	case RegisterSliceInt, RegisterSliceFloat, RegisterSliceString, RegisterSliceBool, RegisterSliceUint, RegisterSliceByte:
+	case RegisterSliceInt64, RegisterSliceFloat64, RegisterSliceString, RegisterSliceBool, RegisterSliceUint64, RegisterSliceByte:
 		return true
 	default:
 	}
@@ -147,24 +146,24 @@ func IsTypedSliceKind(kind RegisterKind) bool {
 // ElementKindForTypedSlice returns the element register kind that the given typed-slice
 // bank stores.
 //
-// For example RegisterSliceFloat holds RegisterFloat elements. Returns RegisterGeneral
-// when kind is not a typed-slice bank.
+// For example RegisterSliceFloat64 holds RegisterFloat64 elements. Returns
+// RegisterGeneral when kind is not a typed-slice bank.
 //
 // Takes kind (RegisterKind) which is the typed-slice bank.
 //
 // Returns the element register kind, or RegisterGeneral on non-typed-slice inputs.
 func ElementKindForTypedSlice(kind RegisterKind) RegisterKind {
 	switch kind {
-	case RegisterSliceInt:
-		return RegisterInt
-	case RegisterSliceFloat:
-		return RegisterFloat
+	case RegisterSliceInt64:
+		return RegisterInt64
+	case RegisterSliceFloat64:
+		return RegisterFloat64
 	case RegisterSliceString:
 		return RegisterString
 	case RegisterSliceBool:
 		return RegisterBool
-	case RegisterSliceUint, RegisterSliceByte:
-		return RegisterUint
+	case RegisterSliceUint64, RegisterSliceByte:
+		return RegisterUint64
 	default:
 	}
 	return RegisterGeneral

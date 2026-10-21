@@ -4,8 +4,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=6 float=2 string=3 bool=1 sliceFloat=1 sliceString=1 sliceBool=1
-;   dispatch:  asm=47 shim=5 exit=3 go=1
+;   registers: int64=7 float64=2 string=5 bool=1 sliceFloat64=1 sliceString=1 sliceBool=1
+;   dispatch:  asm=45 shim=5 exit=3 go=0
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -16,75 +16,74 @@
 ;   strings: [0]="first"  [1]="second"  [2]="third"  [3]=""  [4]=","
 ;   bools:   [0]=true  [1]=false
 
-0000 A 1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
-0001 S 1:MAKE_SLICE_FLOAT          18   0   0
-0002   0:EXT                        0   0   0
-0003 A 0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 95.5
-0004 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0005 A 1:SLICE_SET_FLOAT_DIRECT    20   0   0
-0006   0:EXT                        0   0   0
-0007 A 0:LOAD_FLOAT_CONST           0   1   0    ; floats[0] = 87
-0008 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0009 A 1:SLICE_SET_FLOAT_DIRECT    20   0   0
-0010   0:EXT                        0   0   0
-0011 A 0:LOAD_FLOAT_CONST           0   2   0    ; floats[0] = 72.5
-0012 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
-0013 A 1:SLICE_SET_FLOAT_DIRECT    20   0   0
-0014   0:EXT                        0   0   0
-0015 A 1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
-0016 S 1:MAKE_SLICE_STRING         22   0   0
-0017   0:EXT                        0   0   0
-0018 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "first"
-0019 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0020 X 1:SLICE_SET_STRING_DIRECT   24   0   0
-0021   0:EXT                        0   0   0
-0022 A 0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "second"
-0023 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0024 X 1:SLICE_SET_STRING_DIRECT   24   0   0
-0025   0:EXT                        0   0   0
-0026 A 0:LOAD_STRING_CONST          0   2   0    ; strings[0] = "third"
-0027 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
-0028 X 1:SLICE_SET_STRING_DIRECT   24   0   0
-0029   0:EXT                        0   0   0
-0030 A 1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
-0031 S 1:MAKE_SLICE_BOOL           26   0   0
-0032   0:EXT                        0   0   0
-0033 A 1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
-0034 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0035 A 1:SLICE_SET_BOOL_DIRECT     28   0   0
-0036   0:EXT                        0   0   0
-0037 A 1:LOAD_BOOL_CONST          138   0   1    ; bools[0] = false
-0038 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0039 A 1:SLICE_SET_BOOL_DIRECT     28   0   0
-0040   0:EXT                        0   0   0
-0041 A 1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
-0042 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
-0043 A 1:SLICE_SET_BOOL_DIRECT     28   0   0
-0044   0:EXT                        0   0   0
-0045 A 0:LOAD_STRING_CONST          0   3   0    ; strings[0] = ""
-0046 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0047 A 1:LEN_SLICE_FLOAT_DIRECT    21   1   0
-0048 A 1:LT_INT_JUMP_FALSE        116   0   1
-0049   0:EXT                       21   0   0
-0050 A 1:SLICE_GET_BOOL_DIRECT     27   0   0
-0051   0:EXT                        0   0   0
-0052 G 1:BOOL_TO_INT               53   4   0
-0053 A 0:JUMP_IF_FALSE              4   4   0    ; if ints[4] == 0 goto +4
-0054 A 1:SLICE_GET_FLOAT_DIRECT    19   0   0
-0055   0:EXT                        0   0   0
-0056 A 0:LOAD_FLOAT_CONST           1   3   0    ; floats[1] = 80
-0057 A 0:GE_FLOAT                   4   0   1
-0058 A 0:JUMP_IF_FALSE              4  10   0    ; if ints[4] == 0 goto +10
-0059 A 0:LOAD_STRING_CONST          1   3   0    ; strings[1] = ""
-0060 A 0:NE_STRING                  3   0   1
-0061 A 0:JUMP_IF_FALSE              3   3   0    ; if ints[3] == 0 goto +3
-0062 A 0:LOAD_STRING_CONST          1   4   0    ; strings[1] = ","
-0063 S 0:CONCAT_STRING              2   0   1
-0064 A 1:MOVE_STRING               37   0   2
-0065 A 1:SLICE_GET_STRING_DIRECT   23   1   0
-0066   0:EXT                        0   0   0
-0067 S 0:CONCAT_STRING              2   0   1
-0068 A 1:MOVE_STRING               37   0   2
-0069 A 2:TIER2_INC_INT              0   1   0
-0070 A 1:JUMP                      74 232 255    ; goto -24
-0071 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 1:LOAD_INT64_IMMEDIATE                                75   0   3    ; ints[0] = 3
+0001 S 1:MAKE_SLICE_FLOAT64                                  18   0   0
+0002   0:EXTENSION                                            0   0   0
+0003 A 0:LOAD_FLOAT64_CONSTANT                                0   0   0    ; floats[0] = 95.5
+0004 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0005 A 1:SET_SLICE_FLOAT64_ELEMENT                           20   0   0
+0006   0:EXTENSION                                            0   0   0
+0007 A 0:LOAD_FLOAT64_CONSTANT                                0   1   0    ; floats[0] = 87
+0008 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0009 A 1:SET_SLICE_FLOAT64_ELEMENT                           20   0   0
+0010   0:EXTENSION                                            0   0   0
+0011 A 0:LOAD_FLOAT64_CONSTANT                                0   2   0    ; floats[0] = 72.5
+0012 A 1:LOAD_INT64_IMMEDIATE                                75   0   2    ; ints[0] = 2
+0013 A 1:SET_SLICE_FLOAT64_ELEMENT                           20   0   0
+0014   0:EXTENSION                                            0   0   0
+0015 A 1:LOAD_INT64_IMMEDIATE                                75   0   3    ; ints[0] = 3
+0016 S 1:MAKE_SLICE_STRING                                   22   0   0
+0017   0:EXTENSION                                            0   0   0
+0018 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "first"
+0019 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0020 X 1:SET_SLICE_STRING_ELEMENT                            24   0   0
+0021   0:EXTENSION                                            0   0   0
+0022 A 0:LOAD_STRING_CONSTANT                                 0   1   0    ; strings[0] = "second"
+0023 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0024 X 1:SET_SLICE_STRING_ELEMENT                            24   0   0
+0025   0:EXTENSION                                            0   0   0
+0026 A 0:LOAD_STRING_CONSTANT                                 0   2   0    ; strings[0] = "third"
+0027 A 1:LOAD_INT64_IMMEDIATE                                75   0   2    ; ints[0] = 2
+0028 X 1:SET_SLICE_STRING_ELEMENT                            24   0   0
+0029   0:EXTENSION                                            0   0   0
+0030 A 1:LOAD_INT64_IMMEDIATE                                75   0   3    ; ints[0] = 3
+0031 S 1:MAKE_SLICE_BOOL                                     26   0   0
+0032   0:EXTENSION                                            0   0   0
+0033 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = true
+0034 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0035 A 1:SET_SLICE_BOOL_ELEMENT                              28   0   0
+0036   0:EXTENSION                                            0   0   0
+0037 A 1:LOAD_BOOL_CONSTANT                                 138   0   1    ; bools[0] = false
+0038 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0039 A 1:SET_SLICE_BOOL_ELEMENT                              28   0   0
+0040   0:EXTENSION                                            0   0   0
+0041 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = true
+0042 A 1:LOAD_INT64_IMMEDIATE                                75   0   2    ; ints[0] = 2
+0043 A 1:SET_SLICE_BOOL_ELEMENT                              28   0   0
+0044   0:EXTENSION                                            0   0   0
+0045 A 0:LOAD_STRING_CONSTANT                                 0   3   0    ; strings[0] = ""
+0046 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0047 A 1:LENGTH_SLICE_FLOAT64                                21   1   0
+0048 A 1:LESS_THAN_INT64_THEN_JUMP_IF_FALSE                 116   0   1
+0049   0:EXTENSION                                           20   0   0
+0050 A 0:LOAD_FLOAT64_CONSTANT                                1   3   0    ; LICM hoist of PC 59
+0051 A 0:LOAD_STRING_CONSTANT                                 3   3   0    ; LICM hoist of PC 61
+0052 A 0:LOAD_STRING_CONSTANT                                 4   4   0    ; LICM hoist of PC 63
+0053 A 1:LENGTH_SLICE_FLOAT64                                21   6   0    ; LICM hoist of PC 68
+0054 A 1:GET_SLICE_BOOL_ELEMENT                              27   0   0
+0055   0:EXTENSION                                            0   0   0
+0056 A 2:JUMP_IF_FALSE_BOOL                                   0  20   0
+0057   0:EXTENSION                                           10   0   0
+0058 A 1:GET_SLICE_FLOAT64_ELEMENT                           19   0   0
+0059   0:EXTENSION                                            0   0   0
+0060 A 0:GREATER_OR_EQUAL_FLOAT64                             4   0   1
+0061 A 0:JUMP_IF_FALSE                                        4   6   0    ; if ints[4] == 0 goto +6
+0062 A 0:NOT_EQUAL_STRING                                     3   0   3
+0063 A 0:JUMP_IF_FALSE                                        3   1   0    ; if ints[3] == 0 goto +1
+0064 S 0:CONCATENATE_STRING                                   0   0   4
+0065 A 1:GET_SLICE_STRING_ELEMENT                            23   1   0
+0066   0:EXTENSION                                            0   0   0
+0067 S 0:CONCATENATE_STRING                                   0   0   1
+0068 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN              77   0   6
+0069   0:EXTENSION                                          240 255   0
+0070 A 2:RETURN                                               0  10   1    ; 1 values

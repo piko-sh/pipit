@@ -21,6 +21,7 @@
 package engine
 
 import (
+	"reflect"
 	"strconv"
 	"unsafe"
 )
@@ -63,7 +64,7 @@ func (*RegisterArena) OwnsString(_ string) bool {
 }
 
 // ownsIndirectCell reports whether p addresses a cell the arena placed for an
-// isa.OpAllocIndirect site. Arena-owned cells share the frame's lifetime, so stores
+// isa.OpAllocateIndirect site. Arena-owned cells share the frame's lifetime, so stores
 // through them need not escape first.
 //
 // Takes p (unsafe.Pointer) which is the cell address.
@@ -83,7 +84,7 @@ func (a *RegisterArena) ownsIndirectCell(p unsafe.Pointer) bool {
 //
 // Returns true when p is in the current or a retired generic byte slab.
 func (a *RegisterArena) ownsBytePointer(p unsafe.Pointer) bool {
-	if p == nil {
+	if p == nil || a.heapData {
 		return false
 	}
 	pointer := uintptr(p)
@@ -109,14 +110,14 @@ func (*RegisterArena) ownsScalarBox(_ unsafe.Pointer) bool {
 	return false
 }
 
-// ArenaConcatString concatenates a and b. The safe build delegates to the standard string
-// concatenation operator.
+// ArenaConcatenateString concatenates a and b. The safe build delegates to the standard
+// string concatenation operator.
 //
 // Takes a (string) which is the left operand.
 // Takes b (string) which is the right operand.
 //
 // Returns the concatenated string.
-func ArenaConcatString(_ *RegisterArena, a, b string) string {
+func ArenaConcatenateString(_ *RegisterArena, a, b string) string {
 	return a + b
 }
 
@@ -134,14 +135,14 @@ func byteSlabOwnsPointer(slab []byte, pointer uintptr) bool {
 	return pointer >= base && pointer < base+uintptr(len(slab))
 }
 
-// arenaConcatRuneString appends the rune r to s. The safe build delegates to standard
-// string conversion.
+// arenaConcatenateStringRune appends the rune r to s. The safe build delegates to
+// standard string conversion.
 //
 // Takes s (string) which is the base string.
 // Takes r (rune) which is the rune to append.
 //
 // Returns the resulting string.
-func arenaConcatRuneString(_ *RegisterArena, s string, r rune) string {
+func arenaConcatenateStringRune(_ *RegisterArena, s string, r rune) string {
 	return s + string(r)
 }
 
@@ -186,28 +187,28 @@ func arenaFormatIntString(_ *RegisterArena, x int64, base int) string {
 	return strconv.FormatInt(x, base)
 }
 
-// arenaAppendInt is the arena-aware append for []int64. The safe build delegates to the
+// arenaAppendInt64 is the arena-aware append for []int64. The safe build delegates to the
 // builtin append.
 //
 // Takes s ([]int64) which is the source slice.
 // Takes x (int64) which is the element to append.
 //
 // Returns the resulting slice.
-func arenaAppendInt(_ *RegisterArena, s []int64, x int64) []int64 {
+func arenaAppendInt64(_ *RegisterArena, s []int64, x int64) []int64 {
 	return append(s, x)
 }
 
-// arenaAppendFloat is the float64 sibling of arenaAppendInt.
+// arenaAppendFloat64 is the float64 sibling of arenaAppendInt64.
 //
 // Takes s ([]float64) which is the source slice.
 // Takes x (float64) which is the element to append.
 //
 // Returns the resulting slice.
-func arenaAppendFloat(_ *RegisterArena, s []float64, x float64) []float64 {
+func arenaAppendFloat64(_ *RegisterArena, s []float64, x float64) []float64 {
 	return append(s, x)
 }
 
-// arenaAppendString is the string sibling of arenaAppendInt.
+// arenaAppendString is the string sibling of arenaAppendInt64.
 //
 // Takes s ([]string) which is the source slice.
 // Takes x (string) which is the element to append.
@@ -217,7 +218,7 @@ func arenaAppendString(_ *RegisterArena, s []string, x string) []string {
 	return append(s, x)
 }
 
-// arenaAppendBool is the bool sibling of arenaAppendInt.
+// arenaAppendBool is the bool sibling of arenaAppendInt64.
 //
 // Takes s ([]bool) which is the source slice.
 // Takes x (bool) which is the element to append.
@@ -227,17 +228,17 @@ func arenaAppendBool(_ *RegisterArena, s []bool, x bool) []bool {
 	return append(s, x)
 }
 
-// arenaAppendUint is the uint64 sibling of arenaAppendInt.
+// arenaAppendUint64 is the uint64 sibling of arenaAppendInt64.
 //
 // Takes s ([]uint64) which is the source slice.
 // Takes x (uint64) which is the element to append.
 //
 // Returns the resulting slice.
-func arenaAppendUint(_ *RegisterArena, s []uint64, x uint64) []uint64 {
+func arenaAppendUint64(_ *RegisterArena, s []uint64, x uint64) []uint64 {
 	return append(s, x)
 }
 
-// arenaAppendByte is the byte sibling of arenaAppendInt.
+// arenaAppendByte is the byte sibling of arenaAppendInt64.
 //
 // Takes s ([]byte) which is the source slice.
 // Takes x (byte) which is the element to append.
@@ -245,4 +246,93 @@ func arenaAppendUint(_ *RegisterArena, s []uint64, x uint64) []uint64 {
 // Returns the resulting slice.
 func arenaAppendByte(_ *RegisterArena, s []byte, x byte) []byte {
 	return append(s, x)
+}
+
+// krefContains reports whether p lies in one of the arena's KRef chunks. The safe build
+// places nothing in KRef chunks.
+//
+// Returns false always in the safe build.
+func (*RegisterArena) krefContains(_ unsafe.Pointer) bool {
+	return false
+}
+
+// krefMemberStoreOf reports whether a store into p is a KRef member store. The safe build
+// places nothing in KRef chunks.
+//
+// Returns false always in the safe build.
+func krefMemberStoreOf(_ *RegisterArena, _ unsafe.Pointer, _ bool) bool {
+	return false
+}
+
+// krefMemberSlotStore is krefMemberStoreOf for a store of a value.
+//
+// Returns false always in the safe build.
+func krefMemberSlotStore(_ *RegisterArena, _ unsafe.Pointer, _ reflect.Value) bool {
+	return false
+}
+
+// krefMemberStringStore is krefMemberStoreOf for a store of a string.
+//
+// Returns false always in the safe build.
+func krefMemberStringStore(_ *RegisterArena, _ unsafe.Pointer, _ string) bool {
+	return false
+}
+
+// servedStore reports whether a callback arena's store of a string into a served arena's
+// storage may skip the clone. The safe build has no exact probes, so it never may.
+//
+// Returns false always in the safe build.
+func (*RegisterArena) servedStore(_ unsafe.Pointer, _ string) bool {
+	return false
+}
+
+// ownCellStoreByValue reports whether a store through a cell pointer writes into the
+// arena's own uncovered storage. The safe build has no exact probes, so every such store
+// takes its escape copy.
+//
+// Returns false always in the safe build.
+func ownCellStoreByValue(_ *RegisterArena, _ unsafe.Pointer, _ reflect.Value) bool {
+	return false
+}
+
+// ownUncoveredStringSlot reports whether a foreign string stored at p may stay uncloned.
+// The safe build keeps no foreign string uncloned.
+//
+// Returns false always in the safe build.
+func (*RegisterArena) ownUncoveredStringSlot(_ unsafe.Pointer) bool {
+	return false
+}
+
+// licenceCoveredAt reports whether p, the destination of a store, is covered storage of
+// the arena (licenceCoveredAddress).
+//
+// Takes p (unsafe.Pointer) which is the destination of a store.
+//
+// Returns bool which is true when the destination is covered storage of this arena.
+func (a *RegisterArena) licenceCoveredAt(p unsafe.Pointer) bool {
+	return licenceCoveredAddress(a, uintptr(p))
+}
+
+// licenceCoveredStringBacking is licenceCoveredAt for p in one of the arena's []string
+// backings.
+//
+// Takes p (unsafe.Pointer) which is the destination backing.
+//
+// Returns bool which is licenceCoveredAt's answer.
+func (a *RegisterArena) licenceCoveredStringBacking(p unsafe.Pointer) bool {
+	return licenceCoveredAddress(a, uintptr(p))
+}
+
+// ownsAnyStorage reports whether pointer addresses an arena backing, slice header, scalar
+// or string box, or upvalue cell.
+//
+// Takes pointer (unsafe.Pointer) which is the address to test.
+//
+// Returns bool which is true for arena-owned storage.
+func (a *RegisterArena) ownsAnyStorage(pointer unsafe.Pointer) bool {
+	if pointer == nil {
+		return false
+	}
+	return a.OwnsSliceBacking(pointer) || a.OwnsSliceHeaderPointer(pointer) || a.ownsScalarBox(pointer) ||
+		a.OwnsStringBox(pointer) || slabOwnsPointer(a.upvalueCellSlab, uintptr(pointer))
 }

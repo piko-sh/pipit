@@ -29,128 +29,128 @@ func asmCallHandleMoveGeneral(ctx *dispatchContext, instWord uint32) *dispatchCo
 }
 
 //go:nosplit
-func asmCallHandleLoadGeneralConst(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleLoadGeneralConst)
+func asmCallHandleLoadGeneralConstant(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleLoadGeneralConstant)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleLoadComplexConst(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleLoadComplexConst)
+func asmCallHandleLoadComplex128Constant(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleLoadComplex128Constant)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleAddComplex(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleAddComplex)
+func asmCallHandleAddComplex128(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleAddComplex128)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSubComplex(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSubComplex)
+func asmCallHandleSubtractComplex128(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSubtractComplex128)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMulComplex(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMulComplex)
+func asmCallHandleMultiplyComplex128(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleMultiplyComplex128)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleDivComplex(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleDivComplex)
+func asmCallHandleDivideComplex128(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleDivideComplex128)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleEqComplex(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleEqComplex)
+func asmCallHandleEqualComplex128(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleEqualComplex128)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleNeComplex(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleNeComplex)
+func asmCallHandleNotEqualComplex128(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleNotEqualComplex128)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleBuildComplex(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleBuildComplex)
+func asmCallHandleMakeComplex128(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleMakeComplex128)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleConcatString(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleConcatString)
+func asmCallHandleConcatenateString(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleConcatenateString)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleConcatRuneString(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleConcatRuneString)
+func asmCallHandleConcatenateStringRune(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleConcatenateStringRune)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleEqGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleEqGeneral)
+func asmCallHandleEqualGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleEqualGeneral)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleNeGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleNeGeneral)
+func asmCallHandleNotEqualGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleNotEqualGeneral)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleLtGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleLtGeneral)
+func asmCallHandleLessThanGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleLessThanGeneral)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleLeGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleLeGeneral)
+func asmCallHandleLessOrEqualGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleLessOrEqualGeneral)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleGtGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleGtGeneral)
+func asmCallHandleGreaterThanGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGreaterThanGeneral)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleGeGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleGeGeneral)
+func asmCallHandleGreaterOrEqualGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGreaterOrEqualGeneral)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandlePackInterface(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handlePackInterface)
+func asmCallHandleBoxAsInterface(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleBoxAsInterface)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleUnpackInterface(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleUnpackInterface)
+func asmCallHandleUnboxFromInterface(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleUnboxFromInterface)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleTestNilJumpTrue(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleTestNilJumpTrue)
+func asmCallHandleJumpIfNil(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleJumpIfNil)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleTestNilJumpFalse(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleTestNilJumpFalse)
+func asmCallHandleJumpIfNotNil(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleJumpIfNotNil)
 	return ctx
 }
 
@@ -161,14 +161,14 @@ func asmCallHandleMakeClosure(ctx *dispatchContext, instWord uint32) *dispatchCo
 }
 
 //go:nosplit
-func asmCallHandleGetUpvalue(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleGetUpvalue)
+func asmCallHandleGetCapturedVariable(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetCapturedVariable)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSetUpvalue(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSetUpvalue)
+func asmCallHandleSetCapturedVariable(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetCapturedVariable)
 	return ctx
 }
 
@@ -179,26 +179,26 @@ func asmCallHandleMakeSlice(ctx *dispatchContext, instWord uint32) *dispatchCont
 }
 
 //go:nosplit
-func asmCallHandleIndex(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleIndex)
+func asmCallHandleGetElement(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetElement)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleIndexSet(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleIndexSet)
+func asmCallHandleSetElement(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetElement)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapSet(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapSet)
+func asmCallHandleSetMap(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetMap)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapIndexOk(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapIndexOk)
+func asmCallHandleGetMapOk(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapOk)
 	return ctx
 }
 
@@ -209,182 +209,182 @@ func asmCallHandleAppendSpread(ctx *dispatchContext, instWord uint32) *dispatchC
 }
 
 //go:nosplit
-func asmCallHandleCopy(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleCopy)
+func asmCallHandleCopyGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleCopyGeneral)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSliceGetInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSliceGetInt)
+func asmCallHandleGetElementInt64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetElementInt64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSliceSetInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSliceSetInt)
+func asmCallHandleSetElementInt64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetElementInt64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSliceGetFloat(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSliceGetFloat)
+func asmCallHandleGetElementFloat64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetElementFloat64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSliceSetFloat(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSliceSetFloat)
+func asmCallHandleSetElementFloat64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetElementFloat64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSliceGetString(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSliceGetString)
+func asmCallHandleGetElementString(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetElementString)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSliceSetString(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSliceSetString)
+func asmCallHandleSetElementString(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetElementString)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSliceGetBool(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSliceGetBool)
+func asmCallHandleGetElementBool(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetElementBool)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSliceSetBool(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSliceSetBool)
+func asmCallHandleSetElementBool(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetElementBool)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSliceGetUint(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSliceGetUint)
+func asmCallHandleGetElementUint64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetElementUint64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSliceSetUint(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSliceSetUint)
+func asmCallHandleSetElementUint64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetElementUint64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapGetIntInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapGetIntInt)
+func asmCallHandleGetMapInt64Int64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapInt64Int64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapSetIntInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapSetIntInt)
+func asmCallHandleSetMapInt64Int64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetMapInt64Int64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapGetStringInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapGetStringInt)
+func asmCallHandleGetMapStringInt64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapStringInt64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapSetStringInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapSetStringInt)
+func asmCallHandleSetMapStringInt64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetMapStringInt64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapGetStringString(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapGetStringString)
+func asmCallHandleGetMapStringString(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapStringString)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapSetStringString(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapSetStringString)
+func asmCallHandleSetMapStringString(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetMapStringString)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapGetIntString(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapGetIntString)
+func asmCallHandleGetMapInt64String(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapInt64String)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapSetIntString(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapSetIntString)
+func asmCallHandleSetMapInt64String(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetMapInt64String)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapIndexOkIntInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapIndexOkIntInt)
+func asmCallHandleGetMapInt64Int64Ok(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapInt64Int64Ok)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapIndexOkStringInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapIndexOkStringInt)
+func asmCallHandleGetMapStringInt64Ok(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapStringInt64Ok)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapIndexOkStringString(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapIndexOkStringString)
+func asmCallHandleGetMapStringStringOk(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapStringStringOk)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapIndexOkIntString(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapIndexOkIntString)
+func asmCallHandleGetMapInt64StringOk(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapInt64StringOk)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapGetIntGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapGetIntGeneral)
+func asmCallHandleGetMapInt64General(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapInt64General)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapIndexOkIntGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapIndexOkIntGeneral)
+func asmCallHandleGetMapInt64GeneralOk(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapInt64GeneralOk)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapGetStringGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapGetStringGeneral)
+func asmCallHandleGetMapStringGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapStringGeneral)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapIndexOkStringGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapIndexOkStringGeneral)
+func asmCallHandleGetMapStringGeneralOk(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapStringGeneralOk)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapSetStringGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapSetStringGeneral)
+func asmCallHandleSetMapStringGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetMapStringGeneral)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapAddIntInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapAddIntInt)
+func asmCallHandleAddToMapInt64Int64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleAddToMapInt64Int64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapAddStringInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapAddStringInt)
+func asmCallHandleAddToMapStringInt64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleAddToMapStringInt64)
 	return ctx
 }
 
@@ -395,20 +395,20 @@ func asmCallHandleBindMethod(ctx *dispatchContext, instWord uint32) *dispatchCon
 }
 
 //go:nosplit
-func asmCallHandleAddr(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleAddr)
+func asmCallHandleAddress(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleAddress)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleDeref(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleDeref)
+func asmCallHandleDereference(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleDereference)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleAllocIndirect(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleAllocIndirect)
+func asmCallHandleAllocateIndirect(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleAllocateIndirect)
 	return ctx
 }
 
@@ -419,8 +419,8 @@ func asmCallHandleTypeAssert(ctx *dispatchContext, instWord uint32) *dispatchCon
 }
 
 //go:nosplit
-func asmCallHandleConvert(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleConvert)
+func asmCallHandleConvertGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleConvertGeneral)
 	return ctx
 }
 
@@ -455,98 +455,98 @@ func asmCallHandleUnsafeAdd(ctx *dispatchContext, instWord uint32) *dispatchCont
 }
 
 //go:nosplit
-func asmCallHandleStrContainsRune(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleStrContainsRune)
+func asmCallHandleStringsContainsRune(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleStringsContainsRune)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleStrContains(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleStrContains)
+func asmCallHandleStringsContains(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleStringsContains)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleStrHasPrefix(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleStrHasPrefix)
+func asmCallHandleStringsHasPrefix(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleStringsHasPrefix)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleStrHasSuffix(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleStrHasSuffix)
+func asmCallHandleStringsHasSuffix(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleStringsHasSuffix)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleStrEqualFold(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleStrEqualFold)
+func asmCallHandleStringsEqualFold(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleStringsEqualFold)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleStrIndex(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleStrIndex)
+func asmCallHandleStringsIndex(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleStringsIndex)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleStrCount(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleStrCount)
+func asmCallHandleStringsCount(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleStringsCount)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleStrTrimPrefix(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleStrTrimPrefix)
+func asmCallHandleStringsTrimPrefix(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleStringsTrimPrefix)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleStrTrimSuffix(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleStrTrimSuffix)
+func asmCallHandleStringsTrimSuffix(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleStringsTrimSuffix)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleStrTrim(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleStrTrim)
+func asmCallHandleStringsTrim(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleStringsTrim)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleStrIndexRune(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleStrIndexRune)
+func asmCallHandleStringsIndexRune(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleStringsIndexRune)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleStrRepeat(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleStrRepeat)
+func asmCallHandleStringsRepeat(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleStringsRepeat)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleStrLastIndex(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleStrLastIndex)
+func asmCallHandleStringsLastIndex(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleStringsLastIndex)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleStrJoin(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleStrJoin)
+func asmCallHandleStringsJoin(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleStringsJoin)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleStrSplit(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleStrSplit)
+func asmCallHandleStringsSplit(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleStringsSplit)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleStrReplaceAll(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleStrReplaceAll)
+func asmCallHandleStringsReplaceAll(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleStringsReplaceAll)
 	return ctx
 }
 
@@ -557,206 +557,296 @@ func asmCallHandleMathPow(ctx *dispatchContext, instWord uint32) *dispatchContex
 }
 
 //go:nosplit
-func asmCallHandleGetStructFieldIntT0(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampolineNarrow(ctx, instWord, handleGetStructFieldIntT0)
+func asmCallHandleGetStructFieldInt64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampolineNarrow(ctx, instWord, handleGetStructFieldInt64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSetStructFieldIntT0(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampolineNarrow(ctx, instWord, handleSetStructFieldIntT0)
+func asmCallHandleSetStructFieldInt64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampolineNarrow(ctx, instWord, handleSetStructFieldInt64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleGetStructFieldUintT0(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampolineNarrow(ctx, instWord, handleGetStructFieldUintT0)
+func asmCallHandleGetStructFieldUint64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampolineNarrow(ctx, instWord, handleGetStructFieldUint64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSetStructFieldUintT0(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampolineNarrow(ctx, instWord, handleSetStructFieldUintT0)
+func asmCallHandleSetStructFieldUint64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampolineNarrow(ctx, instWord, handleSetStructFieldUint64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleGetStructFieldFloatT0(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampolineNarrow(ctx, instWord, handleGetStructFieldFloatT0)
+func asmCallHandleGetStructFieldFloat64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampolineNarrow(ctx, instWord, handleGetStructFieldFloat64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSetStructFieldFloatT0(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampolineNarrow(ctx, instWord, handleSetStructFieldFloatT0)
+func asmCallHandleSetStructFieldFloat64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampolineNarrow(ctx, instWord, handleSetStructFieldFloat64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleGetStructFieldBoolT0(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampolineNarrow(ctx, instWord, handleGetStructFieldBoolT0)
+func asmCallHandleGetStructFieldBool(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampolineNarrow(ctx, instWord, handleGetStructFieldBool)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSetStructFieldBoolT0(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampolineNarrow(ctx, instWord, handleSetStructFieldBoolT0)
+func asmCallHandleSetStructFieldBool(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampolineNarrow(ctx, instWord, handleSetStructFieldBool)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleGetStructFieldGeneralT0(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampolineNarrow(ctx, instWord, handleGetStructFieldGeneralT0)
+func asmCallHandleGetStructFieldGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampolineNarrow(ctx, instWord, handleGetStructFieldGeneral)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSetStructFieldGeneralT0(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampolineNarrow(ctx, instWord, handleSetStructFieldGeneralT0)
+func asmCallHandleSetStructFieldGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampolineNarrow(ctx, instWord, handleSetStructFieldGeneral)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleCopyStructFieldGeneralT0(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampolineNarrow(ctx, instWord, handleCopyStructFieldGeneralT0)
+func asmCallHandleCopyStructFieldGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampolineNarrow(ctx, instWord, handleCopyStructFieldGeneral)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSliceIndexStructFieldInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSliceIndexStructFieldInt)
+func asmCallHandleGetElementFieldInt64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetElementFieldInt64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSliceIndexStructFieldFloat(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSliceIndexStructFieldFloat)
+func asmCallHandleGetElementFieldFloat64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetElementFieldFloat64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapIndexOkJumpIfFalseIntInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapIndexOkJumpIfFalseIntInt)
+func asmCallHandleGetMapInt64Int64OkThenJumpIfFalse(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapInt64Int64OkThenJumpIfFalse)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapIndexOkJumpIfFalseStringInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapIndexOkJumpIfFalseStringInt)
+func asmCallHandleGetMapStringInt64OkThenJumpIfFalse(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapStringInt64OkThenJumpIfFalse)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapIndexOkJumpIfFalseStringString(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapIndexOkJumpIfFalseStringString)
+func asmCallHandleGetMapStringStringOkThenJumpIfFalse(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapStringStringOkThenJumpIfFalse)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapIndexOkJumpIfFalseIntString(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapIndexOkJumpIfFalseIntString)
+func asmCallHandleGetMapInt64StringOkThenJumpIfFalse(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapInt64StringOkThenJumpIfFalse)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapIndexOkJumpIfFalseIntGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapIndexOkJumpIfFalseIntGeneral)
+func asmCallHandleGetMapInt64GeneralOkThenJumpIfFalse(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapInt64GeneralOkThenJumpIfFalse)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapIndexOkJumpIfFalseStringGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapIndexOkJumpIfFalseStringGeneral)
+func asmCallHandleGetMapStringGeneralOkThenJumpIfFalse(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetMapStringGeneralOkThenJumpIfFalse)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSwapStructFieldsGeneralT0(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampolineNarrow(ctx, instWord, handleSwapStructFieldsGeneralT0)
+func asmCallHandleSwapStructFieldsGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampolineNarrow(ctx, instWord, handleSwapStructFieldsGeneral)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleGetStructFieldRawPointerT0(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampolineNarrow(ctx, instWord, handleGetStructFieldRawPointerT0)
+func asmCallHandleGetStructFieldRawPointer(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampolineNarrow(ctx, instWord, handleGetStructFieldRawPointer)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleMapSetIntGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleMapSetIntGeneral)
+func asmCallHandleSetMapInt64General(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetMapInt64General)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleGetStructFieldIndexGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleGetStructFieldIndexGeneral)
+func asmCallHandleGetStructFieldElementGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetStructFieldElementGeneral)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSetStructFieldIndexGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSetStructFieldIndexGeneral)
+func asmCallHandleSetStructFieldElementGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetStructFieldElementGeneral)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleDerefSliceGetInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleDerefSliceGetInt)
+func asmCallHandleGetElementInt64ViaPointer(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetElementInt64ViaPointer)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleDerefSliceSetInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleDerefSliceSetInt)
+func asmCallHandleSetElementInt64ViaPointer(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetElementInt64ViaPointer)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleGetStructFieldSliceLen(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampolineNarrow(ctx, instWord, handleGetStructFieldSliceLen)
+func asmCallHandleLengthStructField(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampolineNarrow(ctx, instWord, handleLengthStructField)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleGetStructFieldSliceIndexScalar(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleGetStructFieldSliceIndexScalar)
+func asmCallHandleGetStructFieldElementField(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetStructFieldElementField)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSubOpMakeSliceInt(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSubOpMakeSliceInt)
+func asmCallHandleAppendStringToMapString(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleAppendStringToMapString)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSubOpMakeSliceFloat(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSubOpMakeSliceFloat)
+func asmCallHandleSetElementFieldInt64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetElementFieldInt64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSubOpMakeSliceString(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSubOpMakeSliceString)
+func asmCallHandleSetElementFieldFloat64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetElementFieldFloat64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSubOpMakeSliceBool(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSubOpMakeSliceBool)
+func asmCallHandleMakeSliceInt64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleMakeSliceInt64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSubOpMakeSliceUint(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSubOpMakeSliceUint)
+func asmCallHandleMakeSliceFloat64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleMakeSliceFloat64)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSubOpMakeSliceByte(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSubOpMakeSliceByte)
+func asmCallHandleMakeSliceString(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleMakeSliceString)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleMakeSliceBool(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleMakeSliceBool)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleMakeSliceUint64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleMakeSliceUint64)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleBoxInt64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleBoxInt64)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleUnboxInt64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleUnboxInt64)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleBoxFloat64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleBoxFloat64)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleBoxString(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleBoxString)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleLengthGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleLengthGeneral)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleLoadZero(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleLoadZero)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleDeleteFromMap(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleDeleteFromMap)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleGetStructFieldStringWide(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetStructFieldStringWide)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleSetStructFieldStringWide(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetStructFieldStringWide)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleAppendUint64Wide(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleAppendUint64Wide)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleAppendByteViaPointer(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleAppendByteViaPointer)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleAppendSpreadByteViaPointer(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleAppendSpreadByteViaPointer)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleMakeSliceByte(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleMakeSliceByte)
 	return ctx
 }
 
@@ -767,20 +857,20 @@ func asmCallHandleResetSharedCell(ctx *dispatchContext, instWord uint32) *dispat
 }
 
 //go:nosplit
-func asmCallHandleWriteSharedCell(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleWriteSharedCell)
+func asmCallHandleSetSharedCell(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSetSharedCell)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSliceOp(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSliceOp)
+func asmCallHandleSliceGeneral(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSliceGeneral)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleRangeInit(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleRangeInit)
+func asmCallHandleRangeInitialise(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleRangeInitialise)
 	return ctx
 }
 
@@ -803,19 +893,163 @@ func asmCallHandleSetGlobalWide(ctx *dispatchContext, instWord uint32) *dispatch
 }
 
 //go:nosplit
-func asmCallHandleEqInterfaceNil(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleEqInterfaceNil)
+func asmCallHandleEqualInterfaceNil(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleEqualInterfaceNil)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleNeInterfaceNil(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleNeInterfaceNil)
+func asmCallHandleNotEqualInterfaceNil(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleNotEqualInterfaceNil)
 	return ctx
 }
 
 //go:nosplit
-func asmCallHandleSyncClosureUpvalues(ctx *dispatchContext, instWord uint32) *dispatchContext {
-	pathBTrampoline(ctx, instWord, handleSyncClosureUpvalues)
+func asmCallHandleBoxSliceByte(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleBoxSliceByte)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleConvertSliceByteToString(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleConvertSliceByteToString)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleUnboxSliceFloat64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleUnboxSliceFloat64)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleUnboxSliceInt64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleUnboxSliceInt64)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleUnboxSliceString(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleUnboxSliceString)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleUnboxSliceBool(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleUnboxSliceBool)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleUnboxSliceUint64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleUnboxSliceUint64)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleUnboxSliceByte(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleUnboxSliceByte)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleBoxSliceFloat64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleBoxSliceFloat64)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleBoxSliceString(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleBoxSliceString)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleBoxSliceBool(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleBoxSliceBool)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleBoxSliceUint64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleBoxSliceUint64)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleGetStructFieldSliceInt64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetStructFieldSliceInt64)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleGetStructFieldSliceFloat64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetStructFieldSliceFloat64)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleGetStructFieldSliceUint64(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetStructFieldSliceUint64)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleGetStructFieldSliceString(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetStructFieldSliceString)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleGetStructFieldSliceBool(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetStructFieldSliceBool)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleGetStructFieldSliceByte(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetStructFieldSliceByte)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleMakeSliceHeap(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleMakeSliceHeap)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleTypeSwitchJump(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleTypeSwitchJump)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleAddressField(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleAddressField)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleGetStructFieldUint64Run(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetStructFieldUint64Run)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleGetElementFieldUint64Run(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleGetElementFieldUint64Run)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleMakeMap(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleMakeMap)
+	return ctx
+}
+
+//go:nosplit
+func asmCallHandleSynchroniseClosureCapturedVariables(ctx *dispatchContext, instWord uint32) *dispatchContext {
+	pathBTrampoline(ctx, instWord, handleSynchroniseClosureCapturedVariables)
 	return ctx
 }

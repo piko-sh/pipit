@@ -1,5 +1,3 @@
-//go:build integration
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build integration
+
 package bytecode_test
 
 import (
@@ -35,7 +35,7 @@ func makeSliceHeapFlagOf(t *testing.T, source, function string) uint8 {
 	require.NoError(t, err)
 	body := compiled.Body
 	for pc := 0; pc+1 < len(body); pc++ {
-		if body[pc].Op == isa.OpMakeSlice && body[pc+1].Op == isa.OpExt {
+		if body[pc].Op == isa.OpMakeSlice && body[pc+1].Op == isa.OpExtension {
 			return body[pc+1].C & isa.MakeSliceExtHeapFlag
 		}
 	}

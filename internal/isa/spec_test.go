@@ -22,6 +22,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -30,6 +32,21 @@ import (
 )
 
 var enumBlocks = map[string]Tier{"Opcode": TierMain, "SubOpcode": TierSub1, "SubOpcodeTier2": TierSub2, "SubOpcodeTier3": TierSub3}
+
+var tierConstantPrefixes = [tierCount]string{"Op", "SubOp", "SubOpTier2", "SubOpTier3"}
+
+var abbreviatedNameWords = map[string]string{
+	"INC": "INCREMENT", "DEC": "DECREMENT", "SUB": "SUBTRACT", "MUL": "MULTIPLY", "DIV": "DIVIDE",
+	"REM": "REMAINDER", "NEG": "NEGATE", "CONST": "CONSTANT", "ALLOC": "ALLOCATE",
+	"DEREF": "DEREFERENCE", "EXT": "EXTENSION", "INIT": "INITIALISE", "UPVALUE": "CAPTURED_VARIABLE",
+	"UPVALUES": "CAPTURED_VARIABLES", "EQ": "EQUAL", "NE": "NOT_EQUAL", "LT": "LESS_THAN",
+	"LE": "LESS_OR_EQUAL", "GT": "GREATER_THAN", "GE": "GREATER_OR_EQUAL", "LEN": "LENGTH",
+	"CAP": "CAPACITY", "ADDR": "ADDRESS", "TRUNC": "TRUNCATE", "NOP": "NO_OPERATION",
+	"IMAG": "IMAGINARY_PART", "CONCAT": "CONCATENATE", "SYNC": "SYNCHRONISE",
+	"INT": "INT64", "UINT": "UINT64", "FLOAT": "FLOAT64", "COMPLEX": "COMPLEX128",
+}
+
+var goFunctionNamePackages = []string{"MATH_", "STRINGS_", "STRCONV_", "UNSAFE_"}
 
 func constantsPerTier(t *testing.T) map[Tier][]string {
 	t.Helper()
@@ -86,19 +103,16 @@ func TestSpecHasOneRowPerEnumConstant(t *testing.T) {
 	}
 }
 
-func TestSpecNamesAreUniqueWithinTier(t *testing.T) {
+func TestSpecNamesAreUnique(t *testing.T) {
 	t.Parallel()
-	seen := map[Tier]map[string]uint8{}
+	seen := map[string]OpSpec{}
 	for _, row := range AllSpecs() {
 		if row.Name == "" {
 			continue
 		}
-		if seen[row.Tier] == nil {
-			seen[row.Tier] = map[string]uint8{}
-		}
-		other, dup := seen[row.Tier][row.Name]
-		assert.False(t, dup, "tier %d: codes %d and %d share the name %q", row.Tier, other, row.Code, row.Name)
-		seen[row.Tier][row.Name] = row.Code
+		other, dup := seen[row.Name]
+		assert.Falsef(t, dup, "%s and %s share the name %q; names are unique across every tier", other, row, row.Name)
+		seen[row.Name] = row
 	}
 }
 
@@ -134,16 +148,16 @@ func TestSpecRowsAreConsistent(t *testing.T) {
 
 func TestSpecForInstructionResolvesTheDrillCascade(t *testing.T) {
 	t.Parallel()
-	row, ok := SpecForInstruction(Instruction{Op: OpAddInt, A: 0, B: 0, C: 0})
+	row, ok := SpecForInstruction(Instruction{Op: OpAddInt64, A: 0, B: 0, C: 0})
 	require.True(t, ok)
-	require.Equal(t, "ADD_INT", row.Name)
+	require.Equal(t, "ADD_INT64", row.Name)
 
 	row, ok = SpecForInstruction(Instruction{Op: OpDrillTier1, A: uint8(SubOpJump), B: 0, C: 0})
 	require.True(t, ok)
 	require.Equal(t, TierSub1, row.Tier)
 	require.True(t, row.Has(SpecJump))
 
-	row, ok = SpecForInstruction(Instruction{Op: OpDrillTier1, A: uint8(SubOpDrillTier2), B: uint8(SubOpTier2DrillTier3), C: uint8(SubOpTier3Nop)})
+	row, ok = SpecForInstruction(Instruction{Op: OpDrillTier1, A: uint8(SubOpDrillTier2), B: uint8(SubOpTier2DrillTier3), C: uint8(SubOpTier3NoOperation)})
 	require.True(t, ok)
 	require.Equal(t, TierSub3, row.Tier)
 }
@@ -171,21 +185,21 @@ func TestSpecRowsClassifyTheirMemoryEffect(t *testing.T) {
 
 func TestSpecMemoryClassificationSurvivesTheDrillCascade(t *testing.T) {
 	t.Parallel()
-	mutating := NewInstruction(OpSliceSetInt, 0, 0, 0)
+	mutating := NewInstruction(OpSetElementInt64, 0, 0, 0)
 	row, ok := SpecForInstruction(mutating)
 	require.True(t, ok)
 	mutates, classified := row.MutatesMemory()
 	require.True(t, classified)
 	require.True(t, mutates, "a typed element store mutates through its collection operand")
 
-	pure := NewInstruction(OpAddInt, 0, 0, 0)
+	pure := NewInstruction(OpAddInt64, 0, 0, 0)
 	row, ok = SpecForInstruction(pure)
 	require.True(t, ok)
 	mutates, classified = row.MutatesMemory()
 	require.True(t, classified)
 	require.False(t, mutates)
 
-	tier1 := NewInstruction(OpDrillTier1, uint8(SubOpSetStructFieldInt), 0, 0)
+	tier1 := NewInstruction(OpDrillTier1, uint8(SubOpSetStructFieldInt64Wide), 0, 0)
 	row, ok = SpecForInstruction(tier1)
 	require.True(t, ok)
 	mutates, _ = row.MutatesMemory()
@@ -200,6 +214,36 @@ func TestSpecUnclassifiedRowReportsAsMutating(t *testing.T) {
 	require.True(t, mutates, "an unclassified operation fails closed")
 }
 
+func TestDispatchForInstructionFollowsTheRowExceptForTheSkippedNoOp(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		instruction Instruction
+		want        DispatchPath
+	}{
+		{name: "an assembly body", instruction: NewInstruction(OpAddInt64, 0, 1, 2), want: DispatchAsm},
+		{name: "an in-loop shim", instruction: NewInstruction(OpMakeClosure, 0, 0, 0), want: DispatchShim},
+		{name: "a dedicated exit", instruction: NewInstruction(OpGetMap, 0, 1, 2), want: DispatchExit},
+		{name: "a generic exit", instruction: NewTier1Instruction(SubOpCallNative, 0, 0), want: DispatchGo},
+		{name: "the no-op the dispatch sequence skips", instruction: NewInstruction(OpNoOperation, 0, 0, 0), want: DispatchAsm},
+		{name: "a word with no row", instruction: NewInstruction(Opcode(math.MaxUint8), 0, 0, 0), want: DispatchNone},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tt.want, DispatchForInstruction(tt.instruction))
+		})
+	}
+
+	row, ok := SpecForInstruction(NewInstruction(OpNoOperation, 0, 0, 0))
+	require.True(t, ok)
+	require.Equal(t, DispatchGo, row.Dispatch(),
+		"the no-op row has no body of its own; if it gains one, DispatchForInstruction no longer needs its exception")
+}
+
 func TestTypedMakesDispatchThroughTheValidatedGoHandler(t *testing.T) {
 	t.Parallel()
 
@@ -207,11 +251,11 @@ func TestTypedMakesDispatchThroughTheValidatedGoHandler(t *testing.T) {
 		name  string
 		subOp SubOpcode
 	}{
-		{name: "int", subOp: SubOpMakeSliceInt},
-		{name: "float", subOp: SubOpMakeSliceFloat},
+		{name: "int", subOp: SubOpMakeSliceInt64},
+		{name: "float", subOp: SubOpMakeSliceFloat64},
 		{name: "string", subOp: SubOpMakeSliceString},
 		{name: "bool", subOp: SubOpMakeSliceBool},
-		{name: "uint", subOp: SubOpMakeSliceUint},
+		{name: "uint", subOp: SubOpMakeSliceUint64},
 		{name: "byte", subOp: SubOpMakeSliceByte},
 	}
 
@@ -224,5 +268,138 @@ func TestTypedMakesDispatchThroughTheValidatedGoHandler(t *testing.T) {
 			require.Equal(t, DispatchShim, row.Dispatch(), "a hand-written assembly body would skip the handler's length, capacity and limit checks")
 			require.Equal(t, "Handle"+strings.TrimPrefix(row.Handler, "handle"), row.ShimHandler, "the shim must reach the handler the safe build runs")
 		})
+	}
+}
+
+func TestSpecSymbolsDeriveFromThePrintedName(t *testing.T) {
+	t.Parallel()
+	constants := constantsPerTier(t)
+	for _, row := range AllSpecs() {
+		if row.Has(specReserved) {
+			continue
+		}
+		require.Lessf(t, int(row.Code), len(constants[row.Tier]), "%s has no enum constant", row)
+		constant := constants[row.Tier][row.Code]
+		stem := symbolStem(row.Name)
+		symbols := []struct {
+			symbol string
+
+			got string
+
+			want string
+		}{
+			{symbol: "constant", got: constant, want: tierConstantPrefixes[row.Tier] + stem},
+			{symbol: "handler", got: row.Handler, want: "handle" + stem},
+			{symbol: "asm", got: row.AsmBody, want: "handler" + stem},
+			{symbol: "shim", got: row.Shim, want: stem},
+			{symbol: "shim handler", got: row.ShimHandler, want: "Handle" + stem},
+			{symbol: "exit stub", got: row.ExitStub, want: "handler" + stem + "Exit"},
+			{symbol: "exit reason", got: row.ExitReason, want: "exit" + stem},
+		}
+		for _, symbol := range symbols {
+			if symbol.got == "" {
+				continue
+			}
+			assert.Equalf(t, symbol.want, symbol.got,
+				"%s: the %s must derive from the printed name %q; regenerate spec_names_generated.go with make generate-engine",
+				row, symbol.symbol, row.Name)
+		}
+	}
+}
+
+func TestPrintedNamesSpellEveryWordOut(t *testing.T) {
+	t.Parallel()
+	for _, row := range AllSpecs() {
+		if row.Name == "" || slices.ContainsFunc(goFunctionNamePackages, func(prefix string) bool {
+			return strings.HasPrefix(row.Name, prefix)
+		}) {
+			continue
+		}
+		for word := range strings.SplitSeq(row.Name, "_") {
+			if full, abbreviated := abbreviatedNameWords[word]; abbreviated {
+				assert.Failf(t, "abbreviated word in a printed name",
+					"%s abbreviates %s. Spell it %s, as the naming grammar in the package documentation says.", row, word, full)
+			}
+		}
+	}
+}
+
+func TestSymbolStemSplitsThePrintedNameIntoWords(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		want string
+	}{
+		{name: "ADD_INT64", want: "AddInt64"},
+		{name: "ADD_INT32", want: "AddInt32"},
+		{name: "CALL_IIFE", want: "CallIIFE"},
+		{name: "GET_MAP_INT64_INT64_OK_THEN_JUMP_IF_FALSE", want: "GetMapInt64Int64OkThenJumpIfFalse"},
+		{name: "DRILL_TIER1", want: "DrillTier1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, symbolStem(tt.name))
+		})
+	}
+}
+
+func TestDerivedSymbolsFollowTheRowsDeclarations(t *testing.T) {
+	t.Parallel()
+	row := spec(TierSub1, uint8(SubOpLoadInt64Immediate)).asmIn("tier1JumpTable").shim().exit()
+	deriveSymbols(&row)
+	require.Equal(t, "LOAD_INT64_IMMEDIATE", row.Name)
+	require.Equal(t, "handleLoadInt64Immediate", row.Handler)
+	require.Equal(t, "handlerLoadInt64Immediate", row.AsmBody)
+	require.Equal(t, "tier1JumpTable", row.AsmTable)
+	require.Equal(t, "LoadInt64Immediate", row.Shim)
+	require.Equal(t, "HandleLoadInt64Immediate", row.ShimHandler)
+	require.Equal(t, "handlerLoadInt64ImmediateExit", row.ExitStub)
+	require.Equal(t, "exitLoadInt64Immediate", row.ExitReason)
+
+	plain := spec(TierMain, uint8(OpTypeSwitchCase)).noGoHandler()
+	deriveSymbols(&plain)
+	require.Equal(t, "TYPE_SWITCH_CASE", plain.Name)
+	require.Empty(t, plain.Handler, "a table row has no Go handler")
+	require.Empty(t, plain.AsmBody)
+	require.Empty(t, plain.Shim)
+	require.Empty(t, plain.ExitStub)
+
+	marker := spec(TierMain, uint8(OpDrillTier1)).noGoHandler().flags(specMeta)
+	deriveSymbols(&marker)
+	require.Equal(t, "DRILL_TIER1", marker.Name)
+	require.Empty(t, marker.Handler, "a drill marker has no Go handler")
+}
+
+func TestOnlyDrillMarkersAndTableRowsLackAGoHandler(t *testing.T) {
+	t.Parallel()
+	var without []string
+	for _, row := range AllSpecs() {
+		if row.Handler == "" && !row.Has(specReserved) {
+			without = append(without, row.Name)
+		}
+	}
+	require.ElementsMatch(t, []string{"DRILL_TIER1", "DRILL_TIER2", "DRILL_TIER3", "TYPE_SWITCH_CASE"}, without,
+		"every operation the dispatch loop runs has a Go handler; a row without one must be a drill marker or a table row")
+}
+
+func TestInstructionMutatesMemoryAgreesWithTheSpecRow(t *testing.T) {
+	t.Parallel()
+
+	for slot := range FlatDispatchSlots {
+		instr := instructionForFlatSlot(slot)
+		if FlatIndexFor(instr) != slot {
+			continue
+		}
+		row, found := SpecForInstruction(instr)
+		mutates, classified := InstructionMutatesMemory(instr)
+		if !found {
+			require.True(t, mutates, "slot %d: an operation with no row is treated as mutating", slot)
+			require.False(t, classified, "slot %d", slot)
+			continue
+		}
+		wantMutates, wantClassified := row.MutatesMemory()
+		require.Equal(t, wantMutates, mutates, "%s", row.Name)
+		require.Equal(t, wantClassified, classified, "%s", row.Name)
 	}
 }

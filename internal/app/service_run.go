@@ -22,19 +22,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/ast"
 	"go/parser"
 	"reflect"
+	"runtime"
 	"sync/atomic"
+	"weak"
 
 	"pipit.sh/pipit/internal/clock"
 	"pipit.sh/pipit/internal/engine"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/logging"
 	"pipit.sh/pipit/internal/policy"
 	"pipit.sh/pipit/internal/symtab"
 )
+
+// debugExecutionKey marks a context as belonging to an execution the debugger was told
+// about.
+type debugExecutionKey struct{}
 
 // Eval evaluates Go source code and returns the result.
 //
@@ -46,28 +52,25 @@ import (
 // Returns any which is the result of evaluating the code.
 // Returns error when parsing, type-checking, compilation, or execution fails.
 func (s *Service) Eval(ctx context.Context, code string) (any, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, engine.NewSafeError(safeMessageEvaluationCancelled, fmt.Errorf(fault.ErrChainFmt, fault.ErrExecutionCancelled, err))
+	if err := s.checkOpen(); err != nil {
+		return nil, err
 	}
-	if err := s.checkSourceSize(len(code)); err != nil {
-		return nil, engine.NewSafeError(safeMessageEvaluationFailed, err)
-	}
-	if err := rejectGoEmbedSource(evalFileName, code); err != nil {
-		return nil, engine.NewSafeError(safeMessageEvaluationFailed, err)
+	if err := s.checkEvalSource(ctx, code); err != nil {
+		return nil, err
 	}
 	ctx, cancel := s.applyMaxExecutionTime(ctx)
 	defer cancel()
-	ctx = logging.ContextWithLogger(ctx, s.config.logger)
+	var bindErr error
+	if ctx, bindErr = s.bindLogger(ctx); bindErr != nil {
+		return nil, bindErr
+	}
 
 	s.applyEnvOverrides()
 
-	_, err := parser.ParseExprFrom(s.fileSet, evalFileName, code, 0)
-	if err == nil {
-		result, evalErr := s.evalExpr(ctx, code)
-		if evalErr != nil {
-			return nil, engine.NewSafeError(safeMessageEvaluationFailed, fmt.Errorf("evaluating expression: %w", evalErr))
+	if expression, err := parser.ParseExprFrom(s.fileSet, evalFileName, code, 0); err == nil {
+		if result, done, evalErr := s.evalAsExpression(ctx, code, expression); done {
+			return result, evalErr
 		}
-		return result, nil
 	}
 
 	wrappedCode := "package main\nfunc _eval_() {\n" + code + "\n}"
@@ -100,16 +103,23 @@ func (s *Service) Eval(ctx context.Context, code string) (any, error) {
 // Returns any which is the result of executing the function.
 // Returns error when execution fails.
 func (s *Service) Execute(ctx context.Context, compiledFunction *program.CompiledFunction) (any, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrExecutionCancelled, err)
 	}
 	ctx, cancel := s.applyMaxExecutionTime(ctx)
 	defer cancel()
-	ctx = logging.ContextWithLogger(ctx, s.config.logger)
+	var bindErr error
+	if ctx, bindErr = s.bindLogger(ctx); bindErr != nil {
+		return nil, bindErr
+	}
 
 	ctx, endDebug := s.beginDebugExecution(ctx)
 
 	vm, cancelExecution := s.newExecutionVM(ctx, engine.DebugRoleEntrypoint)
+	defer vm.Recycle()
 	defer cancelExecution(fault.ErrMainReturned)
 	result, err := vm.Execute(compiledFunction)
 	s.recordCost(vm)
@@ -130,13 +140,19 @@ func (s *Service) Execute(ctx context.Context, compiledFunction *program.Compile
 // Returns any which is the entrypoint function's return value.
 // Returns error when parsing, type-checking, compilation, or execution fails.
 func (s *Service) EvalFile(ctx context.Context, source string, entrypoint string) (any, error) {
+	if err := s.checkOpen(); err != nil {
+		return nil, err
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrExecutionCancelled, err)
 	}
 	ctx, cancel := s.applyMaxExecutionTime(ctx)
 	defer cancel()
 
-	ctx = logging.ContextWithLogger(ctx, s.config.logger)
+	var bindErr error
+	if ctx, bindErr = s.bindLogger(ctx); bindErr != nil {
+		return nil, bindErr
+	}
 
 	cfs, err := s.CompileFileSet(ctx, map[string]string{"main.go": source})
 	if err != nil {
@@ -158,12 +174,15 @@ func (s *Service) EvalFile(ctx context.Context, source string, entrypoint string
 // Returns any which is the entrypoint function's return value.
 // Returns error when the entrypoint is not found or execution fails.
 func (s *Service) ExecuteEntrypoint(ctx context.Context, cfs *program.CompiledFileSet, entrypoint string) (result any, err error) {
+	ctx, openErr := s.openForCall(ctx)
+	if openErr != nil {
+		return nil, openErr
+	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrExecutionCancelled, ctxErr)
 	}
 	ctx, cancel := s.applyMaxExecutionTime(ctx)
 	defer cancel()
-	ctx = logging.ContextWithLogger(ctx, s.config.logger)
 	ctx, endDebug := s.beginDebugExecution(ctx)
 	defer func() { endDebug(err) }()
 
@@ -171,10 +190,21 @@ func (s *Service) ExecuteEntrypoint(ctx context.Context, cfs *program.CompiledFi
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", fault.ErrEntrypointNotFound, entrypoint)
 	}
+	endRun, err := s.beginLoadedRun(cfs)
+	if err != nil {
+		return nil, err
+	}
+	defer endRun()
+	endExecution := s.beginExecution()
+	defer endExecution()
 
 	if !s.takeInitsRun(cfs) {
-		if initErr := s.runVariableInits(ctx, cfs); initErr != nil {
-			return nil, initErr
+		if !s.skipVariableInits(cfs) {
+			initErr := s.runVariableInits(ctx, cfs)
+			s.noteVariableInitsRan(cfs, initErr == nil)
+			if initErr != nil {
+				return nil, initErr
+			}
 		}
 
 		for _, initIndex := range cfs.InitFunctions() {
@@ -198,12 +228,18 @@ func (s *Service) ExecuteEntrypoint(ctx context.Context, cfs *program.CompiledFi
 //
 // Returns the function's first return value and any execution error.
 func (s *Service) CallFunction(ctx context.Context, cfs *program.CompiledFileSet, name string, arguments ...any) (result any, err error) {
+	if closedErr := s.checkOpen(); closedErr != nil {
+		return nil, closedErr
+	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrExecutionCancelled, ctxErr)
 	}
 	ctx, cancel := s.applyMaxExecutionTime(ctx)
 	defer cancel()
-	ctx = logging.ContextWithLogger(ctx, s.config.logger)
+	var bindErr error
+	if ctx, bindErr = s.bindLogger(ctx); bindErr != nil {
+		return nil, bindErr
+	}
 	ctx, endDebug := s.beginDebugExecution(ctx)
 	defer func() { endDebug(err) }()
 
@@ -211,6 +247,13 @@ func (s *Service) CallFunction(ctx context.Context, cfs *program.CompiledFileSet
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", fault.ErrEntrypointNotFound, name)
 	}
+	endRun, err := s.beginLoadedRun(cfs)
+	if err != nil {
+		return nil, err
+	}
+	defer endRun()
+	endExecution := s.beginExecution()
+	defer endExecution()
 	values := make([]reflect.Value, len(arguments))
 	for i, argument := range arguments {
 		if argument == nil {
@@ -223,6 +266,16 @@ func (s *Service) CallFunction(ctx context.Context, cfs *program.CompiledFileSet
 	return s.runEntrypointFunction(ctx, cfs, program.ExportFunctions(cfs.Root())[index], values)
 }
 
+// DeclareTopLevelCalls declares that the host calls function values received from cfs's
+// program only at top level, including values registered by its init functions.
+//
+// Takes cfs (*CompiledFileSet) which is the compiled program.
+func (*Service) DeclareTopLevelCalls(cfs *program.CompiledFileSet) {
+	if cfs != nil {
+		cfs.Root().DeclareHostTopLevelCalls()
+	}
+}
+
 // ExecuteInits runs variable initialisers and init functions from a pre-compiled file set
 // without requiring a named entrypoint. This is useful when the compiled code only needs
 // its init side-effects (such as registering functions into a global registry).
@@ -232,12 +285,18 @@ func (s *Service) CallFunction(ctx context.Context, cfs *program.CompiledFileSet
 //
 // Returns error when a variable initialiser or init function fails.
 func (s *Service) ExecuteInits(ctx context.Context, cfs *program.CompiledFileSet) (err error) {
+	if closedErr := s.checkOpen(); closedErr != nil {
+		return closedErr
+	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return fmt.Errorf(fault.ErrChainFmt, fault.ErrExecutionCancelled, ctxErr)
 	}
 	ctx, cancel := s.applyMaxExecutionTime(ctx)
 	defer cancel()
-	ctx = logging.ContextWithLogger(ctx, s.config.logger)
+	var bindErr error
+	if ctx, bindErr = s.bindLogger(ctx); bindErr != nil {
+		return bindErr
+	}
 	ctx, endDebug := s.beginDebugExecution(ctx)
 	defer func() { endDebug(err) }()
 	defer engine.RecoverArenaBudgetError(&err)
@@ -247,8 +306,17 @@ func (s *Service) ExecuteInits(ctx context.Context, cfs *program.CompiledFileSet
 		}
 	}()
 
-	if err := s.runVariableInits(ctx, cfs); err != nil {
+	endRun, err := s.beginLoadedRun(cfs)
+	if err != nil {
 		return err
+	}
+	defer endRun()
+	endExecution := s.beginExecution()
+	defer endExecution()
+	initErr := s.runVariableInits(ctx, cfs)
+	s.noteVariableInitsRan(cfs, initErr == nil)
+	if initErr != nil {
+		return initErr
 	}
 
 	for _, initIndex := range cfs.InitFunctions() {
@@ -259,6 +327,33 @@ func (s *Service) ExecuteInits(ctx context.Context, cfs *program.CompiledFileSet
 	}
 
 	s.finalisePendingVarBridges()
+	return nil
+}
+
+// openForCall is checkOpen followed by bindLogger, for an entry point that takes a
+// context.
+//
+// Returns context.Context which carries the logger.
+// Returns error which is checkOpen's or bindLogger's.
+func (s *Service) openForCall(ctx context.Context) (context.Context, error) {
+	if err := s.checkOpen(); err != nil {
+		return ctx, err
+	}
+	return s.bindLogger(ctx)
+}
+
+// checkOpen reports whether the service may still compile and execute.
+//
+// Returns error which is errServiceClosed once Close has run, the ErrInvalidOption errors
+// of the options the service was built with that were given values they do not accept, or
+// nil.
+func (s *Service) checkOpen() error {
+	if s.closed.Load() {
+		return errServiceClosed
+	}
+	if s.config != nil && s.config.invalidOptions != nil {
+		return s.config.invalidOptions
+	}
 	return nil
 }
 
@@ -275,6 +370,7 @@ func (s *Service) applyClockOverrides() {
 	overrides := clock.ClockOverrideSymbols(s.config.clock)
 	if s.symbols == nil {
 		s.symbols = symtab.NewSymbolRegistry(symtab.SymbolExports{"time": overrides})
+		s.symbols.SetNamedCompositeQuota(s.namedCompositeQuota)
 		s.symbols.ProtectPackage(policy.PkgUnsafe)
 		return
 	}
@@ -291,8 +387,11 @@ func (s *Service) applyVMOutputs(vm *engine.VM) {
 }
 
 // runVariableInits executes the variable-initialisation function of a compiled file set
-// when present, then copies the strings the globals now hold out of the run's arena
-// before it is released. No-op when the file set has no package-level variables.
+// when present, on a heap-data arena (engine.VM.EnsureVarInitCallStack) whose data
+// allocations come from the Go heap and are never reused, then copies any strings the
+// globals still hold in arena memory out before it is released.
+//
+// No-op when the file set has no package-level variables.
 //
 // Takes cfs (*CompiledFileSet) which provides root functions and the optional variable
 // initialiser.
@@ -304,9 +403,10 @@ func (s *Service) runVariableInits(ctx context.Context, cfs *program.CompiledFil
 	}
 	defer engine.RecoverArenaBudgetError(&err)
 	vm, cancelExecution := s.newExecutionVM(ctx, engine.DebugRoleVarInit)
+	defer vm.Recycle()
 	defer cancelExecution(fault.ErrMainReturned)
 	vm.BindFileSet(program.ExportFunctions(cfs.Root()), cfs.Root())
-	vm.EnsureCallStack()
+	vm.EnsureVarInitCallStack()
 	defer vm.ReleaseArena()
 	defer vm.FinishWatcher()
 	vm.PushFrame(cfs.VariableInitFunction())
@@ -315,6 +415,9 @@ func (s *Service) runVariableInits(ctx context.Context, cfs *program.CompiledFil
 	}
 	if joinErr := vm.JoinSpawnedGoroutines(); joinErr != nil {
 		return fmt.Errorf(errVarinitFmt, joinErr)
+	}
+	if info := vm.TakeGoroutinePanic(); info != nil {
+		return fmt.Errorf(errVarinitFmt, engine.NewGoroutinePanicError(info.Value()))
 	}
 	vm.MaterialiseGlobalStrings()
 	return nil
@@ -345,6 +448,7 @@ func (s *Service) runEntrypointFunction(
 		}
 	}()
 	vm, cancelExecution := s.newExecutionVM(ctx, engine.DebugRoleEntrypoint)
+	defer vm.Recycle()
 	defer cancelExecution(fault.ErrMainReturned)
 	defer vm.FinishWatcher()
 	arena := vm.PrepareForFileSet(cfs, entrypointFunction)
@@ -365,25 +469,25 @@ func (s *Service) runEntrypointFunction(
 	s.recordCost(vm)
 	result = engine.MaterialiseAnyForArena(arena, result)
 	engine.MaterialiseHostArguments(arena, arguments)
-	for index, allResult := range vm.EvalAllResults {
-		vm.EvalAllResults[index] = engine.MaterialiseAnyForArena(arena, allResult)
-	}
-	if err == nil {
-		if info := vm.GoroutinePanic(); info != nil {
-			err = engine.NewGoroutinePanicError(info.Value())
-			result = nil
-		}
+
+	vm.EvalAllResults = nil
+	if info := vm.TakeGoroutinePanic(); info != nil && err == nil {
+		err = engine.NewGoroutinePanicError(info.Value())
+		result = nil
 	}
 	return result, err
 }
 
-// newExecutionVM creates a VM for a top-level execution.
+// newExecutionVM creates a VM for a top-level execution, from a recycled shell when one
+// is parked.
 //
 // Takes role (engine.DebugRole) which labels the execution phase for the debugger.
 //
-// Returns the configured VM and the cancel function the caller must defer.
+// Returns the configured VM and the cancel function the caller must defer. A caller that
+// owns the VM to the end defers vm.Recycle() first, so it runs after every other use.
 func (s *Service) newExecutionVM(ctx context.Context, role engine.DebugRole) (*engine.VM, context.CancelCauseFunc) {
 	executionCtx, cancel := engine.NewExecutionContext(ctx)
+	s.borrowDeclarations.Freeze()
 	vm := engine.NewVM(executionCtx, s.globals, s.symbols)
 	vm.Limits = s.limits
 	vm.SetDebugRole(role)
@@ -421,16 +525,27 @@ func (s *Service) beginDebugExecution(ctx context.Context) (context.Context, fun
 // markInitsRun records that ExecuteInits ran the file set's variable initialisers and
 // init functions, so the next ExecuteEntrypoint on it does not run them again.
 //
+// The record does not keep the file set alive: the first record for a file set registers
+// a cleanup that removes it once the file set is collected. A closed service records
+// nothing.
+//
 // Takes cfs (*program.CompiledFileSet) which was initialised.
 //
 // Concurrency: safe for concurrent use; acquires s.initsMu.
 func (s *Service) markInitsRun(cfs *program.CompiledFileSet) {
+	key := weak.Make(cfs)
 	s.initsMu.Lock()
 	defer s.initsMu.Unlock()
-	if s.initsRun == nil {
-		s.initsRun = make(map[*program.CompiledFileSet]struct{})
+	if s.closed.Load() {
+		return
 	}
-	s.initsRun[cfs] = struct{}{}
+	if s.initsRun == nil {
+		s.initsRun = make(map[weak.Pointer[program.CompiledFileSet]]bool)
+	}
+	if _, known := s.initsRun[key]; !known {
+		runtime.AddCleanup(cfs, dropInitsRun, fileSetRecordOwner{service: weak.Make(s), fileSet: key})
+	}
+	s.initsRun[key] = true
 }
 
 // takeInitsRun reports whether ExecuteInits already initialised the file set, clearing
@@ -442,18 +557,39 @@ func (s *Service) markInitsRun(cfs *program.CompiledFileSet) {
 //
 // Concurrency: safe for concurrent use; acquires s.initsMu.
 func (s *Service) takeInitsRun(cfs *program.CompiledFileSet) bool {
+	key := weak.Make(cfs)
 	s.initsMu.Lock()
 	defer s.initsMu.Unlock()
-	if _, ok := s.initsRun[cfs]; !ok {
+	if !s.initsRun[key] {
 		return false
 	}
-	delete(s.initsRun, cfs)
+	s.initsRun[key] = false
 	return true
 }
 
-// debugExecutionKey marks a context as belonging to an execution the debugger was told
-// about.
-type debugExecutionKey struct{}
+// forgetInitsRun drops every ExecuteInits record; Close calls it.
+//
+// Concurrency: safe for concurrent use; acquires s.initsMu.
+func (s *Service) forgetInitsRun() {
+	s.initsMu.Lock()
+	defer s.initsMu.Unlock()
+	s.initsRun = nil
+}
+
+// dropInitsRun is the cleanup that removes a collected file set's ExecuteInits record.
+//
+// Takes owner (fileSetRecordOwner) which names the service and the file set.
+//
+// Concurrency: Runs on the runtime's cleanup goroutine and takes the service's initsMu.
+func dropInitsRun(owner fileSetRecordOwner) {
+	service := owner.service.Value()
+	if service == nil {
+		return
+	}
+	service.initsMu.Lock()
+	defer service.initsMu.Unlock()
+	delete(service.initsRun, owner.fileSet)
+}
 
 // buildLimits constructs VMLimits from the service configuration. Each call creates a
 // fresh ResourceTracker so that cloned services and separate evaluations do not share
@@ -466,6 +602,7 @@ func (s *Service) buildLimits() engine.VMLimits {
 		MaxGoroutines:            policy.DefaultMaxGoroutines,
 		MaxOutputSize:            defaultMaxOutputSize,
 		DisableMinorGC:           s.config.disableMinorGC,
+		AbandonArenasOnRelease:   false,
 		CallbackArenaRetireBytes: 0,
 		CapabilityHook:           nil,
 		Tracker:                  nil,
@@ -479,7 +616,16 @@ func (s *Service) buildLimits() engine.VMLimits {
 		YieldInterval:            0,
 		DeadlockGrace:            0,
 		CallbackTimeout:          0,
+		AbortUnwindCost:          0,
+		AbortUnwindWall:          0,
+		AbortUnwindDeferWallMax:  0,
+		AbortUnwindNativeGrace:   0,
+		GoroutineJoinUnwindCap:   0,
+		LeakedUnwinderCap:        0,
+		LockWalkMaxValues:        0,
 		ForceGoDispatch:          false,
+		FinaliserTimeout:         0,
+		BorrowDeclarations:       nil,
 		SafeMode:                 false}
 	if s.config != nil {
 		s.applyConfigLimits(&limits)
@@ -492,6 +638,7 @@ func (s *Service) buildLimits() engine.VMLimits {
 		LeakedGoroutines:      atomic.Int64{},
 	}
 	limits.Diagnostics = &engine.FastPathDiagnostics{}
+	limits.BorrowDeclarations = s.borrowDeclarations
 	return limits
 }
 
@@ -505,6 +652,14 @@ func (s *Service) applyConfigLimits(limits *engine.VMLimits) {
 	limits.MaxCallDepth = s.config.maxCallDepth
 	limits.DeadlockGrace = s.config.deadlockGrace
 	limits.CallbackTimeout = s.config.callbackTimeout
+	limits.FinaliserTimeout = s.config.finaliserTimeout
+	limits.AbortUnwindCost = s.config.abortUnwindCost
+	limits.AbortUnwindWall = s.config.abortUnwindWall
+	limits.AbortUnwindDeferWallMax = s.config.abortUnwindDeferWallMax
+	limits.AbortUnwindNativeGrace = s.config.abortUnwindNativeGrace
+	limits.GoroutineJoinUnwindCap = s.config.goroutineJoinUnwindCap
+	limits.LeakedUnwinderCap = s.config.leakedUnwinderCap
+	limits.LockWalkMaxValues = s.config.lockWalkMaxValues
 	limits.ForceGoDispatch = s.config.forceGoDispatch
 	limits.SafeMode = s.config.safeMode
 	limits.DisableMinorGC = s.config.disableMinorGC
@@ -567,4 +722,55 @@ func (s *Service) recordCost(vm *engine.VM) {
 	if vm.Limits.CostBudget > 0 {
 		s.lastCostUsed.Store(vm.CostUsed())
 	}
+}
+
+// checkEvalSource refuses an evaluation whose context has ended, whose source is too
+// large, or whose source uses go:embed.
+//
+// Takes code (string) which is the Go source code to evaluate.
+//
+// Returns error which is the refusal as a safe error, or nil.
+func (s *Service) checkEvalSource(ctx context.Context, code string) error {
+	if err := ctx.Err(); err != nil {
+		return engine.NewSafeError(safeMessageEvaluationCancelled, fmt.Errorf(fault.ErrChainFmt, fault.ErrExecutionCancelled, err))
+	}
+	if err := s.checkSourceSize(len(code)); err != nil {
+		return engine.NewSafeError(safeMessageEvaluationFailed, err)
+	}
+	if err := rejectGoEmbedSource(evalFileName, code); err != nil {
+		return engine.NewSafeError(safeMessageEvaluationFailed, err)
+	}
+	return nil
+}
+
+// evalAsExpression evaluates source that parsed as an expression.
+//
+// Takes code (string) which is the source.
+// Takes expression (ast.Expr) which is its parse.
+//
+// Returns any which is the expression's value.
+// Returns bool which is false when the expression is a call with no value, which Eval
+// then runs as a statement instead.
+// Returns error when evaluation fails.
+func (s *Service) evalAsExpression(ctx context.Context, code string, expression ast.Expr) (any, bool, error) {
+	result, evalErr := s.evalExpr(ctx, code)
+	if evalErr == nil {
+		return result, true, nil
+	}
+	if callMayBeAStatement(expression, evalErr) {
+		return nil, false, nil
+	}
+	return nil, true, engine.NewSafeError(safeMessageEvaluationFailed, fmt.Errorf("evaluating expression: %w", evalErr))
+}
+
+// callMayBeAStatement reports whether an expression Eval could not type check as a value
+// may still run as a statement.
+//
+// Takes expression (ast.Expr) which is the parsed source.
+// Takes evalErr (error) which is the error evaluating it as a value gave.
+//
+// Returns bool which is true for a call that failed type checking.
+func callMayBeAStatement(expression ast.Expr, evalErr error) bool {
+	_, isCall := ast.Unparen(expression).(*ast.CallExpr)
+	return isCall && errors.Is(evalErr, fault.ErrTypeCheck)
 }

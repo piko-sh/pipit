@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxlinux
 
@@ -93,7 +93,7 @@ func exerciseSupervisedFilesystemBroker(t *testing.T, config WorkerConfig, mode 
 		}
 		defer recovery.Close()
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	releaseWorker, err := workerAdmission.acquire(ctx, testTenant)
 	if err != nil {
@@ -102,10 +102,10 @@ func exerciseSupervisedFilesystemBroker(t *testing.T, config WorkerConfig, mode 
 	defer releaseWorker()
 	var aggregate *Group
 	if mode == "journalled-recovery-aggregate" {
-		aggregate, err = newGroup(config.CgroupParent, config.Limits)
+		aggregate, err = newGroup(t.Context(), config.CgroupParent, config.Limits)
 		if aggregate != nil {
 			defer func() {
-				cleanup, cancel := context.WithTimeout(context.Background(), workerCleanupTimeout)
+				cleanup, cancel := context.WithTimeout(t.Context(), workerCleanupTimeout)
 				defer cancel()
 				if err := aggregate.closeGroup(cleanup); err != nil {
 					t.Error(err)
@@ -118,7 +118,7 @@ func exerciseSupervisedFilesystemBroker(t *testing.T, config WorkerConfig, mode 
 	}
 	process, err := launchFilesystemBroker(ctx, config, bootstrap, aggregate)
 	if process != nil {
-		defer process.Close()
+		defer process.Close(t.Context())
 	}
 	if err != nil {
 		t.Fatalf("launch: %v", err)
@@ -192,21 +192,21 @@ func runSupervisedBrokerClient(t *testing.T, process *WorkerProcess, mode string
 	if mode == "client-limit" {
 		limits.Calls, limits.Outstanding, count = 2, 1, 2
 	}
-	client, err := sandboxbroker.OpenFilesystemClient(context.Background(), process,
+	client, err := sandboxbroker.OpenFilesystemClient(t.Context(), process,
 		[]sandboxbroker.RootGrant{{Name: "data", Rights: sandboxbroker.Read}}, limits)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer client.Close(t.Context())
 	if mode == "client-denied" {
-		_, err := client.Execute(context.Background(), []byte(`{"operation":"fs.write","root":"data","path":"file","data":""}`))
+		_, err := client.Execute(t.Context(), []byte(`{"operation":"fs.write","root":"data","path":"file","data":""}`))
 		if !errors.Is(err, sandboxbroker.ErrDenied) {
 			t.Fatal("host did not reject write:", err)
 		}
 		return
 	}
 	if mode == "client-cancel" {
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 		_, err := client.Execute(ctx, []byte(`{"operation":"fs.read","root":"data","path":"file","max_bytes":1}`))
 		if !errors.Is(err, context.Canceled) {
@@ -215,15 +215,15 @@ func runSupervisedBrokerClient(t *testing.T, process *WorkerProcess, mode string
 		return
 	}
 	for range count {
-		response, err := client.Execute(context.Background(), []byte(`{"operation":"fs.read","root":"data","path":"file","max_bytes":1}`))
+		response, err := client.Execute(t.Context(), []byte(`{"operation":"fs.read","root":"data","path":"file","max_bytes":1}`))
 		if err != nil || string(response.Data) != "o" {
 			t.Fatalf("client result: %+v: %v", response, err)
 		}
 	}
-	if _, err := client.Execute(context.Background(), []byte(`{}`)); !errors.Is(err, sandboxbroker.ErrClosed) {
+	if _, err := client.Execute(t.Context(), []byte(`{}`)); !errors.Is(err, sandboxbroker.ErrClosed) {
 		t.Fatal("exhausted client accepted operation:", err)
 	}
-	if err := client.Close(); err != nil {
+	if err := client.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if process.releaseAdmission != nil {
@@ -244,7 +244,7 @@ func runBrokerCallBudget(t *testing.T, process *WorkerProcess, codec *sandboxwir
 	if err := process.Wait(); err != nil {
 		t.Fatal("final response not followed by successful reaping:", err)
 	}
-	if err := process.Close(); err != nil {
+	if err := process.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -288,7 +288,7 @@ func runSuccessfulBrokerOperations(t *testing.T, process *WorkerProcess, codec *
 	if err := process.Wait(); err != nil {
 		t.Fatalf("reap: %v: %s", err, process.Output())
 	}
-	if err := process.Close(); err != nil {
+	if err := process.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if process.releaseAdmission != nil {

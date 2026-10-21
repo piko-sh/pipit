@@ -4,61 +4,73 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function sum
-;   registers: int=4 float=4 general=2
-;   dispatch:  asm=12 shim=1 exit=0 go=1
+;   registers: int64=4 float64=4 general=2
+;   dispatch:  asm=11 shim=1 exit=0 go=0
 ;   params:    (general)
-;   returns:   (float)
+;   returns:   (float64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
-;   ints:    [0]=0  [1]=1
+;   ints:    [0]=0
 ;   floats:  [0]=0  [1]=5
 
-0000 A 0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 0
-0001 G 1:LEN                       70   0   0
-0002 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0003 A 0:LOAD_FLOAT_CONST           3   1   0    ; LICM hoist of PC 7
-0004 A 1:LT_INT_JUMP_FALSE        116   1   0
-0005   0:EXT                        8   0   0
-0006 S 0:INDEX                      1   0   1
-0007 A 0:MOVE_GENERAL               1   1   2
-0008 A 0:SET_STRUCT_FIELD_FLOAT_T0   1   3   0
-0009 A 0:GET_STRUCT_FIELD_FLOAT_T0   1   1   0
-0010 A 0:ADD_FLOAT                  2   0   1
-0011 A 1:MOVE_FLOAT                36   0   2
-0012 A 0:ADD_INT_CONST              1   1   1    ; const = 1
-0013 A 1:JUMP                      74 246 255    ; goto -10
-0014 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 0:LOAD_FLOAT64_CONSTANT                                0   0   0    ; floats[0] = 0
+0001 A 1:LENGTH_GENERAL                                      70   0   0
+0002 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0003 A 1:LESS_THAN_INT64_THEN_JUMP_IF_FALSE                 116   1   0
+0004   0:EXTENSION                                            8   0   0
+0005 A 0:LOAD_FLOAT64_CONSTANT                                3   1   0    ; LICM hoist of PC 7
+0006 S 0:GET_ELEMENT                                          1   0   1
+0007 A 0:MOVE_GENERAL                                         1   1   2
+0008 A 0:SET_STRUCT_FIELD_FLOAT64                             1   3   0
+0009 A 0:GET_STRUCT_FIELD_FLOAT64                             1   1   0
+0010 A 0:ADD_FLOAT64                                          0   0   1
+0011 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN              77   1   0
+0012   0:EXTENSION                                          249 255   0
+0013 A 2:RETURN                                               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun
-;   registers: int=1 float=1 general=2
-;   dispatch:  asm=14 shim=3 exit=0 go=0
+;   registers: int64=5 float64=5 general=3
+;   dispatch:  asm=24 shim=4 exit=0 go=0
 ;   params:    (none)
-;   returns:   (float)
+;   returns:   (float64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=2  [1]=0  [2]=1
-;   floats:  [0]=1  [1]=2  [2]=3  [3]=4
+;   floats:  [0]=1  [1]=2  [2]=3  [3]=4  [4]=0  [5]=5
 
-0000 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
-0001 S 0:MAKE_SLICE                 0   0   0
-0002   0:EXT                        0   0   0
-0003 A 2:ALLOC_STRUCT_LITERAL       0  14   1
-0004   0:EXT                        1   0   0
-0005 A 0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 1
-0006 A 0:SET_STRUCT_FIELD_FLOAT_T0   1   0   0
-0007 A 0:LOAD_FLOAT_CONST           0   1   0    ; floats[0] = 2
-0008 A 0:SET_STRUCT_FIELD_FLOAT_T0   1   0   1
-0009 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0010 S 0:INDEX_SET                  0   0   1
-0011 A 2:ALLOC_STRUCT_LITERAL       0  14   1
-0012   0:EXT                        1   0   0
-0013 A 0:LOAD_FLOAT_CONST           0   2   0    ; floats[0] = 3
-0014 A 0:SET_STRUCT_FIELD_FLOAT_T0   1   0   0
-0015 A 0:LOAD_FLOAT_CONST           0   3   0    ; floats[0] = 4
-0016 A 0:SET_STRUCT_FIELD_FLOAT_T0   1   0   1
-0017 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0018 S 0:INDEX_SET                  0   0   1
-0019 A 1:TAIL_CALL                129   0   0    ; tail call (site 0)
+0000 A 1:LOAD_INT64_IMMEDIATE                                75   0   2    ; ints[0] = 2
+0001 S 0:MAKE_SLICE                                           0   0   0
+0002   0:EXTENSION                                            0   0   0
+0003 A 2:ALLOCATE_STRUCT_LITERAL                              0  14   1
+0004   0:EXTENSION                                            1   0   0
+0005 A 0:LOAD_FLOAT64_CONSTANT                                0   0   0    ; floats[0] = 1
+0006 A 0:SET_STRUCT_FIELD_FLOAT64                             1   0   0
+0007 A 0:LOAD_FLOAT64_CONSTANT                                0   1   0    ; floats[0] = 2
+0008 A 0:SET_STRUCT_FIELD_FLOAT64                             1   0   1
+0009 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0010 S 0:SET_ELEMENT                                          0   0   1
+0011 A 2:ALLOCATE_STRUCT_LITERAL                              0  14   1
+0012   0:EXTENSION                                            1   0   0
+0013 A 0:LOAD_FLOAT64_CONSTANT                                0   2   0    ; floats[0] = 3
+0014 A 0:SET_STRUCT_FIELD_FLOAT64                             1   0   0
+0015 A 0:LOAD_FLOAT64_CONSTANT                                0   3   0    ; floats[0] = 4
+0016 A 0:SET_STRUCT_FIELD_FLOAT64                             1   0   1
+0017 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0018 S 0:SET_ELEMENT                                          0   0   1
+0019 A 0:LOAD_FLOAT64_CONSTANT                                0   4   0    ; inlined body of function 0 called at PC 19
+0020 A 1:LENGTH_GENERAL                                      70   1   0
+0021 A 1:LOAD_INT64_IMMEDIATE                                75   2   0    ; ints[2] = 0
+0022 A 1:LESS_THAN_INT64_THEN_JUMP_IF_FALSE                 116   2   1
+0023   0:EXTENSION                                            8   0   0
+0024 A 0:LOAD_FLOAT64_CONSTANT                                4   5   0    ; LICM hoist of PC 26
+0025 S 0:GET_ELEMENT                                          2   0   2
+0026 A 0:MOVE_GENERAL                                         2   2   2
+0027 A 0:SET_STRUCT_FIELD_FLOAT64                             2   4   0
+0028 A 0:GET_STRUCT_FIELD_FLOAT64                             2   2   0
+0029 A 0:ADD_FLOAT64                                          0   0   2
+0030 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN              77   2   1
+0031   0:EXTENSION                                          249 255   0
+0032 A 2:RETURN                                               0  10   1    ; 1 values

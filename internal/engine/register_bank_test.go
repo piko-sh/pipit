@@ -40,21 +40,21 @@ func TestZeroTypedRegisterDirect(t *testing.T) {
 	}{
 		{
 			name: "int",
-			kind: isa.RegisterInt,
+			kind: isa.RegisterInt64,
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
 				regs.Ints[0] = 42
-				zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterInt})
+				zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterInt64})
 				require.Equal(t, int64(0), regs.Ints[0])
 			},
 		},
 		{
 			name: "float",
-			kind: isa.RegisterFloat,
+			kind: isa.RegisterFloat64,
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
 				regs.Floats[0] = 3.14
-				zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterFloat})
+				zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterFloat64})
 				require.Zero(t, regs.Floats[0])
 			},
 		},
@@ -80,21 +80,21 @@ func TestZeroTypedRegisterDirect(t *testing.T) {
 		},
 		{
 			name: "uint",
-			kind: isa.RegisterUint,
+			kind: isa.RegisterUint64,
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
 				regs.Uints[0] = 42
-				zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterUint})
+				zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterUint64})
 				require.Equal(t, uint64(0), regs.Uints[0])
 			},
 		},
 		{
 			name: "complex",
-			kind: isa.RegisterComplex,
+			kind: isa.RegisterComplex128,
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
 				regs.Complex[0] = 1 + 2i
-				zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterComplex})
+				zeroTypedRegister(regs, program.VarLocation{Register: 0, Kind: isa.RegisterComplex128})
 				require.Equal(t, complex128(0), regs.Complex[0])
 			},
 		},
@@ -117,12 +117,12 @@ func TestCopyReturnToGeneral(t *testing.T) {
 		name   string
 		kind   isa.RegisterKind
 	}{
-		{name: "int", kind: isa.RegisterInt, setup: func(regs *Registers) { regs.Ints[0] = 42 }, expect: 42},
-		{name: "float", kind: isa.RegisterFloat, setup: func(regs *Registers) { regs.Floats[0] = 3.14 }, expect: float64(3.14)},
+		{name: "int", kind: isa.RegisterInt64, setup: func(regs *Registers) { regs.Ints[0] = 42 }, expect: 42},
+		{name: "float", kind: isa.RegisterFloat64, setup: func(regs *Registers) { regs.Floats[0] = 3.14 }, expect: float64(3.14)},
 		{name: "string", kind: isa.RegisterString, setup: func(regs *Registers) { regs.Strings[0] = "hi" }, expect: "hi"},
 		{name: "bool", kind: isa.RegisterBool, setup: func(regs *Registers) { regs.Bools[0] = true }, expect: true},
-		{name: "uint", kind: isa.RegisterUint, setup: func(regs *Registers) { regs.Uints[0] = 99 }, expect: uint64(99)},
-		{name: "complex", kind: isa.RegisterComplex, setup: func(regs *Registers) { regs.Complex[0] = 1 + 2i }, expect: complex128(1 + 2i)},
+		{name: "uint", kind: isa.RegisterUint64, setup: func(regs *Registers) { regs.Uints[0] = 99 }, expect: uint64(99)},
+		{name: "complex", kind: isa.RegisterComplex128, setup: func(regs *Registers) { regs.Complex[0] = 1 + 2i }, expect: complex128(1 + 2i)},
 	}
 
 	for _, tt := range tests {
@@ -151,7 +151,7 @@ func TestCopyRegisterSlot(t *testing.T) {
 	}{
 		{
 			name:  "int",
-			kind:  isa.RegisterInt,
+			kind:  isa.RegisterInt64,
 			setup: func(regs *Registers) { regs.Ints[0] = 42 },
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
@@ -160,7 +160,7 @@ func TestCopyRegisterSlot(t *testing.T) {
 		},
 		{
 			name:  "float",
-			kind:  isa.RegisterFloat,
+			kind:  isa.RegisterFloat64,
 			setup: func(regs *Registers) { regs.Floats[0] = 2.5 },
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
@@ -187,7 +187,7 @@ func TestCopyRegisterSlot(t *testing.T) {
 		},
 		{
 			name:  "uint",
-			kind:  isa.RegisterUint,
+			kind:  isa.RegisterUint64,
 			setup: func(regs *Registers) { regs.Uints[0] = 99 },
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
@@ -196,7 +196,7 @@ func TestCopyRegisterSlot(t *testing.T) {
 		},
 		{
 			name:  "complex",
-			kind:  isa.RegisterComplex,
+			kind:  isa.RegisterComplex128,
 			setup: func(regs *Registers) { regs.Complex[0] = 1 + 2i },
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
@@ -237,7 +237,7 @@ func TestUnboxGeneralToScalar(t *testing.T) {
 		{
 			name:  "int",
 			value: reflect.ValueOf(42),
-			kind:  isa.RegisterInt,
+			kind:  isa.RegisterInt64,
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
 				require.Equal(t, int64(42), regs.Ints[0])
@@ -246,7 +246,7 @@ func TestUnboxGeneralToScalar(t *testing.T) {
 		{
 			name:  "float",
 			value: reflect.ValueOf(float64(3.14)),
-			kind:  isa.RegisterFloat,
+			kind:  isa.RegisterFloat64,
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
 				require.InDelta(t, 3.14, regs.Floats[0], 0)
@@ -273,7 +273,7 @@ func TestUnboxGeneralToScalar(t *testing.T) {
 		{
 			name:  "uint",
 			value: reflect.ValueOf(uint64(99)),
-			kind:  isa.RegisterUint,
+			kind:  isa.RegisterUint64,
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
 				require.Equal(t, uint64(99), regs.Uints[0])
@@ -282,7 +282,7 @@ func TestUnboxGeneralToScalar(t *testing.T) {
 		{
 			name:  "complex",
 			value: reflect.ValueOf(complex128(1 + 2i)),
-			kind:  isa.RegisterComplex,
+			kind:  isa.RegisterComplex128,
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
 				require.Equal(t, complex128(1+2i), regs.Complex[0])
@@ -310,7 +310,7 @@ func TestCopyReturnFromGeneralInvalid(t *testing.T) {
 	}{
 		{
 			name: "int_zero",
-			kind: isa.RegisterInt,
+			kind: isa.RegisterInt64,
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
 				require.Equal(t, int64(0), regs.Ints[0])
@@ -355,7 +355,7 @@ func TestCopyReturnFromGeneralInterface(t *testing.T) {
 	var v any = int64(42)
 	regs := NewRegisters(testRegCounts())
 	frame := &CallFrame{Registers: regs}
-	copyReturnFromGeneral(frame, reflect.ValueOf(&v).Elem(), program.VarLocation{Register: 0, Kind: isa.RegisterInt})
+	copyReturnFromGeneral(frame, reflect.ValueOf(&v).Elem(), program.VarLocation{Register: 0, Kind: isa.RegisterInt64})
 	require.Equal(t, int64(42), frame.Registers.Ints[0])
 }
 
@@ -371,7 +371,7 @@ func TestUnpackGeneralToTyped(t *testing.T) {
 		{
 			name:  "int",
 			value: reflect.ValueOf(42),
-			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterInt},
+			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterInt64},
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
 				require.Equal(t, int64(42), regs.Ints[0])
@@ -380,7 +380,7 @@ func TestUnpackGeneralToTyped(t *testing.T) {
 		{
 			name:  "float",
 			value: reflect.ValueOf(float64(3.14)),
-			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterFloat},
+			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterFloat64},
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
 				require.InDelta(t, 3.14, regs.Floats[0], 0)
@@ -407,7 +407,7 @@ func TestUnpackGeneralToTyped(t *testing.T) {
 		{
 			name:  "uint",
 			value: reflect.ValueOf(uint64(99)),
-			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterUint},
+			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterUint64},
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
 				require.Equal(t, uint64(99), regs.Uints[0])
@@ -416,7 +416,7 @@ func TestUnpackGeneralToTyped(t *testing.T) {
 		{
 			name:  "complex",
 			value: reflect.ValueOf(complex128(1 + 2i)),
-			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterComplex},
+			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterComplex128},
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
 				require.Equal(t, complex128(1+2i), regs.Complex[0])
@@ -425,7 +425,7 @@ func TestUnpackGeneralToTyped(t *testing.T) {
 		{
 			name:  "bool_to_int",
 			value: reflect.ValueOf(true),
-			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterInt},
+			dest:  program.VarLocation{Register: 0, Kind: isa.RegisterInt64},
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
 				require.Equal(t, int64(1), regs.Ints[0])
@@ -508,12 +508,12 @@ func TestKindDefaultReflectType(t *testing.T) {
 		name   string
 		kind   isa.RegisterKind
 	}{
-		{name: "int", kind: isa.RegisterInt, expect: reflect.TypeFor[int]()},
-		{name: "float", kind: isa.RegisterFloat, expect: reflect.TypeFor[float64]()},
+		{name: "int", kind: isa.RegisterInt64, expect: reflect.TypeFor[int]()},
+		{name: "float", kind: isa.RegisterFloat64, expect: reflect.TypeFor[float64]()},
 		{name: "string", kind: isa.RegisterString, expect: reflect.TypeFor[string]()},
 		{name: "bool", kind: isa.RegisterBool, expect: reflect.TypeFor[bool]()},
-		{name: "uint", kind: isa.RegisterUint, expect: reflect.TypeFor[uint64]()},
-		{name: "complex", kind: isa.RegisterComplex, expect: reflect.TypeFor[complex128]()},
+		{name: "uint", kind: isa.RegisterUint64, expect: reflect.TypeFor[uint64]()},
+		{name: "complex", kind: isa.RegisterComplex128, expect: reflect.TypeFor[complex128]()},
 		{name: "general", kind: isa.RegisterGeneral, expect: reflect.TypeFor[any]()},
 	}
 
@@ -537,7 +537,7 @@ func TestWriteRegisterValue(t *testing.T) {
 	}{
 		{
 			name:  "int",
-			kind:  isa.RegisterInt,
+			kind:  isa.RegisterInt64,
 			value: reflect.ValueOf(42),
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
@@ -546,7 +546,7 @@ func TestWriteRegisterValue(t *testing.T) {
 		},
 		{
 			name:  "float",
-			kind:  isa.RegisterFloat,
+			kind:  isa.RegisterFloat64,
 			value: reflect.ValueOf(float64(3.14)),
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
@@ -573,7 +573,7 @@ func TestWriteRegisterValue(t *testing.T) {
 		},
 		{
 			name:  "uint",
-			kind:  isa.RegisterUint,
+			kind:  isa.RegisterUint64,
 			value: reflect.ValueOf(uint64(99)),
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
@@ -582,7 +582,7 @@ func TestWriteRegisterValue(t *testing.T) {
 		},
 		{
 			name:  "complex",
-			kind:  isa.RegisterComplex,
+			kind:  isa.RegisterComplex128,
 			value: reflect.ValueOf(complex128(1 + 2i)),
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
@@ -619,12 +619,12 @@ func TestBoxScalarToGeneral(t *testing.T) {
 		name   string
 		kind   isa.RegisterKind
 	}{
-		{name: "int", kind: isa.RegisterInt, setup: func(regs *Registers) { regs.Ints[0] = 42 }, expect: 42},
-		{name: "float", kind: isa.RegisterFloat, setup: func(regs *Registers) { regs.Floats[0] = 3.14 }, expect: float64(3.14)},
+		{name: "int", kind: isa.RegisterInt64, setup: func(regs *Registers) { regs.Ints[0] = 42 }, expect: 42},
+		{name: "float", kind: isa.RegisterFloat64, setup: func(regs *Registers) { regs.Floats[0] = 3.14 }, expect: float64(3.14)},
 		{name: "string", kind: isa.RegisterString, setup: func(regs *Registers) { regs.Strings[0] = "hi" }, expect: "hi"},
 		{name: "bool", kind: isa.RegisterBool, setup: func(regs *Registers) { regs.Bools[0] = true }, expect: true},
-		{name: "uint", kind: isa.RegisterUint, setup: func(regs *Registers) { regs.Uints[0] = 99 }, expect: uint64(99)},
-		{name: "complex", kind: isa.RegisterComplex, setup: func(regs *Registers) { regs.Complex[0] = 1 + 2i }, expect: complex128(1 + 2i)},
+		{name: "uint", kind: isa.RegisterUint64, setup: func(regs *Registers) { regs.Uints[0] = 99 }, expect: uint64(99)},
+		{name: "complex", kind: isa.RegisterComplex128, setup: func(regs *Registers) { regs.Complex[0] = 1 + 2i }, expect: complex128(1 + 2i)},
 	}
 
 	for _, tt := range tests {
@@ -650,7 +650,7 @@ func TestSyncCellToRegister(t *testing.T) {
 	}{
 		{
 			name: "int",
-			kind: isa.RegisterInt,
+			kind: isa.RegisterInt64,
 			cell: program.UpvalueCell{IntValue: 42},
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
@@ -659,7 +659,7 @@ func TestSyncCellToRegister(t *testing.T) {
 		},
 		{
 			name: "float",
-			kind: isa.RegisterFloat,
+			kind: isa.RegisterFloat64,
 			cell: program.UpvalueCell{FloatValue: 3.14},
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
@@ -686,7 +686,7 @@ func TestSyncCellToRegister(t *testing.T) {
 		},
 		{
 			name: "uint",
-			kind: isa.RegisterUint,
+			kind: isa.RegisterUint64,
 			cell: program.UpvalueCell{UintValue: 99},
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
@@ -695,7 +695,7 @@ func TestSyncCellToRegister(t *testing.T) {
 		},
 		{
 			name: "complex",
-			kind: isa.RegisterComplex,
+			kind: isa.RegisterComplex128,
 			cell: program.UpvalueCell{ComplexValue: 1 + 2i},
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
@@ -704,7 +704,8 @@ func TestSyncCellToRegister(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
+	for index := range tests {
+		tt := &tests[index]
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			regs := NewRegisters(testRegCounts())
@@ -725,7 +726,7 @@ func TestAssignReflectArg(t *testing.T) {
 	}{
 		{
 			name:  "int",
-			kind:  isa.RegisterInt,
+			kind:  isa.RegisterInt64,
 			value: reflect.ValueOf(int64(42)),
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
@@ -734,7 +735,7 @@ func TestAssignReflectArg(t *testing.T) {
 		},
 		{
 			name:  "float",
-			kind:  isa.RegisterFloat,
+			kind:  isa.RegisterFloat64,
 			value: reflect.ValueOf(float64(3.14)),
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
@@ -761,7 +762,7 @@ func TestAssignReflectArg(t *testing.T) {
 		},
 		{
 			name:  "uint",
-			kind:  isa.RegisterUint,
+			kind:  isa.RegisterUint64,
 			value: reflect.ValueOf(uint64(99)),
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
@@ -770,7 +771,7 @@ func TestAssignReflectArg(t *testing.T) {
 		},
 		{
 			name:  "complex",
-			kind:  isa.RegisterComplex,
+			kind:  isa.RegisterComplex128,
 			value: reflect.ValueOf(complex128(1 + 2i)),
 			check: func(t *testing.T, regs *Registers) {
 				t.Helper()
@@ -875,8 +876,8 @@ func TestCopyReturnValueAt(t *testing.T) {
 
 		vm.copyReturnValueAt(
 			&vm.CallStack[1],
-			isa.RegisterInt, 0,
-			program.VarLocation{Register: 1, Kind: isa.RegisterInt},
+			0, isa.RegisterInt64, 0,
+			program.VarLocation{Register: 1, Kind: isa.RegisterInt64},
 		)
 		require.Equal(t, int64(42), vm.CallStack[0].Registers.Ints[1])
 	})
@@ -892,7 +893,7 @@ func TestCopyReturnValueAt(t *testing.T) {
 
 		vm.copyReturnValueAt(
 			&vm.CallStack[1],
-			isa.RegisterString, 0,
+			0, isa.RegisterString, 0,
 			program.VarLocation{Register: 1, Kind: isa.RegisterString},
 		)
 		require.Equal(t, "hello", vm.CallStack[0].Registers.Strings[1])
@@ -909,8 +910,8 @@ func TestCopyReturnValueAt(t *testing.T) {
 
 		vm.copyReturnValueAt(
 			&vm.CallStack[1],
-			isa.RegisterGeneral, 0,
-			program.VarLocation{Register: 1, Kind: isa.RegisterInt},
+			0, isa.RegisterGeneral, 0,
+			program.VarLocation{Register: 1, Kind: isa.RegisterInt64},
 		)
 		require.Equal(t, int64(42), vm.CallStack[0].Registers.Ints[1])
 	})
@@ -926,7 +927,7 @@ func TestCopyReturnValueAt(t *testing.T) {
 
 		vm.copyReturnValueAt(
 			&vm.CallStack[1],
-			isa.RegisterInt, 0,
+			0, isa.RegisterInt64, 0,
 			program.VarLocation{Register: 1, Kind: isa.RegisterGeneral},
 		)
 		require.Equal(t, 42, vm.CallStack[0].Registers.General[1].Interface())
@@ -944,7 +945,7 @@ func TestCopyReturnValueAt(t *testing.T) {
 
 		vm.copyReturnValueAt(
 			&vm.CallStack[1],
-			isa.RegisterInt, 0,
+			0, isa.RegisterInt64, 0,
 			program.VarLocation{Register: 1, Kind: isa.RegisterString},
 		)
 
@@ -963,7 +964,7 @@ func TestCopyReturnValueAt(t *testing.T) {
 
 		vm.copyReturnValueAt(
 			&vm.CallStack[1],
-			isa.RegisterFloat, 0,
+			0, isa.RegisterFloat64, 0,
 			program.VarLocation{Register: 1, Kind: isa.RegisterBool},
 		)
 		require.True(t, vm.CallStack[0].Registers.Bools[1])

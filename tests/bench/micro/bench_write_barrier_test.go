@@ -21,7 +21,6 @@
 package bench
 
 import (
-	"context"
 	"runtime"
 	"runtime/debug"
 	"testing"
@@ -151,7 +150,7 @@ func run() int {
 			for _, program := range programs {
 				b.Run(program.name, func(b *testing.B) {
 					service := app.NewService()
-					cfs, err := service.CompileFileSet(context.Background(), map[string]string{"main.go": program.source})
+					cfs, err := service.CompileFileSet(b.Context(), map[string]string{"main.go": program.source})
 					require.NoError(b, err)
 					if mode.marking {
 						defer startMarkingPressure()()
@@ -163,7 +162,7 @@ func run() int {
 					runtime.ReadMemStats(&before)
 					b.ResetTimer()
 					for b.Loop() {
-						_, err = service.ExecuteEntrypoint(context.Background(), cfs, "run")
+						_, err = service.ExecuteEntrypoint(b.Context(), cfs, "run")
 						if err != nil {
 							require.NoError(b, err)
 						}

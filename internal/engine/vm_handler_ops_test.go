@@ -38,25 +38,25 @@ func TestIntegerBankBinaryOpsWriteOnlyTheDestination(t *testing.T) {
 		right   int64
 		want    int64
 	}{
-		{name: "addition of two small values", handler: handleAddInt, left: 10, right: 32, want: 42},
-		{name: "addition of a negative operand subtracts", handler: handleAddInt, left: 50, right: -8, want: 42},
-		{name: "addition wraps past the signed ceiling", handler: handleAddInt, left: math.MaxInt64, right: 1, want: math.MinInt64},
-		{name: "subtraction of two small values", handler: handleSubInt, left: 50, right: 8, want: 42},
-		{name: "subtraction wraps past the signed floor", handler: handleSubInt, left: math.MinInt64, right: 1, want: math.MaxInt64},
-		{name: "multiplication of two small values", handler: handleMulInt, left: 6, right: 7, want: 42},
-		{name: "multiplication by a negative operand flips the sign", handler: handleMulInt, left: -6, right: 7, want: -42},
-		{name: "multiplication by zero is zero", handler: handleMulInt, left: math.MaxInt64, right: 0, want: 0},
-		{name: "bitwise and keeps only the shared bits", handler: handleBitAnd, left: 0b1100, right: 0b1010, want: 0b1000},
-		{name: "bitwise and with minus one is the identity", handler: handleBitAnd, left: 42, right: -1, want: 42},
-		{name: "bitwise or merges both operands", handler: handleBitOr, left: 0b1100, right: 0b1010, want: 0b1110},
-		{name: "bitwise exclusive or drops the shared bits", handler: handleBitXor, left: 0b1100, right: 0b1010, want: 0b0110},
-		{name: "bitwise exclusive or with itself is zero", handler: handleBitXor, left: -12345, right: -12345, want: 0},
-		{name: "bitwise and not clears the masked bits", handler: handleBitAndNot, left: 0b1100, right: 0b1010, want: 0b0100},
-		{name: "left shift by one doubles the value", handler: handleShiftLeft, left: 21, right: 1, want: 42},
-		{name: "left shift by the full width discards every bit", handler: handleShiftLeft, left: -1, right: 64, want: 0},
-		{name: "right shift by one halves the value", handler: handleShiftRight, left: 84, right: 1, want: 42},
-		{name: "right shift sign-extends a negative value", handler: handleShiftRight, left: -2, right: 1, want: -1},
-		{name: "right shift of a negative value by the full width saturates", handler: handleShiftRight, left: -1, right: 63, want: -1},
+		{name: "addition of two small values", handler: handleAddInt64, left: 10, right: 32, want: 42},
+		{name: "addition of a negative operand subtracts", handler: handleAddInt64, left: 50, right: -8, want: 42},
+		{name: "addition wraps past the signed ceiling", handler: handleAddInt64, left: math.MaxInt64, right: 1, want: math.MinInt64},
+		{name: "subtraction of two small values", handler: handleSubtractInt64, left: 50, right: 8, want: 42},
+		{name: "subtraction wraps past the signed floor", handler: handleSubtractInt64, left: math.MinInt64, right: 1, want: math.MaxInt64},
+		{name: "multiplication of two small values", handler: handleMultiplyInt64, left: 6, right: 7, want: 42},
+		{name: "multiplication by a negative operand flips the sign", handler: handleMultiplyInt64, left: -6, right: 7, want: -42},
+		{name: "multiplication by zero is zero", handler: handleMultiplyInt64, left: math.MaxInt64, right: 0, want: 0},
+		{name: "bitwise and keeps only the shared bits", handler: handleBitAndInt64, left: 0b1100, right: 0b1010, want: 0b1000},
+		{name: "bitwise and with minus one is the identity", handler: handleBitAndInt64, left: 42, right: -1, want: 42},
+		{name: "bitwise or merges both operands", handler: handleBitOrInt64, left: 0b1100, right: 0b1010, want: 0b1110},
+		{name: "bitwise exclusive or drops the shared bits", handler: handleBitXorInt64, left: 0b1100, right: 0b1010, want: 0b0110},
+		{name: "bitwise exclusive or with itself is zero", handler: handleBitXorInt64, left: -12345, right: -12345, want: 0},
+		{name: "bitwise and not clears the masked bits", handler: handleBitAndNotInt64, left: 0b1100, right: 0b1010, want: 0b0100},
+		{name: "left shift by one doubles the value", handler: handleShiftLeftInt64, left: 21, right: 1, want: 42},
+		{name: "left shift by the full width discards every bit", handler: handleShiftLeftInt64, left: -1, right: 64, want: 0},
+		{name: "right shift by one halves the value", handler: handleShiftRightInt64, left: 84, right: 1, want: 42},
+		{name: "right shift sign-extends a negative value", handler: handleShiftRightInt64, left: -2, right: 1, want: -1},
+		{name: "right shift of a negative value by the full width saturates", handler: handleShiftRightInt64, left: -1, right: 63, want: -1},
 	}
 
 	for _, tt := range tests {
@@ -85,15 +85,15 @@ func TestIntegerBankUnaryOpsNegateAndComplement(t *testing.T) {
 		start   int64
 		want    int64
 	}{
-		{name: "negation flips a positive value", handler: handleNegInt, start: 42, want: -42},
-		{name: "negation flips a negative value", handler: handleNegInt, start: -42, want: 42},
-		{name: "negation of zero stays zero", handler: handleNegInt, start: 0, want: 0},
-		{name: "negation at the signed floor wraps to itself", handler: handleNegInt, start: math.MinInt64, want: math.MinInt64},
-		{name: "complement of zero is minus one", handler: handleBitNot, start: 0, want: -1},
-		{name: "complement of minus one is zero", handler: handleBitNot, start: -1, want: 0},
-		{name: "complement of a positive value is its negative successor", handler: handleBitNot, start: 41, want: -42},
-		{name: "move copies the source register", handler: handleMoveInt, start: 42, want: 42},
-		{name: "move copies the signed floor", handler: handleMoveInt, start: math.MinInt64, want: math.MinInt64},
+		{name: "negation flips a positive value", handler: handleNegateInt64Body, start: 42, want: -42},
+		{name: "negation flips a negative value", handler: handleNegateInt64Body, start: -42, want: 42},
+		{name: "negation of zero stays zero", handler: handleNegateInt64Body, start: 0, want: 0},
+		{name: "negation at the signed floor wraps to itself", handler: handleNegateInt64Body, start: math.MinInt64, want: math.MinInt64},
+		{name: "complement of zero is minus one", handler: handleBitNotInt64Body, start: 0, want: -1},
+		{name: "complement of minus one is zero", handler: handleBitNotInt64Body, start: -1, want: 0},
+		{name: "complement of a positive value is its negative successor", handler: handleBitNotInt64Body, start: 41, want: -42},
+		{name: "move copies the source register", handler: handleMoveInt64Body, start: 42, want: 42},
+		{name: "move copies the signed floor", handler: handleMoveInt64Body, start: math.MinInt64, want: math.MinInt64},
 	}
 
 	for _, tt := range tests {
@@ -120,19 +120,19 @@ func TestIntegerComparisonsWriteOneOrZero(t *testing.T) {
 		right   int64
 		want    int64
 	}{
-		{name: "equality holds for identical values", handler: handleEqInt, left: 42, right: 42, want: 1},
-		{name: "equality fails for different values", handler: handleEqInt, left: 42, right: -42, want: 0},
-		{name: "inequality holds for different values", handler: handleNeInt, left: 42, right: -42, want: 1},
-		{name: "inequality fails for identical values", handler: handleNeInt, left: 42, right: 42, want: 0},
-		{name: "less than holds below", handler: handleLtInt, left: -1, right: 0, want: 1},
-		{name: "less than fails when equal", handler: handleLtInt, left: 0, right: 0, want: 0},
-		{name: "less than orders the signed floor first", handler: handleLtInt, left: math.MinInt64, right: math.MaxInt64, want: 1},
-		{name: "less or equal holds when equal", handler: handleLeInt, left: 7, right: 7, want: 1},
-		{name: "less or equal fails above", handler: handleLeInt, left: 8, right: 7, want: 0},
-		{name: "greater than holds above", handler: handleGtInt, left: 8, right: 7, want: 1},
-		{name: "greater than fails when equal", handler: handleGtInt, left: 7, right: 7, want: 0},
-		{name: "greater or equal holds when equal", handler: handleGeInt, left: 7, right: 7, want: 1},
-		{name: "greater or equal fails below", handler: handleGeInt, left: 6, right: 7, want: 0},
+		{name: "equality holds for identical values", handler: handleEqualInt64, left: 42, right: 42, want: 1},
+		{name: "equality fails for different values", handler: handleEqualInt64, left: 42, right: -42, want: 0},
+		{name: "inequality holds for different values", handler: handleNotEqualInt64, left: 42, right: -42, want: 1},
+		{name: "inequality fails for identical values", handler: handleNotEqualInt64, left: 42, right: 42, want: 0},
+		{name: "less than holds below", handler: handleLessThanInt64, left: -1, right: 0, want: 1},
+		{name: "less than fails when equal", handler: handleLessThanInt64, left: 0, right: 0, want: 0},
+		{name: "less than orders the signed floor first", handler: handleLessThanInt64, left: math.MinInt64, right: math.MaxInt64, want: 1},
+		{name: "less or equal holds when equal", handler: handleLessOrEqualInt64, left: 7, right: 7, want: 1},
+		{name: "less or equal fails above", handler: handleLessOrEqualInt64, left: 8, right: 7, want: 0},
+		{name: "greater than holds above", handler: handleGreaterThanInt64, left: 8, right: 7, want: 1},
+		{name: "greater than fails when equal", handler: handleGreaterThanInt64, left: 7, right: 7, want: 0},
+		{name: "greater or equal holds when equal", handler: handleGreaterOrEqualInt64, left: 7, right: 7, want: 1},
+		{name: "greater or equal fails below", handler: handleGreaterOrEqualInt64, left: 6, right: 7, want: 0},
 	}
 
 	for _, tt := range tests {
@@ -162,15 +162,15 @@ func TestFloatBankOpsFollowIEEESemantics(t *testing.T) {
 		want    float64
 		wantNaN bool
 	}{
-		{name: "addition of two finite values", handler: handleAddFloat, left: 1.5, right: 2.25, want: 3.75},
-		{name: "addition of positive and negative infinity is not a number", handler: handleAddFloat, left: math.Inf(1), right: math.Inf(-1), wantNaN: true},
-		{name: "subtraction of two finite values", handler: handleSubFloat, left: 3.75, right: 2.25, want: 1.5},
-		{name: "multiplication of two finite values", handler: handleMulFloat, left: 1.5, right: 4, want: 6},
-		{name: "multiplication of zero by infinity is not a number", handler: handleMulFloat, left: 0, right: math.Inf(1), wantNaN: true},
-		{name: "division of two finite values", handler: handleDivFloat, left: 9, right: 2, want: 4.5},
-		{name: "division by zero yields positive infinity", handler: handleDivFloat, left: 1, right: 0, want: math.Inf(1)},
-		{name: "division of a negative value by zero yields negative infinity", handler: handleDivFloat, left: -1, right: 0, want: math.Inf(-1)},
-		{name: "division of zero by zero is not a number", handler: handleDivFloat, left: 0, right: 0, wantNaN: true},
+		{name: "addition of two finite values", handler: handleAddFloat64, left: 1.5, right: 2.25, want: 3.75},
+		{name: "addition of positive and negative infinity is not a number", handler: handleAddFloat64, left: math.Inf(1), right: math.Inf(-1), wantNaN: true},
+		{name: "subtraction of two finite values", handler: handleSubtractFloat64, left: 3.75, right: 2.25, want: 1.5},
+		{name: "multiplication of two finite values", handler: handleMultiplyFloat64, left: 1.5, right: 4, want: 6},
+		{name: "multiplication of zero by infinity is not a number", handler: handleMultiplyFloat64, left: 0, right: math.Inf(1), wantNaN: true},
+		{name: "division of two finite values", handler: handleDivideFloat64, left: 9, right: 2, want: 4.5},
+		{name: "division by zero yields positive infinity", handler: handleDivideFloat64, left: 1, right: 0, want: math.Inf(1)},
+		{name: "division of a negative value by zero yields negative infinity", handler: handleDivideFloat64, left: -1, right: 0, want: math.Inf(-1)},
+		{name: "division of zero by zero is not a number", handler: handleDivideFloat64, left: 0, right: 0, wantNaN: true},
 	}
 
 	for _, tt := range tests {
@@ -202,11 +202,11 @@ func TestFloatNegationAndMoveCarrySignedZero(t *testing.T) {
 		want     float64
 		wantSign bool
 	}{
-		{name: "negation flips a positive value", handler: handleNegFloat, start: 2.5, want: -2.5},
-		{name: "negation flips a negative value", handler: handleNegFloat, start: -2.5, want: 2.5},
-		{name: "negation of zero produces negative zero", handler: handleNegFloat, start: 0, want: 0, wantSign: true},
-		{name: "move copies a finite value", handler: handleMoveFloat, start: 2.5, want: 2.5},
-		{name: "move copies positive infinity", handler: handleMoveFloat, start: math.Inf(1), want: math.Inf(1)},
+		{name: "negation flips a positive value", handler: handleNegateFloat64Body, start: 2.5, want: -2.5},
+		{name: "negation flips a negative value", handler: handleNegateFloat64Body, start: -2.5, want: 2.5},
+		{name: "negation of zero produces negative zero", handler: handleNegateFloat64Body, start: 0, want: 0, wantSign: true},
+		{name: "move copies a finite value", handler: handleMoveFloat64Body, start: 2.5, want: 2.5},
+		{name: "move copies positive infinity", handler: handleMoveFloat64Body, start: math.Inf(1), want: math.Inf(1)},
 	}
 
 	for _, tt := range tests {
@@ -238,17 +238,17 @@ func TestFloatComparisonsTreatNotANumberAsUnordered(t *testing.T) {
 		right   float64
 		want    int64
 	}{
-		{name: "equality holds for identical values", handler: handleEqFloat, left: 1.5, right: 1.5, want: 1},
-		{name: "equality fails against not a number", handler: handleEqFloat, left: nan, right: nan, want: 0},
-		{name: "less than holds below", handler: handleLtFloat, left: 1, right: 2, want: 1},
-		{name: "less than fails against not a number", handler: handleLtFloat, left: 1, right: nan, want: 0},
-		{name: "less than orders negative infinity first", handler: handleLtFloat, left: math.Inf(-1), right: 0, want: 1},
-		{name: "less or equal holds when equal", handler: handleLeFloat, left: 2, right: 2, want: 1},
-		{name: "less or equal fails against not a number", handler: handleLeFloat, left: nan, right: 2, want: 0},
-		{name: "not equal holds for different values", handler: handleNeFloat, left: 1, right: 2, want: 1},
-		{name: "not equal holds against not a number", handler: handleNeFloat, left: nan, right: nan, want: 1},
-		{name: "greater than holds above", handler: handleGtFloat, left: 2, right: 1, want: 1},
-		{name: "greater or equal holds when equal", handler: handleGeFloat, left: 2, right: 2, want: 1},
+		{name: "equality holds for identical values", handler: handleEqualFloat64, left: 1.5, right: 1.5, want: 1},
+		{name: "equality fails against not a number", handler: handleEqualFloat64, left: nan, right: nan, want: 0},
+		{name: "less than holds below", handler: handleLessThanFloat64, left: 1, right: 2, want: 1},
+		{name: "less than fails against not a number", handler: handleLessThanFloat64, left: 1, right: nan, want: 0},
+		{name: "less than orders negative infinity first", handler: handleLessThanFloat64, left: math.Inf(-1), right: 0, want: 1},
+		{name: "less or equal holds when equal", handler: handleLessOrEqualFloat64, left: 2, right: 2, want: 1},
+		{name: "less or equal fails against not a number", handler: handleLessOrEqualFloat64, left: nan, right: 2, want: 0},
+		{name: "not equal holds for different values", handler: handleNotEqualFloat64, left: 1, right: 2, want: 1},
+		{name: "not equal holds against not a number", handler: handleNotEqualFloat64, left: nan, right: nan, want: 1},
+		{name: "greater than holds above", handler: handleGreaterThanFloat64, left: 2, right: 1, want: 1},
+		{name: "greater or equal holds when equal", handler: handleGreaterOrEqualFloat64, left: 2, right: 2, want: 1},
 	}
 
 	for _, tt := range tests {
@@ -277,16 +277,16 @@ func TestStringBankOpsCompareLexicographically(t *testing.T) {
 		right   string
 		want    int64
 	}{
-		{name: "equality holds for identical strings", handler: handleEqString, left: "pipit", right: "pipit", want: 1},
-		{name: "equality fails on a case difference", handler: handleEqString, left: "pipit", right: "Pipit", want: 0},
-		{name: "equality holds for two empty strings", handler: handleEqString, left: "", right: "", want: 1},
-		{name: "inequality holds for different strings", handler: handleNeString, left: "a", right: "b", want: 1},
-		{name: "less than orders alphabetically", handler: handleLtString, left: "abc", right: "abd", want: 1},
-		{name: "less than orders a prefix first", handler: handleLtString, left: "ab", right: "abc", want: 1},
-		{name: "less than fails when equal", handler: handleLtString, left: "ab", right: "ab", want: 0},
-		{name: "less or equal holds when equal", handler: handleLeString, left: "ab", right: "ab", want: 1},
-		{name: "greater than orders the longer string later", handler: handleGtString, left: "abc", right: "ab", want: 1},
-		{name: "greater or equal holds when equal", handler: handleGeString, left: "ab", right: "ab", want: 1},
+		{name: "equality holds for identical strings", handler: handleEqualString, left: "pipit", right: "pipit", want: 1},
+		{name: "equality fails on a case difference", handler: handleEqualString, left: "pipit", right: "Pipit", want: 0},
+		{name: "equality holds for two empty strings", handler: handleEqualString, left: "", right: "", want: 1},
+		{name: "inequality holds for different strings", handler: handleNotEqualString, left: "a", right: "b", want: 1},
+		{name: "less than orders alphabetically", handler: handleLessThanString, left: "abc", right: "abd", want: 1},
+		{name: "less than orders a prefix first", handler: handleLessThanString, left: "ab", right: "abc", want: 1},
+		{name: "less than fails when equal", handler: handleLessThanString, left: "ab", right: "ab", want: 0},
+		{name: "less or equal holds when equal", handler: handleLessOrEqualString, left: "ab", right: "ab", want: 1},
+		{name: "greater than orders the longer string later", handler: handleGreaterThanString, left: "abc", right: "ab", want: 1},
+		{name: "greater or equal holds when equal", handler: handleGreaterOrEqualString, left: "ab", right: "ab", want: 1},
 	}
 
 	for _, tt := range tests {
@@ -325,7 +325,7 @@ func TestStringLengthCountsBytesNotRunes(t *testing.T) {
 			registers := standardRegisters()
 			registers.Strings[1] = tt.value
 
-			got := handleLenString(nil, nil, &registers, op(0, 1, 0))
+			got := handleLengthStringBody(nil, nil, &registers, op(0, 1, 0))
 
 			require.Equal(t, opContinue, got)
 			require.Equal(t, tt.want, registers.Ints[0], "string length is a byte count")
@@ -340,7 +340,7 @@ func TestMoveStringAndTypedSliceBanksAliasTheSource(t *testing.T) {
 		t.Parallel()
 		registers := standardRegisters()
 		registers.Strings[1] = "pipit"
-		require.Equal(t, opContinue, handleMoveString(nil, nil, &registers, op(0, 1, 0)))
+		require.Equal(t, opContinue, handleMoveStringBody(nil, nil, &registers, op(0, 1, 0)))
 		require.Equal(t, "pipit", registers.Strings[0])
 	})
 
@@ -348,7 +348,7 @@ func TestMoveStringAndTypedSliceBanksAliasTheSource(t *testing.T) {
 		t.Parallel()
 		registers := standardRegisters()
 		registers.SlicesInt[1] = []int64{1, 2, 3}
-		require.Equal(t, opContinue, handleMoveSliceInt(nil, nil, &registers, op(0, 1, 0)))
+		require.Equal(t, opContinue, handleMoveSliceInt64Body(nil, nil, &registers, op(0, 1, 0)))
 		registers.SlicesInt[0][0] = 99
 		require.Equal(t, int64(99), registers.SlicesInt[1][0], "a slice move copies the header, not the elements")
 	})
@@ -357,7 +357,7 @@ func TestMoveStringAndTypedSliceBanksAliasTheSource(t *testing.T) {
 		t.Parallel()
 		registers := standardRegisters()
 		registers.slicesFloat[1] = []float64{1.5}
-		require.Equal(t, opContinue, handleMoveSliceFloat(nil, nil, &registers, op(0, 1, 0)))
+		require.Equal(t, opContinue, handleMoveSliceFloat64Body(nil, nil, &registers, op(0, 1, 0)))
 		require.InDelta(t, 1.5, registers.slicesFloat[0][0], 0)
 	})
 
@@ -365,7 +365,7 @@ func TestMoveStringAndTypedSliceBanksAliasTheSource(t *testing.T) {
 		t.Parallel()
 		registers := standardRegisters()
 		registers.slicesString[1] = []string{"a"}
-		require.Equal(t, opContinue, handleMoveSliceString(nil, nil, &registers, op(0, 1, 0)))
+		require.Equal(t, opContinue, handleMoveSliceStringBody(nil, nil, &registers, op(0, 1, 0)))
 		require.Equal(t, []string{"a"}, registers.slicesString[0])
 	})
 
@@ -373,7 +373,7 @@ func TestMoveStringAndTypedSliceBanksAliasTheSource(t *testing.T) {
 		t.Parallel()
 		registers := standardRegisters()
 		registers.slicesBool[1] = []bool{true}
-		require.Equal(t, opContinue, handleMoveSliceBool(nil, nil, &registers, op(0, 1, 0)))
+		require.Equal(t, opContinue, handleMoveSliceBoolBody(nil, nil, &registers, op(0, 1, 0)))
 		require.Equal(t, []bool{true}, registers.slicesBool[0])
 	})
 
@@ -381,7 +381,7 @@ func TestMoveStringAndTypedSliceBanksAliasTheSource(t *testing.T) {
 		t.Parallel()
 		registers := standardRegisters()
 		registers.slicesUint[1] = []uint64{7}
-		require.Equal(t, opContinue, handleMoveSliceUint(nil, nil, &registers, op(0, 1, 0)))
+		require.Equal(t, opContinue, handleMoveSliceUint64Body(nil, nil, &registers, op(0, 1, 0)))
 		require.Equal(t, []uint64{7}, registers.slicesUint[0])
 	})
 
@@ -389,7 +389,7 @@ func TestMoveStringAndTypedSliceBanksAliasTheSource(t *testing.T) {
 		t.Parallel()
 		registers := standardRegisters()
 		registers.slicesByte[1] = []byte("hi")
-		require.Equal(t, opContinue, handleMoveSliceByte(nil, nil, &registers, op(0, 1, 0)))
+		require.Equal(t, opContinue, handleMoveSliceByteBody(nil, nil, &registers, op(0, 1, 0)))
 		require.Equal(t, []byte("hi"), registers.slicesByte[0])
 	})
 }
@@ -403,13 +403,13 @@ func TestLoadZeroClearsTheBankNamedByTheOperand(t *testing.T) {
 		name  string
 		kind  isa.RegisterKind
 	}{
-		{name: "the integer bank", kind: isa.RegisterInt,
+		{name: "the integer bank", kind: isa.RegisterInt64,
 			seed: func(registers *Registers) { registers.Ints[0] = 42 },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Equal(t, int64(0), registers.Ints[0])
 			}},
-		{name: "the float bank", kind: isa.RegisterFloat,
+		{name: "the float bank", kind: isa.RegisterFloat64,
 			seed: func(registers *Registers) { registers.Floats[0] = 42 },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -433,25 +433,25 @@ func TestLoadZeroClearsTheBankNamedByTheOperand(t *testing.T) {
 				t.Helper()
 				require.False(t, registers.Bools[0])
 			}},
-		{name: "the uint bank", kind: isa.RegisterUint,
+		{name: "the uint bank", kind: isa.RegisterUint64,
 			seed: func(registers *Registers) { registers.Uints[0] = 42 },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Equal(t, uint64(0), registers.Uints[0])
 			}},
-		{name: "the complex bank", kind: isa.RegisterComplex,
+		{name: "the complex bank", kind: isa.RegisterComplex128,
 			seed: func(registers *Registers) { registers.Complex[0] = 1 + 2i },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Equal(t, complex128(0), registers.Complex[0])
 			}},
-		{name: "the integer slice bank", kind: isa.RegisterSliceInt,
+		{name: "the integer slice bank", kind: isa.RegisterSliceInt64,
 			seed: func(registers *Registers) { registers.SlicesInt[0] = []int64{1} },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
 				require.Nil(t, registers.SlicesInt[0])
 			}},
-		{name: "the float slice bank", kind: isa.RegisterSliceFloat,
+		{name: "the float slice bank", kind: isa.RegisterSliceFloat64,
 			seed: func(registers *Registers) { registers.slicesFloat[0] = []float64{1} },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -469,7 +469,7 @@ func TestLoadZeroClearsTheBankNamedByTheOperand(t *testing.T) {
 				t.Helper()
 				require.Nil(t, registers.slicesBool[0])
 			}},
-		{name: "the uint slice bank", kind: isa.RegisterSliceUint,
+		{name: "the uint slice bank", kind: isa.RegisterSliceUint64,
 			seed: func(registers *Registers) { registers.slicesUint[0] = []uint64{1} },
 			check: func(t *testing.T, registers *Registers) {
 				t.Helper()
@@ -489,7 +489,7 @@ func TestLoadZeroClearsTheBankNamedByTheOperand(t *testing.T) {
 			registers := standardRegisters()
 			tt.seed(&registers)
 
-			got := handleLoadZero(nil, nil, &registers, op(0, uint8(tt.kind), 0))
+			got := handleLoadZeroBody(nil, nil, &registers, op(0, uint8(tt.kind), 0))
 
 			require.Equal(t, opContinue, got)
 			tt.check(t, &registers)
@@ -503,7 +503,7 @@ func TestLoadNilInvalidatesTheGeneralRegister(t *testing.T) {
 	registers := standardRegisters()
 	registers.General[0] = reflect.ValueOf("occupied")
 
-	got := handleLoadNil(nil, nil, &registers, op(0, 0, 0))
+	got := handleLoadNilBody(nil, nil, &registers, op(0, 0, 0))
 
 	require.Equal(t, opContinue, got)
 	require.False(t, registers.General[0].IsValid(), "nil is the invalid reflect value, not a typed zero")
@@ -515,7 +515,7 @@ func TestExtensionWordHandlerIsInert(t *testing.T) {
 	registers := standardRegisters()
 	registers.Ints[0] = 42
 
-	got := handleExt(nil, nil, &registers, op(1, 2, 3))
+	got := handleExtension(nil, nil, &registers, op(1, 2, 3))
 
 	require.Equal(t, opContinue, got, "an extension word is consumed by its owning handler, never executed")
 	require.Equal(t, int64(42), registers.Ints[0], "handling an extension word must touch no register")
@@ -546,10 +546,10 @@ func TestInterfaceNilComparisonsSeparateInvalidFromTypedNil(t *testing.T) {
 			registers := standardRegisters()
 			registers.General[2] = tt.build()
 
-			require.Equal(t, opContinue, handleEqInterfaceNil(nil, nil, &registers, op(0, 1, 2)))
+			require.Equal(t, opContinue, handleEqualInterfaceNil(nil, nil, &registers, op(0, 1, 2)))
 			require.Equal(t, tt.wantEq, registers.Ints[1], "the equality verdict lands in operand B")
 
-			require.Equal(t, opContinue, handleNeInterfaceNil(nil, nil, &registers, op(0, 1, 2)))
+			require.Equal(t, opContinue, handleNotEqualInterfaceNil(nil, nil, &registers, op(0, 1, 2)))
 			require.Equal(t, tt.wantNeq, registers.Ints[1], "the inequality verdict lands in operand B")
 		})
 	}
@@ -603,7 +603,7 @@ func TestLogicalNotInvertsTruthiness(t *testing.T) {
 			registers := standardRegisters()
 			registers.Ints[1] = tt.start
 
-			got := handleNot(nil, nil, &registers, op(0, 1, 0))
+			got := handleNotInt64Body(nil, nil, &registers, op(0, 1, 0))
 
 			require.Equal(t, opContinue, got)
 			require.Equal(t, tt.want, registers.Ints[0])

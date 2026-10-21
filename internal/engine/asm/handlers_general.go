@@ -22,90 +22,192 @@ import (
 	"piko.sh/asmgen"
 )
 
-// generalBankHandlers lists the tier-0 handlers that operate on general-bank
-// reflect.Value slots without leaving the dispatch loop.
+// generalBankHandlers lists handlers for general registers and package variables.
 var generalBankHandlers = []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 	{
-		Name: "handlerSliceIndexStructFieldFloat",
-		Comment: "handlerSliceIndexStructFieldFloat sets floats[A] = slice(general[B])[ints[C]].field(layout[ext]) for float64 " +
-			"leaves; other shapes fall back to handlerPathBShimSliceIndexStructFieldFloat.",
+		Name: "handlerGetGlobal",
+		Comment: "handlerGetGlobal loads the package variable B (shifted by the function's global base) of kind C into " +
+			"bank(C)[A] for the int, float, bool, uint and general banks of an unshared store, a general one under the " +
+			"write-barrier guard. Other kinds and shapes fall back to handlerPathBShimGetGlobal.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitSliceIndexStructFieldScalar(emitter, "$14", "", true, "handlerPathBShimSliceIndexStructFieldFloat")
+			architecture.EmitGetGlobal(emitter, "handlerPathBShimGetGlobal")
 		},
 	},
 	{
-		Name: "handlerSliceIndexStructFieldInt",
-		Comment: "handlerSliceIndexStructFieldInt sets ints[A] = slice(general[B])[ints[C]].field(layout[ext]) for full-width " +
-			"int leaves; other shapes fall back to handlerPathBShimSliceIndexStructFieldInt.",
+		Name: "handlerGetGlobalWide",
+		Comment: "handlerGetGlobalWide loads the package variable whose index is in the extension word (shifted by the " +
+			"function's global base) of kind C into bank(C)[B], as handlerGetGlobal does.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitSliceIndexStructFieldScalar(emitter, "$2", "$6", false, "handlerPathBShimSliceIndexStructFieldInt")
+			architecture.EmitGetGlobalWide(emitter, "handlerPathBShimGetGlobalWide")
 		},
 	},
 	{
-		Name:      "handlerDerefSliceGetInt",
-		Comment:   "handlerDerefSliceGetInt sets ints[A] = (*general[B])[ints[C]] with a live bounds check; unsupported shapes and range panics fall back to handlerPathBShimDerefSliceGetInt.",
+		Name: "handlerSetGlobal",
+		Comment: "handlerSetGlobal stores bank(C)[A] into the package variable B (shifted by the function's global base) of " +
+			"kind C, for the int, uint, float and bool banks of an unshared store.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitDerefSliceIntAccess(emitter, false, "handlerPathBShimDerefSliceGetInt")
+			architecture.EmitSetGlobal(emitter, "handlerPathBShimSetGlobal")
 		},
 	},
 	{
-		Name:      "handlerDerefSliceSetInt",
-		Comment:   "handlerDerefSliceSetInt sets (*general[A])[ints[B]] = ints[C] with a live bounds check; unsupported shapes and range panics fall back to handlerPathBShimDerefSliceSetInt.",
+		Name: "handlerSetGlobalWide",
+		Comment: "handlerSetGlobalWide stores bank(C)[B] into the package variable whose index is in the extension word, as " +
+			"handlerSetGlobal does.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitDerefSliceIntAccess(emitter, true, "handlerPathBShimDerefSliceSetInt")
+			architecture.EmitSetGlobalWide(emitter, "handlerPathBShimSetGlobalWide")
 		},
 	},
 	{
-		Name: "handlerGetStructFieldGeneralT0",
-		Comment: "handlerGetStructFieldGeneralT0 reads a plain pointer-kind struct field into general[A] under the write-barrier " +
-			"guard; other field kinds and receiver shapes fall back to handlerPathBShimGetStructFieldGeneralT0.",
+		Name: "handlerGetElementInt64",
+		Comment: "handlerGetElementInt64 sets ints[A] = general[B][ints[C]] for an integer element of a slice, array or " +
+			"array pointer whose shape the typed element cache's front slot holds. Other shapes fall back to handlerPathBShimGetElementInt64.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitGetStructFieldGeneralPointerT0(emitter)
+			architecture.EmitSliceGetTypedElement(emitter, true, "handlerPathBShimGetElementInt64")
 		},
 	},
 	{
-		Name: "handlerSetStructFieldGeneralT0",
-		Comment: "handlerSetStructFieldGeneralT0 stores general[B] into a plain pointer-kind or cycle-broken any field of " +
-			"receiver general[A] under the write-barrier guard; other field kinds, value kinds and receiver shapes fall " +
-			"back to handlerPathBShimSetStructFieldGeneralT0.",
+		Name: "handlerGetElementUint64",
+		Comment: "handlerGetElementUint64 sets uints[A] = general[B][ints[C]] for an unsigned element of a slice, array or " +
+			"array pointer whose shape the typed element cache's front slot holds. Other shapes fall back to handlerPathBShimGetElementUint64.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitSetStructFieldGeneralT0(emitter)
+			architecture.EmitSliceGetTypedElement(emitter, false, "handlerPathBShimGetElementUint64")
 		},
 	},
 	{
-		Name:      "handlerGetStructFieldRawPointerT0",
-		Comment:   "handlerGetStructFieldRawPointerT0 re-wraps the cycle-broken eface field at layout[C] through receiver[B] into a direct pointer value in general[A] under the write-barrier guard.",
+		Name: "handlerSetElementInt64",
+		Comment: "handlerSetElementInt64 stores ints[C] into integer element ints[B] of the slice, array or array pointer " +
+			"in general[A] whose shape the typed element cache's front slot holds.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitGetStructFieldRawPointerT0(emitter)
+			architecture.EmitSliceSetTypedElement(emitter, true, "handlerPathBShimSetElementInt64")
 		},
 	},
 	{
-		Name: "handlerEqGeneral",
-		Comment: "handlerEqGeneral sets ints[A] = (general[B] == general[C]) for invalid pairs, differing type words, and " +
-			"pointer-identity kinds; other shapes fall back to handlerPathBShimEqGeneral.",
+		Name: "handlerSetElementUint64",
+		Comment: "handlerSetElementUint64 stores uints[C] into unsigned element ints[B] of the slice, array or array " +
+			"pointer in general[A] whose shape the typed element cache's front slot holds.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
-			architecture.EmitEqGeneral(emitter)
+			architecture.EmitSliceSetTypedElement(emitter, false, "handlerPathBShimSetElementUint64")
+		},
+	},
+	{
+		Name: "handlerGetElementFieldFloat64",
+		Comment: "handlerGetElementFieldFloat64 sets floats[A] = slice(general[B])[ints[C]].field(layout[ext]) for float64 " +
+			"leaves. Other shapes fall back to handlerPathBShimGetElementFieldFloat64.",
+		FrameSize: frameSizeZero,
+		Flags:     flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			architecture.EmitSliceIndexStructFieldScalar(emitter, layoutKindFloat64, layoutKindNone, true, "handlerPathBShimGetElementFieldFloat64")
+		},
+	},
+	{
+		Name: "handlerGetElementFieldInt64",
+		Comment: "handlerGetElementFieldInt64 sets ints[A] = slice(general[B])[ints[C]].field(layout[ext]) for full-width " +
+			"int leaves. Other shapes fall back to handlerPathBShimGetElementFieldInt64.",
+		FrameSize: frameSizeZero,
+		Flags:     flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			architecture.EmitSliceIndexStructFieldScalar(emitter, layoutKindInt, layoutKindInt64, false, "handlerPathBShimGetElementFieldInt64")
+		},
+	},
+	{
+		Name: "handlerSetElementFieldInt64",
+		Comment: "handlerSetElementFieldInt64 stores ints[A] into slice(general[B])[ints[C]].field(layout[ext]) for " +
+			"full-width int fields.",
+		FrameSize: frameSizeZero,
+		Flags:     flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			architecture.EmitSliceIndexStructFieldScalarStore(emitter, layoutKindInt, layoutKindInt64, false, "handlerPathBShimSetElementFieldInt64")
+		},
+	},
+	{
+		Name: "handlerSetElementFieldFloat64",
+		Comment: "handlerSetElementFieldFloat64 stores floats[A] into slice(general[B])[ints[C]].field(layout[ext]) for " +
+			"float64 fields.",
+		FrameSize: frameSizeZero,
+		Flags:     flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			architecture.EmitSliceIndexStructFieldScalarStore(emitter, layoutKindFloat64, layoutKindNone, true, "handlerPathBShimSetElementFieldFloat64")
+		},
+	},
+	{
+		Name: "handlerGetElementInt64ViaPointer",
+		Comment: "handlerGetElementInt64ViaPointer sets ints[A] = (*general[B])[ints[C]] with a live bounds check. " +
+			"Unsupported shapes and range panics fall back to handlerPathBShimGetElementInt64ViaPointer.",
+		FrameSize: frameSizeZero,
+		Flags:     flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			architecture.EmitElementInt64ViaPointerAccess(emitter, false, "handlerPathBShimGetElementInt64ViaPointer")
+		},
+	},
+	{
+		Name: "handlerSetElementInt64ViaPointer",
+		Comment: "handlerSetElementInt64ViaPointer sets (*general[A])[ints[B]] = ints[C] with a live bounds check. " +
+			"Unsupported shapes and range panics fall back to handlerPathBShimSetElementInt64ViaPointer.",
+		FrameSize: frameSizeZero,
+		Flags:     flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			architecture.EmitElementInt64ViaPointerAccess(emitter, true, "handlerPathBShimSetElementInt64ViaPointer")
+		},
+	},
+	{
+		Name: "handlerGetStructFieldGeneral",
+		Comment: "handlerGetStructFieldGeneral reads a plain pointer-kind struct field into general[A] under the write-barrier " +
+			"guard. Other field kinds and receiver shapes fall back to handlerPathBShimGetStructFieldGeneral.",
+		FrameSize: frameSizeZero,
+		Flags:     flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			architecture.EmitGetStructFieldGeneralPointer(emitter)
+		},
+	},
+	{
+		Name: "handlerSetStructFieldGeneral",
+		Comment: "handlerSetStructFieldGeneral stores general[B] into a pointer or any field of general[A] when the store " +
+			"can skip the barrier. It skips it for a nil pointer, or a pointer while the arena's epoch is revoked and local-blind. Every " +
+			"other store falls back to handlerPathBShimSetStructFieldGeneral and its store barrier.",
+		FrameSize: frameSizeZero,
+		Flags:     flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			architecture.EmitSetStructFieldGeneral(emitter)
+		},
+	},
+	{
+		Name:      "handlerGetStructFieldRawPointer",
+		Comment:   "handlerGetStructFieldRawPointer re-wraps the cycle-broken eface field at layout[C] through receiver[B] into a direct pointer value in general[A] under the write-barrier guard.",
+		FrameSize: frameSizeZero,
+		Flags:     flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			architecture.EmitGetStructFieldRawPointer(emitter)
+		},
+	},
+	{
+		Name: "handlerEqualGeneral",
+		Comment: "handlerEqualGeneral sets ints[A] = (general[B] == general[C]) for invalid pairs, differing type words, and " +
+			"pointer-identity kinds. Other shapes fall back to handlerPathBShimEqualGeneral.",
+		FrameSize: frameSizeZero,
+		Flags:     flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			architecture.EmitEqualGeneral(emitter)
 		},
 	},
 	{
 		Name:      "handlerMoveGeneral",
-		Comment:   "handlerMoveGeneral copies general[B] to general[A] for alias mode under the write-barrier guard; other modes and marking phases fall back to handlerPathBShimMoveGeneral.",
+		Comment:   "handlerMoveGeneral copies general[B] to general[A] for alias mode under the write-barrier guard. Other modes and marking phases fall back to handlerPathBShimMoveGeneral.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
@@ -113,8 +215,8 @@ var generalBankHandlers = []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 		},
 	},
 	{
-		Name:      "handlerTestNilJumpTrue",
-		Comment:   "handlerTestNilJumpTrue jumps by signed offset B|C<<8 when general[A] is invalid or a nil value of a nilable kind.",
+		Name:      "handlerJumpIfNil",
+		Comment:   "handlerJumpIfNil jumps by signed offset B|C<<8 when general[A] is invalid or a nil value of a nilable kind.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
@@ -122,8 +224,8 @@ var generalBankHandlers = []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
 		},
 	},
 	{
-		Name:      "handlerTestNilJumpFalse",
-		Comment:   "handlerTestNilJumpFalse jumps by signed offset B|C<<8 when general[A] is valid and non-nil.",
+		Name:      "handlerJumpIfNotNil",
+		Comment:   "handlerJumpIfNotNil jumps by signed offset B|C<<8 when general[A] is valid and non-nil.",
 		FrameSize: frameSizeZero,
 		Flags:     flagsNoSplitNoFrame,
 		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {

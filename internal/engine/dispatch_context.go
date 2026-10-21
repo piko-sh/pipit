@@ -213,7 +213,7 @@ type dispatchContext struct {
 	stringConstantsLength int64
 
 	// boolConstantsBase is the pointer to the first 1-byte entry in the active function's
-	// bool constant table. Read by handlerLoadBoolConst.
+	// bool constant table. Read by handlerLoadBoolConstant.
 	boolConstantsBase uintptr
 
 	// boolConstantsLength is the number of entries in the bool constant table.
@@ -323,9 +323,9 @@ type dispatchContext struct {
 	callInfoBasesByFunction uintptr
 
 	// returnBankCursors holds, per register kind, the next callee source register the inline
-	// multi-return handler copies from, matching the per-kind counters handleReturn keeps.
-	// The handler mirrors them here because it has no spare registers for five counters;
-	// single-value returns never touch them.
+	// multi-return handler copies from, matching the per-kind counters handleReturnBody
+	// keeps. The handler mirrors them here because it has no spare registers for five
+	// counters.
 	returnBankCursors [8]int64
 
 	// returnIndex is the return destination position the inline multi-return handler is
@@ -350,6 +350,20 @@ type dispatchContext struct {
 	// carved from the generic-bytes slab since the last write-back, so
 	// syncArenaIndicesFromASM can feed RegisterArena.noteAlloc and GC pacing stays accurate.
 	arenaGenericBytesCharged int64
+
+	// arenaRouteState is the address of the arena's revokedEpochRouteState, or zero without
+	// an arena.
+	//
+	// The pointer-store route of SET_STRUCT_FIELD_GENERAL reads revokedLocalBlind through it
+	// and makes noteRevokedEpochHandOff's note in place (the ROUTE_* offsets, the same in
+	// every build that has assembly). It is published with the generic-bytes addresses, so
+	// it names the same arena they do.
+	arenaRouteState uintptr
+
+	// globals is the address of the VM's GlobalStore, which GET_GLOBAL's handler reads
+	// package variables from (CTX_GLOBALS and the GS_* offsets), or zero when the VM has
+	// none. The VM's Globals field keeps the store alive while it dispatches.
+	globals uintptr
 }
 
 // asmDispatchSave stores the dispatch register values preserved across inline

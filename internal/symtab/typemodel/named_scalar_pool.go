@@ -19,6 +19,7 @@
 package typemodel
 
 import (
+	"context"
 	"go/token"
 	"go/types"
 	"log/slog"
@@ -28,6 +29,8 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+
+	"pipit.sh/pipit/internal/logging"
 )
 
 const (
@@ -123,13 +126,18 @@ var (
 	namedScalarPoolExhaustionWarned atomic.Bool
 )
 
-// NamedScalarPoolInfo carries the source-level identity recorded for an assigned pool
+// NamedTypeInfo carries the source-level identity of a named type whose runtime type
+// pipit supplies, which is a named basic type's pool type or a named composite type's own
 // type. Used to render user-facing type names (fmt %T, assertion panic messages) and to
 // key method-table lookups.
-type NamedScalarPoolInfo struct {
+type NamedTypeInfo struct {
 	// QualifiedName is the Go-facing rendering, e.g. "main.Word", matching what `%T` prints
 	// for a program-defined type.
 	QualifiedName string
+
+	// Name is the type's name without its package, with any type arguments, e.g. "Word" or
+	// "List[int]", matching what reflect.Type.Name returns for a compiled type.
+	Name string
 
 	// BareName is the undecorated type identifier, e.g. "Word", matching the methodTable's
 	// "<Type>.<Method>" key prefix.
@@ -140,7 +148,7 @@ type NamedScalarPoolInfo struct {
 	PkgName string
 
 	// PkgPath is the declaring package's import path, so a bytecode type descriptor can name
-	// the type and a load can find the same pool column again.
+	// the type and a load can find the same runtime type again.
 	PkgPath string
 }
 
@@ -206,7 +214,7 @@ type namedScalarPoolRegistry struct {
 	byKey map[string]reflect.Type
 
 	// info is the reverse map from an assigned pool type to its source-level identity.
-	info map[reflect.Type]NamedScalarPoolInfo
+	info map[reflect.Type]NamedTypeInfo
 
 	// authoritative records pool types whose info came from a real go/types package rather
 	// than one synthesised from a path, so a later compile-side call can replace the guess.
@@ -226,7 +234,7 @@ type namedScalarPoolRegistry struct {
 func newNamedScalarPoolRegistry() *namedScalarPoolRegistry {
 	return &namedScalarPoolRegistry{
 		byKey:         make(map[string]reflect.Type),
-		info:          make(map[reflect.Type]NamedScalarPoolInfo),
+		info:          make(map[reflect.Type]NamedTypeInfo),
 		authoritative: make(map[reflect.Type]struct{}),
 		mu:            sync.RWMutex{},
 		nextColumn:    [namedScalarKindRows]int{},
@@ -240,8 +248,8 @@ func newNamedScalarPoolRegistry() *namedScalarPoolRegistry {
 //
 // Returns poolType (reflect.Type) which is nil when unavailable.
 // Returns exhausted (bool) which is true when named is poolable but got no column.
-func (r *namedScalarPoolRegistry) typeForResult(named *types.Named, keyCap int) (poolType reflect.Type, exhausted bool) {
-	if existing := r.typeFor(named, keyCap, false); existing != nil {
+func (r *namedScalarPoolRegistry) typeForResult(ctx context.Context, named *types.Named, keyCap int) (poolType reflect.Type, exhausted bool) {
+	if existing := r.typeFor(ctx, named, keyCap, false); existing != nil {
 		return existing, false
 	}
 	basic, ok := named.Underlying().(*types.Basic)
@@ -267,7 +275,7 @@ func (r *namedScalarPoolRegistry) typeForResult(named *types.Named, keyCap int) 
 //
 // Concurrency: acquires r.mu in read mode for the fast path, upgrading to write mode for
 // new assignments.
-func (r *namedScalarPoolRegistry) typeFor(named *types.Named, keyCap int, synthetic bool) reflect.Type {
+func (r *namedScalarPoolRegistry) typeFor(ctx context.Context, named *types.Named, keyCap int, synthetic bool) reflect.Type {
 	basic, ok := named.Underlying().(*types.Basic)
 	if !ok {
 		return nil
@@ -304,24 +312,24 @@ func (r *namedScalarPoolRegistry) typeFor(named *types.Named, keyCap int, synthe
 	column := r.nextColumn[row]
 	if column >= len(namedScalarPoolColumns) {
 		r.byKey[key] = nil
-		recordNamedScalarPoolExhaustion(QualifiedName, basic.Name(), len(namedScalarPoolColumns))
+		recordNamedScalarPoolExhaustion(ctx, QualifiedName, basic.Name(), len(namedScalarPoolColumns))
 		return nil
 	}
 	r.nextColumn[row] = column + 1
 	poolType = namedScalarPoolColumns[column][row]
 	r.byKey[key] = poolType
 	r.recordInfo(poolType, info, !synthetic)
-	traceNamedScalarPoolAssignment(key, column, row, synthetic, QualifiedName)
+	traceNamedScalarPoolAssignment(ctx, key, column, row, synthetic, QualifiedName)
 	return poolType
 }
 
 // recordInfo stores a pool type's source-level identity under the registry write lock.
 //
 // Takes poolType (reflect.Type) which is the assigned pool type.
-// Takes info (NamedScalarPoolInfo) which is the identity to store.
+// Takes info (NamedTypeInfo) which is the identity to store.
 // Takes settled (bool) which is true when info came from a real go/types package and so
 // must not be overwritten by a later synthesised one.
-func (r *namedScalarPoolRegistry) recordInfo(poolType reflect.Type, info NamedScalarPoolInfo, settled bool) {
+func (r *namedScalarPoolRegistry) recordInfo(poolType reflect.Type, info NamedTypeInfo, settled bool) {
 	r.info[poolType] = info
 	if settled {
 		r.authoritative[poolType] = struct{}{}
@@ -359,8 +367,8 @@ func NamedScalarPoolExhaustions() int64 {
 //
 // Returns the assigned pool reflect.Type, or nil when the kind has no row or the kind's
 // columns are exhausted. Callers then keep the general-purpose collapsing behaviour.
-func NamedScalarPoolTypeFor(named *types.Named) reflect.Type {
-	return namedScalarPool.typeFor(named, maxNamedScalarPoolKeys, false)
+func NamedScalarPoolTypeFor(ctx context.Context, named *types.Named) reflect.Type {
+	return namedScalarPool.typeFor(ctx, named, maxNamedScalarPoolKeys, false)
 }
 
 // NamedScalarPoolTypeForPath returns the pool type for the named scalar declared as name
@@ -372,11 +380,11 @@ func NamedScalarPoolTypeFor(named *types.Named) reflect.Type {
 // Takes kind (types.BasicKind) which is the underlying basic kind.
 //
 // Returns reflect.Type which is nil when the kind has no pool row or the pool is full.
-func NamedScalarPoolTypeForPath(pkgPath, name string, kind types.BasicKind) reflect.Type {
+func NamedScalarPoolTypeForPath(ctx context.Context, pkgPath, name string, kind types.BasicKind) reflect.Type {
 	pkg := types.NewPackage(pkgPath, path.Base(pkgPath))
 	object := types.NewTypeName(token.NoPos, pkg, name, nil)
 	named := types.NewNamed(object, types.Typ[kind], nil)
-	return namedScalarPool.typeFor(named, maxNamedScalarPoolKeys, true)
+	return namedScalarPool.typeFor(ctx, named, maxNamedScalarPoolKeys, true)
 }
 
 // NamedScalarPoolTypeForResult is NamedScalarPoolTypeFor that also reports exhaustion. A
@@ -387,8 +395,8 @@ func NamedScalarPoolTypeForPath(pkgPath, name string, kind types.BasicKind) refl
 //
 // Returns poolType (reflect.Type) which is nil when unavailable.
 // Returns exhausted (bool) which is true when the pool refused a poolable type.
-func NamedScalarPoolTypeForResult(named *types.Named) (poolType reflect.Type, exhausted bool) {
-	return namedScalarPool.typeForResult(named, maxNamedScalarPoolKeys)
+func NamedScalarPoolTypeForResult(ctx context.Context, named *types.Named) (poolType reflect.Type, exhausted bool) {
+	return namedScalarPool.typeForResult(ctx, named, maxNamedScalarPoolKeys)
 }
 
 // LookupNamedScalarPoolInfo returns the recorded source-level identity for a pool type.
@@ -398,12 +406,12 @@ func NamedScalarPoolTypeForResult(named *types.Named) (poolType reflect.Type, ex
 // Returns the identity record and true when t is an assigned pool type.
 //
 // Concurrency: acquires namedScalarPool.mu in read mode.
-func LookupNamedScalarPoolInfo(t reflect.Type) (NamedScalarPoolInfo, bool) {
+func LookupNamedScalarPoolInfo(t reflect.Type) (NamedTypeInfo, bool) {
 	if t == nil {
-		return NamedScalarPoolInfo{}, false
+		return NamedTypeInfo{}, false
 	}
 	if _, member := namedScalarPoolMembers[t]; !member {
-		return NamedScalarPoolInfo{}, false
+		return NamedTypeInfo{}, false
 	}
 	namedScalarPool.mu.RLock()
 	defer namedScalarPool.mu.RUnlock()
@@ -411,19 +419,20 @@ func LookupNamedScalarPoolInfo(t reflect.Type) (NamedScalarPoolInfo, bool) {
 	return info, ok
 }
 
-// NamedScalarDisplayType renders t for user-facing messages.
+// NamedTypeDisplayType renders t for user-facing messages.
 //
-// Substitutes the source-level qualified name for pool types so panics and %T read like
-// Go's output (e.g. "main.Word" instead of the pool instantiation's own name).
+// Substitutes the source-level qualified name for pool types and named composite types so
+// panics and %T read like Go's output (e.g. "main.Word" instead of the pool
+// instantiation's own name).
 //
 // Takes t (reflect.Type) which may be nil.
 //
-// Returns the rendered type string; "<nil>" for nil.
-func NamedScalarDisplayType(t reflect.Type) string {
+// Returns the rendered type string.
+func NamedTypeDisplayType(t reflect.Type) string {
 	if t == nil {
 		return "<nil>"
 	}
-	if info, ok := LookupNamedScalarPoolInfo(t); ok {
+	if info, ok := LookupNamedTypeInfo(t); ok {
 		return info.QualifiedName
 	}
 	return t.String()
@@ -521,12 +530,13 @@ func namedScalarRowForBasicKind(kind types.BasicKind) (int, bool) {
 // Takes QualifiedName (string) which is the type that collapsed.
 // Takes kindName (string) which is the exhausted basic kind.
 // Takes columns (int) which is the pool's column count for that kind.
-func recordNamedScalarPoolExhaustion(QualifiedName, kindName string, columns int) {
+func recordNamedScalarPoolExhaustion(ctx context.Context, QualifiedName, kindName string, columns int) {
 	namedScalarPoolExhaustions.Add(1)
 	if namedScalarPoolExhaustionWarned.Swap(true) {
 		return
 	}
-	slog.Default().Warn("named-scalar pool exhausted; further named basic types of this kind collapse to their underlying type",
+	_, logger := logging.From(ctx)
+	logger.Warn("named-scalar pool exhausted; further named basic types of this kind collapse to their underlying type",
 		slog.String("type", QualifiedName),
 		slog.String("kind", kindName),
 		slog.Int("columns", columns),
@@ -542,11 +552,12 @@ func recordNamedScalarPoolExhaustion(QualifiedName, kindName string, columns int
 // Takes row (int) which is the kind row.
 // Takes synthetic (bool) which records whether the caller rebuilt the type from a path.
 // Takes qualifiedName (string) which is the type's display name.
-func traceNamedScalarPoolAssignment(key string, column, row int, synthetic bool, qualifiedName string) {
+func traceNamedScalarPoolAssignment(ctx context.Context, key string, column, row int, synthetic bool, qualifiedName string) {
 	if !traceNamedScalarPoolEnabled {
 		return
 	}
-	slog.Default().Debug("named-scalar pool column assigned",
+	_, logger := logging.From(ctx)
+	logger.Debug("named-scalar pool column assigned",
 		slog.String("key", key),
 		slog.Int("column", column),
 		slog.Int("row", row),
@@ -558,11 +569,12 @@ func traceNamedScalarPoolAssignment(key string, column, row int, synthetic bool,
 //
 // Takes named (*types.Named) which is the type being assigned a column.
 //
-// Returns NamedScalarPoolInfo with empty package fields when the type has no package (a
-// type built for a probe, or one of the predeclared basics).
-func namedScalarPoolInfoFor(named *types.Named) NamedScalarPoolInfo {
-	info := NamedScalarPoolInfo{
+// Returns NamedTypeInfo with empty package fields when the type has no package (a type
+// built for a probe, or one of the predeclared basics).
+func namedScalarPoolInfoFor(named *types.Named) NamedTypeInfo {
+	info := NamedTypeInfo{
 		QualifiedName: types.TypeString(named, func(p *types.Package) string { return p.Name() }),
+		Name:          types.TypeString(named, func(*types.Package) string { return "" }),
 		BareName:      named.Obj().Name(),
 		PkgName:       "",
 		PkgPath:       "",

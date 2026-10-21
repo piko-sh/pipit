@@ -22,8 +22,7 @@ import "pipit.sh/pipit/internal/isa"
 
 // deliverRecoveredReturn copies the current frame's named return values to the caller's
 // return destination registers when a panic was caught by a deferred recover(). Mirrors
-// the value-passing handleReturn does for normal returns; without it, callers see
-// whatever stale values were in their destination registers when the panic happened.
+// the value-passing handleReturnBody does for normal returns.
 //
 // Takes frame (*CallFrame) which is the recovered frame whose named return values must be
 // delivered back to the caller.
@@ -34,8 +33,7 @@ func (vm *VM) deliverRecoveredReturn(frame *CallFrame) {
 	}
 	returnDestination := frame.returnDestination
 	if len(returnDestination) == 0 {
-		vm.evalResult, _ = vm.extractResult(frame)
-		vm.EvalAllResults = vm.extractAllResults(frame)
+		vm.setBaseFrameResults(frame)
 		return
 	}
 	var bankCounters [isa.NumRegisterKinds]uint8
@@ -44,6 +42,6 @@ func (vm *VM) deliverRecoveredReturn(frame *CallFrame) {
 		kind := frame.Function.ResultKinds[i]
 		sourceRegister := bankCounters[kind]
 		bankCounters[kind]++
-		vm.copyReturnValueAt(frame, kind, sourceRegister, dest)
+		vm.copyReturnValueAt(frame, i, kind, sourceRegister, dest)
 	}
 }

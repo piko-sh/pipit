@@ -20,6 +20,16 @@
 
 package engine
 
+// vmDispatchContexts holds a VM's live dispatch context; this build has no assembly
+// dispatch, so it is never set.
+type vmDispatchContexts struct {
+	// liveCtx points at the dispatch context currently executing on this VM, letting Go-path
+	// handlers that retarget per-frame pointers (the closure AsmCallInfo fill's
+	// copy-on-write) sync the live context immediately instead of waiting for the next
+	// frame-change rebuild. Set alongside ctx.vm at population; only read while dispatching.
+	liveCtx *dispatchContext
+}
+
 // runDispatched executes bytecode starting from baseFramePointer using the standard
 // switch dispatch loop on architectures without ASM threaded dispatch.
 //

@@ -47,4 +47,24 @@ var (
 	// ErrBytecodeVerification is returned when the bytecode verifier rejects a compiled or
 	// loaded program; the wrapped error lists every violation.
 	ErrBytecodeVerification = errors.New("bytecode verification failed")
+
+	// ErrSlogOperandResult is returned when a script method an operand adapter for log/slog
+	// calls gives a result of the wrong type.
+	ErrSlogOperandResult = errors.New("script method returned an unexpected result for log/slog")
+
+	// ErrUnsupportedGenericArgument is the panic raised when a generic host function such as
+	// unique.Make or weak.Make is called with a type the bridge has no instantiation for.
+	ErrUnsupportedGenericArgument = errors.New("no instantiation of this generic function for the type")
+
+	// ErrTypeArgument is the panic value's wrapped error when a linked sibling receives a
+	// type argument its generic's constraint rules out, which the type checker prevents.
+	ErrTypeArgument = errors.New("type argument outside the generic's constraint")
+
+	// ErrCleanupArgumentIsPointer mirrors runtime.AddCleanup's refusal of an argument equal
+	// to the pointer, whose cleanup could never run.
+	ErrCleanupArgumentIsPointer = errors.New("runtime.AddCleanup: ptr is equal to arg, cleanup will never run")
+
+	// ErrCleanupPointer is the panic value's wrapped error for a runtime.AddCleanup pointer
+	// that is not a non-nil pointer.
+	ErrCleanupPointer = errors.New("runtime.AddCleanup: ptr is not a non-nil pointer")
 )

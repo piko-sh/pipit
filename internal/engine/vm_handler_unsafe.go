@@ -79,8 +79,8 @@ func handleUnsafeString(vm *VM, _ *CallFrame, registers *Registers, instruction 
 	return opContinue
 }
 
-// handleUnsafeStringData implements isa.SubOpUnsafeStringData by copying strings[B] into
-// a fresh byte buffer and storing a pointer to its first byte in general[A].
+// handleUnsafeStringDataBody implements isa.SubOpUnsafeStringData by copying strings[B]
+// into a fresh byte buffer and storing a pointer to its first byte in general[A].
 //
 // Empty source strings yield a typed nil *byte. The copy decouples the returned pointer
 // from the immutable string backing store so callers cannot mutate string memory.
@@ -91,7 +91,7 @@ func handleUnsafeString(vm *VM, _ *CallFrame, registers *Registers, instruction 
 // source string register.
 //
 // Returns OpResult indicating the next execution step.
-func handleUnsafeStringData(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleUnsafeStringDataBody(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	s := registers.Strings[instruction.B]
 
 	if len(s) == 0 {
@@ -111,9 +111,12 @@ func handleUnsafeStringData(vm *VM, _ *CallFrame, registers *Registers, instruct
 	return opContinue
 }
 
-// handleUnsafeSlice implements isa.OpUnsafeSlice. It creates a slice of the element type
-// pointed to by general[B] with length ints[C], copying each element via reflect for
-// safety.
+// handleUnsafeSlice implements unsafe.Slice.
+//
+// In safe mode the span is checked against the pointer's recorded origin first. Outside
+// it pointers have no recorded origin and, as in Go, the span is the program's
+// responsibility. The pointee is never arena memory a later allocation could reuse,
+// because taking its address moves it to the heap.
 //
 // Takes vm (*VM) which provides allocation limits and error reporting.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -141,8 +144,8 @@ func handleUnsafeSlice(vm *VM, frame *CallFrame, registers *Registers, instructi
 	if pointer.IsNil() && length > 0 {
 		return raiseNativePanicAsInterpreted(vm, newRuntimePanicError("runtime error: unsafe.Slice: ptr is nil and len is not zero"))
 	}
-	if length == 0 {
-		registers.General[instruction.A] = reflect.MakeSlice(reflect.SliceOf(elementType), 0, 0)
+	if length == 0 && pointer.IsNil() {
+		registers.General[instruction.A] = reflect.Zero(reflect.SliceOf(elementType))
 		return opContinue
 	}
 
@@ -154,27 +157,21 @@ func handleUnsafeSlice(vm *VM, frame *CallFrame, registers *Registers, instructi
 
 	elementSize := elementType.Size()
 
-	if err := vm.checkUnsafeSpan("unsafe.Slice", pointer.Pointer(), uintptr(length)*elementSize); err != nil {
-		vm.evalError = err
-		return opPanicError
+	if length != 0 {
+		if err := vm.checkUnsafeSpan("unsafe.Slice", pointer.Pointer(), uintptr(length)*elementSize); err != nil {
+			vm.evalError = err
+			return opPanicError
+		}
 	}
 
-	slice := reflect.MakeSlice(reflect.SliceOf(elementType), int(length), int(length))
-	base := pointer.UnsafePointer()
-
-	for i := range length {
-		source := reflect.NewAt(elementType, unsafe.Add(base, uintptr(i)*elementSize))
-		slice.Index(int(i)).Set(source.Elem())
-	}
-
-	registers.General[instruction.A] = slice
+	registers.General[instruction.A] = reflect.SliceAt(elementType, pointer.UnsafePointer(), int(length))
 
 	return opContinue
 }
 
-// handleUnsafeSliceData implements isa.SubOpUnsafeSliceData. It stores the address of the
-// first element of general[B] in general[A], or a nil pointer when the slice is empty or
-// invalid.
+// handleUnsafeSliceDataBody implements isa.SubOpUnsafeSliceData. It stores the address of
+// the first element of general[B] in general[A], or a nil pointer when the slice is empty
+// or invalid.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -183,11 +180,11 @@ func handleUnsafeSlice(vm *VM, frame *CallFrame, registers *Registers, instructi
 // source slice register.
 //
 // Returns OpResult indicating the next execution step.
-func handleUnsafeSliceData(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleUnsafeSliceDataBody(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	s := registers.General[instruction.B]
 
 	if !s.IsValid() {
-		vMPanicInvalidRegister("handleUnsafeSliceData", "slice", instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleUnsafeSliceDataBody", "slice", instruction.B, instruction, frame, registers)
 	}
 	if s.Len() == 0 {
 		elementType := s.Type().Elem()

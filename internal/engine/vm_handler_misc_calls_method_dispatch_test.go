@@ -20,6 +20,7 @@ package engine
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -46,6 +47,18 @@ type dispatchInterfaceOuter struct {
 }
 
 type dispatchSpeaker interface{ Speak() string }
+
+type dispatchHolder any
+
+type dispatchLink struct {
+	dispatchHolder
+	Depth int
+}
+
+type dispatchPair struct {
+	dispatchHolder
+	dispatchOuter
+}
 
 func methodTableVM(t *testing.T, table map[string]uint16) *VM {
 	t.Helper()
@@ -204,8 +217,75 @@ func TestResolvePromotedMethodUnwrapsInterfaceReceivers(t *testing.T) {
 
 		vm := methodTableVM(t, map[string]uint16{"dispatchBase.Ping": 3})
 
-		_, _, found := resolvePromotedMethodAtDepth(vm, reflect.ValueOf(dispatchOuter{}), "Ping", maxPromotedMethodDepth)
+		search := promotionSearch{vm: vm, methodName: "Ping", interfaceHops: 0, reachedNil: false}
+		_, _, found := search.at(reflect.ValueOf(dispatchOuter{}), maxPromotedMethodDepth)
 		require.False(t, found, "a cyclic embedding must not recurse without bound")
+	})
+}
+
+func TestPromotionThroughEmbeddedInterfacesFollowsEachValue(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a chain of interfaces deeper than the static bound resolves", func(t *testing.T) {
+		t.Parallel()
+
+		vm := methodTableVM(t, map[string]uint16{"dispatchBase.Ping": 3})
+		var held dispatchHolder = &dispatchBase{Value: 9}
+		for range 4 * maxPromotedMethodDepth {
+			held = &dispatchLink{dispatchHolder: held}
+		}
+
+		index, resolved, found := resolvePromotedMethod(vm, reflect.ValueOf(held), "Ping")
+		require.True(t, found)
+		require.Equal(t, uint16(3), index)
+		require.Equal(t, &dispatchBase{Value: 9}, resolved.Interface())
+	})
+
+	t.Run("a cycle through an interface stops at the call depth limit", func(t *testing.T) {
+		t.Parallel()
+
+		vm := methodTableVM(t, map[string]uint16{"dispatchBase.Ping": 3})
+		vm.Limits.MaxCallDepth = 50
+		link := &dispatchLink{}
+		link.dispatchHolder = link
+
+		search := promotionSearch{vm: vm, methodName: "Ping", interfaceHops: 0, reachedNil: false}
+		_, _, found := search.at(reflect.ValueOf(link), 0)
+		require.False(t, found)
+		require.Equal(t, 51, search.interfaceHops)
+		require.False(t, search.reachedNil)
+	})
+
+	tests := []struct {
+		name     string
+		receiver reflect.Value
+	}{
+		{name: "a nil embedded interface", receiver: reflect.ValueOf(&dispatchLink{})},
+		{name: "a nil embedded pointer", receiver: reflect.ValueOf(dispatchPointerOuter{})},
+		{name: "a nil receiver", receiver: reflect.ValueOf((*dispatchLink)(nil))},
+		{name: "a nil interface further down the chain", receiver: reflect.ValueOf(&dispatchLink{dispatchHolder: &dispatchLink{}})},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name+" is recorded as reaching nil", func(t *testing.T) {
+			t.Parallel()
+
+			vm := methodTableVM(t, map[string]uint16{"dispatchBase.Ping": 3})
+			search := promotionSearch{vm: vm, methodName: "Ping", interfaceHops: 0, reachedNil: false}
+			_, _, found := search.at(tt.receiver, 0)
+			require.False(t, found)
+			require.True(t, search.reachedNil)
+		})
+	}
+
+	t.Run("a method found past a nil sibling is still found", func(t *testing.T) {
+		t.Parallel()
+
+		vm := methodTableVM(t, map[string]uint16{"dispatchBase.Ping": 3})
+		receiver := dispatchPair{dispatchHolder: nil, dispatchOuter: dispatchOuter{dispatchBase: dispatchBase{Value: 5}}}
+
+		index, _, found := resolvePromotedMethod(vm, reflect.ValueOf(receiver), "Ping")
+		require.True(t, found)
+		require.Equal(t, uint16(3), index)
 	})
 }
 
@@ -318,7 +398,7 @@ func methodDispatchFrame(t *testing.T, methodName string, table map[string]uint1
 	nameIndex := builder.addStringConst(methodName)
 	siteIndex := builder.AddCallSite(&program.CallSite{
 		Arguments: []program.VarLocation{{Kind: isa.RegisterGeneral, Register: 1}},
-		Returns:   []program.VarLocation{{Kind: isa.RegisterInt, Register: 0}},
+		Returns:   []program.VarLocation{{Kind: isa.RegisterInt64, Register: 0}},
 	})
 	builder.Emit(isa.OpDrillTier1, 0, 0, 0)
 	builder.body = append(builder.body, op(nameIndex, 0, 0))
@@ -494,4 +574,60 @@ func TestCallMethodResolvesThroughTheExternalTable(t *testing.T) {
 	require.Equal(t, opFrameChanged, handleCallMethod(vm, frame, registers, callSlotOperands(siteIndex)),
 		"a method another package registered still has to be reachable")
 	require.Same(t, callee, vm.CallStack[vm.FramePointer].Function)
+}
+
+func TestMethodKeyLookupsFindTheTypeAndMethodWithoutBuildingAKey(t *testing.T) {
+	long := strings.Repeat("VeryLongTypeName", 8)
+	table := map[string]uint16{"main.T.Run": 1, long + ".Run": 2}
+	tests := []struct {
+		typeName string
+
+		methodName string
+
+		want uint16
+
+		found bool
+	}{
+		{typeName: "main.T", methodName: "Run", want: 1, found: true},
+		{typeName: long, methodName: "Run", want: 2, found: true},
+		{typeName: "main.T", methodName: "Stop", found: false},
+		{typeName: "main", methodName: "T.Run", want: 1, found: true},
+		{typeName: "", methodName: "", found: false},
+	}
+	for _, tt := range tests {
+		got, found := lookupMethodKey(table, tt.typeName, tt.methodName)
+		require.Equal(t, tt.found, found, "%s.%s", tt.typeName, tt.methodName)
+		require.Equal(t, tt.want, got, "%s.%s", tt.typeName, tt.methodName)
+	}
+	if !raceDetectorOn {
+		allocations := testing.AllocsPerRun(100, func() {
+			if _, found := lookupMethodKey(table, "main.T", "Run"); !found {
+				t.Fatal("main.T.Run must be found")
+			}
+		})
+		require.Zero(t, allocations, "a key that fits the stack buffer is never built on the heap")
+	}
+
+	store := NewGlobalStore()
+	store.externalMethods = map[string]externalMethodEntry{"main.T.Run": {methodIndex: 4, rootFunction: &program.CompiledFunction{}}}
+	entry, found := store.lookupExternalMethodOf("main.T", "Run")
+	require.True(t, found)
+	require.Equal(t, uint16(4), entry.methodIndex)
+	_, found = store.lookupExternalMethodOf("main.T", "Stop")
+	require.False(t, found)
+	var nilStore *GlobalStore
+	_, found = nilStore.lookupExternalMethodOf("main.T", "Run")
+	require.False(t, found)
+}
+
+func TestTheDispatchTypeWordKeysAPointerReceiverOnItsElementType(t *testing.T) {
+	t.Parallel()
+
+	value := reflect.ValueOf(dispatchBase{Value: 1})
+	pointer := reflect.ValueOf(&dispatchBase{Value: 2})
+	want := uintptr(reflectValueABIType(reflect.TypeFor[dispatchBase]()))
+	require.Equal(t, want, receiverDispatchTypeWord(&value), "the word is the type's runtime descriptor, as the cache entries record it")
+	require.Equal(t, want, receiverDispatchTypeWord(&pointer), "*T and T reach the same cache entry")
+	var invalid reflect.Value
+	require.Zero(t, receiverDispatchTypeWord(&invalid))
 }

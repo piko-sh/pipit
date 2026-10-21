@@ -141,7 +141,7 @@ func TestSpecJumpFlagMatchesPredicate(t *testing.T) {
 		if layout == isa.JumpLayoutNone || layout == isa.JumpLayoutMultiWay {
 			continue
 		}
-		body := []isa.Instruction{instr, isa.NewInstruction(isa.OpExt, 0, 0, 0), isa.NewInstruction(isa.OpExt, 0, 0, 0)}
+		body := []isa.Instruction{instr, isa.NewInstruction(isa.OpExtension, 0, 0, 0), isa.NewInstruction(isa.OpExtension, 0, 0, 0)}
 		_, ok := program.JumpTargetAt(body, 0)
 		require.Truef(t, ok, "spec row %s is flagged as a jump but JumpTargetAt does not decode it", row)
 	}

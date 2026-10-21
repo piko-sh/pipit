@@ -19,6 +19,8 @@
 package adapters
 
 import (
+	"reflect"
+	"strings"
 	"testing"
 
 	flatbuffers "github.com/google/flatbuffers/go"
@@ -52,6 +54,7 @@ func TestBytecodeFunctionVectorCensus(t *testing.T) {
 		"methods":             schemagen.CompiledFunctionAddMethodTable,
 		"layouts":             schemagen.CompiledFunctionAddStructLayoutTable,
 		"interfaces":          schemagen.CompiledFunctionAddTypeTableInterfaceMethods,
+		"receiver-methods":    schemagen.CompiledFunctionAddReceiverMethods,
 	}
 	for name, setter := range setters {
 		t.Run(name, func(t *testing.T) {
@@ -176,6 +179,7 @@ func TestBytecodeFileVectorCensus(t *testing.T) {
 		"entrypoints":  schemagen.CompiledFileSetAddEntrypoints,
 		"initialisers": schemagen.CompiledFileSetAddInitialisationFunctions,
 		"variables":    schemagen.CompiledFileSetAddPackageVariables,
+		"interfaces":   schemagen.CompiledFileSetAddNamedInterfaces,
 	}
 	for name, setter := range setters {
 		t.Run(name, func(t *testing.T) {
@@ -190,6 +194,108 @@ func TestBytecodeFileVectorCensus(t *testing.T) {
 			require.Nil(t, loaded, "the file vector is charged before access")
 			require.ErrorIs(t, err, errCorruptBytecodePayload)
 			require.Contains(t, err.Error(), "vector expansion exceeds")
+		})
+	}
+}
+
+func namedInterfacePayload(entries, methods int, name string) []byte {
+	builder := flatbuffers.NewBuilder(32768)
+	method := builder.CreateString("Method")
+	schemagen.NamedInterfaceEntryStartMethodsVector(builder, methods)
+	for range methods {
+		builder.PrependUOffsetT(method)
+	}
+	methodVector := builder.EndVector(methods)
+	path := builder.CreateString("main")
+	interfaceName := builder.CreateString(name)
+	schemagen.NamedInterfaceEntryStart(builder)
+	schemagen.NamedInterfaceEntryAddPackagePath(builder, path)
+	schemagen.NamedInterfaceEntryAddName(builder, interfaceName)
+	schemagen.NamedInterfaceEntryAddMethods(builder, methodVector)
+	entry := schemagen.NamedInterfaceEntryEnd(builder)
+	schemagen.CompiledFileSetStartNamedInterfacesVector(builder, entries)
+	for range entries {
+		builder.PrependUOffsetT(entry)
+	}
+	interfaces := builder.EndVector(entries)
+	schemagen.CompiledFileSetStart(builder)
+	schemagen.CompiledFileSetAddNamedInterfaces(builder, interfaces)
+	root := schemagen.CompiledFileSetEnd(builder)
+	builder.Finish(root)
+	return builder.FinishedBytes()
+}
+
+func TestBytecodeRejectsAliasedNamedInterfaceExpansion(t *testing.T) {
+	t.Parallel()
+	payload := namedInterfacePayload(512, 4096, "Namer")
+	require.LessOrEqual(t, len(payload), 32768, "the fixture stays compact")
+	loaded, err := decodeCompiledFileSet(t.Context(), payload, symtab.NewSymbolRegistry(nil))
+	require.Nil(t, loaded, "aliased method vectors stop before reconstruction")
+	require.ErrorIs(t, err, errCorruptBytecodePayload)
+	require.Contains(t, err.Error(), "vector expansion exceeds")
+}
+
+func TestBytecodeRejectsAliasedNamedInterfaceNames(t *testing.T) {
+	t.Parallel()
+	payload := namedInterfacePayload(512, 1, "N"+strings.Repeat("x", 32767))
+	require.LessOrEqual(t, len(payload), 40960, "the fixture stays compact")
+	loaded, err := decodeCompiledFileSet(t.Context(), payload, symtab.NewSymbolRegistry(nil))
+	require.Nil(t, loaded, "aliased names stop before reconstruction")
+	require.ErrorIs(t, err, errCorruptBytecodePayload)
+	require.Contains(t, err.Error(), "string expansion exceeds")
+}
+
+func receiverMethodPayload(functions, entries int) []byte {
+	builder := flatbuffers.NewBuilder(32768)
+	schemagen.TypeDescriptorStart(builder)
+	schemagen.TypeDescriptorAddBasicKind(builder, byte(reflect.Int))
+	receiver := schemagen.TypeDescriptorEnd(builder)
+	schemagen.ReceiverMethodEntryStart(builder)
+	schemagen.ReceiverMethodEntryAddReceiverTypeDescriptor(builder, receiver)
+	entry := schemagen.ReceiverMethodEntryEnd(builder)
+	schemagen.CompiledFunctionStartReceiverMethodsVector(builder, entries)
+	for range entries {
+		builder.PrependUOffsetT(entry)
+	}
+	table := builder.EndVector(entries)
+	schemagen.CompiledFunctionStart(builder)
+	schemagen.CompiledFunctionAddReceiverMethods(builder, table)
+	leaf := schemagen.CompiledFunctionEnd(builder)
+	schemagen.CompiledFunctionStartFunctionsVector(builder, functions)
+	for range functions {
+		builder.PrependUOffsetT(leaf)
+	}
+	children := builder.EndVector(functions)
+	schemagen.CompiledFunctionStart(builder)
+	schemagen.CompiledFunctionAddFunctions(builder, children)
+	function := schemagen.CompiledFunctionEnd(builder)
+	schemagen.CompiledFileSetStart(builder)
+	schemagen.CompiledFileSetAddRoot(builder, function)
+	root := schemagen.CompiledFileSetEnd(builder)
+	builder.Finish(root)
+	return builder.FinishedBytes()
+}
+
+func TestBytecodeRejectsAliasedReceiverMethodExpansion(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		functions int
+		entries   int
+		want      string
+	}{
+		{name: "aliased tables across functions", functions: 512, entries: 4096, want: "type expansion exceeds"},
+		{name: "aliased entries in fewer functions", functions: 64, entries: 2048, want: "type expansion exceeds"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			payload := receiverMethodPayload(tt.functions, tt.entries)
+			require.LessOrEqual(t, len(payload), 32768, "the fixture stays compact")
+			loaded, err := decodeCompiledFileSet(t.Context(), payload, symtab.NewSymbolRegistry(nil))
+			require.Nil(t, loaded, "aliased receiver tables stop before reconstruction")
+			require.ErrorIs(t, err, errCorruptBytecodePayload)
+			require.Contains(t, err.Error(), tt.want)
 		})
 	}
 }

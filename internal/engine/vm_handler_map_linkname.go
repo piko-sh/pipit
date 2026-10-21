@@ -25,7 +25,11 @@ import (
 	"unsafe"
 
 	"piko.sh/safeconv"
+	"pipit.sh/pipit/internal/engine/program"
 )
+
+// mapFastPathZeroElem supplies zero bytes for any element the map fast paths can store.
+var mapFastPathZeroElem [mapFastPathMaxElemBytes]byte
 
 // runtimeMapaccess2Fast64 is a direct linkname to runtime.mapaccess2_fast64, bypassing
 // reflect's generic mapaccess path for int64-keyed maps. The signature must match the
@@ -98,9 +102,6 @@ func runtimeMapaccess2Faststr(t unsafe.Pointer, m unsafe.Pointer, key string) (u
 //go:noescape
 func runtimeMapassignFaststr(t unsafe.Pointer, m unsafe.Pointer, key string) unsafe.Pointer
 
-// mapFastPathZeroElem supplies zero bytes for any element the map fast paths can store.
-var mapFastPathZeroElem [mapFastPathMaxElemBytes]byte
-
 // mapAccessFast64ToGeneral does a direct runtime.mapaccess2_fast64 against an int64-keyed
 // map, resolving the underlying *Map pointer from the reflect.Value.
 //
@@ -134,8 +135,8 @@ func mapAccessFast64ToGeneral(mapValue reflect.Value, key int64) (unsafe.Pointer
 
 // mapAccessFastStrToGeneral reads a string-keyed map via the runtime fast path.
 //
-// Mirrors mapAccessFast64ToGeneral exactly; only the linkname symbol and the key type
-// differ. Used by handleMapGetStringGeneral and handleMapIndexOkStringGeneral. Returns
+// Mirrors mapAccessFast64ToGeneral exactly. Only the linkname symbol and the key type
+// differ. Used by handleGetMapStringGeneral and handleGetMapStringGeneralOk. Returns
 // (nil, false) when caller should fall back to the reflect path (map is nil, etc.).
 //
 // Takes mapValue (reflect.Value) which must be a Map kind value with string keys.
@@ -166,9 +167,8 @@ func mapAccessFastStrToGeneral(mapValue reflect.Value, key string) (unsafe.Point
 
 // mapAssignFastStr returns the value slot pointer for a string key.
 //
-// Allocates the slot if absent. Caller must initialise the slot via runtimeTypedmemmove
-// with the map's value-type abi pointer. Mirrors the read-side helpers; used by
-// handleMapSetStringGeneral.
+// Caller must initialise the slot via runtimeTypedmemmove with the map's value-type abi
+// pointer.
 //
 // Takes mapValue (reflect.Value) which must be a Map kind value with string keys.
 // Takes key (string) which is the key to assign.
@@ -240,7 +240,7 @@ func mapHasStringKeyAndWordIntElem(mapType reflect.Type) bool {
 	return (elem.Kind() == reflect.Int || elem.Kind() == reflect.Int64) && elem.Size() == uintptr(int64BoxBytes)
 }
 
-// mapSetStringIntProbeFirst stores an int64 element under a string key via
+// setMapStringInt64ProbeFirst stores an int64 element under a string key via
 // mapSetStringProbeFirst.
 //
 // Takes vm (*VM) which owns the arena.
@@ -248,8 +248,9 @@ func mapHasStringKeyAndWordIntElem(mapType reflect.Type) bool {
 // Takes key (string) which is the raw key.
 // Takes value (int64) which is the element to store.
 //
-// Returns true when written, false when the reflect fallback must run.
-func mapSetStringIntProbeFirst(vm *VM, m reflect.Value, key string, value int64) bool {
+// Returns bool which is true when the value was written, and false when the reflect
+// fallback must run.
+func setMapStringInt64ProbeFirst(vm *VM, m reflect.Value, key string, value int64) bool {
 	if !mapHasStringKeyAndWordIntElem(m.Type()) {
 		return false
 	}
@@ -258,8 +259,8 @@ func mapSetStringIntProbeFirst(vm *VM, m reflect.Value, key string, value int64)
 	})
 }
 
-// mapAddStringIntProbeFirst adds delta to the int64 element under a string key via
-// mapSetStringProbeFirst; a fresh slot from mapassign is zeroed, so the same writer
+// addToMapStringInt64ProbeFirst adds delta to the int64 element under a string key via
+// mapSetStringProbeFirst. A fresh slot from mapassign is zeroed, so the same writer
 // serves both hit and miss.
 //
 // Takes vm (*VM) which owns the arena.
@@ -267,8 +268,9 @@ func mapSetStringIntProbeFirst(vm *VM, m reflect.Value, key string, value int64)
 // Takes key (string) which is the raw key.
 // Takes delta (int64) which is added to the element.
 //
-// Returns true when written, false when the reflect fallback must run.
-func mapAddStringIntProbeFirst(vm *VM, m reflect.Value, key string, delta int64) bool {
+// Returns bool which is true when the value was written, and false when the reflect
+// fallback must run.
+func addToMapStringInt64ProbeFirst(vm *VM, m reflect.Value, key string, delta int64) bool {
 	if !mapHasStringKeyAndWordIntElem(m.Type()) {
 		return false
 	}
@@ -277,7 +279,7 @@ func mapAddStringIntProbeFirst(vm *VM, m reflect.Value, key string, delta int64)
 	})
 }
 
-// mapSetStringStringProbeFirst stores a string element under a string key via
+// setMapStringStringProbeFirst stores a string element under a string key via
 // mapSetStringProbeFirst. The element is materialised because the map is heap-owned.
 //
 // Takes vm (*VM) which owns the arena.
@@ -285,8 +287,9 @@ func mapAddStringIntProbeFirst(vm *VM, m reflect.Value, key string, delta int64)
 // Takes key (string) which is the raw key.
 // Takes value (string) which is the raw element.
 //
-// Returns true when written, false when the reflect fallback must run.
-func mapSetStringStringProbeFirst(vm *VM, m reflect.Value, key, value string) bool {
+// Returns bool which is true when the value was written, and false when the reflect
+// fallback must run.
+func setMapStringStringProbeFirst(vm *VM, m reflect.Value, key, value string) bool {
 	mapType := m.Type()
 	if mapType.Key().Kind() != reflect.String || mapType.Elem().Kind() != reflect.String {
 		return false
@@ -297,26 +300,98 @@ func mapSetStringStringProbeFirst(vm *VM, m reflect.Value, key, value string) bo
 	})
 }
 
-// mapSetStringGeneralProbeFirst stores a coerced element under a string key using the
-// runtime write barrier. The value must have the map's exact element type and fit
-// inline.
+// setMapStringGeneralProbeFirst stores a coerced element under a string key using the
+// runtime write barrier. The value must fit inline and have the map's exact element type,
+// or be one emptyInterfaceBox() can hold when the element is an empty interface.
 //
 // Takes vm (*VM) which owns the arena.
 // Takes m (reflect.Value) which is the map.
+// Takes types (mapAccessCacheEntry) which holds the map's key and element types.
 // Takes key (string) which is the raw key.
-// Takes value (reflect.Value) which is the element; invalid stores the zero element.
+// Takes value (reflect.Value) which is the element. invalid stores the zero element.
 //
-// Returns true when written, false when the reflect fallback must run.
-func mapSetStringGeneralProbeFirst(vm *VM, m reflect.Value, key string, value reflect.Value) bool {
-	mapType := m.Type()
-	elemType := mapType.Elem()
-	if mapType.Key().Kind() != reflect.String || !mapElemStoredInline(elemType) || (value.IsValid() && value.Type() != elemType) {
+// Returns bool which is true when the value was written, and false when the reflect
+// fallback must run.
+func setMapStringGeneralProbeFirst(vm *VM, m reflect.Value, types mapAccessCacheEntry, key string, value reflect.Value) bool {
+	elemType := types.elemType
+	if types.keyType.Kind() != reflect.String || !types.elemInline {
 		return false
 	}
 	elemABIType := reflectValueABIType(elemType)
+	if value.IsValid() && value.Type() != elemType {
+		box, ok := emptyInterfaceBox(elemType, value)
+		return ok && mapSetStringProbeFirst(vm, m, key, func(slot unsafe.Pointer) {
+			runtimeTypedmemmove(elemABIType, slot, unsafe.Pointer(&box[0]))
+		})
+	}
 	return mapSetStringProbeFirst(vm, m, key, func(slot unsafe.Pointer) {
 		writeReflectValueToSlot(elemABIType, slot, value)
 	})
+}
+
+// setMapInt64BoxedFast stores a value of a concrete type under an 8-byte integer key in a
+// map whose elements are empty interfaces, writing the interface into the slot.
+//
+// Takes m (reflect.Value) which is the map, whose key the caller has found to be an
+// 8-byte integer.
+// Takes elemType (reflect.Type) which is the map's element type.
+// Takes key (int64) which is the key.
+// Takes value (reflect.Value) which is the coerced element.
+//
+// Returns bool which is true when the value was written, and false when the reflect
+// fallback must run.
+func setMapInt64BoxedFast(m reflect.Value, elemType reflect.Type, key int64, value reflect.Value) bool {
+	if !mapElemStoredInline(elemType) {
+		return false
+	}
+	box, ok := emptyInterfaceBox(elemType, value)
+	mapRaw := (*unsafeReflectValue)(unsafe.Pointer(&m))
+	mapPtr := dereferenceIndirectPointer(mapRaw)
+	if !ok || mapPtr == nil {
+		return false
+	}
+	slot := runtimeMapassignFast64(mapRaw.typ, mapPtr, safeconv.Int64ToUint64Reinterpret(key))
+	if slot == nil {
+		return false
+	}
+	runtimeTypedmemmove(reflectValueABIType(elemType), slot, unsafe.Pointer(&box[0]))
+	return true
+}
+
+// emptyInterfaceBox builds the two words of an empty interface that holds value, as
+// reflect does when it stores a value in an interface slot.
+//
+// A pointer-shaped value is the data word itself. A scalar, string or slice is pointed
+// to, and is copied first when it is addressable, since something may still write the
+// variable it was read from. Structs and arrays are left to reflect, which knows which of
+// them are pointer-shaped, as are values reflect would refuse to store.
+//
+// Takes slotType (reflect.Type) which is the type of the slot the interface goes into.
+// Takes value (reflect.Value) which is the value to hold.
+//
+// Returns [2]unsafe.Pointer which is the type word and the data word.
+// Returns bool which is false when the slot is not an empty interface or the value is one
+// this does not box.
+func emptyInterfaceBox(slotType reflect.Type, value reflect.Value) ([2]unsafe.Pointer, bool) {
+	raw := (*unsafeReflectValue)(unsafe.Pointer(&value))
+	if slotType.Kind() != reflect.Interface || slotType.NumMethod() != 0 || raw.typ == nil || raw.flag&licenceFlagRO != 0 {
+		return [2]unsafe.Pointer{}, false
+	}
+	kind := reflect.Kind(raw.flag & flagKindMask)
+	switch {
+	case raw.flag&flagIndir == 0:
+		return [2]unsafe.Pointer{raw.typ, raw.ptr}, true
+	case program.HeldKindIsDirectPointer(kind):
+		return [2]unsafe.Pointer{raw.typ, *(*unsafe.Pointer)(raw.ptr)}, true
+	case kind == reflect.Interface || kind == reflect.Struct || kind == reflect.Array:
+		return [2]unsafe.Pointer{}, false
+	case raw.flag&flagAddr == 0:
+		return [2]unsafe.Pointer{raw.typ, raw.ptr}, true
+	default:
+		held := reflect.New(value.Type()).UnsafePointer()
+		runtimeTypedmemmove(raw.typ, held, raw.ptr)
+		return [2]unsafe.Pointer{raw.typ, held}, true
+	}
 }
 
 // writeReflectValueToSlot copies value into slot with runtime.typedmemmove, or zeroes the
@@ -346,8 +421,7 @@ func writeReflectValueToSlot(elemABIType, slot unsafe.Pointer, value reflect.Val
 // Takes key (int64) which is the 8-byte-kinded key value.
 // Takes rawValue (reflect.Value) which is the value to store.
 //
-// Only pointer elements qualify because runtime.mapassign_fast64 requires inline
-// storage.
+// Only pointer elements qualify because runtime.mapassign_fast64 requires inline storage.
 //
 // Returns true when the fast path stored the value, false to fall back.
 func mapSetFast64PointerKeyed(vm *VM, m reflect.Value, elemType reflect.Type, key int64, rawValue reflect.Value) bool {
@@ -363,7 +437,9 @@ func mapSetFast64PointerKeyed(vm *VM, m reflect.Value, elemType reflect.Type, ke
 	if !valueValue.IsValid() || valueValue.Kind() != reflect.Pointer {
 		return false
 	}
+	before := vm.Arena.licenceNoteSeq()
 	valueValue = MaterialiseArenaValue(vm.Arena, valueValue)
+	noteHandOffAfter(vm.Arena, handOffUntracedContainer, valueValue, false, before)
 	valueRaw := (*unsafeReflectValue)(unsafe.Pointer(&valueValue))
 	ptrValue := dereferenceIndirectPointer(valueRaw)
 	assertMapElemInline(m)
@@ -388,12 +464,52 @@ func dereferenceIndirectPointer(raw *unsafeReflectValue) unsafe.Pointer {
 	return raw.ptr
 }
 
-// assertMapElemInline panics in paranoid arena builds if a map fast path is used with
-// an element stored indirectly.
+// assertMapElemInline panics in paranoid arena builds if a map fast path is used with an
+// element stored indirectly.
 //
 // Takes mapValue (reflect.Value) which is the map about to be accessed.
 func assertMapElemInline(mapValue reflect.Value) {
 	if arenaParanoidEnabled && !mapElemStoredInline(mapValue.Type().Elem()) {
 		panic(newInvariantError("map fast path on %s, whose %d-byte element is stored indirectly", mapValue.Type(), mapValue.Type().Elem().Size()))
 	}
+}
+
+// appendStringInLocalMapSlot appends element to the []string a string-keyed map holds
+// under key, in the map's own slot, when the licence checker granted the store.
+//
+// Nothing is handed off, as in a granted OpSetMapStringGeneral, since only the running VM
+// can reach the map. A key the map does not hold is materialised before it is planted, as
+// mapSetStringProbeFirst() does.
+//
+// Takes vm (*VM) which owns the arena.
+// Takes frame (*CallFrame) which is the running frame, its program counter past the
+// instruction.
+// Takes m (reflect.Value) which is the map.
+// Takes key (string) which is the raw key from the string bank.
+// Takes element (string) which is the element to append.
+//
+// Returns bool which is false when the caller must run the lookup, append and store as
+// separate steps.
+func appendStringInLocalMapSlot(vm *VM, frame *CallFrame, m reflect.Value, key, element string) bool {
+	types := resolveMapAccessCache(vm, m.Type())
+	if types.keyType.Kind() != reflect.String || types.elemType != stringSliceReflectType || m.IsNil() {
+		return false
+	}
+	slot, present := mapAccessFastStrToGeneral(m, key)
+	if limit := vm.Limits.MaxAllocSize; limit > 0 && present && len(*(*[]string)(slot))+1 > limit {
+		return false
+	}
+	if !localContainerStore(vm.Arena, frame, m) {
+		return false
+	}
+	var current []string
+	if present {
+		current = *(*[]string)(slot)
+	}
+	grown := arenaAppendString(vm.Arena, current, MaterialiseStringForArenaAppend(vm.Arena, current, element))
+	if !present {
+		slot = mapAssignFastStr(m, materialiseString(vm.Arena, key))
+	}
+	*(*[]string)(slot) = grown
+	return true
 }

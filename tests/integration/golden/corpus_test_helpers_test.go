@@ -24,6 +24,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -37,6 +41,7 @@ import (
 	"pipit.sh/pipit/internal/debug"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
+	"pipit.sh/pipit/internal/symtab/typemodel"
 	"pipit.sh/pipit/sdk/stdlib"
 )
 
@@ -52,11 +57,12 @@ const (
 )
 
 type corpusCase struct {
-	name     string
-	source   string
-	assembly string
-	keys     map[string]struct{}
-	err      error
+	name           string
+	source         string
+	assembly       string
+	keys           map[string]struct{}
+	err            error
+	namedComposite bool
 }
 
 var (
@@ -99,7 +105,7 @@ func compileCorpus(t *testing.T) []corpusCase {
 		}
 		data, readErr := os.ReadFile(filepath.Join(snippetsDir, entry.Name(), snippetFileName))
 		require.NoError(t, readErr, "reading snippet %s", entry.Name())
-		cases = append(cases, corpusCase{name: entry.Name(), source: string(data)})
+		cases = append(cases, corpusCase{name: entry.Name(), source: string(data), namedComposite: declaresNamedCompositeType(t, string(data))})
 	}
 
 	workers := max(runtime.GOMAXPROCS(0), 1)
@@ -108,7 +114,7 @@ func compileCorpus(t *testing.T) []corpusCase {
 	for range workers {
 		wg.Go(func() {
 			for index := range indices {
-				cases[index].compile(newGoldenService())
+				cases[index].compile(t.Context(), newGoldenService())
 			}
 		})
 	}
@@ -121,8 +127,8 @@ func compileCorpus(t *testing.T) []corpusCase {
 	return cases
 }
 
-func (c *corpusCase) compile(service *app.Service) {
-	cfs, err := compileGolden(context.Background(), service, c.source)
+func (c *corpusCase) compile(ctx context.Context, service *app.Service) {
+	cfs, err := compileGolden(ctx, service, c.source)
 	if err != nil {
 		c.err = err
 		c.keys = map[string]struct{}{}
@@ -130,6 +136,32 @@ func (c *corpusCase) compile(service *app.Service) {
 	}
 	c.assembly = debug.DisassembleAssembly(cfs)
 	c.keys = collectInstructionKeys(cfs)
+}
+
+func (c *corpusCase) recordedForThisBuild() bool {
+	return !c.namedComposite || typemodel.NamedCompositeTypesSupported()
+}
+
+func declaresNamedCompositeType(t *testing.T, source string) bool {
+	t.Helper()
+	file, err := parser.ParseFile(token.NewFileSet(), snippetFileName, source, parser.SkipObjectResolution)
+	require.NoError(t, err, "parsing a snippet")
+	found := false
+	ast.Inspect(file, func(node ast.Node) bool {
+		spec, ok := node.(*ast.TypeSpec)
+		if !ok || spec.Assign.IsValid() {
+			return !found
+		}
+		switch declared := spec.Type.(type) {
+		case *ast.StructType, *ast.InterfaceType:
+		case *ast.Ident:
+			found = found || types.Universe.Lookup(declared.Name) == nil
+		default:
+			found = true
+		}
+		return !found
+	})
+	return found
 }
 
 func (c *corpusCase) hash() string {

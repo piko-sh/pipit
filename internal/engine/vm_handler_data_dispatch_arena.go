@@ -26,6 +26,7 @@ import (
 
 	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
+	"pipit.sh/pipit/internal/symtab/typemodel"
 )
 
 const (
@@ -36,6 +37,19 @@ const (
 	hostMaterialiseLeafBudget = 65536
 )
 
+// compositeRewrite is a struct or array being materialised, copied on its first rewritten
+// element.
+type compositeRewrite struct {
+	// source is the original value.
+	source reflect.Value
+
+	// work holds source until a copy is needed, then holds the copy for further changes.
+	work reflect.Value
+
+	// copied is true once work is a copy.
+	copied bool
+}
+
 // ResetTypeIsPointerFreeCacheForTest installs an empty cache so successive test runs
 // cannot observe pointer-free decisions from a previous test.
 //
@@ -44,6 +58,9 @@ func ResetTypeIsPointerFreeCacheForTest() {
 	typeIsPointerFreeMu.Lock()
 	defer typeIsPointerFreeMu.Unlock()
 	typeIsPointerFreeCache.Store(new(make(map[unsafe.Pointer]bool, typeIsPointerFreeCacheInitialHint)))
+	for index := range typeIsPointerFreeFront {
+		typeIsPointerFreeFront[index].Store(0)
+	}
 }
 
 // ValueCopyForBoundary enforces Go's value-copy semantics at general-bank boundaries by
@@ -69,14 +86,13 @@ func ValueCopyForBoundary(v reflect.Value) reflect.Value {
 // MaterialiseArenaValue copies arena-backed structs, arrays and slices to the heap and
 // clones strings that may belong to a foreign arena.
 //
-// Foreign strings nested in shared containers are left untouched to avoid rewriting
-// maps another goroutine may use.
+// Foreign strings nested in shared containers are left untouched to avoid rewriting maps
+// another goroutine may use.
 //
 // Takes arena (*RegisterArena) which owns the candidate slabs.
 // Takes v (reflect.Value) which is the value about to escape.
 //
-// Returns the heap-materialised equivalent of v when it was arena-backed, or v
-// unchanged.
+// Returns the heap-materialised equivalent of v when it was arena-backed, or v unchanged.
 func MaterialiseArenaValue(arena *RegisterArena, v reflect.Value) reflect.Value {
 	if !v.IsValid() || arena == nil {
 		return v
@@ -84,13 +100,48 @@ func MaterialiseArenaValue(arena *RegisterArena, v reflect.Value) reflect.Value 
 	if clone, ok := cloneForeignStringValue(arena, v); ok {
 		return clone
 	}
-	if !arenaUsesUnsafeSlabs && !arenaResidentCompositeKind(v.Kind()) {
+	if !arena.licensed && v.Kind() == reflect.Pointer {
 		return v
+	}
+	if !arenaUsesUnsafeSlabs && !arenaResidentCompositeKind(v.Kind()) {
+		return revokeRemainder(arena, handOffUntracedContainer, v, false)
 	}
 	if v.Kind() == reflect.Slice && !arena.ownsSliceBackingOf(v) {
-		return v
+		return revokeRemainder(arena, handOffUntracedContainer, v, false)
 	}
-	return materialiseArenaValueUnconditional(arena, v)
+	if arena.licensed {
+		switch v.Kind() {
+		case reflect.Slice:
+			optimisticCloneSliceStrings(arena, v)
+			return revokeRemainder(arena, handOffUntracedContainer, keepArenaSliceIdentity(arena, v), false)
+		case reflect.Map:
+			return revokeRemainder(arena, handOffUntracedContainer, v, false)
+		default:
+		}
+	}
+	return revokeRemainder(arena, handOffUntracedContainer, materialiseArenaValueUnconditional(arena, v), false)
+}
+
+// revokeRemainder is licensed reuse's catch-all at a materialising store or escape.
+//
+// Whatever the copy left referencing the arena (a pointer kept by identity, a heap slice
+// whose elements were passed through) is revoked. For an arena without a licence it does
+// nothing, and it never touches the would-revoke counters.
+//
+// Takes arena (*RegisterArena) which may be nil.
+// Takes cause (HandOffCause) which names the hand-off.
+// Takes value (reflect.Value) which is the materialised value.
+// Takes boxed (bool) which is true when value is about to be converted to an interface.
+//
+// Returns reflect.Value which is value.
+func revokeRemainder(arena *RegisterArena, cause HandOffCause, value reflect.Value, boxed bool) reflect.Value {
+	if arena != nil && arena.licensed && value.IsValid() && (boxed || value.Kind() == reflect.String || !typeIsPointerFree(value.Type())) {
+		if storeCensusBuilt {
+			censusNoteHandOff(arena, cause, value)
+		}
+		arena.revokeHandOff(cause, value, boxed, arena.licenceShared(0))
+	}
+	return value
 }
 
 // cloneForeignStringValue returns a heap clone of v when v is a string, or an interface
@@ -127,8 +178,8 @@ func cloneForeignStringValue(arena *RegisterArena, v reflect.Value) (reflect.Val
 // MaterialiseArenaSliceUnconditional severs slice arena aliasing by heap-copying both the
 // header and backing when either is arena-owned.
 //
-// Handles the slice branch of materialiseArenaValueUnconditional. Ownership is decided by
-// the backing, not the header: a heap backing was filled through the store barrier, so
+// It handles the slice branch of materialiseArenaValueUnconditional. Ownership is decided
+// by the backing, not the header. A heap backing was filled through the store barrier, so
 // its elements are already heap-clean and the value passes through untouched, or is
 // re-wrapped on a heap header when the header itself lives in the arena's slice-header
 // slab (the shape produced by packing a typed register). Only an arena-owned backing is
@@ -148,10 +199,16 @@ func cloneForeignStringValue(arena *RegisterArena, v reflect.Value) (reflect.Val
 // Returns reflect.Value which is the heap-detached slice.
 func MaterialiseArenaSliceUnconditional(arena *RegisterArena, v reflect.Value) reflect.Value {
 	if !arena.ownsSliceBackingOf(v) {
+		noteHandOff(arena, handOffHeapPassthrough, v)
 		if !arena.OwnsSliceHeaderPointer(ReflectValuePtr(v)) {
 			return v
 		}
 		return rewrapSliceHeaderOnHeap(v)
+	}
+	if arena.licensed {
+		optimisticCloneSliceStrings(arena, v)
+		noteHandOff(arena, handOffIdentityKept, v)
+		return keepArenaSliceIdentity(arena, v)
 	}
 	n := v.Len()
 	heapCapacity := min(v.Cap(), 2*n)
@@ -177,9 +234,27 @@ func MaterialiseArenaSliceUnconditional(arena *RegisterArena, v reflect.Value) r
 	return fresh
 }
 
-// cloneForeignStrings clones foreign arena strings through interfaces, structs and
-// arrays in a fresh escape copy. It leaves pointers, maps and slices untouched because
-// their contents may be shared.
+// keepArenaSliceIdentity is the copy rule's slice case.
+//
+// The slice keeps its backing, length and capacity, and only a header held in the arena's
+// slice-header slab is rebuilt on the heap. The caller revokes what the backing
+// references.
+//
+// Takes arena (*RegisterArena) which owns the slice-header slab.
+// Takes v (reflect.Value) which is the slice handed off.
+//
+// Returns reflect.Value which aliases v's backing through a header the arena does not
+// own.
+func keepArenaSliceIdentity(arena *RegisterArena, v reflect.Value) reflect.Value {
+	if !arena.OwnsSliceHeaderPointer(ReflectValuePtr(v)) {
+		return v
+	}
+	return rewrapSliceHeaderOnHeap(v)
+}
+
+// cloneForeignStrings clones foreign arena strings through interfaces, structs and arrays
+// in a fresh escape copy. It leaves pointers, maps and slices untouched because their
+// contents may be shared.
 //
 // Takes arena (*RegisterArena) which decides whether a string may be foreign.
 // Takes v (reflect.Value) which is an addressable value in fresh memory.
@@ -232,19 +307,25 @@ func materialisePointerFreeSlice(v reflect.Value, t reflect.Type, n, heapCapacit
 	return unsafeNewAt(reflectValueABIType(t), unsafe.Pointer(header), reflect.Slice)
 }
 
-// Pointer materialisation must preserve identity, not duplicate: deep-copying an
-// arena-backed pointee to the heap would break pointer aliasing because the original
-// arena value and the copied heap value would diverge on subsequent writes.
-// handleAllocIndirect's arena routing is therefore gated on the program staying within
-// one top- level execution (the arena Reset happens between executions).
-
 // MaterialiseHostArguments copies arena-resident values out of host containers before the
 // arena is released, so the host does not retain headers into a pooled arena.
+//
+// The walk rewrites the containers in place, so it runs inside the arena's owner section,
+// which excludes guest code the run exported (an exported callback writing the same
+// containers). When the section cannot exclude it, the memory is shared and the rewrite
+// is skipped. The values are left to revocation, which fails closed.
 //
 // Takes arena (*RegisterArena) which owns the run's storage.
 // Takes arguments ([]reflect.Value) which are the host's arguments.
 func MaterialiseHostArguments(arena *RegisterArena, arguments []reflect.Value) {
 	if arena == nil {
+		return
+	}
+	shared, owner := arena.enterOwnerSection(arena.licenceShared(0))
+	if owner != nil {
+		defer owner.leaveOwnerSection()
+	}
+	if shared {
 		return
 	}
 	budget := hostMaterialiseLeafBudget
@@ -262,30 +343,58 @@ func MaterialiseHostArguments(arena *RegisterArena, arguments []reflect.Value) {
 //
 // Returns the heap-materialised equivalent when arena-backed, or v unchanged.
 func MaterialiseAnyForArena(arena *RegisterArena, v any) any {
-	if v == nil || arena == nil {
-		return v
+	return materialiseAnyForArena(arena, v)
+}
+
+// materialiseAnyForArena is MaterialiseAnyForArena, shared by the host-return boundary
+// and the callback-return boundary (materialiseCallbackResults).
+//
+// Takes arena (*RegisterArena) which owns the candidate slabs.
+// Takes value (any) which is the candidate value.
+//
+// Returns the heap-materialised equivalent when arena-backed, or value unchanged.
+func materialiseAnyForArena(arena *RegisterArena, value any) any {
+	if value == nil || arena == nil {
+		return value
 	}
-	if s, ok := v.(string); ok {
+	if s, ok := value.(string); ok {
 		return materialiseStringUnconditional(arena, s)
 	}
-	rv := reflect.ValueOf(v)
-	if !rv.IsValid() {
-		return v
+	reflected := reflect.ValueOf(value)
+	if !reflected.IsValid() {
+		return value
 	}
-	return walkArenaEscape(arena, rv).Interface()
+	if kept, ok := keepBoxedArenaSlice(arena, reflected); ok {
+		return kept.Interface()
+	}
+	return revokeRemainder(arena, handOffIdentityKept, walkArenaEscape(arena, reflected), true).Interface()
+}
+
+// keepBoxedArenaSlice preserves the identity of a licensed arena slice and revokes its
+// referenced storage.
+//
+// Takes arena (*RegisterArena) which owns the candidate slabs.
+// Takes value (reflect.Value) which is the value about to be boxed.
+//
+// Returns reflect.Value which is the slice kept.
+// Returns bool which is false when value is not such a slice and the general path
+// applies.
+func keepBoxedArenaSlice(arena *RegisterArena, value reflect.Value) (reflect.Value, bool) {
+	if !arena.licensed || value.Kind() != reflect.Slice || !arena.ownsSliceBackingOf(value) {
+		return reflect.Value{}, false
+	}
+	optimisticCloneSliceStrings(arena, value)
+	return revokeRemainder(arena, handOffIdentityKept, keepArenaSliceIdentity(arena, value), true), true
 }
 
 // copyReflectValue returns an independent copy of v with freshly allocated backing.
 //
-// Used by snapshot paths (return-value placement and the deref-and-snapshot variant of
-// isa.OpDeref) to break aliasing between caller and heap memory: assigning the result to
-// a general register gives Go-style value-copy semantics even though reflect.Value
-// normally shares its addressable backing storage with the source. For pointer and
-// interface kinds this preserves the shared pointee (only the header is copied), which
-// matches Go's pointer-copy semantics. For slices, maps, channels, and funcs the header
-// is copied; the underlying buffer or runtime object remains shared, again matching Go.
+// For pointer and interface kinds this preserves the shared pointee (only the header is
+// copied), which matches Go's pointer-copy semantics. For slices, maps, channels, and
+// funcs the header is copied. The underlying buffer or runtime object remains shared,
+// again matching Go.
 //
-// Takes v (reflect.Value) which must be Valid; the caller checks.
+// Takes v (reflect.Value) which must be Valid. The caller checks.
 //
 // Returns a reflect.Value of the same Type as v whose memory is owned by a fresh
 // reflect.New allocation.
@@ -402,7 +511,7 @@ func snapshotComposite(arena *RegisterArena, vm *VM, v reflect.Value) reflect.Va
 		return snapshotPointerFreeValue(arena, v)
 	}
 	if vm != nil {
-		snapshot := vm.acquireBoundarySnapshot(t)
+		snapshot := recordFinaliserSlot(vm, vm.acquireBoundarySnapshot(t))
 		snapshot.Set(v)
 		return snapshot
 	}
@@ -424,11 +533,32 @@ func typeIsPointerFree(t reflect.Type) bool {
 		return false
 	}
 	key := reflectValueABIType(t)
-	current := typeIsPointerFreeCache.Load()
-	if cached, ok := (*current)[key]; ok {
-		return cached
+	slot := &typeIsPointerFreeFront[typeIsPointerFreeFrontIndex(key)]
+	if word := slot.Load(); word != 0 && word&^1 == uintptr(key) {
+		return word&1 != 0
 	}
-	return typeIsPointerFreeSlow(t, key)
+	current := typeIsPointerFreeCache.Load()
+	cached, ok := (*current)[key]
+	if !ok {
+		cached = typeIsPointerFreeSlow(t, key)
+	}
+
+	word := uintptr(key)
+	if cached {
+		word |= 1
+	}
+	slot.Store(word)
+	return cached
+}
+
+// typeIsPointerFreeFrontIndex is the front slot of the type whose *abi.Type is key.
+//
+// Takes key (unsafe.Pointer) which is the type's *abi.Type.
+//
+// Returns int which indexes typeIsPointerFreeFront.
+func typeIsPointerFreeFrontIndex(key unsafe.Pointer) int {
+	k := uintptr(key)
+	return int((k>>3)^(k>>12)) & (typeIsPointerFreeFrontSlots - 1)
 }
 
 // typeIsPointerFreeSlow handles the cold path: compute the answer, publish a new map via
@@ -553,10 +683,11 @@ func materialiseArenaValueUnconditional(arena *RegisterArena, v reflect.Value) r
 // Strings detach both their bytes (byte slabs) and their box (the string box slab behind
 // boxStringToGeneral); scalars boxed in the int, float, uint and complex box slabs are
 // re-boxed on the heap. Maps are walked in place in the non-aliasing mode so entries
-// written outside the store barrier are detached without breaking map identity; interface
-// values re-wrap their materialised concrete value. Pointer, Chan and Func values keep
-// their identity: deep-copying a pointee would fork the aliases a program relies on, so
-// pointer targets are protected by the barrier at the store into the pointee instead.
+// written outside the store barrier are detached without breaking map identity, or, in a
+// licensed arena, left as they are with what they reference revoked; interface values
+// re-wrap their materialised concrete value. Pointer, Chan and Func values keep their
+// identity. Deep-copying a pointee would fork the aliases a program relies on, so pointer
+// targets are protected by the barrier at the store into the pointee instead.
 //
 // Takes arena (*RegisterArena) which owns the candidate slabs.
 // Takes v (reflect.Value) which is about to escape the arena.
@@ -583,18 +714,9 @@ func materialiseArenaValueByMode(arena *RegisterArena, v reflect.Value, aliasing
 		}
 		return MaterialiseArenaSliceUnconditional(arena, v)
 	case reflect.String:
-		s := v.String()
-		if arena.OwnsString(s) {
-			return reflect.ValueOf(strings.Clone(s)).Convert(v.Type())
-		}
-		if arena.OwnsStringBox(ReflectValuePtr(v)) {
-			return reflect.ValueOf(s).Convert(v.Type())
-		}
-		return v
+		return materialiseArenaStringValue(arena, v)
 	case reflect.Map:
-		if !aliasing {
-			materialiseArenaMapEntries(arena, v)
-		}
+		materialiseArenaMapByMode(arena, v, aliasing)
 		return v
 	case reflect.Interface:
 		return materialiseArenaInterfaceValue(arena, v, aliasing)
@@ -604,6 +726,47 @@ func materialiseArenaValueByMode(arena *RegisterArena, v reflect.Value, aliasing
 		return materialiseArenaScalarBox(arena, v)
 	default:
 		return v
+	}
+}
+
+// materialiseArenaStringValue detaches a string from the arena: its bytes when a byte
+// slab holds them, or its box when the string box slab holds it. A string the epoch's
+// clone budget kept is re-boxed as it is.
+//
+// Takes arena (*RegisterArena) which owns the candidate slabs.
+// Takes value (reflect.Value) which is the string about to escape.
+//
+// Returns reflect.Value which is the detached string, or value when the arena holds
+// neither.
+func materialiseArenaStringValue(arena *RegisterArena, value reflect.Value) reflect.Value {
+	text := value.String()
+	if kept, ok := optimisticStringValue(arena, value); ok {
+		return rebox(arena, kept, text)
+	}
+	if arena.OwnsString(text) {
+		return reflect.ValueOf(strings.Clone(text)).Convert(value.Type())
+	}
+	if arena.OwnsStringBox(ReflectValuePtr(value)) {
+		return reflect.ValueOf(text).Convert(value.Type())
+	}
+	return value
+}
+
+// materialiseArenaMapByMode settles a map about to escape, which keeps its identity: an
+// aliasing store leaves it; a licensed arena hands it off; a heap-data arena leaves a map
+// that reaches only heap data; otherwise its entries are detached in place.
+//
+// Takes arena (*RegisterArena) which owns the candidate slabs.
+// Takes value (reflect.Value) which is the map.
+// Takes aliasing (bool) which is true for a same-arena-lifetime store.
+func materialiseArenaMapByMode(arena *RegisterArena, value reflect.Value, aliasing bool) {
+	switch {
+	case aliasing:
+	case arena.licensed:
+		noteHandOff(arena, handOffIdentityKept, value)
+	case arena.heapData && typeReachesOnlyHeapData(value.Type().Key()) && typeReachesOnlyHeapData(value.Type().Elem()):
+	default:
+		materialiseArenaMapEntries(arena, value)
 	}
 }
 
@@ -693,42 +856,65 @@ func materialiseArenaInterfaceValue(arena *RegisterArena, v reflect.Value, alias
 // Returns the materialised composite, or the original value when no field aliased the
 // arena.
 func materialiseArenaCompositeFields(arena *RegisterArena, v reflect.Value, aliasing bool) reflect.Value {
-	storageOwned := arena.ownsBytePointer(ReflectValuePtr(v))
-
-	work := v
-	copied := false
-	if storageOwned || !v.CanAddr() {
-		work = copyReflectValue(v)
-		copied = true
+	rewrite := compositeRewrite{source: v, work: v, copied: false}
+	if arena.ownsBytePointer(ReflectValuePtr(v)) || (!v.CanAddr() && !optimisticArena(arena)) {
+		rewrite.copy()
 	}
-
-	visit := func(field reflect.Value) (reflect.Value, bool) {
-		if field.CanAddr() {
-			field = unsafeNewAt(reflectValueABIType(field.Type()), ReflectValuePtr(field), field.Kind())
-		}
-		materialised := materialiseArenaValueByMode(arena, field, aliasing)
-		return materialised, materialised.IsValid() && materialised != field
-	}
-
-	elementCount := compositeElementCount(work)
+	elementCount := compositeElementCount(v)
+	optimistic := optimisticArena(arena)
 	for i := range elementCount {
-		element := compositeElement(work, i)
-		materialised, fieldChanged := visit(element)
-		if !fieldChanged {
+		element := compositeElement(rewrite.work, i)
+		if optimistic && element.Kind() == reflect.String {
+			if clone, changed := optimisticFieldString(arena, element); changed {
+				setReboundString(rewrite.element(i), clone)
+			}
 			continue
 		}
-		if !copied {
-			work = copyReflectValue(v)
-			copied = true
+		if materialised, changed := materialiseCompositeElement(arena, element, aliasing); changed {
+			setReboundElement(rewrite.element(i), materialised)
 		}
-		setReboundElement(compositeElement(work, i), materialised)
 	}
-
-	if copied {
-		cloneForeignStrings(arena, work)
-		return work
+	if rewrite.copied {
+		cloneForeignStrings(arena, rewrite.work)
+		return rewrite.work
 	}
 	return v
+}
+
+// copy makes work a copy of source.
+func (rewrite *compositeRewrite) copy() {
+	rewrite.work = copyReflectValue(rewrite.source)
+	rewrite.copied = true
+}
+
+// element returns work's element i for rewriting, copying source first if it has not
+// been.
+//
+// Takes i (int) which is the field index or array position.
+//
+// Returns reflect.Value which is the settable element.
+func (rewrite *compositeRewrite) element(i int) reflect.Value {
+	if !rewrite.copied {
+		rewrite.copy()
+	}
+	return compositeElement(rewrite.work, i)
+}
+
+// materialiseCompositeElement materialises one field or element of a composite, read
+// through a fresh value over its storage when it is addressable.
+//
+// Takes arena (*RegisterArena) which is the allocation arena.
+// Takes field (reflect.Value) which is the field or element.
+// Takes aliasing (bool) which preserves Data aliasing when true and severs it when false.
+//
+// Returns reflect.Value which is the materialised value.
+// Returns bool which is true when it differs from field.
+func materialiseCompositeElement(arena *RegisterArena, field reflect.Value, aliasing bool) (reflect.Value, bool) {
+	if field.CanAddr() {
+		field = unsafeNewAt(reflectValueABIType(field.Type()), ReflectValuePtr(field), field.Kind())
+	}
+	materialised := materialiseArenaValueByMode(arena, field, aliasing)
+	return materialised, materialised.IsValid() && materialised != field
 }
 
 // compositeElementCount returns the field count for a struct or the length for an array;
@@ -834,7 +1020,11 @@ func materialiseArenaSliceAliasing(arena *RegisterArena, v reflect.Value) reflec
 // Takes depth (int) which is the remaining nesting allowance.
 // Takes budget (*int) which is the remaining element allowance.
 func materialiseHostValueInPlace(arena *RegisterArena, value reflect.Value, depth int, budget *int) {
-	if !value.IsValid() || depth == 0 || *budget <= 0 {
+	if !value.IsValid() {
+		return
+	}
+	if depth == 0 || *budget <= 0 {
+		noteHandOff(arena, handOffWalkExhausted, value)
 		return
 	}
 	switch value.Kind() {
@@ -865,7 +1055,11 @@ func materialiseHostMapInPlace(arena *RegisterArena, value reflect.Value, budget
 		return
 	}
 	iter := value.MapRange()
-	for iter.Next() && *budget > 0 {
+	for iter.Next() {
+		if *budget <= 0 {
+			noteHandOff(arena, handOffWalkExhausted, value)
+			return
+		}
 		*budget--
 		element := iter.Value()
 		if materialised := walkArenaEscape(arena, element); materialised != element {
@@ -881,7 +1075,11 @@ func materialiseHostMapInPlace(arena *RegisterArena, value reflect.Value, budget
 // Takes value (reflect.Value) which is the slice or array.
 // Takes budget (*int) which is the remaining element allowance.
 func materialiseHostElementsInPlace(arena *RegisterArena, value reflect.Value, budget *int) {
-	for i := 0; i < value.Len() && *budget > 0; i++ {
+	for i := range value.Len() {
+		if *budget <= 0 {
+			noteHandOff(arena, handOffWalkExhausted, value)
+			return
+		}
 		*budget--
 		materialiseHostSlotInPlace(arena, value.Index(i))
 	}
@@ -894,9 +1092,13 @@ func materialiseHostElementsInPlace(arena *RegisterArena, value reflect.Value, b
 // Takes value (reflect.Value) which is the struct.
 // Takes budget (*int) which is the remaining element allowance.
 func materialiseHostFieldsInPlace(arena *RegisterArena, value reflect.Value, budget *int) {
-	for i := 0; i < value.NumField() && *budget > 0; i++ {
+	for index := range value.NumField() {
+		if *budget <= 0 {
+			noteHandOff(arena, handOffWalkExhausted, value)
+			return
+		}
 		*budget--
-		materialiseHostSlotInPlace(arena, value.Field(i))
+		materialiseHostSlotInPlace(arena, structFieldValue(value, index))
 	}
 }
 
@@ -908,6 +1110,7 @@ func materialiseHostFieldsInPlace(arena *RegisterArena, value reflect.Value, bud
 // left alone.
 func materialiseHostSlotInPlace(arena *RegisterArena, slot reflect.Value) {
 	if !slot.CanSet() {
+		noteHandOff(arena, handOffNotSettable, slot)
 		return
 	}
 	if materialised := walkArenaEscape(arena, slot); materialised != slot {
@@ -933,6 +1136,9 @@ func walkArenaEscape(arena *RegisterArena, v reflect.Value) reflect.Value {
 		if !arena.OwnsString(s) {
 			return v
 		}
+		if kept, ok := optimisticStringValue(arena, v); ok {
+			return rebox(arena, kept, s)
+		}
 		return reflect.ValueOf(strings.Clone(s)).Convert(v.Type())
 	case reflect.Struct, reflect.Array, reflect.Slice:
 		return materialiseArenaValueUnconditional(arena, v)
@@ -940,30 +1146,69 @@ func walkArenaEscape(arena *RegisterArena, v reflect.Value) reflect.Value {
 		if v.IsNil() {
 			return v
 		}
-		fresh := reflect.MakeMapWithSize(v.Type(), v.Len())
-		iter := v.MapRange()
-		for iter.Next() {
-			fresh.SetMapIndex(walkArenaEscape(arena, iter.Key()), walkArenaEscape(arena, iter.Value()))
+		if arena.licensed {
+			noteHandOff(arena, handOffIdentityKept, v)
+			return v
 		}
-		return fresh
+		walkArenaMapEntriesInPlace(arena, v)
+		return v
 	case reflect.Interface:
-		if v.IsNil() {
-			return v
-		}
-		inner := walkArenaEscape(arena, v.Elem())
-		if !inner.IsValid() {
-			return v
-		}
-		wrapped := reflect.New(v.Type()).Elem()
-		wrapped.Set(inner)
-		return wrapped
+		return walkArenaEscapeInterface(arena, v)
+	case reflect.Pointer, reflect.Chan, reflect.Func, reflect.UnsafePointer:
+		noteHandOff(arena, handOffIdentityKept, v)
+		return v
 	default:
 		return v
 	}
 }
 
-// handleConvert performs a type conversion on a general register value using the target
-// type from the function's type table, or allocates a new pointer.
+// walkArenaEscapeInterface is walkArenaEscape for an interface value: it walks the
+// concrete value and re-wraps it when that changed.
+//
+// Takes arena (*RegisterArena) which owns the candidate slabs.
+// Takes value (reflect.Value) which is the interface value.
+//
+// Returns reflect.Value which is value, or a fresh interface value around the walked
+// value.
+func walkArenaEscapeInterface(arena *RegisterArena, value reflect.Value) reflect.Value {
+	if value.IsNil() {
+		return value
+	}
+	element := value.Elem()
+	inner := walkArenaEscape(arena, element)
+	if !inner.IsValid() || inner == element {
+		return value
+	}
+	wrapped := reflect.New(value.Type()).Elem()
+	wrapped.Set(inner)
+	return wrapped
+}
+
+// walkArenaMapEntriesInPlace detaches the arena-backed keys and values of mapValue
+// through walkArenaEscape, rewriting only the entries that changed so mapValue keeps its
+// identity.
+//
+// Takes arena (*RegisterArena) which owns the candidate slabs.
+// Takes mapValue (reflect.Value) which is a non-nil map.
+func walkArenaMapEntriesInPlace(arena *RegisterArena, mapValue reflect.Value) {
+	iterator := mapValue.MapRange()
+	for iterator.Next() {
+		key := iterator.Key()
+		value := iterator.Value()
+		materialisedKey := walkArenaEscape(arena, key)
+		materialisedValue := walkArenaEscape(arena, value)
+		if materialisedKey == key && materialisedValue == value {
+			continue
+		}
+		if materialisedKey != key {
+			mapValue.SetMapIndex(key, reflect.Value{})
+		}
+		mapValue.SetMapIndex(materialisedKey, materialisedValue)
+	}
+}
+
+// handleConvertGeneral performs a type conversion on a general register value using the
+// target type from the function's type table, or allocates a new pointer.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which provides the type table index extension.
@@ -971,7 +1216,7 @@ func walkArenaEscape(arena *RegisterArena, v reflect.Value) reflect.Value {
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleConvert(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleConvertGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	extensionWord := readExtensionWord(frame)
 	frame.ProgramCounter++
 	typeIndex := uint16(extensionWord.A) | uint16(extensionWord.B)<<isa.WideBitShift
@@ -981,7 +1226,11 @@ func handleConvert(vm *VM, frame *CallFrame, registers *Registers, instruction i
 	}
 	reflectType := frame.Function.TypeTable[typeIndex]
 	if instruction.C == 1 {
-		registers.General[instruction.A] = reflect.New(reflectType)
+		if optimisticPointee(vm.Arena, vm.rootFunction, reflectType) {
+			registers.General[instruction.A] = optimisticNew(vm.Arena, reflectType)
+			return opContinue
+		}
+		registers.General[instruction.A] = recordFinaliserPointer(vm, reflect.New(reflectType))
 		return opContinue
 	}
 	source := registers.General[instruction.B]
@@ -993,7 +1242,7 @@ func handleConvert(vm *VM, frame *CallFrame, registers *Registers, instruction i
 		return opContinue
 	}
 	if !source.IsValid() {
-		vMPanicInvalidRegister("handleConvert", "source", instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleConvertGeneral", "source", instruction.B, instruction, frame, registers)
 	}
 	converted, result := convertGeneralOperand(vm, source, reflectType)
 	if result != opContinue {
@@ -1015,6 +1264,9 @@ func handleConvert(vm *VM, frame *CallFrame, registers *Registers, instruction i
 // was refused (the VM's error is set).
 func convertGeneralOperand(vm *VM, source reflect.Value, reflectType reflect.Type) (reflect.Value, OpResult) {
 	if converted, ok := convertClosureToFuncType(vm, source, reflectType); ok {
+		return converted, opContinue
+	}
+	if converted, ok := retypeErasedPointer(vm, source, reflectType); ok {
 		return converted, opContinue
 	}
 	if unsafePointerConvertNeeded(source.Type(), reflectType) {
@@ -1198,16 +1450,19 @@ func convertUnsafePointer(source reflect.Value, destinationType reflect.Type) re
 // convertClosureToFuncType handles type conversions on an interpreted closure to a named
 // or plain func type.
 //
-// The closure stays a *RuntimeClosure, and a copy records the target's named type or
-// clears it for a plain func type, so a closure held in an interface dispatches the named
-// type's methods and prints as it.
+// For the program's own func types the closure stays a *RuntimeClosure, and a copy
+// records the target's named type (by its registry ID) or clears it for a plain func
+// type, so a closure held in an interface dispatches the named type's methods, matches
+// type switches and assertions on it and prints as it. A host package's named func type,
+// such as http.HandlerFunc, declares its methods in Go, so the closure becomes a function
+// value of that very type, which has those methods and is what native code expects.
 //
-// Takes vm (*VM) which owns the type name registry.
+// Takes vm (*VM) which runs the closure when a host function value of it is called.
 // Takes source (reflect.Value) which is the value being converted.
 // Takes reflectType (reflect.Type) which is the conversion target.
 //
 // Returns the converted value and true when source is a closure and the target a func
-// type; false leaves the conversion to the generic paths.
+// type. A false result leaves the conversion to the generic paths.
 func convertClosureToFuncType(vm *VM, source reflect.Value, reflectType reflect.Type) (reflect.Value, bool) {
 	if reflectType.Kind() != reflect.Func || source.Type() != runtimeClosureReflectType {
 		return reflect.Value{}, false
@@ -1216,15 +1471,19 @@ func convertClosureToFuncType(vm *VM, source reflect.Value, reflectType reflect.
 	if closure == nil {
 		return reflect.Value{}, false
 	}
-	name := ""
-	if vm != nil && vm.rootFunction != nil && vm.rootFunction.TypeNames != nil {
-		name = vm.rootFunction.TypeNames[reflectType]
+	named := typemodel.NamedCompositeID(reflectType)
+	if named == 0 && reflectType.Name() != "" {
+		return makeClosureWrapperFunc(vm, closure, reflectType), true
 	}
-	if name == closure.namedType {
+	if named == closure.namedType {
 		return source, true
 	}
 	converted := *closure
-	converted.namedType = name
+	converted.namedType = named
+	if len(closure.upvalues) != 0 && len(closure.upvalues) <= inlineUpvalueCells &&
+		unsafe.SliceData(closure.upvalues) == &closure.inlineCells[0] {
+		converted.upvalues = converted.inlineCells[:len(closure.upvalues)]
+	}
 	return reflect.ValueOf(&converted), true
 }
 

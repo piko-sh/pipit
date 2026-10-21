@@ -4,8 +4,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function <varinit>
-;   registers: int=1 string=1 general=2
-;   dispatch:  asm=18 shim=10 exit=0 go=8
+;   registers: int64=1 string=1 general=2
+;   dispatch:  asm=19 shim=17 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (none)
 ; ═════════════════════════════════════════════════════════════
@@ -14,193 +14,234 @@
 ;   ints:    [0]=8  [1]=0  [2]=1  [3]=2  [4]=3  [5]=4  [6]=5  [7]=6  [8]=7
 ;   strings: [0]="the"  [1]="of"  [2]="and"  [3]="to"  [4]="in"  [5]="a"  [6]="is"  [7]="it"
 
-0000 A 0:LOAD_INT_CONST             0   0   0    ; ints[0] = 8
-0001 S 0:MAKE_SLICE                 0   0   0
-0002   0:EXT                        0   0   0
-0003 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "the"
-0004 A 0:LOAD_INT_CONST             0   1   0    ; ints[0] = 0
-0005 G 1:MOVE_STRING_TO_GENERAL    44   1   0
-0006 S 0:INDEX_SET                  0   0   1
-0007 A 0:LOAD_STRING_CONST          0   1   0    ; strings[0] = "of"
-0008 A 0:LOAD_INT_CONST             0   2   0    ; ints[0] = 1
-0009 G 1:MOVE_STRING_TO_GENERAL    44   1   0
-0010 S 0:INDEX_SET                  0   0   1
-0011 A 0:LOAD_STRING_CONST          0   2   0    ; strings[0] = "and"
-0012 A 0:LOAD_INT_CONST             0   3   0    ; ints[0] = 2
-0013 G 1:MOVE_STRING_TO_GENERAL    44   1   0
-0014 S 0:INDEX_SET                  0   0   1
-0015 A 0:LOAD_STRING_CONST          0   3   0    ; strings[0] = "to"
-0016 A 0:LOAD_INT_CONST             0   4   0    ; ints[0] = 3
-0017 G 1:MOVE_STRING_TO_GENERAL    44   1   0
-0018 S 0:INDEX_SET                  0   0   1
-0019 A 0:LOAD_STRING_CONST          0   4   0    ; strings[0] = "in"
-0020 A 0:LOAD_INT_CONST             0   5   0    ; ints[0] = 4
-0021 G 1:MOVE_STRING_TO_GENERAL    44   1   0
-0022 S 0:INDEX_SET                  0   0   1
-0023 A 0:LOAD_STRING_CONST          0   5   0    ; strings[0] = "a"
-0024 A 0:LOAD_INT_CONST             0   6   0    ; ints[0] = 5
-0025 G 1:MOVE_STRING_TO_GENERAL    44   1   0
-0026 S 0:INDEX_SET                  0   0   1
-0027 A 0:LOAD_STRING_CONST          0   6   0    ; strings[0] = "is"
-0028 A 0:LOAD_INT_CONST             0   7   0    ; ints[0] = 6
-0029 G 1:MOVE_STRING_TO_GENERAL    44   1   0
-0030 S 0:INDEX_SET                  0   0   1
-0031 A 0:LOAD_STRING_CONST          0   7   0    ; strings[0] = "it"
-0032 A 0:LOAD_INT_CONST             0   8   0    ; ints[0] = 7
-0033 G 1:MOVE_STRING_TO_GENERAL    44   1   0
-0034 S 0:INDEX_SET                  0   0   1
-0035 S 0:SET_GLOBAL                 0   0   3
-0036 A 3:TIER3_RETURN_VOID          0   0   1
+0000 A 0:LOAD_INT64_CONSTANT                                  0   0   0    ; ints[0] = 8
+0001 S 0:MAKE_SLICE                                           0   0   0
+0002   0:EXTENSION                                            0   0   0
+0003 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "the"
+0004 A 0:LOAD_INT64_CONSTANT                                  0   1   0    ; ints[0] = 0
+0005 S 1:BOX_STRING                                          44   1   0
+0006 S 0:SET_ELEMENT                                          0   0   1
+0007 A 0:LOAD_STRING_CONSTANT                                 0   1   0    ; strings[0] = "of"
+0008 A 0:LOAD_INT64_CONSTANT                                  0   2   0    ; ints[0] = 1
+0009 S 1:BOX_STRING                                          44   1   0
+0010 S 0:SET_ELEMENT                                          0   0   1
+0011 A 0:LOAD_STRING_CONSTANT                                 0   2   0    ; strings[0] = "and"
+0012 A 0:LOAD_INT64_CONSTANT                                  0   3   0    ; ints[0] = 2
+0013 S 1:BOX_STRING                                          44   1   0
+0014 S 0:SET_ELEMENT                                          0   0   1
+0015 A 0:LOAD_STRING_CONSTANT                                 0   3   0    ; strings[0] = "to"
+0016 A 0:LOAD_INT64_CONSTANT                                  0   4   0    ; ints[0] = 3
+0017 S 1:BOX_STRING                                          44   1   0
+0018 S 0:SET_ELEMENT                                          0   0   1
+0019 A 0:LOAD_STRING_CONSTANT                                 0   4   0    ; strings[0] = "in"
+0020 A 0:LOAD_INT64_CONSTANT                                  0   5   0    ; ints[0] = 4
+0021 S 1:BOX_STRING                                          44   1   0
+0022 S 0:SET_ELEMENT                                          0   0   1
+0023 A 0:LOAD_STRING_CONSTANT                                 0   5   0    ; strings[0] = "a"
+0024 A 0:LOAD_INT64_CONSTANT                                  0   6   0    ; ints[0] = 5
+0025 S 1:BOX_STRING                                          44   1   0
+0026 S 0:SET_ELEMENT                                          0   0   1
+0027 A 0:LOAD_STRING_CONSTANT                                 0   6   0    ; strings[0] = "is"
+0028 A 0:LOAD_INT64_CONSTANT                                  0   7   0    ; ints[0] = 6
+0029 S 1:BOX_STRING                                          44   1   0
+0030 S 0:SET_ELEMENT                                          0   0   1
+0031 A 0:LOAD_STRING_CONSTANT                                 0   7   0    ; strings[0] = "it"
+0032 A 0:LOAD_INT64_CONSTANT                                  0   8   0    ; ints[0] = 7
+0033 S 1:BOX_STRING                                          44   1   0
+0034 S 0:SET_ELEMENT                                          0   0   1
+0035 A 0:SET_GLOBAL                                           0   0   3
+0036 A 3:RETURN_VOID                                          0   0   1
 
 ; ═════════════════════════════════════════════════════════════
 ; function lessForTop
-;   registers: int=3 string=2 general=2 bool=1
-;   dispatch:  asm=8 shim=0 exit=0 go=5
+;   registers: int64=3 string=2 general=2 bool=1
+;   dispatch:  asm=10 shim=2 exit=0 go=1
 ;   params:    (general, general)
 ;   returns:   (bool)
 ; ═════════════════════════════════════════════════════════════
 
-0000 A 0:GET_STRUCT_FIELD_INT_T0    0   0   0
-0001 A 0:GET_STRUCT_FIELD_INT_T0    1   1   0
-0002 A 1:NE_INT_JUMP_FALSE        121   0   1
-0003   0:EXT                        5   0   0
-0004 A 1:MOVE_INT                  35   0   0    ; CSE'd from PC 0
-0005 A 1:MOVE_INT                  35   1   1    ; CSE'd from PC 1
-0006 A 0:GT_INT                     2   0   1
-0007 G 1:INT_TO_BOOL               54   0   2
-0008 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0009 G 1:GET_STRUCT_FIELD_STRING   90   0   0
-0010   0:EXT                        1   0   0
-0011 G 1:GET_STRUCT_FIELD_STRING   90   1   1
-0012   0:EXT                        1   0   0
-0013 G 0:LT_STRING                  0   0   1
-0014 G 1:INT_TO_BOOL               54   0   0
-0015 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 0:GET_STRUCT_FIELD_INT64                               0   0   0
+0001 A 0:GET_STRUCT_FIELD_INT64                               1   1   0
+0002 A 1:NOT_EQUAL_INT64_THEN_JUMP_IF_FALSE                 121   0   1
+0003   0:EXTENSION                                            5   0   0
+0004 A 1:MOVE_INT64                                          35   0   0    ; CSE'd from PC 0
+0005 A 1:MOVE_INT64                                          35   1   1    ; CSE'd from PC 1
+0006 A 0:GREATER_THAN_INT64                                   2   0   1
+0007 A 1:CONVERT_INT64_TO_BOOL                               54   0   2
+0008 A 2:RETURN                                               0  10   1    ; 1 values
+0009 S 1:GET_STRUCT_FIELD_STRING_WIDE                        90   0   0
+0010   0:EXTENSION                                            1   0   0
+0011 S 1:GET_STRUCT_FIELD_STRING_WIDE                        90   1   1
+0012   0:EXTENSION                                            1   0   0
+0013 G 0:LESS_THAN_STRING                                     0   0   1
+0014 A 1:CONVERT_INT64_TO_BOOL                               54   0   0
+0015 A 2:RETURN                                               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=22 string=1 general=5 bool=1 uint=5
-;   dispatch:  asm=65 shim=14 exit=3 go=14
+;   registers: int64=25 string=5 general=5 bool=3 uint64=6 sliceByte=1
+;   dispatch:  asm=92 shim=22 exit=3 go=2
 ;   params:    (none)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=0  [1]=1048592  [2]=1048576  [3]=7  [4]=1  [5]=4  [6]=3
 ;   uints:   [0]=987654321  [1]=1664525  [2]=1013904223  [3]=32
 
-0000 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0001 A 0:LOAD_INT_CONST             1   1   0    ; ints[1] = 1048592
-0002 S 0:MAKE_SLICE                 0   0   1
-0003   0:EXT                        0   0   0
-0004 A 0:LOAD_UINT_CONST            0   0   0
-0005 A 0:LOAD_UINT_CONST            4   1   0    ; LICM hoist of PC 10
-0006 A 1:LOAD_INT_CONST_SMALL      75   4   7    ; LICM hoist of PC 15
-0007 G 1:LEN                       70   0   0
-0008 A 1:LT_INT_CONST_JUMP_FALSE  123   0   2
-0009   0:EXT                       21   0   0
-0010 A 0:MUL_UINT                   2   0   4
-0011 A 0:TRUNCATE_NARROW            2  32   5
-0012 A 0:LOAD_UINT_CONST            3   2   0
-0013 A 0:ADD_UINT32                 0   2   3
-0014 S 0:GET_GLOBAL                 1   0   3
-0015 G 1:UINT_TO_INT               56   3   0
-0016 A 0:BIT_AND                    5   3   4
-0017 S 0:SLICE_GET_STRING           0   1   5
-0018 G 1:LEN                       70   3   0
-0019 A 1:GT_INT_CONST_JUMP_FALSE  127   3   0
-0020   0:EXT                        2   0   0
-0021 A 1:LOAD_UINT_CONST_SMALL     99   1  32    ; uints[1] = 32
-0022 X 0:APPEND_BYTE_FAST           0   0   1
-0023 A 1:LOAD_INT_CONST_SMALL      75   3   0    ; ints[3] = 0
-0024 A 1:LEN_STRING_LT_JUMP_FALSE  78   3   0
-0025   0:EXT                      237 255   0
-0026 A 0:STRING_INDEX               1   0   3
-0027 X 0:APPEND_BYTE_FAST           0   0   1
-0028 A 2:TIER2_INC_INT              0   1   3
-0029 A 1:JUMP                      74 250 255    ; goto -6
-0030 A 1:JUMP                      74 232 255    ; goto -24
-0031 G 2:MAKE_MAP                   0  12   1
-0032   0:EXT                        1   0   0
-0033 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0034 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0035 G 1:LEN                       70   2   0
-0036 A 1:LE_INT_JUMP_FALSE        117   1   2
-0037   0:EXT                       17   0   0
-0038 G 1:LEN                       70   4   0
-0039 A 0:EQ_INT                     6   1   4
-0040 A 0:JUMP_IF_TRUE               6   3   0    ; if ints[6] != 0 goto +3
-0041 S 0:SLICE_GET_UINT             1   0   1
-0042 A 1:LOAD_UINT_CONST_SMALL     99   2  32    ; uints[2] = 32
-0043 A 0:EQ_UINT                    6   1   2
-0044 A 0:JUMP_IF_FALSE              6   8   0    ; if ints[6] == 0 goto +8
-0045 A 1:GT_INT_JUMP_FALSE        118   1   0
-0046   0:EXT                        5   0   0
-0047 S 1:SLICE_OP                 141   2   0
-0048   0:EXT                        3   0   1
-0049 A 1:BYTES_TO_STRING           11   0   2
-0050 A 1:LOAD_INT_CONST_SMALL      75   4   1    ; ints[4] = 1
-0051 S 0:MAP_ADD_STRING_INT         1   0   4
-0052 A 0:ADD_INT_CONST              0   1   4    ; const = 1
-0053 A 2:TIER2_INC_INT              0   1   1
-0054 A 1:JUMP                      74 236 255    ; goto -20
-0055 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0056 A 1:LOAD_INT_CONST_SMALL      75   2   4    ; ints[2] = 4
-0057 S 0:MAKE_SLICE                 2   1   2
-0058   0:EXT                        2   0   0
-0059 A 0:MOVE_GENERAL               0   2   1
-0060 S 1:RANGE_INIT               142   2   1
-0061 S 1:RANGE_NEXT               143   2   1
-0062   0:EXT                        3   0   2
-0063   0:EXT                        0   2   0
-0064 A 0:JUMP_IF_FALSE              1  37   0    ; if ints[1] == 0 goto +37
-0065 G 2:MAKE_MAP                   0  12   3
-0066   0:EXT                        3   0   0
-0067 G 1:SET_STRUCT_FIELD_STRING   95   3   0
-0068   0:EXT                        0   0   0
-0069 A 0:SET_STRUCT_FIELD_INT_T0    3   2   1
-0070 G 1:LEN                       70   3   0
-0071 A 1:LOAD_INT_CONST_SMALL      75  21   0    ; LICM hoist of PC 71
-0072 A 0:GT_INT                     6   3  21
-0073 A 0:JUMP_IF_FALSE              6   4   0    ; if ints[6] == 0 goto +4
-0074 A 0:SUB_INT_CONST              8   3   4    ; const = 1
-0075 S 0:INDEX                      4   0   8
-0076 A 1:CALL                     128   0   0    ; call (site 0)
-0077 G 1:BOOL_TO_INT               53   6   0
-0078 A 0:JUMP_IF_FALSE              6   2   0    ; if ints[6] == 0 goto +2
-0079 A 2:TIER2_DEC_INT              0   2   3
-0080 A 1:JUMP                      74 247 255    ; goto -9
-0081 G 2:MAKE_MAP                   0  12   4
-0082   0:EXT                        3   0   0
-0083 X 0:APPEND                     0   0   4
-0084 G 1:LEN                       70   4   0
-0085 A 0:SUB_INT_CONST              4   4   4    ; const = 1
-0086 A 1:GT_INT_JUMP_FALSE        118   4   3
-0087   0:EXT                        5   0   0
-0088 A 0:SUB_INT_CONST              7   4   4    ; const = 1
-0089 S 0:INDEX                      4   0   7
-0090 S 0:INDEX_SET                  0   4   4
-0091 A 2:TIER2_DEC_INT              0   2   4
-0092 A 1:JUMP                      74 249 255    ; goto -7
-0093 S 0:INDEX_SET                  0   3   3
-0094 G 1:LEN                       70   4   0
-0095 A 1:GT_INT_CONST_JUMP_FALSE  127   4   6
-0096   0:EXT                      220 255   0
-0097 A 1:LOAD_INT_CONST_SMALL      75   4   3    ; ints[4] = 3
-0098 S 1:SLICE_OP                 141   4   0
-0099   0:EXT                        2   0   4
-0100 A 0:MOVE_GENERAL               0   4   1
-0101 A 1:JUMP                      74 215 255    ; goto -41
-0102 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0103 A 1:MOVE_INT                  35   0   1
-0104 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0105 G 1:LEN                       70   2   0
-0106 A 1:LT_INT_JUMP_FALSE        116   1   2
-0107   0:EXT                        6   0   0
-0108 A 0:SLICE_INDEX_STRUCT_FIELD_INT   4   0   1
-0109   0:EXT                        1   0   0
-0110 A 0:ADD_INT                    5   0   4
-0111 A 1:MOVE_INT                  35   0   5
-0112 A 2:TIER2_INC_INT              0   1   1
-0113 A 1:JUMP                      74 247 255    ; goto -9
-0114 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0001 A 0:LOAD_INT64_CONSTANT                                  1   1   0    ; ints[1] = 1048592
+0002 S 0:MAKE_SLICE                                           0   0   1
+0003   0:EXTENSION                                            0   0   0
+0004 A 0:LOAD_UINT64_CONSTANT                                 0   0   0
+0005 A 1:LENGTH_GENERAL                                      70   0   0
+0006 A 1:LESS_THAN_INT64_CONSTANT_THEN_JUMP_IF_FALSE        123   0   2
+0007   0:EXTENSION                                           25   0   0
+0008 A 0:LOAD_UINT64_CONSTANT                                 4   1   0    ; LICM hoist of PC 11
+0009 A 0:LOAD_UINT64_CONSTANT                                 3   2   0    ; LICM hoist of PC 13
+0010 A 1:LOAD_INT64_IMMEDIATE                                75   4   7    ; LICM hoist of PC 15
+0011 A 1:LOAD_UINT64_IMMEDIATE                               99   5  32    ; LICM hoist of PC 21
+0012 A 0:MULTIPLY_UINT32                                      2   0   4
+0013 A 0:ADD_UINT32                                           0   2   3
+0014 A 0:GET_GLOBAL                                           1   0   3
+0015 A 1:CONVERT_UINT64_TO_INT64                             56   3   0
+0016 A 0:BIT_AND_INT64                                        5   3   4
+0017 S 0:GET_ELEMENT_STRING                                   0   1   5
+0018 A 1:LENGTH_GENERAL                                      70   3   0
+0019 A 1:GREATER_THAN_INT64_CONSTANT_THEN_JUMP_IF_FALSE     127   3   0
+0020   0:EXTENSION                                            1   0   0
+0021 X 0:APPEND_BYTE                                          0   0   5
+0022 A 1:LOAD_INT64_IMMEDIATE                                75   3   0    ; ints[3] = 0
+0023 A 1:LESS_THAN_LENGTH_STRING_THEN_JUMP_IF_FALSE          78   3   0
+0024   0:EXTENSION                                            5   0   0
+0025 A 1:LENGTH_STRING                                       65   6   0    ; LICM hoist of PC 28
+0026 A 0:GET_STRING_BYTE                                      1   0   3
+0027 X 0:APPEND_BYTE                                          0   0   1
+0028 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN              77   3   6
+0029   0:EXTENSION                                          252 255   0
+0030 A 1:LENGTH_GENERAL                                      70   3   0
+0031 A 1:GREATER_OR_EQUAL_INT64_CONSTANT_THEN_JUMP_IF_FALSE 126   3   2
+0032   0:EXTENSION                                          235 255   0
+0033 S 2:MAKE_MAP                                             0  12   1
+0034   0:EXTENSION                                            1   0   0
+0035 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0036 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0037 A 1:LENGTH_GENERAL                                      70   2   0
+0038 A 1:LESS_OR_EQUAL_INT64_THEN_JUMP_IF_FALSE             117   1   2
+0039   0:EXTENSION                                           21   0   0
+0040 A 1:LOAD_INT64_IMMEDIATE                                75  19   1    ; LICM hoist of PC 54
+0041 A 1:LENGTH_GENERAL                                      70   4   0
+0042 A 1:NOT_EQUAL_INT64_THEN_JUMP_IF_FALSE                 121   1   4
+0043   0:EXTENSION                                            6   0   0
+0044 S 1:UNBOX_SLICE_BYTE                                   160   0   0
+0045 A 1:GET_SLICE_BYTE_ELEMENT                             112   1   0
+0046   0:EXTENSION                                            1   0   0
+0047 A 1:LOAD_UINT64_IMMEDIATE                               99   2  32    ; uints[2] = 32
+0048 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221   1   2
+0049   0:EXTENSION                                            7   0   0
+0050 A 1:GREATER_THAN_INT64_THEN_JUMP_IF_FALSE              118   1   0
+0051   0:EXTENSION                                            4   0   0
+0052 S 1:SLICE_GENERAL                                      141   2   0
+0053   0:EXTENSION                                            3   0   1
+0054 A 1:CONVERT_BYTES_TO_STRING                             11   0   2
+0055 S 0:ADD_TO_MAP_STRING_INT64                              1   0  19
+0056 A 0:ADD_INT64_CONSTANT                                   0   1   4    ; const = 1
+0057 A 2:INCREMENT_INT64                                      0   1   1
+0058 A 1:LENGTH_GENERAL                                      70   4   0
+0059 A 1:GREATER_THAN_INT64_THEN_JUMP_IF_FALSE              118   1   4
+0060   0:EXTENSION                                          236 255   0
+0061 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0062 A 1:LOAD_INT64_IMMEDIATE                                75   2   4    ; ints[2] = 4
+0063 S 0:MAKE_SLICE                                           2   1   2
+0064   0:EXTENSION                                            2   0   0
+0065 A 0:MOVE_GENERAL                                         0   2   1
+0066 S 1:RANGE_INITIALISE                                   142   2   1
+0067 A 1:LOAD_INT64_IMMEDIATE                                75  20   0    ; LICM hoist of PC 79
+0068 A 1:LOAD_INT64_IMMEDIATE                                75  21   0    ; LICM hoist of PC 100
+0069 A 1:LOAD_INT64_IMMEDIATE                                75  22   3    ; LICM hoist of PC 140
+0070 S 1:RANGE_NEXT                                         143   2   1
+0071   0:EXTENSION                                            3   0   2
+0072   0:EXTENSION                                            0   2   0
+0073 A 0:JUMP_IF_FALSE                                        1  70   0    ; if ints[1] == 0 goto +70
+0074 S 2:MAKE_MAP                                             0  12   3
+0075   0:EXTENSION                                            3   0   0
+0076 S 1:SET_STRUCT_FIELD_STRING_WIDE                        95   3   0
+0077   0:EXTENSION                                            0   0   0
+0078 A 0:SET_STRUCT_FIELD_INT64                               3   2   1
+0079 A 1:LENGTH_GENERAL                                      70   3   0
+0080 A 1:GREATER_THAN_INT64_THEN_JUMP_IF_FALSE              118   3  20
+0081   0:EXTENSION                                           41   0   0
+0082 A 0:SUBTRACT_INT64_CONSTANT                              8   3   4    ; const = 1
+0083 S 0:GET_ELEMENT                                          4   0   8
+0084 A 0:GET_STRUCT_FIELD_INT64                              13   3   1    ; inlined body of function 0 called at PC 84
+0085 A 0:GET_STRUCT_FIELD_INT64                              14   4   1
+0086 A 1:NOT_EQUAL_INT64_THEN_JUMP_IF_FALSE                 121  13  14
+0087   0:EXTENSION                                            5   0   0
+0088 A 1:MOVE_INT64                                          35  13  13
+0089 A 1:MOVE_INT64                                          35  14  14
+0090 A 0:GREATER_THAN_INT64                                  15  13  14
+0091 A 1:CONVERT_INT64_TO_BOOL                               54   0  15
+0092 A 1:JUMP                                                74   6   0    ; goto 6
+0093 S 1:GET_STRUCT_FIELD_STRING_WIDE                        90   1   3
+0094   0:EXTENSION                                            0   0   0
+0095 S 1:GET_STRUCT_FIELD_STRING_WIDE                        90   2   4
+0096   0:EXTENSION                                            0   0   0
+0097 G 0:LESS_THAN_STRING                                    13   1   2
+0098 A 1:CONVERT_INT64_TO_BOOL                               54   0  13
+0099 A 2:JUMP_IF_FALSE_BOOL                                   0  20   0
+0100   0:EXTENSION                                           22   0   0
+0101 A 0:GET_STRUCT_FIELD_INT64                              24   3   1    ; LICM hoist of PC 106
+0102 A 2:DECREMENT_INT64                                      0   2   3
+0103 A 1:GREATER_THAN_INT64_THEN_JUMP_IF_FALSE              118   3  21
+0104   0:EXTENSION                                           18   0   0
+0105 A 0:SUBTRACT_INT64_CONSTANT                             11   3   4    ; const = 1
+0106 S 0:GET_ELEMENT                                          4   0  11
+0107 A 0:GET_STRUCT_FIELD_INT64                              17   4   1
+0108 A 1:NOT_EQUAL_INT64_THEN_JUMP_IF_FALSE                 121  24  17
+0109   0:EXTENSION                                            5   0   0
+0110 A 1:MOVE_INT64                                          35  16  24
+0111 A 1:MOVE_INT64                                          35  17  17
+0112 A 0:GREATER_THAN_INT64                                  18  16  17
+0113 A 1:CONVERT_INT64_TO_BOOL                               54   0  18
+0114 A 1:JUMP                                                74   6   0    ; goto 6
+0115 S 1:GET_STRUCT_FIELD_STRING_WIDE                        90   3   3
+0116   0:EXTENSION                                            0   0   0
+0117 S 1:GET_STRUCT_FIELD_STRING_WIDE                        90   4   4
+0118   0:EXTENSION                                            0   0   0
+0119 G 0:LESS_THAN_STRING                                    16   3   4
+0120 A 1:CONVERT_INT64_TO_BOOL                               54   0  16
+0121 A 2:JUMP_IF_TRUE_BOOL                                    0  21   0
+0122   0:EXTENSION                                          235 255   0
+0123 S 2:MAKE_MAP                                             0  12   4
+0124   0:EXTENSION                                            3   0   0
+0125 X 0:APPEND                                               0   0   4
+0126 A 1:LENGTH_GENERAL                                      70   4   0
+0127 A 0:SUBTRACT_INT64_CONSTANT                              4   4   4    ; const = 1
+0128 A 1:GREATER_THAN_INT64_THEN_JUMP_IF_FALSE              118   4   3
+0129   0:EXTENSION                                            6   0   0
+0130 A 0:SUBTRACT_INT64_CONSTANT                              7   4   4    ; const = 1
+0131 S 0:GET_ELEMENT                                          4   0   7
+0132 S 0:SET_ELEMENT                                          0   4   4
+0133 A 2:DECREMENT_INT64                                      0   2   4
+0134 A 1:LESS_OR_EQUAL_INT64_THEN_JUMP_IF_FALSE             117   4   3
+0135   0:EXTENSION                                          250 255   0
+0136 S 0:SET_ELEMENT                                          0   3   3
+0137 A 1:LENGTH_GENERAL                                      70   4   0
+0138 A 1:GREATER_THAN_INT64_CONSTANT_THEN_JUMP_IF_FALSE     127   4   6
+0139   0:EXTENSION                                          186 255   0
+0140 S 1:SLICE_GENERAL                                      141   4   0
+0141   0:EXTENSION                                            2   0  22
+0142 A 0:MOVE_GENERAL                                         0   4   1
+0143 A 1:JUMP                                                74 182 255    ; goto -74
+0144 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0145 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0146 A 1:LENGTH_GENERAL                                      70   2   0
+0147 A 1:LESS_THAN_INT64_THEN_JUMP_IF_FALSE                 116   1   2
+0148   0:EXTENSION                                            6   0   0
+0149 A 1:LENGTH_GENERAL                                      70  23   0    ; LICM hoist of PC 153
+0150 A 0:GET_ELEMENT_FIELD_INT64                              4   0   1
+0151   0:EXTENSION                                            1   0   0
+0152 A 0:ADD_INT64                                            0   0   4
+0153 A 1:INCREMENT_INT64_THEN_JUMP_IF_LESS_THAN              77   1  23
+0154   0:EXTENSION                                          251 255   0
+0155 A 2:RETURN                                               0  10   1    ; 1 values

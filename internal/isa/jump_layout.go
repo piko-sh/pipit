@@ -18,6 +18,8 @@
 
 package isa
 
+import "piko.sh/safeconv"
+
 const (
 	// JumpLayoutNone marks an operation that carries no jump offset.
 	JumpLayoutNone JumpLayout = iota
@@ -26,16 +28,16 @@ const (
 	// itself. The target is pc + 1 + offset.
 	JumpLayoutWord
 
-	// JumpLayoutExtension keeps a signed 16-bit offset in A|(B<<8) of the OpExt word that
-	// follows. The target is pc + 2 + trailingNops + offset.
+	// JumpLayoutExtension keeps a signed 16-bit offset in A|(B<<8) of the OpExtension word
+	// that follows. The target is pc + 2 + trailingNops + offset.
 	JumpLayoutExtension
 
-	// JumpLayoutSecondExtension keeps a signed 16-bit offset in A|(B<<8) of the second OpExt
-	// word that follows. The target is pc + 3 + trailingNops + offset.
+	// JumpLayoutSecondExtension keeps a signed 16-bit offset in A|(B<<8) of the second
+	// OpExtension word that follows. The target is pc + 3 + trailingNops + offset.
 	JumpLayoutSecondExtension
 
 	// JumpLayoutExtension24 keeps an unsigned 24-bit forward offset across all three operand
-	// bytes of the OpExt word that follows. The target is pc + 2 + offset.
+	// bytes of the OpExtension word that follows. The target is pc + 2 + offset.
 	JumpLayoutExtension24
 
 	// JumpLayoutMultiWay marks a dispatch whose targets live in the OpTypeSwitchCase rows
@@ -43,23 +45,22 @@ const (
 	// default SubOpJump. It has no single target to decode.
 	JumpLayoutMultiWay
 
-	// JumpLayoutExtensionBC keeps a signed 16-bit offset in B|(C<<8) of the next OpExt word.
+	// JumpLayoutExtensionBC keeps a signed 16-bit offset in B|(C<<8) of the next OpExtension
+	// word.
 	//
 	// The target is pc + 2 + offset. The word's A byte names a register the operation
-	// writes; the fused map-index-ok branches keep their ok register there.
+	// writes.
 	JumpLayoutExtensionBC
 )
 
 const (
-	// EqUintConstJumpFalseNopCount is the number of OpNop words that follow the extension
-	// word of SubOpEqUintConstJumpFalse. The fusion collapses three words into two and pads
-	// the third so later instructions keep their indices.
-	EqUintConstJumpFalseNopCount = 1
+	// EqualUint64ImmediateThenJumpIfFalseNoOperationCount is the number of OpNoOperation
+	// words that follow the extension word of SubOpEqualUint64ImmediateThenJumpIfFalse.
+	EqualUint64ImmediateThenJumpIfFalseNoOperationCount = 1
 
-	// RangeCheckUintFusionNopCount is the number of OpNop words that follow the two
-	// extension words of SubOpTier2RangeCheckUintJumpFalse. The fusion collapses eight words
-	// into three and pads the other five.
-	RangeCheckUintFusionNopCount = 5
+	// RangeCheckUintFusionNoOperationCount is the number of OpNoOperation words that follow
+	// the two extension words of SubOpTier2InRangeUint64ThenJumpIfFalse.
+	RangeCheckUintFusionNoOperationCount = 5
 )
 
 const (
@@ -78,31 +79,93 @@ const (
 // JumpLayout says where an operation keeps its relative jump offset.
 type JumpLayout uint8
 
+// jumpLayoutEntry is one operation's jump layout as JumpLayoutOf reports it.
+type jumpLayoutEntry struct {
+	// layout says where the offset lives.
+	layout JumpLayout
+
+	// trailingNops is the number of OpNoOperation words after the operation's extension
+	// words that the target is computed past.
+	trailingNops uint8
+}
+
+// jumpLayouts holds every operation's jump layout by flat dispatch slot.
+var jumpLayouts [FlatDispatchSlots]jumpLayoutEntry
+
 // JumpLayoutOf classifies the jump layout of an instruction.
 //
 // Takes instr (Instruction) which is the instruction to classify.
 //
 // Returns layout (JumpLayout) which says where the offset lives.
-// Returns trailingNops (int) which is the number of OpNop words after the operation's
-// extension words that the target is computed past.
+// Returns trailingNops (int) which is the number of OpNoOperation words after the
+// operation's extension words that the target is computed past.
 func JumpLayoutOf(instr Instruction) (layout JumpLayout, trailingNops int) {
-	row, ok := SpecForInstruction(instr)
-	if !ok || !row.Has(SpecJump) {
+	entry := jumpLayouts[FlatIndexFor(instr)]
+	return entry.layout, int(entry.trailingNops)
+}
+
+// buildJumpLayouts fills jumpLayouts after spec rows and operand shapes are registered.
+func buildJumpLayouts() {
+	for slot := range jumpLayouts {
+		instr := instructionForFlatSlot(slot)
+		if FlatIndexFor(instr) != slot {
+			continue
+		}
+		layout, trailingNops := deriveJumpLayout(instr)
+		jumpLayouts[slot] = jumpLayoutEntry{layout: layout, trailingNops: trailingNops}
+	}
+}
+
+// instructionForFlatSlot returns an instruction that dispatches to a flat slot, with
+// every operand byte the encoding leaves free set to zero.
+//
+// A slot whose code is its tier's drill marker has no instruction of its own, since the
+// marker sends the decode a tier deeper. The instruction returned for such a slot
+// dispatches elsewhere, which FlatIndexFor shows.
+//
+// Takes slot (int) which is the flat dispatch slot.
+//
+// Returns Instruction which dispatches to the slot when one can.
+func instructionForFlatSlot(slot int) Instruction {
+	code := safeconv.MustIntToUint8(slot % SlotsPerTier)
+	switch Tier(safeconv.MustIntToUint8(slot / SlotsPerTier)) {
+	case TierMain:
+		return Instruction{Op: Opcode(code), A: 0, B: 0, C: 0}
+	case TierSub1:
+		return Instruction{Op: OpDrillTier1, A: code, B: 0, C: 0}
+	case TierSub2:
+		return Instruction{Op: OpDrillTier1, A: uint8(SubOpDrillTier2), B: code, C: 0}
+	default:
+		return Instruction{Op: OpDrillTier1, A: uint8(SubOpDrillTier2), B: uint8(SubOpTier2DrillTier3), C: code}
+	}
+}
+
+// deriveJumpLayout works out the jump layout of an instruction from its spec row and
+// operand shape.
+//
+// Takes instr (Instruction) which is the instruction to classify.
+//
+// Returns layout (JumpLayout) which says where the offset lives.
+// Returns trailingNops (uint8) which is the number of OpNoOperation words after the
+// operation's extension words that the target is computed past.
+func deriveJumpLayout(instr Instruction) (layout JumpLayout, trailingNops uint8) {
+	row := specRowForInstruction(instr)
+	if row == nil || row.Flags&SpecJump == 0 {
 		return JumpLayoutNone, 0
 	}
-	if InstrIsTier2SubOp(instr, SubOpTier2RangeCheckUintJumpFalse) {
-		return JumpLayoutSecondExtension, RangeCheckUintFusionNopCount
+	if InstrIsTier2SubOp(instr, SubOpTier2InRangeUint64ThenJumpIfFalse) {
+		return JumpLayoutSecondExtension, RangeCheckUintFusionNoOperationCount
 	}
-	if InstrIsTier1SubOp(instr, SubOpEqUintConstJumpFalse) {
-		return JumpLayoutExtension, EqUintConstJumpFalseNopCount
+	if InstrIsTier1SubOp(instr, SubOpEqualUint64ImmediateThenJumpIfFalse) {
+		return JumpLayoutExtension, EqualUint64ImmediateThenJumpIfFalseNoOperationCount
 	}
 	if InstrIsTier1SubOp(instr, SubOpTypeSwitchJump) {
 		return JumpLayoutMultiWay, 0
 	}
-	if isMapIndexOkJump(instr.Op) {
+	if isGetMapOkThenJumpIfFalse(instr.Op) {
 		return JumpLayoutExtensionBC, 0
 	}
-	if instr.Op == OpRangeNextSliceInt || instr.Op == OpRangeNextSliceByte {
+	if instr.Op == OpRangeNextSliceInt64 || instr.Op == OpRangeNextSliceByte {
 		return JumpLayoutExtension24, 0
 	}
 	if ShapeForInstruction(instr).Flags&ShapeFlagFollowsExtension != 0 {
@@ -111,17 +174,17 @@ func JumpLayoutOf(instr Instruction) (layout JumpLayout, trailingNops int) {
 	return JumpLayoutWord, 0
 }
 
-// isMapIndexOkJump reports whether op is one of the fused map-index-ok branches, whose
-// extension word carries the ok register in A and the offset in B|(C<<8).
+// isGetMapOkThenJumpIfFalse reports whether op is one of the fused map-index-ok branches,
+// whose extension word carries the ok register in A and the offset in B|(C<<8).
 //
 // Takes op (Opcode) which is the operation to test.
 //
 // Returns true for the six OpMapIndexOkJumpIfFalse* operations.
-func isMapIndexOkJump(op Opcode) bool {
+func isGetMapOkThenJumpIfFalse(op Opcode) bool {
 	switch op {
-	case OpMapIndexOkJumpIfFalseIntInt, OpMapIndexOkJumpIfFalseStringInt,
-		OpMapIndexOkJumpIfFalseStringString, OpMapIndexOkJumpIfFalseIntString,
-		OpMapIndexOkJumpIfFalseIntGeneral, OpMapIndexOkJumpIfFalseStringGeneral:
+	case OpGetMapInt64Int64OkThenJumpIfFalse, OpGetMapStringInt64OkThenJumpIfFalse,
+		OpGetMapStringStringOkThenJumpIfFalse, OpGetMapInt64StringOkThenJumpIfFalse,
+		OpGetMapInt64GeneralOkThenJumpIfFalse, OpGetMapStringGeneralOkThenJumpIfFalse:
 		return true
 	default:
 		return false
@@ -129,8 +192,8 @@ func isMapIndexOkJump(op Opcode) bool {
 }
 
 // WordCount returns how many instruction words an operation with this layout occupies
-// before any OpNop padding: one for a word-layout jump, two when the offset lives in the
-// first extension word, three when it lives in the second.
+// before any OpNoOperation padding, which is one for a word-layout jump, two when the
+// offset lives in the first extension word, three when it lives in the second.
 //
 // Returns int which is the word count, and 1 for layouts that carry no offset.
 func (layout JumpLayout) WordCount() int {

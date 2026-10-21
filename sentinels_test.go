@@ -38,6 +38,7 @@ func TestTierSentinelsWrapTheBases(t *testing.T) {
 		{name: "isolated closed", tier: pipit.ErrIsolatedClosed, base: pipit.ErrClosed},
 		{name: "isolated used alias", tier: pipit.ErrIsolatedUsed, base: pipit.ErrClosed},
 		{name: "invalid restricted config", tier: pipit.ErrInvalidRestrictedConfig, base: pipit.ErrInvalidConfig},
+		{name: "invalid option", tier: pipit.ErrInvalidOption, base: pipit.ErrInvalidConfig},
 		{name: "restricted busy", tier: pipit.ErrRestrictedBusy, base: pipit.ErrBusy},
 		{name: "restricted limit", tier: pipit.ErrRestrictedLimit, base: pipit.ErrLimit},
 	}

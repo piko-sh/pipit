@@ -30,6 +30,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/symtab/typemodel"
 )
 
 const (
@@ -48,6 +50,7 @@ func TestGoldenHashes(t *testing.T) {
 	corpus := loadCorpus(t)
 
 	if updateMode() {
+		require.True(t, typemodel.NamedCompositeTypesSupported(), "record the goldens in the default build")
 		lines := make([]string, 0, len(corpus))
 		for index := range corpus {
 			lines = append(lines, corpus[index].name+"\t"+corpus[index].hash())
@@ -69,6 +72,9 @@ func TestGoldenHashes(t *testing.T) {
 		entry := &corpus[index]
 		want, ok := recorded[entry.name]
 		delete(recorded, entry.name)
+		if !entry.recordedForThisBuild() {
+			continue
+		}
 		if !ok {
 			added = append(added, entry.name)
 			continue

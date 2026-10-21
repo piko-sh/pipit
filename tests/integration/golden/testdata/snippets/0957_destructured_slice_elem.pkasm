@@ -4,66 +4,63 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function scanWithMutation
-;   registers: int=11 float=3 general=3 bool=1
-;   dispatch:  asm=32 shim=1 exit=0 go=4
+;   registers: int64=11 float64=3 general=3 bool=1
+;   dispatch:  asm=31 shim=0 exit=0 go=0
 ;   params:    (general)
-;   returns:   (int, float, int)
+;   returns:   (int64, float64, int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=0  [1]=10
 
-0000 G 1:LOAD_ZERO                 79   0   0
-0001 G 1:LOAD_ZERO                 79   0   1
-0002 G 1:LOAD_ZERO                 79   1   0
-0003 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
-0004 A 0:SET_STRUCT_FIELD_INT_T0    0   2   0
-0005 A 0:GET_STRUCT_FIELD_INT_T0    3   0   0
-0006 A 0:GET_STRUCT_FIELD_SLICE_LEN   4   0   1
-0007 A 1:LT_INT_JUMP_FALSE        116   3   4
-0008   0:EXT                       30   0   0
-0009 A 1:MOVE_INT                  35   6   3    ; CSE'd from PC 5
-0010 A 0:GET_STRUCT_FIELD_SLICE_INDEX_SCALAR   7   0   1
-0011   0:EXT                       24   0   6
-0012   0:EXT                        0   0   0
-0013 A 0:GET_STRUCT_FIELD_SLICE_INDEX_SCALAR   1   0   1
-0014   0:EXT                       24   0   6
-0015   0:EXT                        8   0   1
-0016 A 0:GET_STRUCT_FIELD_SLICE_INDEX_SCALAR   0   0   1
-0017   0:EXT                       24   0   6
-0018   0:EXT                       16   0   4
-0019 A 0:MUL_INT_CONST              9   7   1    ; const = 10
-0020 A 0:GET_STRUCT_FIELD_GENERAL_T0   1   0   1
-0021 A 0:GET_STRUCT_FIELD_INT_T0   10   0   0
-0022 S 0:INDEX                      2   1  10
-0023 A 0:SET_STRUCT_FIELD_INT_T0    2   9   2
-0024 A 0:ADD_INT                    8   0   7
-0025 A 1:MOVE_INT                  35   0   8
-0026 A 0:ADD_FLOAT                  2   0   1
-0027 A 1:MOVE_FLOAT                36   0   2
-0028 G 1:BOOL_TO_INT               53   8   0
-0029 A 0:JUMP_IF_FALSE              8   1   0    ; if ints[8] == 0 goto +1
-0030 A 2:TIER2_INC_INT              0   1   0
-0031 A 0:GET_STRUCT_FIELD_INT_T0    8   0   0
-0032 A 0:GET_STRUCT_FIELD_SLICE_INDEX_SCALAR   9   0   1
-0033   0:EXT                       24   0   8
-0034   0:EXT                        0   0   0
-0035 A 0:ADD_INT                   10   1   9
-0036 A 1:MOVE_INT                  35   1  10
-0037 A 1:INC_STRUCT_FIELD_INT     107   0   0
-0038 A 1:JUMP                      74 222 255    ; goto -34
-0039 A 1:MOVE_INT                  35   2   0
-0040 A 1:MOVE_FLOAT                36   1   0
-0041 A 1:MOVE_INT                  35   3   1
-0042 A 1:MOVE_INT                  35   0   2
-0043 A 1:MOVE_FLOAT                36   0   1
-0044 A 1:MOVE_INT                  35   1   3
-0045 A 2:TIER2_RETURN               0  10   3    ; 3 values
+0000 A 1:LOAD_ZERO                                           79   0   0
+0001 A 1:LOAD_ZERO                                           79   0   1
+0002 A 1:LOAD_ZERO                                           79   1   0
+0003 A 1:LOAD_INT64_IMMEDIATE                                75   2   0    ; ints[2] = 0
+0004 A 0:SET_STRUCT_FIELD_INT64                               0   2   0
+0005 A 0:GET_STRUCT_FIELD_INT64                               3   0   0
+0006 A 0:LENGTH_STRUCT_FIELD                                  4   0   1
+0007 A 1:LESS_THAN_INT64_THEN_JUMP_IF_FALSE                 116   3   4
+0008   0:EXTENSION                                           30   0   0
+0009 A 0:GET_STRUCT_FIELD_INT64                               6   0   0
+0010 A 0:GET_STRUCT_FIELD_ELEMENT_FIELD                       7   0   1
+0011   0:EXTENSION                                           24   0   6
+0012   0:EXTENSION                                            0   0   0
+0013 A 0:GET_STRUCT_FIELD_ELEMENT_FIELD                       1   0   1
+0014   0:EXTENSION                                           24   0   6
+0015   0:EXTENSION                                            8   0   1
+0016 A 0:GET_STRUCT_FIELD_ELEMENT_FIELD                       0   0   1
+0017   0:EXTENSION                                           24   0   6
+0018   0:EXTENSION                                           16   0   4
+0019 A 0:MULTIPLY_INT64_CONSTANT                              9   7   1    ; const = 10
+0020 A 0:GET_STRUCT_FIELD_GENERAL                             1   0   1
+0021 A 0:GET_STRUCT_FIELD_INT64                              10   0   0
+0022 A 0:SET_ELEMENT_FIELD_INT64                              9   1  10
+0023   0:EXTENSION                                            2   0   2
+0024 A 0:ADD_INT64                                            0   0   7
+0025 A 0:ADD_FLOAT64                                          0   0   1
+0026 A 2:JUMP_IF_FALSE_BOOL                                   0  20   0
+0027   0:EXTENSION                                            1   0   0
+0028 A 2:INCREMENT_INT64                                      0   1   0
+0029 A 0:GET_STRUCT_FIELD_INT64                               8   0   0
+0030 A 0:GET_STRUCT_FIELD_ELEMENT_FIELD                       9   0   1
+0031   0:EXTENSION                                           24   0   8
+0032   0:EXTENSION                                            0   0   0
+0033 A 0:ADD_INT64                                            1   1   9
+0034 A 1:INCREMENT_STRUCT_FIELD_INT64                       107   0   0
+0035 A 0:GET_STRUCT_FIELD_INT64                               6   0   0
+0036 A 0:LENGTH_STRUCT_FIELD                                  7   0   1
+0037 A 1:GREATER_OR_EQUAL_INT64_THEN_JUMP_IF_FALSE          119   6   7
+0038   0:EXTENSION                                          226 255   0
+0039 A 1:MOVE_INT64                                          35   0   0
+0040 A 1:MOVE_FLOAT64                                        36   0   0
+0041 A 1:MOVE_INT64                                          35   1   1
+0042 A 2:RETURN                                               0  10   3    ; 3 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=7 float=2 string=2 general=6 bool=1
-;   dispatch:  asm=51 shim=10 exit=0 go=8
+;   registers: int64=7 float64=2 string=2 general=6 bool=1
+;   dispatch:  asm=50 shim=11 exit=0 go=6
 ;   params:    (none)
 ;   returns:   (string)
 ; ═════════════════════════════════════════════════════════════
@@ -74,86 +71,85 @@
 ;   strings: [0]="%d %.1f %d %d %d"
 ;   bools:   [0]=true  [1]=false
 
-0000 G 2:MAKE_MAP                   0  12   0
-0001   0:EXT                        0   0   0
-0002 A 1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
-0003 S 0:MAKE_SLICE                 1   0   0
-0004   0:EXT                        1   0   0
-0005 A 2:ALLOC_STRUCT_LITERAL       0  14   2
-0006   0:EXT                        2   0   0
-0007 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0008 A 0:SET_STRUCT_FIELD_INT_T0    2   0   0
-0009 A 0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 0.5
-0010 A 0:SET_STRUCT_FIELD_FLOAT_T0   2   0   1
-0011 A 1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
-0012 A 0:SET_STRUCT_FIELD_BOOL_T0   2   0   2
-0013 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0014 S 0:INDEX_SET                  1   0   2
-0015 A 2:ALLOC_STRUCT_LITERAL       0  14   2
-0016   0:EXT                        2   0   0
-0017 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
-0018 A 0:SET_STRUCT_FIELD_INT_T0    2   0   0
-0019 A 0:LOAD_FLOAT_CONST           0   1   0    ; floats[0] = 1.5
-0020 A 0:SET_STRUCT_FIELD_FLOAT_T0   2   0   1
-0021 A 1:LOAD_BOOL_CONST          138   0   1    ; bools[0] = false
-0022 A 0:SET_STRUCT_FIELD_BOOL_T0   2   0   2
-0023 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0024 S 0:INDEX_SET                  1   0   2
-0025 A 2:ALLOC_STRUCT_LITERAL       0  14   2
-0026   0:EXT                        2   0   0
-0027 A 1:LOAD_INT_CONST_SMALL      75   0   3    ; ints[0] = 3
-0028 A 0:SET_STRUCT_FIELD_INT_T0    2   0   0
-0029 A 0:LOAD_FLOAT_CONST           0   2   0    ; floats[0] = 2.5
-0030 A 0:SET_STRUCT_FIELD_FLOAT_T0   2   0   1
-0031 A 1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
-0032 A 0:SET_STRUCT_FIELD_BOOL_T0   2   0   2
-0033 A 1:LOAD_INT_CONST_SMALL      75   0   2    ; ints[0] = 2
-0034 S 0:INDEX_SET                  1   0   2
-0035 A 0:SET_STRUCT_FIELD_GENERAL_T0   0   1   3
-0036 S 0:ADDR                       1   0   0
-0037 A 0:MOVE_GENERAL               0   1   1
-0038 A 1:CALL                     128   0   0    ; call (site 0)
-0039 G 2:MAKE_MAP                   0  12   1
-0040   0:EXT                        0   0   0
-0041 A 1:LOAD_INT_CONST_SMALL      75   2   2    ; ints[2] = 2
-0042 S 0:MAKE_SLICE                 2   2   2
-0043   0:EXT                        1   0   0
-0044 A 0:SET_STRUCT_FIELD_GENERAL_T0   1   2   3
-0045 S 0:ADDR                       2   1   0
-0046 A 0:MOVE_GENERAL               0   2   1
-0047 A 0:GET_STRUCT_FIELD_GENERAL_T0   1   0   3
-0048 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
-0049 S 0:INDEX                      2   1   2
-0050 G 2:TIER2_SET_ZERO             0   7   2
-0051 A 1:LOAD_INT_CONST_SMALL      75   3   7    ; ints[3] = 7
-0052 A 0:SET_STRUCT_FIELD_INT_T0    2   3   0
-0053 A 0:LOAD_FLOAT_CONST           1   3   0    ; floats[1] = 7.5
-0054 A 0:SET_STRUCT_FIELD_FLOAT_T0   2   1   1
-0055 A 1:LOAD_INT_CONST_SMALL      75   2   0    ; ints[2] = 0
-0056 A 0:GET_STRUCT_FIELD_SLICE_INDEX_SCALAR   3   0   3
-0057   0:EXT                       24   0   2
-0058   0:EXT                        0   0   0
-0059 A 1:LOAD_INT_CONST_SMALL      75   4  99    ; ints[4] = 99
-0060 A 0:GET_STRUCT_FIELD_GENERAL_T0   1   0   3
-0061 A 1:LOAD_INT_CONST_SMALL      75   5   0    ; ints[5] = 0
-0062 S 0:INDEX                      2   1   5
-0063 A 0:SET_STRUCT_FIELD_INT_T0    2   4   0
-0064 A 1:MOVE_INT                  35   4   3
-0065 A 0:GET_STRUCT_FIELD_GENERAL_T0   1   0   3
-0066 A 1:LOAD_INT_CONST_SMALL      75   5   0    ; ints[5] = 0
-0067 A 0:SLICE_INDEX_STRUCT_FIELD_INT   6   1   5
-0068   0:EXT                        0   0   0
-0069 A 1:MOVE_INT                  35   5   6
-0070 S 0:LOAD_GENERAL_CONST         1   0   0
-0071 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "%d %.1f %d %d %d"
-0072 G 0:PACK_TYPED                 2   0   0
-0073   0:EXT                        3   0   0
-0074 G 0:PACK_TYPED                 3   1   0
-0075   0:EXT                        3   0   0
-0076 G 0:PACK_TYPED                 4   4   0
-0077   0:EXT                        3   0   0
-0078 G 0:PACK_TYPED                 5   5   0
-0079   0:EXT                        3   0   0
-0080 G 1:CALL_NATIVE              130   1   0    ; call native general[1] (site 1)
-0081 A 1:MOVE_STRING               37   0   1
-0082 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 2:MAKE_MAP                                             0  12   0
+0001   0:EXTENSION                                            0   0   0
+0002 A 1:LOAD_INT64_IMMEDIATE                                75   0   3    ; ints[0] = 3
+0003 S 0:MAKE_SLICE                                           1   0   0
+0004   0:EXTENSION                                            1   0   0
+0005 A 2:ALLOCATE_STRUCT_LITERAL                              0  14   2
+0006   0:EXTENSION                                            2   0   0
+0007 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0008 A 0:SET_STRUCT_FIELD_INT64                               2   0   0
+0009 A 0:LOAD_FLOAT64_CONSTANT                                0   0   0    ; floats[0] = 0.5
+0010 A 0:SET_STRUCT_FIELD_FLOAT64                             2   0   1
+0011 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = true
+0012 A 0:SET_STRUCT_FIELD_BOOL                                2   0   2
+0013 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0014 S 0:SET_ELEMENT                                          1   0   2
+0015 A 2:ALLOCATE_STRUCT_LITERAL                              0  14   2
+0016   0:EXTENSION                                            2   0   0
+0017 A 1:LOAD_INT64_IMMEDIATE                                75   0   2    ; ints[0] = 2
+0018 A 0:SET_STRUCT_FIELD_INT64                               2   0   0
+0019 A 0:LOAD_FLOAT64_CONSTANT                                0   1   0    ; floats[0] = 1.5
+0020 A 0:SET_STRUCT_FIELD_FLOAT64                             2   0   1
+0021 A 1:LOAD_BOOL_CONSTANT                                 138   0   1    ; bools[0] = false
+0022 A 0:SET_STRUCT_FIELD_BOOL                                2   0   2
+0023 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0024 S 0:SET_ELEMENT                                          1   0   2
+0025 A 2:ALLOCATE_STRUCT_LITERAL                              0  14   2
+0026   0:EXTENSION                                            2   0   0
+0027 A 1:LOAD_INT64_IMMEDIATE                                75   0   3    ; ints[0] = 3
+0028 A 0:SET_STRUCT_FIELD_INT64                               2   0   0
+0029 A 0:LOAD_FLOAT64_CONSTANT                                0   2   0    ; floats[0] = 2.5
+0030 A 0:SET_STRUCT_FIELD_FLOAT64                             2   0   1
+0031 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = true
+0032 A 0:SET_STRUCT_FIELD_BOOL                                2   0   2
+0033 A 1:LOAD_INT64_IMMEDIATE                                75   0   2    ; ints[0] = 2
+0034 S 0:SET_ELEMENT                                          1   0   2
+0035 A 0:SET_STRUCT_FIELD_GENERAL                             0   1   3
+0036 S 0:ADDRESS                                              1   0   0
+0037 A 0:MOVE_GENERAL                                         0   1   1
+0038 A 1:CALL                                               128   0   0    ; call (site 0)
+0039 S 2:MAKE_MAP                                             0  12   1
+0040   0:EXTENSION                                            0   0   0
+0041 A 1:LOAD_INT64_IMMEDIATE                                75   2   2    ; ints[2] = 2
+0042 S 0:MAKE_SLICE                                           2   2   2
+0043   0:EXTENSION                                            1   0   0
+0044 A 0:SET_STRUCT_FIELD_GENERAL                             1   2   3
+0045 S 0:ADDRESS                                              2   1   0
+0046 A 0:MOVE_GENERAL                                         0   2   1
+0047 A 0:GET_STRUCT_FIELD_GENERAL                             1   0   3
+0048 A 1:LOAD_INT64_IMMEDIATE                                75   2   0    ; ints[2] = 0
+0049 S 0:GET_ELEMENT                                          2   1   2
+0050 G 2:SET_ZERO_GENERAL                                     0   7   2
+0051 A 1:LOAD_INT64_IMMEDIATE                                75   3   7    ; ints[3] = 7
+0052 A 0:SET_STRUCT_FIELD_INT64                               2   3   0
+0053 A 0:LOAD_FLOAT64_CONSTANT                                1   3   0    ; floats[1] = 7.5
+0054 A 0:SET_STRUCT_FIELD_FLOAT64                             2   1   1
+0055 A 1:LOAD_INT64_IMMEDIATE                                75   2   0    ; ints[2] = 0
+0056 A 0:GET_STRUCT_FIELD_ELEMENT_FIELD                       3   0   3
+0057   0:EXTENSION                                           24   0   2
+0058   0:EXTENSION                                            0   0   0
+0059 A 1:LOAD_INT64_IMMEDIATE                                75   4  99    ; ints[4] = 99
+0060 A 0:GET_STRUCT_FIELD_GENERAL                             1   0   3
+0061 A 1:LOAD_INT64_IMMEDIATE                                75   5   0    ; ints[5] = 0
+0062 A 0:SET_ELEMENT_FIELD_INT64                              4   1   5
+0063   0:EXTENSION                                            0   0   2
+0064 A 1:MOVE_INT64                                          35   4   3
+0065 A 0:GET_STRUCT_FIELD_GENERAL                             1   0   3
+0066 A 1:LOAD_INT64_IMMEDIATE                                75   5   0    ; ints[5] = 0
+0067 A 0:GET_ELEMENT_FIELD_INT64                              5   1   5
+0068   0:EXTENSION                                            0   0   0
+0069 S 0:LOAD_GENERAL_CONSTANT                                1   0   0
+0070 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "%d %.1f %d %d %d"
+0071 G 0:BOX_AS_TYPE                                          2   0   0
+0072   0:EXTENSION                                            3   0   0
+0073 G 0:BOX_AS_TYPE                                          3   1   0
+0074   0:EXTENSION                                            3   0   0
+0075 G 0:BOX_AS_TYPE                                          4   4   0
+0076   0:EXTENSION                                            3   0   0
+0077 G 0:BOX_AS_TYPE                                          5   5   0
+0078   0:EXTENSION                                            3   0   0
+0079 G 1:CALL_NATIVE                                        130   1   0    ; call native general[1] (site 1)
+0080 A 1:MOVE_STRING                                         37   0   1
+0081 A 2:RETURN                                               0  10   1    ; 1 values

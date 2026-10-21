@@ -19,7 +19,6 @@
 package engine
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"testing"
@@ -184,23 +183,11 @@ func TestNativeFunctionClassifiersRecogniseTheirOwnFamily(t *testing.T) {
 		require.False(t, isWallClockSleep(wrongShape, wrongShape.Type()))
 	})
 
-	t.Run("the encoding marshallers are recognised", func(t *testing.T) {
-		t.Parallel()
-		require.True(t, isEncodingMarshaller(reflect.ValueOf(json.Marshal)))
-		require.True(t, isEncodingMarshaller(reflect.ValueOf(json.MarshalIndent)))
-	})
-
-	t.Run("an unrelated function is not a marshaller", func(t *testing.T) {
-		t.Parallel()
-		require.False(t, isEncodingMarshaller(reflect.ValueOf(json.Unmarshal)))
-		require.False(t, isEncodingMarshaller(reflect.ValueOf(func() {})))
-	})
-
 	t.Run("the scan family is recognised by its prefix", func(t *testing.T) {
 		t.Parallel()
-		require.True(t, isFmtScanFunction(reflect.ValueOf(fmt.Sscan)))
-		require.True(t, isFmtScanFunction(reflect.ValueOf(fmt.Sscanf)))
-		require.False(t, isFmtScanFunction(reflect.ValueOf(fmt.Sprint)))
+		require.True(t, isFmtScanName("fmt.Sscan"))
+		require.True(t, isFmtScanName("fmt.Sscanf"))
+		require.False(t, isFmtScanName("fmt.Sprint"))
 	})
 
 	t.Run("a variadic formatting function is recognised", func(t *testing.T) {

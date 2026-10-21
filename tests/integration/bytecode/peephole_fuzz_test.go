@@ -21,7 +21,6 @@
 package bytecode_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -38,7 +37,7 @@ func FuzzGvnDoesNotPanic(f *testing.F) {
 	f.Fuzz(func(t *testing.T, raw []byte) {
 		body := decodeFuzzBody(raw)
 		compiledFunction := &program.CompiledFunction{Body: body}
-		_ = passes.RunFunctionGvn(context.Background(), compiledFunction)
+		_ = passes.RunFunctionGvn(t.Context(), compiledFunction)
 		require.Len(t, compiledFunction.Body, len(body), "GVN keeps the body length")
 	})
 }
@@ -63,7 +62,7 @@ func FuzzPointerAliasDoesNotPanic(f *testing.F) {
 		body := decodeFuzzBody(raw)
 		compiledFunction := &program.CompiledFunction{Body: body}
 		original := append([]isa.Instruction(nil), compiledFunction.Body...)
-		_ = passes.RunPointerAliasAnalysis(context.Background(), compiledFunction)
+		_ = passes.RunPointerAliasAnalysis(t.Context(), compiledFunction)
 		require.Len(t, compiledFunction.Body, len(original), "alias analysis keeps the body length")
 		for i := range compiledFunction.Body {
 			require.Equal(t, original[i], compiledFunction.Body[i], "alias analysis leaves body[%d] alone", i)

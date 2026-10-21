@@ -64,18 +64,18 @@ func TestOptimisingAFunctionNarrowsItsSmallConstantLoads(t *testing.T) {
 			t.Parallel()
 			compiledFunction := &program.CompiledFunction{
 				Body: []isa.Instruction{
-					mk(isa.OpLoadIntConst, 0, 0, 0),
+					mk(isa.OpLoadInt64Constant, 0, 0, 0),
 					isa.NewTier2Instruction(isa.SubOpTier2Return, 1),
 				},
 				IntConstants: tt.constants,
-				NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 2},
+				NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 2},
 			}
 
-			require.NoError(t, Optimise(context.Background(), DefaultOptions(), compiledFunction))
+			require.NoError(t, Optimise(t.Context(), DefaultOptions(), compiledFunction))
 
-			require.Equal(t, tt.wantSmall, bodyHasTier1SubOp(compiledFunction.Body, isa.SubOpLoadIntConstSmall),
+			require.Equal(t, tt.wantSmall, bodyHasTier1SubOp(compiledFunction.Body, isa.SubOpLoadInt64Immediate),
 				"a constant small enough to travel inside the instruction should not cost a pool read")
-			require.Equal(t, !tt.wantSmall, bodyHasOpcode(compiledFunction.Body, isa.OpLoadIntConst),
+			require.Equal(t, !tt.wantSmall, bodyHasOpcode(compiledFunction.Body, isa.OpLoadInt64Constant),
 				"a constant that was narrowed leaves no pool load behind, and one that was not keeps it")
 		})
 	}
@@ -87,19 +87,19 @@ func TestOptimisingAFunctionFusesACompareWithItsBranch(t *testing.T) {
 	lo, hi := jumpOffset(1)
 	compiledFunction := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			mk(isa.OpLtInt, 3, 1, 2),
+			mk(isa.OpLessThanInt64, 3, 1, 2),
 			mk(isa.OpJumpIfFalse, 3, lo, hi),
 			isa.NewTier2Instruction(isa.SubOpTier2Return, 0),
 			isa.NewTier2Instruction(isa.SubOpTier2Return, 0),
 		},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 4},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 4},
 	}
 
-	require.NoError(t, Optimise(context.Background(), DefaultOptions(), compiledFunction))
+	require.NoError(t, Optimise(t.Context(), DefaultOptions(), compiledFunction))
 
-	require.True(t, bodyHasTier1SubOp(compiledFunction.Body, isa.SubOpLtIntJumpFalse),
+	require.True(t, bodyHasTier1SubOp(compiledFunction.Body, isa.SubOpLessThanInt64ThenJumpIfFalse),
 		"a comparison whose result only feeds the branch beside it becomes one compare-and-branch word")
-	require.False(t, bodyHasOpcode(compiledFunction.Body, isa.OpLtInt),
+	require.False(t, bodyHasOpcode(compiledFunction.Body, isa.OpLessThanInt64),
 		"the separate comparison has nothing left to compute")
 }
 
@@ -108,26 +108,26 @@ func TestOptimisingAFunctionRecursesIntoItsNestedFunctions(t *testing.T) {
 
 	child := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			mk(isa.OpLoadIntConst, 0, 0, 0),
+			mk(isa.OpLoadInt64Constant, 0, 0, 0),
 			isa.NewTier2Instruction(isa.SubOpTier2Return, 1),
 		},
 		IntConstants: []int64{3},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 2},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 2},
 	}
 	parent := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			mk(isa.OpLoadIntConst, 0, 0, 0),
+			mk(isa.OpLoadInt64Constant, 0, 0, 0),
 			isa.NewTier2Instruction(isa.SubOpTier2Return, 1),
 		},
 		IntConstants: []int64{4},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 2},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 2},
 		Functions:    []*program.CompiledFunction{child},
 	}
 
-	require.NoError(t, Optimise(context.Background(), DefaultOptions(), parent))
+	require.NoError(t, Optimise(t.Context(), DefaultOptions(), parent))
 
-	require.True(t, bodyHasTier1SubOp(parent.Body, isa.SubOpLoadIntConstSmall))
-	require.True(t, bodyHasTier1SubOp(child.Body, isa.SubOpLoadIntConstSmall),
+	require.True(t, bodyHasTier1SubOp(parent.Body, isa.SubOpLoadInt64Immediate))
+	require.True(t, bodyHasTier1SubOp(child.Body, isa.SubOpLoadInt64Immediate),
 		"a nested function is compiled as part of its parent, so it has to be optimised with it")
 }
 
@@ -136,26 +136,26 @@ func TestOptimisingOneFunctionLeavesItsNestedFunctionsAlone(t *testing.T) {
 
 	child := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			mk(isa.OpLoadIntConst, 0, 0, 0),
+			mk(isa.OpLoadInt64Constant, 0, 0, 0),
 			isa.NewTier2Instruction(isa.SubOpTier2Return, 1),
 		},
 		IntConstants: []int64{3},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 2},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 2},
 	}
 	parent := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			mk(isa.OpLoadIntConst, 0, 0, 0),
+			mk(isa.OpLoadInt64Constant, 0, 0, 0),
 			isa.NewTier2Instruction(isa.SubOpTier2Return, 1),
 		},
 		IntConstants: []int64{4},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 2},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 2},
 		Functions:    []*program.CompiledFunction{child},
 	}
 
-	require.NoError(t, OptimiseFunction(context.Background(), DefaultOptions(), parent))
+	require.NoError(t, OptimiseFunction(t.Context(), DefaultOptions(), parent))
 
-	require.True(t, bodyHasTier1SubOp(parent.Body, isa.SubOpLoadIntConstSmall))
-	require.True(t, bodyHasOpcode(child.Body, isa.OpLoadIntConst),
+	require.True(t, bodyHasTier1SubOp(parent.Body, isa.SubOpLoadInt64Immediate))
+	require.True(t, bodyHasOpcode(child.Body, isa.OpLoadInt64Constant),
 		"the single-function entry point is what the compiler calls as each body finishes, so it must not reach ahead")
 }
 
@@ -180,16 +180,16 @@ func TestOptimisingWithEveryOptionalPassOffStillNarrowsConstants(t *testing.T) {
 			t.Parallel()
 			compiledFunction := &program.CompiledFunction{
 				Body: []isa.Instruction{
-					mk(isa.OpLoadIntConst, 0, 0, 0),
+					mk(isa.OpLoadInt64Constant, 0, 0, 0),
 					isa.NewTier2Instruction(isa.SubOpTier2Return, 1),
 				},
 				IntConstants: []int64{7},
-				NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 2},
+				NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 2},
 			}
 
-			require.NoError(t, Optimise(context.Background(), tt.options, compiledFunction))
+			require.NoError(t, Optimise(t.Context(), tt.options, compiledFunction))
 
-			require.True(t, bodyHasTier1SubOp(compiledFunction.Body, isa.SubOpLoadIntConstSmall),
+			require.True(t, bodyHasTier1SubOp(compiledFunction.Body, isa.SubOpLoadInt64Immediate),
 				"the peephole rewrites are not optional, so they run whichever analyses are switched on")
 		})
 	}
@@ -198,16 +198,16 @@ func TestOptimisingWithEveryOptionalPassOffStillNarrowsConstants(t *testing.T) {
 func TestOptimisingAFunctionStopsWhenTheCallerCancels(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
 	compiledFunction := &program.CompiledFunction{
 		Body: []isa.Instruction{
-			mk(isa.OpLoadIntConst, 0, 0, 0),
+			mk(isa.OpLoadInt64Constant, 0, 0, 0),
 			isa.NewTier2Instruction(isa.SubOpTier2Return, 1),
 		},
 		IntConstants: []int64{7},
-		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt: 2},
+		NumRegisters: [isa.NumRegisterKinds]uint32{isa.RegisterInt64: 2},
 	}
 
 	require.Error(t, Optimise(ctx, DefaultOptions(), compiledFunction),
@@ -219,7 +219,7 @@ func TestOptimisingAnEmptyBodyIsHarmless(t *testing.T) {
 
 	compiledFunction := &program.CompiledFunction{}
 
-	require.NoError(t, Optimise(context.Background(), DefaultOptions(), compiledFunction),
+	require.NoError(t, Optimise(t.Context(), DefaultOptions(), compiledFunction),
 		"a declaration with no body has nothing to rewrite, and refusing it would fail a valid compile")
 	require.Empty(t, compiledFunction.Body)
 }

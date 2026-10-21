@@ -170,21 +170,6 @@ type pipitNamedType struct {
 	sourcePackage string
 }
 
-// Name returns the pipit source-level type name.
-//
-// Returns string which is the source-level name.
-func (t pipitNamedType) Name() string { return t.sourceName }
-
-// String returns the package-qualified source-level type name.
-//
-// Returns string which is the qualified rendering.
-func (t pipitNamedType) String() string {
-	if t.sourcePackage == "" {
-		return t.sourceName
-	}
-	return t.sourcePackage + "." + t.sourceName
-}
-
 // pipitMarshalerAdapter mirrors pipitStringerAdapter for json.Marshaler: it wraps a
 // pipit-synthesised value so encoding/json can dispatch to the source-level MarshalJSON
 // method even though the synthesised reflect.Type has no MethodSet.
@@ -203,6 +188,204 @@ type pipitMarshalerAdapter struct {
 	// methodIndex is the index into methodRoot.functions (or vm.RootFunction.functions when
 	// methodRoot is nil) of the compiled MarshalJSON method, cached at adapter construction.
 	methodIndex uint16
+}
+
+// pipitStringerAdapter is the Stringer mirror of pipitErrorAdapter: it wraps a
+// pipit-synthesised value so it satisfies fmt.Stringer even though the value's
+// reflect.Type carries no String method.
+type pipitStringerAdapter struct {
+	// vm is the parent virtual machine used to dispatch the source String method on the
+	// wrapped value.
+	vm *VM
+
+	// methodRoot pins the cross-CompileProgram-batch rootFunction owning the method body
+	// (nil for in-package targets).
+	methodRoot *program.CompiledFunction
+
+	// underlying is the reflect.Value of the pipit-synthesised type that source code
+	// attaches the String method to.
+	underlying reflect.Value
+
+	// methodIndex is the index into methodRoot.functions (or vm.RootFunction.functions when
+	// methodRoot is nil) of the compiled String method, cached at adapter construction.
+	methodIndex uint16
+}
+
+// pipitErrorAdapter wraps a pipit-synthesised value so it satisfies the stdlib error
+// interface. Supplies a real Go Error method that delegates back into the interpreter.
+type pipitErrorAdapter struct {
+	// vm is the parent virtual machine used to dispatch the source Error() method on the
+	// wrapped value.
+	vm *VM
+
+	// methodRoot pins the rootFunction owning the method body for the cross-package case, or
+	// nil for in-package methods.
+	methodRoot *program.CompiledFunction
+
+	// underlying is the reflect.Value of the pipit-synthesised type that source code
+	// attaches the Error() method to. Holds either the value or a pointer depending on the
+	// receiver kind of the declared method.
+	underlying reflect.Value
+
+	// methodIndex is the index into methodRoot.functions (or vm.RootFunction.functions when
+	// methodRoot is nil) of the compiled Error() method, cached at adapter construction so
+	// each Error() call avoids a method-table lookup.
+	methodIndex uint16
+}
+
+// pipitWriterAdapter wraps a pipit value to satisfy io.Writer.
+type pipitWriterAdapter struct {
+	// vm is the parent virtual machine used to dispatch the source Write method on the
+	// wrapped value.
+	vm *VM
+
+	// methodRoot pins the rootFunction owning the method body for the cross-package case, or
+	// nil for in-package methods.
+	methodRoot *program.CompiledFunction
+
+	// underlying is the reflect.Value of the pipit-synthesised type that source code
+	// attaches the Write method to.
+	underlying reflect.Value
+
+	// methodIndex is the index into methodRoot.functions (or vm.RootFunction.functions when
+	// methodRoot is nil) of the compiled Write method, cached at adapter construction.
+	methodIndex uint16
+}
+
+// pipitFormatterAdapter wraps a pipit value to satisfy fmt.Formatter.
+type pipitFormatterAdapter struct {
+	// vm is the parent virtual machine used to dispatch the source Format method on the
+	// wrapped value.
+	vm *VM
+
+	// methodRoot pins the rootFunction owning the method body for the cross-package case, or
+	// nil for in-package methods.
+	methodRoot *program.CompiledFunction
+
+	// underlying is the reflect.Value of the pipit-synthesised type the Format method is
+	// attached to.
+	underlying reflect.Value
+
+	// methodIndex is the index into methodRoot.functions (or vm.RootFunction.functions when
+	// methodRoot is nil) of the compiled Format method.
+	methodIndex uint16
+}
+
+// pipitScannerAdapter wraps a pipit pointer to satisfy fmt.Scanner.
+type pipitScannerAdapter struct {
+	// vm is the parent virtual machine used to dispatch the source Scan method on the
+	// wrapped value.
+	vm *VM
+
+	// methodRoot pins the rootFunction owning the method body for the cross-package case, or
+	// nil for in-package methods.
+	methodRoot *program.CompiledFunction
+
+	// underlying is the reflect.Value of the pipit-synthesised type the Scan method is
+	// attached to. Held as a pointer because Scan mutates the receiver.
+	underlying reflect.Value
+
+	// methodIndex is the index into methodRoot.functions (or vm.RootFunction.functions when
+	// methodRoot is nil) of the compiled Scan method.
+	methodIndex uint16
+}
+
+// pipitSortInterfaceAdapter wraps a pipit-synthesised value (typically a named slice such
+// as `type ByLen []string`) so it satisfies sort.Interface -
+// `sort.Sort`/`sort.Stable`/`sort.IsSorted` then dispatch Len/Less/Swap back into the
+// interpreter.
+type pipitSortInterfaceAdapter struct {
+	// vm is the parent virtual machine used to dispatch the source Len/Less/Swap methods.
+	vm *VM
+
+	// methodRoot pins the rootFunction owning Len/Less/Swap when they live in a different
+	// CompileProgram batch than vm.RootFunction. Nil for in-package types.
+	methodRoot *program.CompiledFunction
+
+	// underlying is the reflect.Value of the pipit value the sort methods are attached to.
+	underlying reflect.Value
+
+	// lenIndex is the index of the compiled Len method.
+	lenIndex uint16
+
+	// lessIndex is the index of the compiled Less method.
+	lessIndex uint16
+
+	// swapIndex is the index of the compiled Swap method.
+	swapIndex uint16
+}
+
+// pipitReaderAdapter wraps a pipit value to satisfy io.Reader.
+type pipitReaderAdapter struct {
+	// vm is the parent virtual machine used to dispatch the source Read method on the
+	// wrapped value.
+	vm *VM
+
+	// methodRoot pins the rootFunction owning the method body for the cross-package case, or
+	// nil for in-package methods.
+	methodRoot *program.CompiledFunction
+
+	// underlying is the reflect.Value of the pipit-synthesised type that source code
+	// attaches the Read method to.
+	underlying reflect.Value
+
+	// methodIndex is the index into methodRoot.functions (or vm.RootFunction.functions when
+	// methodRoot is nil) of the compiled Read method, cached at adapter construction.
+	methodIndex uint16
+
+	// guard bounds the Read calls and turns a read that makes no progress into an error.
+	guard readGuard
+}
+
+// pipitUnmarshalerAdapter wraps a pipit-synthesised pointer value so it satisfies the
+// encoding/json.Unmarshaler interface. Always wraps a *T because UnmarshalJSON mutates
+// the receiver.
+type pipitUnmarshalerAdapter struct {
+	// vm is the parent virtual machine used to dispatch the source UnmarshalJSON method on
+	// the wrapped value.
+	vm *VM
+
+	// methodRoot pins the rootFunction owning the method body for the cross-package case, or
+	// nil for in-package methods.
+	methodRoot *program.CompiledFunction
+
+	// underlying is the reflect.Value of the pipit-synthesised type that source code
+	// attaches the UnmarshalJSON method to. Held as a *T pointer so mutations performed by
+	// the method body are visible to the caller.
+	underlying reflect.Value
+
+	// methodIndex is the index into methodRoot.functions (or vm.RootFunction.functions when
+	// methodRoot is nil) of the compiled UnmarshalJSON method, cached at adapter
+	// construction.
+	methodIndex uint16
+
+	// callDepth tracks recursive entry into this adapter; capped at pipitUnmarshalerMaxDepth
+	// to bail before a host stack overflow.
+	callDepth int
+}
+
+// adapterUnwrapper exposes an adapter's original script value when it returns to
+// interpreted code.
+type adapterUnwrapper interface {
+	// adapterUnderlying returns the script value the adapter wraps.
+	//
+	// Returns reflect.Value which is the wrapped script value.
+	adapterUnderlying() reflect.Value
+}
+
+// Name returns the pipit source-level type name.
+//
+// Returns string which is the source-level name.
+func (t pipitNamedType) Name() string { return t.sourceName }
+
+// String returns the package-qualified source-level type name.
+//
+// Returns string which is the qualified rendering.
+func (t pipitNamedType) String() string {
+	if t.sourcePackage == "" {
+		return t.sourceName
+	}
+	return t.sourcePackage + "." + t.sourceName
 }
 
 // MarshalJSON invokes the wrapped value's MarshalJSON method.
@@ -249,27 +432,6 @@ func (a *pipitMarshalerAdapter) MarshalJSON() (raw []byte, returnedError error) 
 // Returns reflect.Value which is the wrapped value.
 func (a *pipitMarshalerAdapter) adapterUnderlying() reflect.Value { return a.underlying }
 
-// pipitStringerAdapter is the Stringer mirror of pipitErrorAdapter: it wraps a
-// pipit-synthesised value so it satisfies fmt.Stringer even though the value's
-// reflect.Type carries no String method.
-type pipitStringerAdapter struct {
-	// vm is the parent virtual machine used to dispatch the source String method on the
-	// wrapped value.
-	vm *VM
-
-	// methodRoot pins the cross-CompileProgram-batch rootFunction owning the method body
-	// (nil for in-package targets).
-	methodRoot *program.CompiledFunction
-
-	// underlying is the reflect.Value of the pipit-synthesised type that source code
-	// attaches the String method to.
-	underlying reflect.Value
-
-	// methodIndex is the index into methodRoot.functions (or vm.RootFunction.functions when
-	// methodRoot is nil) of the compiled String method, cached at adapter construction.
-	methodIndex uint16
-}
-
 // String invokes the wrapped pipit value's String() method through the interpreter's
 // bound-method dispatch. Returns an empty string when the bound method produces no usable
 // result, matching pipitErrorAdapter for parity.
@@ -285,28 +447,6 @@ func (a *pipitStringerAdapter) String() string {
 // Returns reflect.Value which is the wrapped script value.
 func (a *pipitStringerAdapter) adapterUnderlying() reflect.Value { return a.underlying }
 
-// pipitErrorAdapter wraps a pipit-synthesised value so it satisfies the stdlib error
-// interface. Supplies a real Go Error method that delegates back into the interpreter.
-type pipitErrorAdapter struct {
-	// vm is the parent virtual machine used to dispatch the source Error() method on the
-	// wrapped value.
-	vm *VM
-
-	// methodRoot pins the rootFunction owning the method body for the cross-package case, or
-	// nil for in-package methods.
-	methodRoot *program.CompiledFunction
-
-	// underlying is the reflect.Value of the pipit-synthesised type that source code
-	// attaches the Error() method to. Holds either the value or a pointer depending on the
-	// receiver kind of the declared method.
-	underlying reflect.Value
-
-	// methodIndex is the index into methodRoot.functions (or vm.RootFunction.functions when
-	// methodRoot is nil) of the compiled Error() method, cached at adapter construction so
-	// each Error() call avoids a method-table lookup.
-	methodIndex uint16
-}
-
 // Error invokes the wrapped pipit value's Error() method via the interpreter's
 // bound-method dispatch path.
 //
@@ -319,25 +459,6 @@ func (a *pipitErrorAdapter) Error() string {
 //
 // Returns reflect.Value which is the wrapped script value.
 func (a *pipitErrorAdapter) adapterUnderlying() reflect.Value { return a.underlying }
-
-// pipitWriterAdapter wraps a pipit value to satisfy io.Writer.
-type pipitWriterAdapter struct {
-	// vm is the parent virtual machine used to dispatch the source Write method on the
-	// wrapped value.
-	vm *VM
-
-	// methodRoot pins the rootFunction owning the method body for the cross-package case, or
-	// nil for in-package methods.
-	methodRoot *program.CompiledFunction
-
-	// underlying is the reflect.Value of the pipit-synthesised type that source code
-	// attaches the Write method to.
-	underlying reflect.Value
-
-	// methodIndex is the index into methodRoot.functions (or vm.RootFunction.functions when
-	// methodRoot is nil) of the compiled Write method, cached at adapter construction.
-	methodIndex uint16
-}
 
 // Write invokes the wrapped pipit value's Write method through the interpreter's
 // bound-method dispatch.
@@ -391,25 +512,6 @@ func (a *pipitWriterAdapter) Write(p []byte) (n int, err error) {
 // Returns reflect.Value which is the wrapped value.
 func (a *pipitWriterAdapter) adapterUnderlying() reflect.Value { return a.underlying }
 
-// pipitFormatterAdapter wraps a pipit value to satisfy fmt.Formatter.
-type pipitFormatterAdapter struct {
-	// vm is the parent virtual machine used to dispatch the source Format method on the
-	// wrapped value.
-	vm *VM
-
-	// methodRoot pins the rootFunction owning the method body for the cross-package case, or
-	// nil for in-package methods.
-	methodRoot *program.CompiledFunction
-
-	// underlying is the reflect.Value of the pipit-synthesised type the Format method is
-	// attached to.
-	underlying reflect.Value
-
-	// methodIndex is the index into methodRoot.functions (or vm.RootFunction.functions when
-	// methodRoot is nil) of the compiled Format method.
-	methodIndex uint16
-}
-
 // Format invokes the wrapped pipit value's Format method, forwarding fmt's State and
 // verb. Panics from the interpreted method are contained unless raised inside an active
 // native dispatch.
@@ -440,25 +542,6 @@ func (a *pipitFormatterAdapter) Format(state fmt.State, verb rune) {
 //
 // Returns reflect.Value which is the wrapped script value.
 func (a *pipitFormatterAdapter) adapterUnderlying() reflect.Value { return a.underlying }
-
-// pipitScannerAdapter wraps a pipit pointer to satisfy fmt.Scanner.
-type pipitScannerAdapter struct {
-	// vm is the parent virtual machine used to dispatch the source Scan method on the
-	// wrapped value.
-	vm *VM
-
-	// methodRoot pins the rootFunction owning the method body for the cross-package case, or
-	// nil for in-package methods.
-	methodRoot *program.CompiledFunction
-
-	// underlying is the reflect.Value of the pipit-synthesised type the Scan method is
-	// attached to. Held as a pointer because Scan mutates the receiver.
-	underlying reflect.Value
-
-	// methodIndex is the index into methodRoot.functions (or vm.RootFunction.functions when
-	// methodRoot is nil) of the compiled Scan method.
-	methodIndex uint16
-}
 
 // Scan invokes the wrapped pipit value's Scan method.
 //
@@ -496,31 +579,6 @@ func (a *pipitScannerAdapter) Scan(state fmt.ScanState, verb rune) (returnedErro
 //
 // Returns reflect.Value which is the wrapped value.
 func (a *pipitScannerAdapter) adapterUnderlying() reflect.Value { return a.underlying }
-
-// pipitSortInterfaceAdapter wraps a pipit-synthesised value (typically a named slice such
-// as `type ByLen []string`) so it satisfies sort.Interface -
-// `sort.Sort`/`sort.Stable`/`sort.IsSorted` then dispatch Len/Less/Swap back into the
-// interpreter.
-type pipitSortInterfaceAdapter struct {
-	// vm is the parent virtual machine used to dispatch the source Len/Less/Swap methods.
-	vm *VM
-
-	// methodRoot pins the rootFunction owning Len/Less/Swap when they live in a different
-	// CompileProgram batch than vm.RootFunction. Nil for in-package types.
-	methodRoot *program.CompiledFunction
-
-	// underlying is the reflect.Value of the pipit value the sort methods are attached to.
-	underlying reflect.Value
-
-	// lenIndex is the index of the compiled Len method.
-	lenIndex uint16
-
-	// lessIndex is the index of the compiled Less method.
-	lessIndex uint16
-
-	// swapIndex is the index of the compiled Swap method.
-	swapIndex uint16
-}
 
 // Len dispatches the source-level Len method.
 //
@@ -587,28 +645,6 @@ func (a *pipitSortInterfaceAdapter) dispatch(methodIndex uint16, arguments []ref
 	return bound.invoke(receiver, arguments, identityArg)
 }
 
-// pipitReaderAdapter wraps a pipit value to satisfy io.Reader.
-type pipitReaderAdapter struct {
-	// vm is the parent virtual machine used to dispatch the source Read method on the
-	// wrapped value.
-	vm *VM
-
-	// methodRoot pins the rootFunction owning the method body for the cross-package case, or
-	// nil for in-package methods.
-	methodRoot *program.CompiledFunction
-
-	// underlying is the reflect.Value of the pipit-synthesised type that source code
-	// attaches the Read method to.
-	underlying reflect.Value
-
-	// methodIndex is the index into methodRoot.functions (or vm.RootFunction.functions when
-	// methodRoot is nil) of the compiled Read method, cached at adapter construction.
-	methodIndex uint16
-
-	// guard bounds the Read calls and turns a read that makes no progress into an error.
-	guard readGuard
-}
-
 // Read invokes the wrapped pipit value's Read method through the interpreter's
 // bound-method dispatch.
 //
@@ -651,33 +687,6 @@ func (a *pipitReaderAdapter) Read(p []byte) (n int, err error) {
 // Returns reflect.Value which is the wrapped value.
 func (a *pipitReaderAdapter) adapterUnderlying() reflect.Value { return a.underlying }
 
-// pipitUnmarshalerAdapter wraps a pipit-synthesised pointer value so it satisfies the
-// encoding/json.Unmarshaler interface. Always wraps a *T because UnmarshalJSON mutates
-// the receiver.
-type pipitUnmarshalerAdapter struct {
-	// vm is the parent virtual machine used to dispatch the source UnmarshalJSON method on
-	// the wrapped value.
-	vm *VM
-
-	// methodRoot pins the rootFunction owning the method body for the cross-package case, or
-	// nil for in-package methods.
-	methodRoot *program.CompiledFunction
-
-	// underlying is the reflect.Value of the pipit-synthesised type that source code
-	// attaches the UnmarshalJSON method to. Held as a *T pointer so mutations performed by
-	// the method body are visible to the caller.
-	underlying reflect.Value
-
-	// methodIndex is the index into methodRoot.functions (or vm.RootFunction.functions when
-	// methodRoot is nil) of the compiled UnmarshalJSON method, cached at adapter
-	// construction.
-	methodIndex uint16
-
-	// callDepth tracks recursive entry into this adapter; capped at pipitUnmarshalerMaxDepth
-	// to bail before a host stack overflow.
-	callDepth int
-}
-
 // UnmarshalJSON invokes the wrapped pipit value's UnmarshalJSON method.
 // Returns the error produced by the source-level method, or any panic captured in the
 // dispatch boundary.
@@ -715,15 +724,6 @@ func (a *pipitUnmarshalerAdapter) UnmarshalJSON(data []byte) (returnedError erro
 //
 // Returns reflect.Value which is the wrapped value.
 func (a *pipitUnmarshalerAdapter) adapterUnderlying() reflect.Value { return a.underlying }
-
-// adapterUnwrapper exposes an adapter's original script value when it returns to
-// interpreted code.
-type adapterUnwrapper interface {
-	// adapterUnderlying returns the script value the adapter wraps.
-	//
-	// Returns reflect.Value which is the wrapped script value.
-	adapterUnderlying() reflect.Value
-}
 
 // WellKnownNamedInterfaceReflectType returns the cached reflect.Type for a well-known
 // stdlib named interface so compileType does not collapse it to `interface{}`.
@@ -933,6 +933,23 @@ func convertMakeFuncResults(functionType reflect.Type, results []reflect.Value) 
 	}
 }
 
+// namedScalarDisplayReflectType returns the reflect.Type script code sees for a type.
+//
+// Takes resolvedType (reflect.Type) which is the runtime type.
+//
+// Returns reflect.Type which is the type to hand to script code.
+func namedScalarDisplayReflectType(resolvedType reflect.Type) reflect.Type {
+	info, isPool := typemodel.LookupNamedScalarPoolInfo(resolvedType)
+	if !isPool {
+		return resolvedType
+	}
+	return pipitNamedType{
+		Type:          resolvedType,
+		sourceName:    info.BareName,
+		sourcePackage: info.PkgName,
+	}
+}
+
 // applyPipitReflectTypeOfNaming re-clothes the result of a reflect.TypeOf call so the
 // rendered name preserves source-level identity that pipit's type converter would
 // otherwise lose.
@@ -962,15 +979,11 @@ func applyPipitReflectTypeOfNaming(vm *VM, reflectedFunction reflect.Value, site
 		return results
 	}
 	resolvedType, ok := reflect.TypeAssert[reflect.Type](results[0])
-	if !ok || resolvedType == nil {
+	if !ok || resolvedType == nil || typemodel.IsNamedCompositeType(resolvedType) {
 		return results
 	}
-	if info, isPool := typemodel.LookupNamedScalarPoolInfo(resolvedType); isPool {
-		results[0] = reflect.ValueOf(pipitNamedType{
-			Type:          resolvedType,
-			sourceName:    info.BareName,
-			sourcePackage: info.PkgName,
-		})
+	if _, isPool := typemodel.LookupNamedScalarPoolInfo(resolvedType); isPool {
+		results[0] = reflect.ValueOf(namedScalarDisplayReflectType(resolvedType))
 		return results
 	}
 	if len(site.ArgumentStaticTypeNames) == 0 {
@@ -1155,10 +1168,11 @@ func buildMarshalerAdapterIfRegistered(vm *VM, argument reflect.Value, typeName 
 	if !methodReceiverSatisfiesValueIn(methodRoot, vm, methodIndex, argument) {
 		return reflect.Value{}
 	}
+	vm.exportGuestCode()
 	return reflect.ValueOf(&pipitMarshalerAdapter{
 		vm:          vm,
 		methodRoot:  methodRoot,
-		underlying:  argument,
+		underlying:  adapterHeldValue(vm, argument),
 		methodIndex: methodIndex,
 	})
 }
@@ -1257,12 +1271,13 @@ func resolveAdapterCallee(vm *VM, methodRoot *program.CompiledFunction, methodIn
 // Takes root (*CompiledFunction) which owns callee.
 // Takes callee (*CompiledFunction) which is the method body to run.
 //
-// Returns a boundMethodVM ready for invoke().
-func newCrossPackageBoundMethod(vm *VM, root *program.CompiledFunction, callee *program.CompiledFunction) *boundMethodVM {
+// Returns a boundMethodVM ready for invoke(), by value so a caller that invokes it at
+// once keeps it on its stack.
+func newCrossPackageBoundMethod(vm *VM, root *program.CompiledFunction, callee *program.CompiledFunction) boundMethodVM {
 	if root != nil && root != vm.rootFunction {
-		return newBoundMethodVM(vm, callee, root)
+		return makeBoundMethodVM(vm, callee, root)
 	}
-	return newBoundMethodVM(vm, callee, nil)
+	return makeBoundMethodVM(vm, callee, nil)
 }
 
 // lookupAdapterMethod resolves a "TypeName.MethodName" entry to (rootFunction,
@@ -1311,10 +1326,11 @@ func buildFormatterAdapterIfRegistered(vm *VM, argument reflect.Value, typeName 
 	if !methodReceiverSatisfiesValueIn(methodRoot, vm, methodIndex, argument) {
 		return reflect.Value{}
 	}
+	vm.exportGuestCode()
 	return reflect.ValueOf(&pipitFormatterAdapter{
 		vm:          vm,
 		methodRoot:  methodRoot,
-		underlying:  argument,
+		underlying:  adapterHeldValue(vm, argument),
 		methodIndex: methodIndex,
 	})
 }
@@ -1352,10 +1368,11 @@ func buildSortInterfaceAdapterIfRegistered(vm *VM, argument reflect.Value, typeN
 		!methodReceiverSatisfiesValueIn(swapRoot, vm, swapIndex, argument) {
 		return reflect.Value{}
 	}
+	vm.exportGuestCode()
 	return reflect.ValueOf(&pipitSortInterfaceAdapter{
 		vm:         vm,
 		methodRoot: lenRoot,
-		underlying: argument,
+		underlying: adapterHeldValue(vm, argument),
 		lenIndex:   lenIndex,
 		lessIndex:  lessIndex,
 		swapIndex:  swapIndex,
@@ -1379,10 +1396,11 @@ func buildScannerAdapterIfRegistered(vm *VM, argument reflect.Value, typeName st
 	if !methodReceiverSatisfiesValueIn(methodRoot, vm, methodIndex, argument) {
 		return reflect.Value{}
 	}
+	vm.exportGuestCode()
 	return reflect.ValueOf(&pipitScannerAdapter{
 		vm:          vm,
 		methodRoot:  methodRoot,
-		underlying:  argument,
+		underlying:  adapterHeldValue(vm, argument),
 		methodIndex: methodIndex,
 	})
 }
@@ -1405,10 +1423,11 @@ func buildWriterAdapterIfRegistered(vm *VM, argument reflect.Value, typeName str
 	if !methodReceiverSatisfiesValueIn(methodRoot, vm, methodIndex, argument) {
 		return reflect.Value{}
 	}
+	vm.exportGuestCode()
 	return reflect.ValueOf(&pipitWriterAdapter{
 		vm:          vm,
 		methodRoot:  methodRoot,
-		underlying:  argument,
+		underlying:  adapterHeldValue(vm, argument),
 		methodIndex: methodIndex,
 	})
 }
@@ -1433,9 +1452,10 @@ func buildUnmarshalerAdapterIfRegistered(vm *VM, argument reflect.Value, typeNam
 	if !methodReceiverSatisfiesValueIn(methodRoot, vm, methodIndex, argument) {
 		return reflect.Value{}
 	}
+	vm.exportGuestCode()
 	return reflect.ValueOf(&pipitUnmarshalerAdapter{vm: vm,
 		methodRoot:  methodRoot,
-		underlying:  argument,
+		underlying:  adapterHeldValue(vm, argument),
 		methodIndex: methodIndex, callDepth: 0})
 }
 
@@ -1457,9 +1477,10 @@ func buildReaderAdapterIfRegistered(vm *VM, argument reflect.Value, typeName str
 	if !methodReceiverSatisfiesValueIn(methodRoot, vm, methodIndex, argument) {
 		return reflect.Value{}
 	}
+	vm.exportGuestCode()
 	return reflect.ValueOf(&pipitReaderAdapter{vm: vm,
 		methodRoot:  methodRoot,
-		underlying:  argument,
+		underlying:  adapterHeldValue(vm, argument),
 		methodIndex: methodIndex, guard: readGuard{}})
 }
 
@@ -1483,8 +1504,9 @@ func receiverValueFor(callee *program.CompiledFunction, underlying reflect.Value
 // dispatch.
 //
 // Already-pointer values pass through; addressable values return their Addr;
-// non-addressable struct values are copied into a fresh reflect.New so the callee can
-// take Addr in the standard way bound method dispatch expects.
+// non-addressable values, and scalars, which may be an arena box other registers share,
+// are copied into a fresh reflect.New so the callee can take Addr in the standard way
+// bound method dispatch expects.
 //
 // Takes value (reflect.Value) which is the pipit-synthesised value.
 //
@@ -1496,7 +1518,7 @@ func pointerReceiverFor(value reflect.Value) reflect.Value {
 	if value.Kind() == reflect.Pointer {
 		return value
 	}
-	if value.CanAddr() {
+	if value.CanAddr() && !isScalarKind(value.Kind()) {
 		return value.Addr()
 	}
 	addressable := reflect.New(value.Type())
@@ -1522,10 +1544,11 @@ func buildErrorAdapterIfRegistered(vm *VM, argument reflect.Value, typeName stri
 	if !methodReceiverSatisfiesValueIn(methodRoot, vm, methodIndex, argument) {
 		return reflect.Value{}
 	}
+	vm.exportGuestCode()
 	return reflect.ValueOf(&pipitErrorAdapter{
 		vm:          vm,
 		methodRoot:  methodRoot,
-		underlying:  argument,
+		underlying:  adapterHeldValue(vm, argument),
 		methodIndex: methodIndex,
 	})
 }
@@ -1584,10 +1607,11 @@ func buildStringerAdapterIfRegistered(vm *VM, argument reflect.Value, typeName s
 	if !methodReceiverSatisfiesValueIn(methodRoot, vm, methodIndex, argument) {
 		return reflect.Value{}
 	}
+	vm.exportGuestCode()
 	return reflect.ValueOf(&pipitStringerAdapter{
 		vm:          vm,
 		methodRoot:  methodRoot,
-		underlying:  argument,
+		underlying:  adapterHeldValue(vm, argument),
 		methodIndex: methodIndex,
 	})
 }

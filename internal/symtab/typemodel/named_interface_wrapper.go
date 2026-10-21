@@ -19,6 +19,7 @@
 package typemodel
 
 import (
+	"iter"
 	"reflect"
 )
 
@@ -132,6 +133,19 @@ func (w NamedInterfaceWrapper) Method(i int) reflect.Method {
 		return w.Type.Method(i)
 	}
 	return w.pipit.method(i)
+}
+
+// Methods iterates over the method records Method reports, in index order.
+//
+// Returns iter.Seq[reflect.Method] which yields each method record.
+func (w NamedInterfaceWrapper) Methods() iter.Seq[reflect.Method] {
+	return func(yield func(reflect.Method) bool) {
+		for index := range w.NumMethod() {
+			if !yield(w.Method(index)) {
+				return
+			}
+		}
+	}
 }
 
 // MethodByName looks up a method by name.

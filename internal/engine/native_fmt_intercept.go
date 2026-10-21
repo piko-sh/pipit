@@ -37,6 +37,13 @@ const (
 
 	// decimalBase is the radix of an explicit operand index inside a format string.
 	decimalBase = 10
+
+	// fmtRenderDepthCap bounds the nesting the script-value renderers follow.
+	fmtRenderDepthCap = 64
+
+	// fmtRenderDepthMarker is written in place of a value nested deeper than
+	// fmtRenderDepthCap.
+	fmtRenderDepthMarker = "..."
 )
 
 // pipitFmtValue wraps a pipit-synthesised struct for fmt printing.
@@ -57,6 +64,43 @@ type pipitFmtValue struct {
 	// typeName is the pipit source-level type name of underlying, used to resolve a GoString
 	// method in the VM method table.
 	typeName string
+}
+
+// fmtInterceptState carries the per-scan bookkeeping interceptFmtFormat keeps live across
+// the runes of one format string: the rune view, the current implicit-argument cursor,
+// and whether any %T rewrite happened.
+type fmtInterceptState struct {
+	// runes is the format string under inspection as a rune slice.
+	runes []rune
+
+	// implicitArgIndex is the cursor into args for the next implicit verb.
+	implicitArgIndex int
+
+	// intercepted records whether any %T rewrite happened during the scan.
+	intercepted bool
+}
+
+// pipitFmtRenderer renders script values for fmt, carrying the VM so leaf methods print
+// correctly.
+type pipitFmtRenderer struct {
+	// vm is the virtual machine whose method tables are consulted.
+	vm *VM
+}
+
+// fmtVerbScanner walks a format string the way fmt does and records the verb of each
+// operand it reaches.
+type fmtVerbScanner struct {
+	// format is the format string.
+	format string
+
+	// verbs receives one verb per operand.
+	verbs []byte
+
+	// i is the scan position.
+	i int
+
+	// argument is the index of the operand the next verb applies to.
+	argument int
 }
 
 // Format implements fmt.Formatter for pipitFmtValue.
@@ -81,9 +125,9 @@ func (w pipitFmtValue) Format(state fmt.State, verb rune) {
 			w.formatGoSyntax(state)
 			return
 		}
-		pipitFmtRenderer{vm: w.vm}.writeStructPipitSafe(state, w.underlying, state.Flag('+'))
+		pipitFmtRenderer{vm: w.vm}.writeStructPipitSafe(state, w.underlying, state.Flag('+'), 0)
 	case 's':
-		pipitFmtRenderer{vm: w.vm}.writeStructPipitSafe(state, w.underlying, state.Flag('+'))
+		pipitFmtRenderer{vm: w.vm}.writeStructPipitSafe(state, w.underlying, state.Flag('+'), 0)
 	default:
 		writeFormatFallback(state, verb, w.underlying.Interface())
 	}
@@ -103,21 +147,7 @@ func (w pipitFmtValue) formatGoSyntax(state fmt.State) {
 			return
 		}
 	}
-	writeStructGoSyntax(state, w.underlying)
-}
-
-// fmtInterceptState carries the per-scan bookkeeping interceptFmtFormat keeps live across
-// the runes of one format string: the rune view, the current implicit-argument cursor,
-// and whether any %T rewrite happened.
-type fmtInterceptState struct {
-	// runes is the format string under inspection as a rune slice.
-	runes []rune
-
-	// implicitArgIndex is the cursor into args for the next implicit verb.
-	implicitArgIndex int
-
-	// intercepted records whether any %T rewrite happened during the scan.
-	intercepted bool
+	writeStructGoSyntax(state, w.underlying, 0)
 }
 
 // processFormatRune advances the format-string scan by one logical step: copies plain
@@ -217,34 +247,35 @@ func (state *fmtInterceptState) writeRewrittenVerb(rewritten *strings.Builder, v
 	_, _ = rewritten.WriteRune('s')
 }
 
-// pipitFmtRenderer renders script values for fmt, carrying the VM so leaf methods print
-// correctly.
-type pipitFmtRenderer struct {
-	// vm is the virtual machine whose method tables are consulted.
-	vm *VM
-}
-
 // writeStructPipitSafe prints a struct value with the pipit sentinel field hidden.
 //
-// Reproduces fmt's default `%v` shape but skips any field whose name begins with the
-// `_pipitID_` sentinel prefix. When verbose is true, field names are included (mirroring
-// `%+v`). Nested struct fields recurse through the same printer so the sentinel-skip
-// applies at every level.
+// When verbose is true, field names are included (mirroring `%+v`). As in fmt, only a
+// pointer at the top level is followed, and a nested one prints as its address.
 //
 // Takes writer (fmt.State) which receives the rendered output.
 // Takes value (reflect.Value) which is the struct value to print.
 // Takes verbose (bool) which selects the `%+v` shape when true.
-func (r pipitFmtRenderer) writeStructPipitSafe(writer fmt.State, value reflect.Value, verbose bool) {
+// Takes depth (int) which is the nesting below the operand, zero for the operand itself.
+func (r pipitFmtRenderer) writeStructPipitSafe(writer fmt.State, value reflect.Value, verbose bool, depth int) {
+	if depth > fmtRenderDepthCap {
+		_, _ = fmt.Fprint(writer, fmtRenderDepthMarker)
+		return
+	}
 	if value.Kind() == reflect.Pointer {
 		if value.IsNil() {
 			_, _ = fmt.Fprint(writer, "<nil>")
 			return
 		}
+		if depth > 0 {
+			_, _ = fmt.Fprintf(writer, "0x%x", value.Pointer())
+			return
+		}
 		_, _ = fmt.Fprint(writer, "&")
 		value = value.Elem()
+		depth++
 	}
 	if value.Kind() != reflect.Struct {
-		r.writeAnyValue(writer, value, verbose)
+		r.writeAnyValue(writer, value, verbose, depth)
 		return
 	}
 	structType := value.Type()
@@ -263,7 +294,7 @@ func (r pipitFmtRenderer) writeStructPipitSafe(writer fmt.State, value reflect.V
 			_, _ = fmt.Fprintf(writer, "%s:", pipitSourceFieldName(fieldType.Name))
 		}
 		fieldValue := value.Field(index)
-		r.writeAnyValue(writer, fieldValue, verbose)
+		r.writeAnyValue(writer, fieldValue, verbose, depth+1)
 	}
 	_, _ = fmt.Fprint(writer, "}")
 }
@@ -274,7 +305,8 @@ func (r pipitFmtRenderer) writeStructPipitSafe(writer fmt.State, value reflect.V
 // Takes writer (fmt.State) which receives the rendered output.
 // Takes value (reflect.Value) which is the value to print.
 // Takes verbose (bool) which selects the `%+v` shape when true.
-func (r pipitFmtRenderer) writeAnyValue(writer fmt.State, value reflect.Value, verbose bool) {
+// Takes depth (int) which is the nesting below the operand.
+func (r pipitFmtRenderer) writeAnyValue(writer fmt.State, value reflect.Value, verbose bool, depth int) {
 	if !value.IsValid() {
 		_, _ = fmt.Fprint(writer, "<invalid>")
 		return
@@ -284,22 +316,22 @@ func (r pipitFmtRenderer) writeAnyValue(writer fmt.State, value reflect.Value, v
 		return
 	}
 	if value.Kind() == reflect.Pointer && !value.IsNil() && isPipitSynthesisedReflectType(value.Type()) {
-		r.writeStructPipitSafe(writer, value, verbose)
+		r.writeStructPipitSafe(writer, value, verbose, depth)
 		return
 	}
 	if value.Kind() == reflect.Struct && isPipitSynthesisedReflectType(value.Type()) {
-		r.writeStructPipitSafe(writer, value, verbose)
+		r.writeStructPipitSafe(writer, value, verbose, depth)
 		return
 	}
 	switch value.Kind() {
 	case reflect.Slice, reflect.Array:
 		if typeContainsPipitSynthesised(value.Type()) {
-			r.writeSlicePipitSafe(writer, value, verbose)
+			r.writeSlicePipitSafe(writer, value, verbose, depth)
 			return
 		}
 	case reflect.Map:
 		if typeContainsPipitSynthesised(value.Type()) {
-			r.writeMapPipitSafe(writer, value, verbose)
+			r.writeMapPipitSafe(writer, value, verbose, depth)
 			return
 		}
 	default:
@@ -313,19 +345,21 @@ func (r pipitFmtRenderer) writeAnyValue(writer fmt.State, value reflect.Value, v
 
 // writeSlicePipitSafe renders a slice or array as `[e0 e1 ...]`.
 //
-// Each element recurses through writeAnyValue() so nested pipit-synth struct elements
-// skip the sentinel field.
-//
 // Takes writer (fmt.State) which receives the rendered output.
 // Takes value (reflect.Value) which is the slice or array to print.
 // Takes verbose (bool) which selects the `%+v` shape when true.
-func (r pipitFmtRenderer) writeSlicePipitSafe(writer fmt.State, value reflect.Value, verbose bool) {
+// Takes depth (int) which is the nesting below the operand.
+func (r pipitFmtRenderer) writeSlicePipitSafe(writer fmt.State, value reflect.Value, verbose bool, depth int) {
+	if depth > fmtRenderDepthCap {
+		_, _ = fmt.Fprint(writer, fmtRenderDepthMarker)
+		return
+	}
 	_, _ = fmt.Fprint(writer, "[")
 	for index := range value.Len() {
 		if index > 0 {
 			_, _ = fmt.Fprint(writer, " ")
 		}
-		r.writeAnyValue(writer, value.Index(index), verbose)
+		r.writeAnyValue(writer, value.Index(index), verbose, depth+1)
 	}
 	_, _ = fmt.Fprint(writer, "]")
 }
@@ -337,7 +371,12 @@ func (r pipitFmtRenderer) writeSlicePipitSafe(writer fmt.State, value reflect.Va
 // Takes writer (fmt.State) which receives the rendered output.
 // Takes value (reflect.Value) which is the map to print.
 // Takes verbose (bool) which selects the `%+v` shape when true.
-func (r pipitFmtRenderer) writeMapPipitSafe(writer fmt.State, value reflect.Value, verbose bool) {
+// Takes depth (int) which is the nesting below the operand.
+func (r pipitFmtRenderer) writeMapPipitSafe(writer fmt.State, value reflect.Value, verbose bool, depth int) {
+	if depth > fmtRenderDepthCap {
+		_, _ = fmt.Fprint(writer, fmtRenderDepthMarker)
+		return
+	}
 	_, _ = fmt.Fprint(writer, "map[")
 	keys := value.MapKeys()
 	slices.SortFunc(keys, reflectMapKeyCompare)
@@ -345,9 +384,9 @@ func (r pipitFmtRenderer) writeMapPipitSafe(writer fmt.State, value reflect.Valu
 		if index > 0 {
 			_, _ = fmt.Fprint(writer, " ")
 		}
-		r.writeAnyValue(writer, key, verbose)
+		r.writeAnyValue(writer, key, verbose, depth+1)
 		_, _ = fmt.Fprint(writer, ":")
-		r.writeAnyValue(writer, value.MapIndex(key), verbose)
+		r.writeAnyValue(writer, value.MapIndex(key), verbose, depth+1)
 	}
 	_, _ = fmt.Fprint(writer, "]")
 }
@@ -363,7 +402,7 @@ func (r pipitFmtRenderer) leafMethodText(value reflect.Value) (string, bool) {
 		return "", false
 	}
 	typeName := ""
-	if info, ok := typemodel.LookupNamedScalarPoolInfo(value.Type()); ok {
+	if info, ok := typemodel.LookupNamedTypeInfo(value.Type()); ok {
 		typeName = info.BareName
 	} else if isPipitSynthesisedReflectType(value.Type()) {
 		typeName = bareSentinelName(value.Type())
@@ -379,22 +418,6 @@ func (r pipitFmtRenderer) leafMethodText(value reflect.Value) (string, bool) {
 		return invokeStringReturnMethod(r.vm, methodRoot, methodIndex, value), true
 	}
 	return "", false
-}
-
-// fmtVerbScanner walks a format string the way fmt does and records the verb of each
-// operand it reaches.
-type fmtVerbScanner struct {
-	// format is the format string.
-	format string
-
-	// verbs receives one verb per operand.
-	verbs []byte
-
-	// i is the scan position.
-	i int
-
-	// argument is the index of the operand the next verb applies to.
-	argument int
 }
 
 // assign records verb for operand index when it exists.
@@ -485,32 +508,37 @@ func countVerbStarArgs(runes []rune, verbCursor, flagEnd int) int {
 	return count
 }
 
-// writeStructGoSyntax prints a pipit-synthesised struct in Go-syntax (`%#v`) form: a
-// package-qualified type name followed by brace-delimited `Field:value` pairs, the
-// `_pipitID_` sentinel field hidden, each field value rendered recursively with `%#v` so
-// strings are quoted and nested structs expand.
+// writeStructGoSyntax prints a pipit-synthesised struct in Go-syntax (`%#v`) form.
 //
 // Takes writer (fmt.State) which receives the output.
 // Takes value (reflect.Value) which is the struct (or pointer to struct) to render.
-func writeStructGoSyntax(writer fmt.State, value reflect.Value) {
+// Takes depth (int) which is the nesting below the operand, zero for the operand itself.
+//
+// The `_pipitID_` sentinel field is hidden. As in fmt, only a pointer at the top level is
+// followed, and a nested one prints as its type and address.
+func writeStructGoSyntax(writer fmt.State, value reflect.Value, depth int) {
+	if depth > fmtRenderDepthCap {
+		_, _ = fmt.Fprint(writer, fmtRenderDepthMarker)
+		return
+	}
 	if value.Kind() == reflect.Pointer {
-		if value.IsNil() {
-			_, _ = fmt.Fprint(writer, "(nil)")
+		if value.IsNil() || depth > 0 {
+			writePointerGoSyntax(writer, value)
 			return
 		}
 		_, _ = fmt.Fprint(writer, "&")
 		value = value.Elem()
+		depth++
+	}
+	if writeContainerGoSyntax(writer, value, depth) {
+		return
 	}
 	if value.Kind() != reflect.Struct {
 		_, _ = fmt.Fprintf(writer, "%#v", fmtArgFromValue(value))
 		return
 	}
 	structType := value.Type()
-	typeName := extractPipitSentinelTypeName(structType)
-	if typeName == "" {
-		typeName = structType.String()
-	}
-	_, _ = fmt.Fprintf(writer, "%s{", typeName)
+	_, _ = fmt.Fprintf(writer, "%s{", structGoSyntaxName(structType))
 	firstFieldWritten := false
 	for index := range structType.NumField() {
 		fieldType := structType.Field(index)
@@ -524,12 +552,118 @@ func writeStructGoSyntax(writer fmt.State, value reflect.Value) {
 		fieldValue := value.Field(index)
 		if isPipitSynthesisedReflectType(derefReflectType(fieldValue.Type())) {
 			_, _ = fmt.Fprintf(writer, "%s:", pipitSourceFieldName(fieldType.Name))
-			writeStructGoSyntax(writer, fieldValue)
+			writeStructGoSyntax(writer, fieldValue, depth+1)
 			continue
 		}
 		_, _ = fmt.Fprintf(writer, "%s:%#v", pipitSourceFieldName(fieldType.Name), fmtArgFromValue(fieldValue))
 	}
 	_, _ = fmt.Fprint(writer, "}")
+}
+
+// structGoSyntaxName returns the name `%#v` prints for a struct type. It uses the
+// qualified name its sentinel carries, else the script type's name, else the type's own
+// string.
+//
+// Takes structType (reflect.Type) which is the struct type.
+//
+// Returns string which is the name.
+func structGoSyntaxName(structType reflect.Type) string {
+	if typeName := qualifiedNameFromStructSentinel(structType); typeName != "" {
+		return typeName
+	}
+	if typeName := extractPipitSentinelTypeName(structType); typeName != "" {
+		return typeName
+	}
+	return structType.String()
+}
+
+// writeContainerGoSyntax writes the `%#v` rendering of a slice, array or map whose
+// elements involve a synthesised struct, as Go prints the source type. That is the type,
+// then each element in Go syntax, with map entries in key order.
+//
+// Takes writer (fmt.State) which receives the rendered output.
+// Takes value (reflect.Value) which is the candidate container.
+// Takes depth (int) which is the nesting below the operand.
+//
+// Returns bool which is false, having written nothing, for any other value.
+func writeContainerGoSyntax(writer fmt.State, value reflect.Value, depth int) bool {
+	kind := value.Kind()
+	if kind != reflect.Slice && kind != reflect.Array && kind != reflect.Map {
+		return false
+	}
+	typeName := renderPipitTypeString(value.Type())
+	if typeName == "" || !typeContainsPipitSynthesised(value.Type()) {
+		return false
+	}
+	if kind != reflect.Array && value.IsNil() {
+		_, _ = fmt.Fprintf(writer, "%s(nil)", typeName)
+		return true
+	}
+	_, _ = fmt.Fprintf(writer, "%s{", typeName)
+	if kind == reflect.Map {
+		writeMapEntriesGoSyntax(writer, value, depth)
+	} else {
+		for index := range value.Len() {
+			if index > 0 {
+				_, _ = fmt.Fprint(writer, ", ")
+			}
+			writeElementGoSyntax(writer, value.Index(index), depth+1)
+		}
+	}
+	_, _ = fmt.Fprint(writer, "}")
+	return true
+}
+
+// writeMapEntriesGoSyntax writes a map's entries in Go syntax, in key order.
+//
+// Takes writer (fmt.State) which receives the rendered output.
+// Takes value (reflect.Value) which is the map.
+// Takes depth (int) which is the map's nesting below the operand.
+func writeMapEntriesGoSyntax(writer fmt.State, value reflect.Value, depth int) {
+	keys := value.MapKeys()
+	slices.SortFunc(keys, reflectMapKeyCompare)
+	for index, key := range keys {
+		if index > 0 {
+			_, _ = fmt.Fprint(writer, ", ")
+		}
+		writeElementGoSyntax(writer, key, depth+1)
+		_, _ = fmt.Fprint(writer, ":")
+		writeElementGoSyntax(writer, value.MapIndex(key), depth+1)
+	}
+}
+
+// writeElementGoSyntax writes one element of a container in Go syntax, through
+// writeStructGoSyntax when it involves a synthesised struct.
+//
+// Takes writer (fmt.State) which receives the rendered output.
+// Takes element (reflect.Value) which is the element.
+// Takes depth (int) which is the element's nesting below the operand.
+func writeElementGoSyntax(writer fmt.State, element reflect.Value, depth int) {
+	if element.Kind() == reflect.Interface && !element.IsNil() {
+		element = element.Elem()
+	}
+	if isPipitSynthesisedReflectType(derefReflectType(element.Type())) || typeContainsPipitSynthesised(element.Type()) {
+		writeStructGoSyntax(writer, element, depth)
+		return
+	}
+	_, _ = fmt.Fprintf(writer, "%#v", fmtArgFromValue(element))
+}
+
+// writePointerGoSyntax writes a pointer to a script type as fmt's `%#v` writes a pointer
+// it does not follow, which is the type in parentheses and then the address, or nil.
+//
+// Takes writer (fmt.State) which receives the rendered output.
+// Takes value (reflect.Value) which is the pointer.
+func writePointerGoSyntax(writer fmt.State, value reflect.Value) {
+	typeName := renderPipitTypeString(value.Type())
+	if typeName == "" {
+		typeName = value.Type().String()
+	}
+	if value.IsNil() {
+		_, _ = fmt.Fprintf(writer, "(%s)(nil)", typeName)
+		return
+	}
+	_, _ = fmt.Fprintf(writer, "(%s)(0x%x)", typeName, value.Pointer())
 }
 
 // derefReflectType returns t with one pointer layer removed, or t unchanged when it is
@@ -748,7 +882,7 @@ func wrapPipitSynthesisedFmtArg(vm *VM, argument any, staticTypeName string) any
 	}
 	if rt, ok := argument.(reflect.Type); ok {
 		if rendered := renderPipitTypeString(rt); rendered != "" {
-			return pipitTypeStringer(rendered)
+			return pipitTypeStringer{name: rendered}
 		}
 		return argument
 	}
@@ -798,7 +932,8 @@ func wrapContainerOrScalarForFmt(vm *VM, value reflect.Value, argument any, stat
 		return adapted
 	}
 	if typeContainsPipitSynthesised(value.Type()) {
-		return pipitFmtValue{underlying: value, vm: vm, typeName: ""}
+		vm.exportGuestCode()
+		return pipitFmtValue{underlying: adapterHeldValue(vm, value), vm: vm, typeName: ""}
 	}
 	return argument
 }
@@ -830,8 +965,17 @@ func isPipitSynthesisedStructValue(value reflect.Value) bool {
 //
 // Returns the resolved name and true, or "" and false when no name is known.
 func fmtAdapterTypeName(vm *VM, value reflect.Value, staticTypeName string) (string, bool) {
-	if info, ok := typemodel.LookupNamedScalarPoolInfo(value.Type()); ok {
+	if closure := closureFromValue(value); closure != nil && closure.namedType != 0 {
+		name := closureNamedTypeName(closure)
+		return name, name != ""
+	}
+	if info, ok := typemodel.LookupNamedTypeInfo(value.Type()); ok {
 		return info.BareName, true
+	}
+	if value.Kind() == reflect.Pointer {
+		if info, ok := typemodel.LookupNamedTypeInfo(value.Type().Elem()); ok {
+			return info.BareName, true
+		}
 	}
 	if !isPipitSynthesisedReflectType(value.Type()) {
 		return staticTypeName, staticTypeName != ""
@@ -966,8 +1110,13 @@ func fmtWrappedUnderlying(value any) (reflect.Value, bool) {
 //
 // Returns string which is the rendered name.
 func scriptTypeString(t reflect.Type) string {
-	if info, ok := typemodel.LookupNamedScalarPoolInfo(t); ok {
+	if info, ok := typemodel.LookupNamedTypeInfo(t); ok {
 		return info.QualifiedName
+	}
+	if t.Kind() != reflect.Struct {
+		if rendered := renderPipitTypeString(t); rendered != "" {
+			return rendered
+		}
 	}
 	if name := extractPipitSentinelTypeName(t); name != "" {
 		return name
@@ -1202,8 +1351,8 @@ func parsePositiveInt(text string) (int, bool) {
 //
 // Returns string such as "main.Op" or "func(int) string".
 func closureTypeString(closure *RuntimeClosure) string {
-	if closure.namedType != "" {
-		return "main." + closure.namedType
+	if named := typemodel.NamedCompositeTypeByID(closure.namedType); named != nil {
+		return named.String()
 	}
 	if closure.Function != nil && closure.Function.SignatureReflectType != nil {
 		return closure.Function.SignatureReflectType.String()
@@ -1290,8 +1439,7 @@ func fmtVerbCallsStringMethods(verb byte) bool {
 // Takes vm (*VM) which resolves script method tables.
 // Takes argument (any) which is the operand.
 // Takes verb (byte) which is the operand's verb.
-// Takes staticTypeName (string) which is the call site's recorded source-level type
-// name.
+// Takes staticTypeName (string) which is the call site's recorded source-level type name.
 //
 // Returns any which is the value to hand to fmt.
 func wrapPipitSynthesisedFmtArgForVerb(vm *VM, argument any, verb byte, staticTypeName string) any {
@@ -1345,7 +1493,8 @@ func formatterAdapterFor(vm *VM, value reflect.Value, staticTypeName string) (an
 //
 // Returns pipitFmtValue which formats the value for every verb.
 func fmtRendererFor(vm *VM, value reflect.Value) pipitFmtValue {
-	wrapped := pipitFmtValue{underlying: value, vm: vm, typeName: ""}
+	vm.exportGuestCode()
+	wrapped := pipitFmtValue{underlying: adapterHeldValue(vm, value), vm: vm, typeName: ""}
 	if vm != nil && vm.rootFunction != nil {
 		if name, ok := pipitTypeName(vm, value); ok {
 			wrapped.typeName = name

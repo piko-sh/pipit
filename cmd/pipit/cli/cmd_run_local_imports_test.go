@@ -94,3 +94,20 @@ func TestRunScriptMissingLocalPackageFails(t *testing.T) {
 	require.NotEqual(t, 0, result.Code, "stdout: %q", result.Stdout)
 	require.Contains(t, result.Stderr, "example.com/app/nowhere")
 }
+
+func TestRunRefusesALocalImportThatLeavesTheModule(t *testing.T) {
+	t.Parallel()
+	root := writeLocalModule(t)
+	outside := t.TempDir()
+	outsidePackage := filepath.Join(outside, "pkg")
+	require.NoError(t, os.MkdirAll(outsidePackage, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(outsidePackage, "pkg.go"), []byte("package pkg\n\nconst Leaked = \"outside-module-source\"\n"), 0o600))
+	script := filepath.Join(root, "escape.go")
+	source := "package main\n\nimport \"example.com/app/../" + filepath.Base(outside) + "/pkg\"\n\nfunc run() string { return pkg.Leaked }\n\nfunc main() {}\n"
+	require.NoError(t, os.WriteFile(script, []byte(source), 0o600))
+
+	result := clitest.Run(t.Context(), RunRun, []string{"-entrypoint", "run", script}, "")
+	require.NotEqual(t, 0, result.Code, "an ungated run compiled source from outside the module")
+	require.NotContains(t, result.Stdout, "outside-module-source")
+	require.Contains(t, result.Stderr, "does not name a package inside its module")
+}

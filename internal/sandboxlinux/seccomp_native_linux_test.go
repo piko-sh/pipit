@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64) && !race
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64) && !race
 
 package sandboxlinux
 
@@ -38,7 +38,7 @@ import (
 func TestNativeSeccomp(t *testing.T) {
 	skipUnderCoverage(t)
 	if os.Getenv("PIPIT_SECCOMP_CHILD") != "1" {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		defer cancel()
 		command := sandboxtest.Command(ctx, "TestNativeSeccomp", "PIPIT_SECCOMP_CHILD=1")
 		output, err := command.CombinedOutput()
@@ -93,7 +93,7 @@ func TestNativeSeccomp(t *testing.T) {
 
 func TestNativeSeccompRejectsUnsynchronisedThread(t *testing.T) {
 	if os.Getenv("PIPIT_SECCOMP_DIVERGENT_CHILD") != "1" {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		defer cancel()
 		command := sandboxtest.Command(ctx, "TestNativeSeccompRejectsUnsynchronisedThread", "PIPIT_SECCOMP_DIVERGENT_CHILD=1")
 		output, err := command.CombinedOutput()

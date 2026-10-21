@@ -29,7 +29,7 @@ import (
 func TestConfigureASMReturnAdmitsSingleGeneralResult(t *testing.T) {
 	t.Parallel()
 	general := program.VarLocation{Kind: isa.RegisterGeneral, Register: 4}
-	integer := program.VarLocation{Kind: isa.RegisterInt, Register: 2}
+	integer := program.VarLocation{Kind: isa.RegisterInt64, Register: 2}
 	tests := []struct {
 		name        string
 		returns     []program.VarLocation
@@ -55,15 +55,15 @@ func TestConfigureASMReturnAdmitsSingleGeneralResult(t *testing.T) {
 		{
 			name:        "two results with a general one are refused",
 			returns:     []program.VarLocation{integer, general},
-			resultKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterGeneral},
+			resultKinds: []isa.RegisterKind{isa.RegisterInt64, isa.RegisterGeneral},
 			wantOK:      false,
 		},
 		{
 			name:        "two scalar results stay admitted",
-			returns:     []program.VarLocation{integer, {Kind: isa.RegisterInt, Register: 3}},
-			resultKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterInt},
+			returns:     []program.VarLocation{integer, {Kind: isa.RegisterInt64, Register: 3}},
+			resultKinds: []isa.RegisterKind{isa.RegisterInt64, isa.RegisterInt64},
 			wantOK:      true,
-			wantKind:    int64(isa.RegisterInt),
+			wantKind:    int64(isa.RegisterInt64),
 			wantReg:     2,
 		},
 		{
@@ -98,11 +98,11 @@ func TestAsmInlineReturnKind(t *testing.T) {
 		single bool
 		want   bool
 	}{
-		{name: "int single", kind: isa.RegisterInt, single: true, want: true},
+		{name: "int single", kind: isa.RegisterInt64, single: true, want: true},
 		{name: "string among several", kind: isa.RegisterString, single: false, want: true},
 		{name: "general single", kind: isa.RegisterGeneral, single: true, want: true},
 		{name: "general among several", kind: isa.RegisterGeneral, single: false, want: false},
-		{name: "complex", kind: isa.RegisterComplex, single: true, want: false},
+		{name: "complex", kind: isa.RegisterComplex128, single: true, want: false},
 		{name: "byte slice", kind: isa.RegisterSliceByte, single: true, want: false},
 	}
 	for _, tt := range tests {

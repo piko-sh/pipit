@@ -29,8 +29,8 @@ var (
 	// execution.
 	errInvalidOpcode = errors.New("invalid opcode")
 
-	// errStructLiteralTypeNotStruct reports an ALLOC_STRUCT_LITERAL whose type-table entry
-	// is not a struct type.
+	// errStructLiteralTypeNotStruct reports an ALLOCATE_STRUCT_LITERAL whose type-table
+	// entry is not a struct type.
 	errStructLiteralTypeNotStruct = errors.New("struct literal allocation: type is not a struct")
 
 	// errUnsafeBounds is returned in runtime safe mode when unsafe pointer arithmetic would
@@ -41,10 +41,30 @@ var (
 	// via WithMaxStringSize.
 	errStringLimit = errors.New("string size limit exceeded")
 
-	// errLinkedSiblingPanic wraps any panic recovered while invoking a //piko:link-routed
-	// sibling. The usual cause is a stale generated symbol file whose descriptors no longer
-	// match the sibling's signature.
-	errLinkedSiblingPanic = errors.New("linked sibling invocation panicked")
+	// errCleanupOnInterpreterStorage is the panic raised for a runtime.AddCleanup whose
+	// pointer points into interpreter storage, which an arena may reuse.
+	errCleanupOnInterpreterStorage = errors.New("cleanup cannot be attached")
+
+	// errCleanupNotFunction is the panic raised for a runtime.AddCleanup whose cleanup
+	// cannot be converted to a function the runtime can call.
+	errCleanupNotFunction = errors.New("cleanup is not a function")
+
+	// errFinaliserMisuse is the sentinel a guest panic for a runtime.SetFinalizer call Go
+	// would refuse wraps. Go ends the process for such a call.
+	errFinaliserMisuse = errors.New("runtime.SetFinalizer misuse")
+
+	// errGlobalSlotRange is returned when a global slot range names a kind with no bank or a
+	// negative range.
+	errGlobalSlotRange = errors.New("invalid global slot range")
+
+	// errFinaliserPanicked wraps the panic of a guest finaliser or cleanup, which the
+	// finaliser worker recovers and logs.
+	errFinaliserPanicked = errors.New("finaliser panicked")
+
+	// errLinkedIntrinsicShape is returned when a linked intrinsic's call site carries fewer
+	// type arguments or arguments than the intrinsic needs, which only malformed bytecode
+	// produces.
+	errLinkedIntrinsicShape = errors.New("linked intrinsic call site is malformed")
 
 	// errLinkedSiblingShapeMismatch is returned when argument arity or kind checks on a
 	// //piko:link sibling fail before the call is attempted, so the VM reports a structured

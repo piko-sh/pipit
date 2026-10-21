@@ -118,21 +118,21 @@ func sliceChainAt(body []isa.Instruction, pc int) (sliceChain, bool) {
 //
 // Returns the read and whether it matched.
 func byteSliceFieldReadAt(body []isa.Instruction, pc int) (isa.Instruction, bool) {
-	if pc+1 >= len(body) || !isa.InstrIsTier1SubOp(body[pc], isa.SubOpGetStructFieldSliceByte) || body[pc+1].Op != isa.OpExt {
+	if pc+1 >= len(body) || !isa.InstrIsTier1SubOp(body[pc], isa.SubOpGetStructFieldSliceByte) || body[pc+1].Op != isa.OpExtension {
 		return isa.Instruction{}, false
 	}
 	return body[pc], true
 }
 
-// sliceChainLoopHasSingleEntry checks for an unconditional latch and rejects side entries
-// and nested back-edges.
+// sliceChainLoopHasSingleEntry checks for a latch that jumps one way to the header and
+// rejects side entries and nested back-edges.
 //
 // Takes body ([]isa.Instruction) which contains the instruction stream.
 // Takes loop (loopRange) which identifies the loop header and latch.
 //
 // Returns true when copying the loop preserves its entry paths.
 func sliceChainLoopHasSingleEntry(body []isa.Instruction, loop loopRange) bool {
-	if !loopHeaderReachableByFallThrough(body, loop) || !isa.InstrIsTier1SubOp(body[loop.latch], isa.SubOpJump) {
+	if !loopOpenToHoisting(body, loop) || !latchJumpsToHeader(body, loop) {
 		return false
 	}
 	for pc := range body {
@@ -149,6 +149,21 @@ func sliceChainLoopHasSingleEntry(body []isa.Instruction, loop loopRange) bool {
 		}
 	}
 	return true
+}
+
+// latchJumpsToHeader reports whether the loop's latch is an unconditional jump or a
+// two-way branch whose target is the header.
+//
+// Takes body ([]isa.Instruction) which contains the instruction stream.
+// Takes loop (loopRange) which identifies the loop header and latch.
+//
+// Returns false for a multi-way dispatch or a latch that lands elsewhere.
+func latchJumpsToHeader(body []isa.Instruction, loop loopRange) bool {
+	if layout, _ := isa.JumpLayoutOf(body[loop.latch]); layout == isa.JumpLayoutNone || layout == isa.JumpLayoutMultiWay {
+		return false
+	}
+	target, ok := program.JumpTargetAt(body, loop.latch)
+	return ok && target == loop.header
 }
 
 // sliceChainLoopPreservesRead verifies that a cached byte-field chain remains valid
@@ -196,7 +211,7 @@ func sliceChainSurvives(compiledFunction *program.CompiledFunction, inst isa.Ins
 		instructionMayWriteRegister(compiledFunction, inst, isa.RegisterSliceByte, chain.sliceReg) {
 		return false
 	}
-	if !chain.definesReceiver && inst.Op != isa.OpExt && instructionMayWriteRegister(compiledFunction, inst, isa.RegisterGeneral, chain.receiver) {
+	if !chain.definesReceiver && inst.Op != isa.OpExtension && instructionMayWriteRegister(compiledFunction, inst, isa.RegisterGeneral, chain.receiver) {
 		return false
 	}
 	return !InstructionDirectlyMutatesHeap(inst) || elementStorePreservesBinding(inst, isa.RegisterGeneral)
@@ -208,6 +223,12 @@ type peeledLoopPCMap struct {
 	// loop is the original instruction range, including its latch.
 	loop loopRange
 
+	// end is the first word after the latch and its extension words.
+	end int
+
+	// gap is the exit jump's width, or zero for an unconditional latch.
+	gap int
+
 	// readPC starts the invariant chain removed from the copy.
 	readPC int
 
@@ -215,14 +236,19 @@ type peeledLoopPCMap struct {
 	width int
 }
 
+// copyStart returns the first word of the loop copy.
+//
+// Returns int which is its program counter in the peeled body.
+func (m peeledLoopPCMap) copyStart() int { return m.end + m.gap }
+
 // original maps a PC in the retained instruction stream.
 //
 // Takes pc (int) which identifies an original instruction word.
 //
 // Returns int which is the relocated PC.
 func (m peeledLoopPCMap) original(pc int) int {
-	if pc > m.loop.latch {
-		return pc + m.loop.latch - m.loop.header + 1 - m.width
+	if pc >= m.end {
+		return pc + m.gap + m.end - m.loop.header - m.width
 	}
 	return pc
 }
@@ -233,10 +259,10 @@ func (m peeledLoopPCMap) original(pc int) int {
 //
 // Returns int which is the relocated PC.
 func (m peeledLoopPCMap) copied(pc int) int {
-	if pc < m.loop.header || pc > m.loop.latch+1 {
+	if pc < m.loop.header || pc > m.end {
 		return m.original(pc)
 	}
-	return m.loop.latch + 1 + pc - m.loop.header - min(max(pc-m.readPC, 0), m.width)
+	return m.copyStart() + pc - m.loop.header - min(max(pc-m.readPC, 0), m.width)
 }
 
 // omitted identifies words in the load chain removed from the repeated loop body.
@@ -252,7 +278,24 @@ func (m peeledLoopPCMap) omitted(pc int) bool { return pc >= m.readPC && pc < m.
 //
 // Returns true for loop words outside the omitted chain.
 func (m peeledLoopPCMap) inCopy(pc int) bool {
-	return pc >= m.loop.header && pc <= m.loop.latch && !m.omitted(pc)
+	return pc >= m.loop.header && pc < m.end && !m.omitted(pc)
+}
+
+// newPeeledLoopPCMap lays out the peel of loop without the chain at readPC.
+//
+// Takes body ([]isa.Instruction) which holds the loop.
+// Takes loop (loopRange) which identifies the loop header and latch.
+// Takes readPC (int) which starts the invariant chain.
+// Takes width (int) which counts its instruction words.
+//
+// Returns the mapping.
+func newPeeledLoopPCMap(body []isa.Instruction, loop loopRange, readPC, width int) peeledLoopPCMap {
+	latch := body[loop.latch]
+	gap := 1
+	if isa.InstrIsTier1SubOp(latch, isa.SubOpJump) {
+		gap = 0
+	}
+	return peeledLoopPCMap{loop: loop, end: loop.latch + program.JumpFootprint(latch), gap: gap, readPC: readPC, width: width}
 }
 
 // peelSliceChainLoop retains the initial loop traversal and removes the invariant chain
@@ -271,45 +314,50 @@ func peelSliceChainLoop(compiledFunction *program.CompiledFunction, loop loopRan
 	if sourceMap != nil && len(sourceMap.Positions) != len(old) {
 		return false
 	}
-	mapping := peeledLoopPCMap{loop: loop, readPC: readPC, width: width}
-	body := peelWords(old, mapping)
+	mapping := newPeeledLoopPCMap(old, loop, readPC, width)
+	body := peelWords(old, mapping, isa.NewTier1Instruction(isa.SubOpJump, 0, 0))
 	if !retargetPeeledJumps(old, body, mapping) {
 		return false
 	}
 	if sourceMap != nil {
-		sourceMap.Positions = peelWords(sourceMap.Positions, mapping)
+		sourceMap.Positions = peelWords(sourceMap.Positions, mapping, sourceMap.Positions[loop.latch])
 	}
 	compiledFunction.PeepholeProvenance = remapPeeledProvenance(compiledFunction.PeepholeProvenance, mapping)
 	compiledFunction.ArenaSafeAllocPCs = remapPeeledLoopEntries(compiledFunction.ArenaSafeAllocPCs, mapping)
 	compiledFunction.FieldStoreArenaSafePCs = remapPeeledLoopEntries(compiledFunction.FieldStoreArenaSafePCs, mapping)
+	compiledFunction.LocalContainerAllocPCs, compiledFunction.LocalContainerStorePCs = nil, nil
 	compiledFunction.InPlaceHeaderReusePCs = remapPeeledLoopEntries(compiledFunction.InPlaceHeaderReusePCs, mapping)
-	compiledFunction.GetMethodReceiverTypeNames = remapPeeledLoopEntries(compiledFunction.GetMethodReceiverTypeNames, mapping)
+	compiledFunction.BindMethodByNameReceiverTypeNames = remapPeeledLoopEntries(compiledFunction.BindMethodByNameReceiverTypeNames, mapping)
 	remapPeeledLoopVariables(compiledFunction.DebugVarTable, mapping, len(old))
 	compiledFunction.Body = body
 	compiledFunction.AliasInfo = nil
-	RecordPeepholeRewrite(compiledFunction, loop.latch+1, peepholeRewriteLicmPeel, readPC)
+	RecordPeepholeRewrite(compiledFunction, mapping.copyStart(), peepholeRewriteLicmPeel, readPC)
 	return true
 }
 
-// peelWords lays out a PC-parallel slice for the peeled body: the original words, then a
-// copy of the loop without the chain, then the words after the loop.
+// peelWords lays out a PC-parallel slice for the original traversal and peeled loop.
 //
 // Takes words ([]T) which is parallel to the old body.
 // Takes mapping (peeledLoopPCMap) which describes the loop copy and omitted chain.
+// Takes filler (T) which is the entry for the jump to the exit.
 //
 // Returns the slice parallel to the new body.
-func peelWords[T any](words []T, mapping peeledLoopPCMap) []T {
+func peelWords[T any](words []T, mapping peeledLoopPCMap, filler T) []T {
 	loop := mapping.loop
-	peeled := make([]T, 0, len(words)+loop.latch-loop.header+1-mapping.width)
-	peeled = append(peeled, words[:loop.latch+1]...)
+	peeled := make([]T, 0, len(words)+mapping.gap+mapping.end-loop.header-mapping.width)
+	peeled = append(peeled, words[:mapping.end]...)
+	for range mapping.gap {
+		peeled = append(peeled, filler)
+	}
 	peeled = append(peeled, words[loop.header:mapping.readPC]...)
-	peeled = append(peeled, words[mapping.readPC+mapping.width:loop.latch+1]...)
-	return append(peeled, words[loop.latch+1:]...)
+	peeled = append(peeled, words[mapping.readPC+mapping.width:mapping.end]...)
+	return append(peeled, words[mapping.end:]...)
 }
 
 // retargetPeeledJumps re-encodes every jump of the original words and of the loop copy.
-// The original latch falls into the copy; jumps in the copy that stay in the loop stay in
-// the copy.
+//
+// The original latch lands on the copy. Jumps in the copy that stay in the loop stay in
+// the copy. The jump laid after a conditional latch lands on the words after the copy.
 //
 // Takes old ([]isa.Instruction) which is the body before peeling.
 // Takes body ([]isa.Instruction) which is the peeled body, rewritten in place.
@@ -325,7 +373,7 @@ func retargetPeeledJumps(old, body []isa.Instruction, mapping peeledLoopPCMap) b
 		}
 		next := mapping.original(target)
 		if pc == loop.latch {
-			next = loop.latch + 1
+			next = mapping.copyStart()
 		}
 		if !program.SetJumpTarget(body, mapping.original(pc), next) {
 			return false
@@ -334,14 +382,14 @@ func retargetPeeledJumps(old, body []isa.Instruction, mapping peeledLoopPCMap) b
 			continue
 		}
 		next = mapping.original(target)
-		if target >= loop.header && target <= loop.latch {
+		if target >= loop.header && target < mapping.end {
 			next = mapping.copied(target)
 		}
 		if !program.SetJumpTarget(body, mapping.copied(pc), next) {
 			return false
 		}
 	}
-	return true
+	return mapping.gap == 0 || program.SetJumpTarget(body, mapping.end, mapping.original(mapping.end))
 }
 
 // remapPeeledProvenance moves each annotation to the original word and, for loop words,
@@ -404,8 +452,7 @@ func remapPeeledLoopVariables(table *program.DebugVarTable, mapping peeledLoopPC
 	table.Entries = entries
 }
 
-// appendPeeledScope appends the pieces of one variable scope: its part up to the original
-// latch, its part inside the loop again for the copy, and its part after the loop.
+// appendPeeledScope appends the retained, copied and trailing parts of a variable scope.
 //
 // Takes entries ([]program.DebugVarEntry) which receives the pieces.
 // Takes entry (program.DebugVarEntry) which is the scope before peeling.
@@ -429,7 +476,7 @@ func appendPeeledScope(entries []program.DebugVarEntry, entry program.DebugVarEn
 		}
 		entries = append(entries, piece)
 	}
-	boundary := mapping.loop.latch + 1
+	boundary := mapping.end
 	appendRange(entry.StartPC, min(end, boundary))
 	if start, stop := max(entry.StartPC, mapping.loop.header), min(end, boundary); start < stop {
 		appendRange(mapping.copied(start), mapping.copied(stop))

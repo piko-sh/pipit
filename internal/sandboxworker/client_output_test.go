@@ -45,7 +45,7 @@ func TestExchangeChargesScriptOutput(t *testing.T) {
 		done := make(chan error, 1)
 		go func() {
 			defer worker.Close()
-			done <- Serve(worker)
+			done <- Serve(t.Context(), worker)
 		}()
 		stream := &accountingFixture{transport: host, err: accountErr, charged: 0}
 		response, err := Exchange(stream, Configuration{Profile: Profile, Imports: nil},

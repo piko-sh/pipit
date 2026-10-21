@@ -155,8 +155,28 @@ func (rcv *CompiledFileSet) PackageVariablesLength() int {
 	return 0
 }
 
+func (rcv *CompiledFileSet) NamedInterfaces(obj *NamedInterfaceEntry, j int) bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
+	if o != 0 {
+		x := rcv._tab.Vector(o)
+		x += flatbuffers.UOffsetT(j) * 4
+		x = rcv._tab.Indirect(x)
+		obj.Init(rcv._tab.Bytes, x)
+		return true
+	}
+	return false
+}
+
+func (rcv *CompiledFileSet) NamedInterfacesLength() int {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(16))
+	if o != 0 {
+		return rcv._tab.VectorLen(o)
+	}
+	return 0
+}
+
 func CompiledFileSetStart(builder *flatbuffers.Builder) {
-	builder.StartObject(6)
+	builder.StartObject(7)
 }
 func CompiledFileSetAddRoot(builder *flatbuffers.Builder, root flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(root), 0)
@@ -183,6 +203,12 @@ func CompiledFileSetAddPackageVariables(builder *flatbuffers.Builder, packageVar
 	builder.PrependUOffsetTSlot(5, flatbuffers.UOffsetT(packageVariables), 0)
 }
 func CompiledFileSetStartPackageVariablesVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
+	return builder.StartVector(4, numElems, 4)
+}
+func CompiledFileSetAddNamedInterfaces(builder *flatbuffers.Builder, namedInterfaces flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(6, flatbuffers.UOffsetT(namedInterfaces), 0)
+}
+func CompiledFileSetStartNamedInterfacesVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(4, numElems, 4)
 }
 func CompiledFileSetEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {

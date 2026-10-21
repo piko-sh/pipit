@@ -35,7 +35,7 @@ import (
 func (c *Compiler) emitSliceGet(ctx context.Context, plan isaselect.SliceAccessPlan, dest, collection, index program.VarLocation) {
 	if plan.UseTier1 {
 		program.Emit(c.Function, isa.OpDrillTier1, uint8(plan.Tier1), dest.Register, collection.Register)
-		program.Emit(c.Function, isa.OpExt, index.Register, 0, 0)
+		program.Emit(c.Function, isa.OpExtension, index.Register, 0, 0)
 		return
 	}
 	c.EmitTyped(ctx, plan.Op, dest, collection, index)
@@ -50,7 +50,7 @@ func (c *Compiler) emitSliceGet(ctx context.Context, plan isaselect.SliceAccessP
 func (c *Compiler) emitSliceSet(ctx context.Context, plan isaselect.SliceAccessPlan, collection, index, value program.VarLocation) {
 	if plan.UseTier1 {
 		program.Emit(c.Function, isa.OpDrillTier1, uint8(plan.Tier1), collection.Register, index.Register)
-		program.Emit(c.Function, isa.OpExt, value.Register, 0, 0)
+		program.Emit(c.Function, isa.OpExtension, value.Register, 0, 0)
 		return
 	}
 	c.EmitTyped(ctx, plan.Op, collection, index, value)

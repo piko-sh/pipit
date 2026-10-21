@@ -119,9 +119,9 @@ func TestComplexBuiltinsLowerToTheComplexBank(t *testing.T) {
 		wantSub  isa.SubOpcode
 		useSubOp bool
 	}{
-		{name: "a complex value built from two floats", source: "func f(re, im float64) complex128 { return complex(re, im) }", wantOp: isa.OpBuildComplex},
-		{name: "the real part extracted", source: "func f(z complex128) float64 { return real(z) }", wantSub: isa.SubOpRealComplex, useSubOp: true},
-		{name: "the imaginary part extracted", source: "func f(z complex128) float64 { return imag(z) }", wantSub: isa.SubOpImagComplex, useSubOp: true},
+		{name: "a complex value built from two floats", source: "func f(re, im float64) complex128 { return complex(re, im) }", wantOp: isa.OpMakeComplex128},
+		{name: "the real part extracted", source: "func f(z complex128) float64 { return real(z) }", wantSub: isa.SubOpRealPartComplex128, useSubOp: true},
+		{name: "the imaginary part extracted", source: "func f(z complex128) float64 { return imag(z) }", wantSub: isa.SubOpImaginaryPartComplex128, useSubOp: true},
 	}
 
 	for _, tt := range tests {
@@ -149,14 +149,14 @@ func TestMakingATypedSliceUsesTheSubOpOfItsBank(t *testing.T) {
 		source string
 		want   isa.SubOpcode
 	}{
-		{name: "a slice of int", source: "func f(n int) int { xs := make([]int, n); return len(xs) }", want: isa.SubOpMakeSliceInt},
-		{name: "a slice of float64", source: "func f(n int) int { xs := make([]float64, n); return len(xs) }", want: isa.SubOpMakeSliceFloat},
+		{name: "a slice of int", source: "func f(n int) int { xs := make([]int, n); return len(xs) }", want: isa.SubOpMakeSliceInt64},
+		{name: "a slice of float64", source: "func f(n int) int { xs := make([]float64, n); return len(xs) }", want: isa.SubOpMakeSliceFloat64},
 		{name: "a slice of string", source: "func f(n int) int { xs := make([]string, n); return len(xs) }", want: isa.SubOpMakeSliceString},
 		{name: "a slice of bool", source: "func f(n int) int { xs := make([]bool, n); return len(xs) }", want: isa.SubOpMakeSliceBool},
-		{name: "a slice of uint64", source: "func f(n int) int { xs := make([]uint64, n); return len(xs) }", want: isa.SubOpMakeSliceUint},
+		{name: "a slice of uint64", source: "func f(n int) int { xs := make([]uint64, n); return len(xs) }", want: isa.SubOpMakeSliceUint64},
 		{name: "a slice of byte", source: "func f(n int) int { bs := make([]byte, n); return len(bs) }", want: isa.SubOpMakeSliceByte},
-		{name: "a slice with a separate capacity", source: "func f(n, c int) int { xs := make([]int, n, c); return len(xs) }", want: isa.SubOpMakeSliceInt},
-		{name: "a slice of length zero", source: "func f() int { xs := make([]int, 0); return len(xs) }", want: isa.SubOpMakeSliceInt},
+		{name: "a slice with a separate capacity", source: "func f(n, c int) int { xs := make([]int, n, c); return len(xs) }", want: isa.SubOpMakeSliceInt64},
+		{name: "a slice of length zero", source: "func f() int { xs := make([]int, 0); return len(xs) }", want: isa.SubOpMakeSliceInt64},
 	}
 
 	for _, tt := range tests {
@@ -229,7 +229,7 @@ func TestTheRemainingBuiltinsCompileForEveryShapeTheyAccept(t *testing.T) {
 	}
 }
 
-func TestThePanicFamilyAndChannelCloseLowerToTheirOwnTierTwoWords(t *testing.T) {
+func TestThePanicFamilyAndCloseChannelLowerToTheirOwnTierTwoWords(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -242,7 +242,7 @@ func TestThePanicFamilyAndChannelCloseLowerToTheirOwnTierTwoWords(t *testing.T) 
 		{name: "a panic of a value", source: "func f(n int) { panic(n) }", function: "f", want: isa.SubOpTier2Panic},
 		{name: "a recover in a deferred closure", source: "func f() { defer func() { _ = recover() }() }", function: "<closure>", want: isa.SubOpTier2Recover},
 		{name: "a recover outside a defer", source: "func f() any { return recover() }", function: "f", want: isa.SubOpTier2Recover},
-		{name: "a channel closed", source: "func f(c chan int) { close(c) }", function: "f", want: isa.SubOpTier2ChannelClose},
+		{name: "a channel closed", source: "func f(c chan int) { close(c) }", function: "f", want: isa.SubOpTier2CloseChannel},
 	}
 
 	for _, tt := range tests {

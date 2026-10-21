@@ -155,7 +155,7 @@ func main() {
 	require.NotNil(t, baseline)
 	require.NotEmpty(t, baseline.ParameterKinds)
 	require.Equalf(t,
-		isa.RegisterSliceInt,
+		isa.RegisterSliceInt64,
 		baseline.ParameterKinds[0],
 		"sumTypedSurvives.xs should stay on registerSliceInt (kind=%d) - sanity check for the non-specialised path",
 		baseline.ParameterKinds[0])
@@ -164,7 +164,7 @@ func main() {
 	require.NotNil(t, specSurvivor, "expected a specialisation of sumGenericSurvives in the compiled file set")
 	require.NotEmpty(t, specSurvivor.ParameterKinds)
 	require.Equalf(t,
-		isa.RegisterSliceInt,
+		isa.RegisterSliceInt64,
 		specSurvivor.ParameterKinds[0],
 		"specialised sumGenericSurvives.xs should stay on registerSliceInt (kind=%d)",
 		specSurvivor.ParameterKinds[0])

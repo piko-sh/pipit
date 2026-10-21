@@ -55,7 +55,7 @@ func TestNativeAttachedWatchdogHostDeath(t *testing.T) {
 func exerciseAttachedWatchdogHostDeath(t *testing.T, parent, role string) {
 	t.Helper()
 	temporary := t.TempDir()
-	aggregate, err := newGroup(parent, Limits{})
+	aggregate, err := newGroup(t.Context(), parent, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func exerciseAttachedWatchdogHostDeath(t *testing.T, parent, role string) {
 	if err := os.WriteFile(filepath.Join(root, "cgroup.subtree_control"), []byte("+cpu +memory +pids"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
 	command := sandboxtest.Command(ctx, "TestNativeAttachedWatchdogCrashChild", "PIPIT_WATCHDOG_CRASH_ROLE="+role,
 		"PIPIT_WATCHDOG_CRASH_PARENT="+root, "TMPDIR="+temporary)
@@ -111,12 +111,12 @@ func exerciseAttachedWatchdogHostDeath(t *testing.T, parent, role string) {
 	if !ok || !status.Signaled() || status.Signal() != syscall.SIGKILL {
 		t.Fatal("embedding host did not die from SIGKILL:", command.ProcessState)
 	}
-	cleanup, cancelCleanup := context.WithTimeout(context.Background(), 3*time.Second)
+	cleanup, cancelCleanup := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancelCleanup()
 	if err := aggregate.waitEmpty(cleanup); err != nil {
 		t.Fatal("watchdog left protected processes alive after host death:", err)
 	}
-	if owner, err := newServiceGroup(root, Limits{}, testTenant); owner != nil || !errors.Is(err, ErrServiceBusy) {
+	if owner, err := newServiceGroup(t.Context(), root, Limits{}, testTenant); owner != nil || !errors.Is(err, ErrServiceBusy) {
 		t.Fatalf("host crash released unconfirmed service ownership: %v", err)
 	}
 }
@@ -130,7 +130,7 @@ func TestNativeAttachedWatchdogCrashChild(t *testing.T) {
 	var process *WorkerProcess
 	var err error
 	if role == "source" {
-		process, err = LaunchWorker(context.Background(), config)
+		process, err = LaunchWorker(t.Context(), config)
 	} else {
 		root, rootErr := os.MkdirTemp("", "broker-root-")
 		if rootErr != nil {
@@ -142,11 +142,11 @@ func TestNativeAttachedWatchdogCrashChild(t *testing.T) {
 		if bootstrapErr != nil {
 			t.Fatal(bootstrapErr)
 		}
-		process, err = LaunchFilesystemBroker(context.Background(), config, bootstrap)
+		process, err = LaunchFilesystemBroker(t.Context(), config, bootstrap)
 		err = errors.Join(err, bootstrap.Close())
 	}
 	if process != nil {
-		defer process.Close()
+		defer process.Close(t.Context())
 	}
 	if err != nil {
 		t.Fatal(err)
@@ -230,7 +230,7 @@ func cleanupCrashFixture(t *testing.T, aggregate *Group, root string) {
 		t.Error(err)
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	if err := aggregate.waitEmpty(ctx); err != nil {
 		t.Error(err)

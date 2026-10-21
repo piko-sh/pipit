@@ -19,6 +19,7 @@
 package modloader
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -99,9 +100,48 @@ func TestCheckFunctionCallUngatedHookAllowsEverything(t *testing.T) {
 func TestOpenFileClassifierPicksWriteAxisFromFlags(t *testing.T) {
 	t.Parallel()
 	readArgs := []reflect.Value{reflect.ValueOf("/tmp/x"), reflect.ValueOf(0), reflect.ValueOf(0)}
-	axis, _ := openFileClassifier(readArgs)
-	require.Equal(t, AxisFilesystemRead, axis, "an O_RDONLY open is a read")
+	require.Equal(t, AxisFilesystemRead, openFileClassifier(readArgs)[0].axis, "an O_RDONLY open is a read")
 	writeArgs := []reflect.Value{reflect.ValueOf("/tmp/x"), reflect.ValueOf(577), reflect.ValueOf(0)}
-	axis, _ = openFileClassifier(writeArgs)
-	require.Equal(t, AxisFilesystemWrite, axis, "an open with a write flag is a write")
+	require.Equal(t, AxisFilesystemWrite, openFileClassifier(writeArgs)[0].axis, "an open with a write flag is a write")
+}
+
+func TestClassifyNativeCallCoversPathTakingFunctions(t *testing.T) {
+	t.Parallel()
+	temporary := os.TempDir()
+	tests := []struct {
+		fnPath string
+		args   []reflect.Value
+		want   []capabilityClaim
+	}{
+		{fnPath: "os.CreateTemp", args: strArgs("/outside", "p-*"), want: []capabilityClaim{{AxisFilesystemWrite, "/outside"}}},
+		{fnPath: "os.CreateTemp", args: strArgs("", "p-*"), want: []capabilityClaim{{AxisFilesystemWrite, temporary}}},
+		{fnPath: "os.MkdirTemp", args: strArgs("/outside", "p-*"), want: []capabilityClaim{{AxisFilesystemWrite, "/outside"}}},
+		{fnPath: "io/ioutil.TempFile", args: strArgs("/outside", "p-*"), want: []capabilityClaim{{AxisFilesystemWrite, "/outside"}}},
+		{fnPath: "io/ioutil.TempDir", args: strArgs("/outside", "p-*"), want: []capabilityClaim{{AxisFilesystemWrite, "/outside"}}},
+		{fnPath: "os.CopyFS", args: strArgs("/outside/copy"), want: []capabilityClaim{{AxisFilesystemWrite, "/outside/copy"}}},
+		{fnPath: "os.Chtimes", args: strArgs("/outside/secret"), want: []capabilityClaim{{AxisFilesystemWrite, "/outside/secret"}}},
+		{fnPath: "os.Chmod", args: strArgs("/outside/secret"), want: []capabilityClaim{{AxisFilesystemWrite, "/outside/secret"}}},
+		{fnPath: "os.Chown", args: strArgs("/outside/secret"), want: []capabilityClaim{{AxisFilesystemWrite, "/outside/secret"}}},
+		{fnPath: "os.Lchown", args: strArgs("/outside/secret"), want: []capabilityClaim{{AxisFilesystemWrite, "/outside/secret"}}},
+		{fnPath: "os.Stat", args: strArgs("/outside/secret"), want: []capabilityClaim{{AxisFilesystemRead, "/outside/secret"}}},
+		{fnPath: "os.Lstat", args: strArgs("/outside/secret"), want: []capabilityClaim{{AxisFilesystemRead, "/outside/secret"}}},
+		{fnPath: "os.ReadDir", args: strArgs("/outside"), want: []capabilityClaim{{AxisFilesystemRead, "/outside"}}},
+		{fnPath: "os.Readlink", args: strArgs("/outside/link"), want: []capabilityClaim{{AxisFilesystemRead, "/outside/link"}}},
+		{fnPath: "io/ioutil.ReadDir", args: strArgs("/outside"), want: []capabilityClaim{{AxisFilesystemRead, "/outside"}}},
+		{fnPath: "path/filepath.WalkDir", args: strArgs("/outside"), want: []capabilityClaim{{AxisFilesystemRead, "/outside"}}},
+		{fnPath: "path/filepath.Walk", args: strArgs("/outside"), want: []capabilityClaim{{AxisFilesystemRead, "/outside"}}},
+		{fnPath: "path/filepath.Glob", args: strArgs("/outside/*"), want: []capabilityClaim{{AxisFilesystemRead, "/outside/*"}}},
+		{fnPath: "os.Rename", args: strArgs("/a", "/b"), want: []capabilityClaim{{AxisFilesystemWrite, "/a"}, {AxisFilesystemWrite, "/b"}}},
+		{fnPath: "os.Link", args: strArgs("/a", "/b"), want: []capabilityClaim{{AxisFilesystemWrite, "/a"}, {AxisFilesystemWrite, "/b"}}},
+		{fnPath: "os.Symlink", args: strArgs("/etc/hostname", "/b"), want: []capabilityClaim{{AxisFilesystemWrite, "/b"}, {AxisFilesystemRead, "/etc/hostname"}}},
+		{fnPath: "crypto/tls.LoadX509KeyPair", args: strArgs("/c", "/k"), want: []capabilityClaim{{AxisFilesystemRead, "/c"}, {AxisFilesystemRead, "/k"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.fnPath+tt.want[0].scope, func(t *testing.T) {
+			t.Parallel()
+			claims, gated := classifyNativeCall(tt.fnPath, tt.args)
+			require.True(t, gated, "%s is gated", tt.fnPath)
+			require.Equal(t, tt.want, claims)
+		})
+	}
 }

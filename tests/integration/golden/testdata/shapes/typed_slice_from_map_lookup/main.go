@@ -1,8 +1,5 @@
 package main
 
-// EntrypointRun looks a []string up in a map and indexes it in a loop: the lookup is
-// adopted into the string-slice bank, so the element reads and the length test use the
-// direct typed-slice ops instead of reflect through the general bank.
 func EntrypointRun() int {
 	transitions := map[string][]string{"a": {"b", "c", "d"}, "b": {"a"}}
 	total := 0

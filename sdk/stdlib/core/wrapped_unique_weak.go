@@ -21,8 +21,12 @@ package core
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"unique"
 	"weak"
+
+	"pipit.sh/pipit/internal/fault"
+	"pipit.sh/pipit/internal/isa"
 )
 
 // wrappedUniqueMake bridges unique.Make[T comparable] for interpreted code.
@@ -37,8 +41,8 @@ import (
 //
 // Returns any which is the typed unique.Handle[T] wrapped as any.
 //
-// Panics with "unique.Make: unsupported type %T" when the runtime type is not in the
-// fast-path set.
+// Panics with fault.ErrUnsupportedGenericArgument when the runtime type is not in the
+// fast-path set, which includes every type the interpreted program declares.
 func wrappedUniqueMake(value any) any {
 	switch typed := value.(type) {
 	case string:
@@ -76,7 +80,7 @@ func wrappedUniqueMake(value any) any {
 	case bool:
 		return unique.Make(typed)
 	}
-	panic(fmt.Sprintf("unique.Make: unsupported type %T (must be a built-in comparable)", value))
+	panic(fmt.Errorf("%w: unique.Make of %s", fault.ErrUnsupportedGenericArgument, describeArgumentType(reflect.TypeOf(value))))
 }
 
 // wrappedWeakMake bridges weak.Make[T any] for interpreted code via a static type switch,
@@ -86,7 +90,9 @@ func wrappedUniqueMake(value any) any {
 //
 // Returns the weak.Pointer[T] wrapped as any.
 //
-// Panics when pointer is not a pointer kind or its element type is unsupported.
+// Panics when pointer is not a pointer kind, or with fault.ErrUnsupportedGenericArgument
+// when its element type is not in the fast-path set, which includes every type the
+// interpreted program declares.
 func wrappedWeakMake(pointer any) any {
 	rv := reflect.ValueOf(pointer)
 	if rv.Kind() != reflect.Pointer {
@@ -98,7 +104,7 @@ func wrappedWeakMake(pointer any) any {
 	if handle, ok := weakMakeCompositePointer(pointer); ok {
 		return handle
 	}
-	panic(fmt.Sprintf("weak.Make: unsupported pointer element type %T - add to wrapped_unique_weak.go fast-path list, or wrap your value in *any before calling weak.Make", pointer))
+	panic(fmt.Errorf("%w: weak.Make of a pointer to %s", fault.ErrUnsupportedGenericArgument, describeArgumentType(rv.Type().Elem())))
 }
 
 // weakMakeScalarPointer handles pointers to the built-in scalar kinds (booleans, strings,
@@ -177,6 +183,27 @@ func weakMakeCompositePointer(pointer any) (any, bool) {
 	default:
 		return nil, false
 	}
+}
+
+// describeArgumentType names a type for an error. An interpreted type is named as such,
+// since its runtime type is a synthesised struct whose printed form would mislead, and
+// any other type is named as Go prints it.
+//
+// Takes argumentType (reflect.Type) which is the type, possibly nil.
+//
+// Returns string which is the description.
+func describeArgumentType(argumentType reflect.Type) string {
+	if argumentType == nil {
+		return "nil"
+	}
+	probe := argumentType
+	for probe.Kind() == reflect.Pointer {
+		probe = probe.Elem()
+	}
+	if probe.Kind() == reflect.Struct && probe.NumField() > 0 && strings.HasPrefix(probe.Field(probe.NumField()-1).Name, isa.SynthesisedIDFieldPrefix) {
+		return "a type declared in the interpreted program"
+	}
+	return argumentType.String()
 }
 
 func init() {

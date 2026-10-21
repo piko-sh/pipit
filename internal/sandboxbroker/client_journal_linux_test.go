@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxbroker
 
@@ -98,7 +98,7 @@ func TestJournalledClientRejectsUntrustedPreparation(t *testing.T) {
 			stream := &clientTestTransport{Conn: host, done: done, closes: atomic.Int32{}}
 			client, err := OpenJournalledFilesystemClient(t.Context(), stream, authority, journal)
 			require.NoError(t, err)
-			defer client.Close()
+			defer client.Close(t.Context())
 			payload := recoveryWritePayload
 			if mode == "read" {
 				payload = readPayload

@@ -25,6 +25,24 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
+const (
+	// rangeFunctionContinuedAfterFalseMessage is Go's panic message when an iterator calls a
+	// range-over-func loop body again after the body returned false.
+	rangeFunctionContinuedAfterFalseMessage = "runtime error: range function continued iteration after function for loop body returned false"
+
+	// rangeFunctionContinuedAfterExitMessage is Go's panic message when an iterator calls a
+	// range-over-func loop body after the range statement has finished.
+	rangeFunctionContinuedAfterExitMessage = "runtime error: range function continued iteration after whole loop exit"
+
+	// rangeFunctionContinuedAfterPanicMessage is Go's panic message when an iterator calls a
+	// range-over-func loop body again after a call of the body panicked.
+	rangeFunctionContinuedAfterPanicMessage = "runtime error: range function continued iteration after loop body panic"
+
+	// rangeFunctionRecoveredPanicMessage is Go's panic message when an iterator recovers a
+	// panic of the loop body and returns normally instead of panicking again.
+	rangeFunctionRecoveredPanicMessage = "runtime error: range function recovered a loop body panic and did not resume panicking"
+)
+
 // handleMakeClosure creates a runtime closure value by capturing upvalues from the
 // current frame and storing the result in the destination register.
 //
@@ -72,7 +90,7 @@ func emitCachedZeroUpvalueClosure(vm *VM, registers *Registers, destinationRegis
 		copy(grown, vm.closureCache)
 		vm.closureCache = grown
 	}
-	reflectValue := reflect.ValueOf(&RuntimeClosure{Function: compiledFunction, RootFunction: vm.rootFunction, inlineCells: [inlineUpvalueCells]*program.UpvalueCell{}, upvalues: nil, namedType: ""})
+	reflectValue := reflect.ValueOf(&RuntimeClosure{Function: compiledFunction, RootFunction: vm.rootFunction, inlineCells: [inlineUpvalueCells]*program.UpvalueCell{}, upvalues: nil, namedType: 0})
 	vm.closureCache[functionIndex] = reflectValue
 	registers.General[destinationRegister] = reflectValue
 	return opContinue
@@ -94,7 +112,7 @@ func buildCapturingClosure(vm *VM, registers *Registers, compiledFunction *progr
 	if parentFrame.sharedCells == nil {
 		parentFrame.sharedCells = acquireSharedCellMap()
 	}
-	closure := &RuntimeClosure{Function: compiledFunction, RootFunction: vm.rootFunction, inlineCells: [inlineUpvalueCells]*program.UpvalueCell{}, upvalues: nil, namedType: ""}
+	closure := newClosureFor(vm, compiledFunction)
 	upvalueCount := len(compiledFunction.UpvalueDescriptors)
 	if upvalueCount <= inlineUpvalueCells {
 		closure.upvalues = closure.inlineCells[:upvalueCount]
@@ -166,28 +184,8 @@ func sameIndirectCell(existing *program.UpvalueCell, current reflect.Value) bool
 // Returns the populated UpvalueCell ready to be inserted into the closure's cells slice
 // and the parent frame's sharedCells map.
 func buildUpvalueCellFromDescriptor(vm *VM, registers *Registers, descriptor program.UpvalueDescriptor) *program.UpvalueCell {
-	cell := &program.UpvalueCell{
-		Kind:             descriptor.Kind,
-		GeneralValue:     reflect.Value{},
-		StringValue:      "",
-		SliceIntValue:    nil,
-		SliceFloatValue:  nil,
-		SliceStringValue: nil,
-		SliceBoolValue:   nil,
-		SliceUintValue:   nil,
-		SliceByteValue:   nil,
-		IntValue:         0,
-		FloatValue:       0,
-		UintValue:        0,
-		ComplexValue:     0,
-		BoolValue:        false,
-		IsIndirect:       false,
-		OriginalKind:     0,
-		IndirectKind:     0,
-		IndirectElemKind: 0,
-		IndirectTarget:   nil,
-		IndirectType:     nil,
-	}
+	cell := newCellFor(vm)
+	cell.Kind = descriptor.Kind
 	if descriptor.IsIndirect {
 		cell.IsIndirect = true
 		cell.OriginalKind = descriptor.OriginalKind
@@ -196,9 +194,9 @@ func buildUpvalueCellFromDescriptor(vm *VM, registers *Registers, descriptor pro
 		return cell
 	}
 	switch descriptor.Kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		cell.IntValue = registers.Ints[descriptor.Index]
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		cell.FloatValue = registers.Floats[descriptor.Index]
 	case isa.RegisterString:
 		cell.StringValue = materialiseStringUnconditional(vm.Arena, registers.Strings[descriptor.Index])
@@ -206,19 +204,19 @@ func buildUpvalueCellFromDescriptor(vm *VM, registers *Registers, descriptor pro
 		cell.GeneralValue = materialiseArenaValueUnconditional(vm.Arena, registers.General[descriptor.Index])
 	case isa.RegisterBool:
 		cell.BoolValue = registers.Bools[descriptor.Index]
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		cell.UintValue = registers.Uints[descriptor.Index]
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		cell.ComplexValue = registers.Complex[descriptor.Index]
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		cell.SliceIntValue = registers.SlicesInt[descriptor.Index]
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		cell.SliceFloatValue = registers.slicesFloat[descriptor.Index]
 	case isa.RegisterSliceString:
 		cell.SliceStringValue = registers.slicesString[descriptor.Index]
 	case isa.RegisterSliceBool:
 		cell.SliceBoolValue = registers.slicesBool[descriptor.Index]
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		cell.SliceUintValue = registers.slicesUint[descriptor.Index]
 	case isa.RegisterSliceByte:
 		cell.SliceByteValue = registers.slicesByte[descriptor.Index]
@@ -227,7 +225,7 @@ func buildUpvalueCellFromDescriptor(vm *VM, registers *Registers, descriptor pro
 	return cell
 }
 
-// handleGetUpvalue reads a captured upvalue cell and copies its value into the
+// handleGetCapturedVariable reads a captured upvalue cell and copies its value into the
 // appropriate typed register bank of the current frame.
 //
 // Takes frame (*CallFrame) which provides the upvalue array.
@@ -235,7 +233,7 @@ func buildUpvalueCellFromDescriptor(vm *VM, registers *Registers, descriptor pro
 // Takes instruction (instruction) which encodes the upvalue and register.
 //
 // Returns OpResult indicating the next execution step.
-func handleGetUpvalue(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetCapturedVariable(_ *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	cell := frame.upvalues[instruction.B].Value
 	if cell.IsIndirect {
 		readIndirectCellValue(registers, cell, instruction.A, isa.RegisterKind(instruction.C))
@@ -254,9 +252,10 @@ func handleGetUpvalue(_ *VM, frame *CallFrame, registers *Registers, instruction
 // Takes cell (*UpvalueCell) which is the indirect cell carrying the pointer.
 // Takes destination (uint8) which is the destination register index.
 // Takes destinationKind (isa.RegisterKind) which selects the bank, or
-// UpvalueKindAsPointer to copy the cell's *T pointer untouched. unpackInterfaceSlice runs
-// first and services the typed-slice banks; reaching the default with a slice kind means
-// that unpack declined, and leaving the register untouched is the documented fallback.
+// UpvalueKindAsPointer to copy the cell's *T pointer untouched. unboxFromInterfaceSlice
+// runs first and services the typed-slice banks. reaching the default with a slice kind
+// means that unpack declined, and leaving the register untouched is the documented
+// fallback.
 func readIndirectCellValue(registers *Registers, cell *program.UpvalueCell, destination uint8, destinationKind isa.RegisterKind) {
 	pointer := cell.GeneralValue
 	if !pointer.IsValid() {
@@ -267,13 +266,13 @@ func readIndirectCellValue(registers *Registers, cell *program.UpvalueCell, dest
 		return
 	}
 	target := pointer.Elem()
-	if unpackInterfaceSlice(registers, destinationKind, destination, target) {
+	if unboxFromInterfaceSlice(registers, destinationKind, destination, target) {
 		return
 	}
 	switch destinationKind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		registers.Ints[destination] = target.Int()
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		registers.Floats[destination] = target.Float()
 	case isa.RegisterString:
 		registers.Strings[destination] = target.String()
@@ -281,16 +280,16 @@ func readIndirectCellValue(registers *Registers, cell *program.UpvalueCell, dest
 		registers.General[destination] = target
 	case isa.RegisterBool:
 		registers.Bools[destination] = target.Bool()
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.Uints[destination] = target.Uint()
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		registers.Complex[destination] = target.Complex()
 	default:
 	}
 }
 
-// handleSetUpvalue writes a register value into a captured upvalue cell, materialising
-// arena strings to ensure they outlive the current frame.
+// handleSetCapturedVariable writes a register value into a captured upvalue cell,
+// materialising arena strings to ensure they outlive the current frame.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes frame (*CallFrame) which provides the upvalue array.
@@ -298,7 +297,7 @@ func readIndirectCellValue(registers *Registers, cell *program.UpvalueCell, dest
 // Takes instruction (instruction) which encodes the upvalue and register.
 //
 // Returns OpResult indicating the next execution step.
-func handleSetUpvalue(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetCapturedVariable(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	cell := frame.upvalues[instruction.B].Value
 	writeRegisterToCell(vm, vm.Arena, cell, registers, isa.RegisterKind(instruction.C), instruction.A)
 	return opContinue
@@ -314,37 +313,50 @@ func handleSetUpvalue(vm *VM, frame *CallFrame, registers *Registers, instructio
 // Takes kind (isa.RegisterKind) which selects the register bank to read from.
 // Takes registerIndex (byte) which is the index within the selected register bank.
 func writeRegisterToCell(vm *VM, arena *RegisterArena, cell *program.UpvalueCell, registers *Registers, kind isa.RegisterKind, registerIndex byte) {
+	sharedGeneral := false
+	if cellStoreIsHandOff(vm, arena, cell) {
+		if kind == isa.RegisterGeneral {
+			sharedGeneral = true
+		} else {
+			noteSharedCellStore(arena, registers, kind, registerIndex)
+		}
+	}
 	if cell.IsIndirect {
-		writeRegisterThroughIndirectCell(vm, arena, cell, registers, kind, registerIndex)
+		writeRegisterThroughIndirectCell(vm, arena, cell, registers, kind, registerIndex, sharedGeneral)
 		return
 	}
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		cell.IntValue = registers.Ints[registerIndex]
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		cell.FloatValue = registers.Floats[registerIndex]
 	case isa.RegisterString:
 		cell.StringValue = materialiseStringUnconditional(arena, registers.Strings[registerIndex])
 	case isa.RegisterGeneral:
-		cell.GeneralValue = materialiseArenaValueUnconditional(arena, registers.General[registerIndex])
-		if !arenaUsesUnsafeSlabs {
-			cell.GeneralValue = safeBuildDetachSliceHeader(cell.GeneralValue)
+		before := arena.licenceNoteSeq()
+		value := materialiseArenaValueUnconditional(arena, registers.General[registerIndex])
+		if sharedGeneral {
+			noteHandOffAfter(arena, handOffSharedStore, registers.General[registerIndex], false, before)
 		}
+		if !arenaUsesUnsafeSlabs {
+			value = safeBuildDetachSliceHeader(value)
+		}
+		cell.GeneralValue = value
 	case isa.RegisterBool:
 		cell.BoolValue = registers.Bools[registerIndex]
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		cell.UintValue = registers.Uints[registerIndex]
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		cell.ComplexValue = registers.Complex[registerIndex]
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		cell.SliceIntValue = registers.SlicesInt[registerIndex]
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		cell.SliceFloatValue = registers.slicesFloat[registerIndex]
 	case isa.RegisterSliceString:
 		cell.SliceStringValue = registers.slicesString[registerIndex]
 	case isa.RegisterSliceBool:
 		cell.SliceBoolValue = registers.slicesBool[registerIndex]
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		cell.SliceUintValue = registers.slicesUint[registerIndex]
 	case isa.RegisterSliceByte:
 		cell.SliceByteValue = registers.slicesByte[registerIndex]
@@ -352,10 +364,31 @@ func writeRegisterToCell(vm *VM, arena *RegisterArena, cell *program.UpvalueCell
 	}
 }
 
-// writeRegisterThroughIndirectCell stores the source register's value through the cell's
-// *T pointer so every reader of the cell observes the new value, both the declaring frame
-// and any other closure that captured the same variable. Mirrors readIndirectCellValue:
-// the source kind selects the typed bank to read from.
+// noteSharedCellStore revokes what a store into a captured variable references when the
+// VM shares memory with other goroutines.
+//
+// The variable may be read by another goroutine after this VM's arena is released, and
+// the store into it is not otherwise a hand-off.
+//
+// Strings are cloned and scalars hold nothing, so only slices and general values are
+// noted.
+//
+// Takes arena (*RegisterArena) which is the storing VM's arena.
+// Takes registers (*Registers) which holds the source register.
+// Takes kind (isa.RegisterKind) which selects the source bank.
+// Takes registerIndex (byte) which is the source register.
+func noteSharedCellStore(arena *RegisterArena, registers *Registers, kind isa.RegisterKind, registerIndex byte) {
+	if kind == isa.RegisterGeneral {
+		noteHandOff(arena, handOffSharedStore, registers.General[registerIndex])
+		return
+	}
+	noteHandOffSliceRegister(arena, handOffSharedStore, registers, kind, registerIndex)
+}
+
+// writeRegisterThroughIndirectCell stores a register value through the cell's *T pointer
+// so the declaring frame and all capturing closures see the update.
+//
+// Like readIndirectCellValue, it selects the typed source bank from the register kind.
 //
 // Writes the banks an indirect cell can hold. The default leaves the cell untouched,
 // which is the same outcome the reflect path produces for an unwritable target.
@@ -367,17 +400,23 @@ func writeRegisterToCell(vm *VM, arena *RegisterArena, cell *program.UpvalueCell
 // Takes registers (*Registers) which is the source register set.
 // Takes kind (isa.RegisterKind) which selects the source bank.
 // Takes registerIndex (byte) which is the source register index.
-func writeRegisterThroughIndirectCell(vm *VM, arena *RegisterArena, cell *program.UpvalueCell, registers *Registers, kind isa.RegisterKind, registerIndex byte) {
+// Takes sharedGeneral (bool) which is true when a general value's store is a shared-store
+// hand-off the caller has not noted yet. It is noted after the escape copy, so the value
+// is walked once.
+func writeRegisterThroughIndirectCell(vm *VM, arena *RegisterArena, cell *program.UpvalueCell, registers *Registers, kind isa.RegisterKind, registerIndex byte, sharedGeneral bool) {
 	pointer := cell.GeneralValue
 	if !pointer.IsValid() {
+		if sharedGeneral {
+			noteSharedCellStore(arena, registers, kind, registerIndex)
+		}
 		return
 	}
-	if writeIndirectCellDirect(arena, cell, registers, kind, registerIndex) {
+	if !sharedGeneral && writeIndirectCellDirect(arena, cell, registers, kind, registerIndex) {
 		return
 	}
 	target := pointer.Elem()
 	if bankValue, ok := sliceBankToReflect(registers, kind, registerIndex); ok {
-		source := materialiseArenaValueUnconditional(arena, coerceValue(vm, bankValue, target.Type()))
+		source := materialiseArenaValueUnconditionalIntoSlot(arena, coerceValue(vm, bankValue, target.Type()), target.Type())
 		if !arenaUsesUnsafeSlabs {
 			source = safeBuildDetachSliceHeader(source)
 		}
@@ -385,23 +424,27 @@ func writeRegisterThroughIndirectCell(vm *VM, arena *RegisterArena, cell *progra
 		return
 	}
 	switch kind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		target.SetInt(registers.Ints[registerIndex])
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		target.SetFloat(registers.Floats[registerIndex])
 	case isa.RegisterString:
 		target.SetString(materialiseStringUnconditional(arena, registers.Strings[registerIndex]))
 	case isa.RegisterGeneral:
-		source := materialiseArenaValueUnconditional(arena, coerceValue(vm, registers.General[registerIndex], target.Type()))
+		before := arena.licenceNoteSeq()
+		source := materialiseArenaValueUnconditionalIntoSlot(arena, coerceValue(vm, registers.General[registerIndex], target.Type()), target.Type())
+		if sharedGeneral {
+			noteHandOffAfter(arena, handOffSharedStore, registers.General[registerIndex], false, before)
+		}
 		if !arenaUsesUnsafeSlabs {
 			source = safeBuildDetachSliceHeader(source)
 		}
 		target.Set(source)
 	case isa.RegisterBool:
 		target.SetBool(registers.Bools[registerIndex])
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		target.SetUint(registers.Uints[registerIndex])
-	case isa.RegisterComplex:
+	case isa.RegisterComplex128:
 		target.SetComplex(registers.Complex[registerIndex])
 	default:
 	}
@@ -424,15 +467,15 @@ func writeRegisterThroughIndirectCell(vm *VM, arena *RegisterArena, cell *progra
 // reflect.Value and false otherwise.
 func sliceBankToReflect(registers *Registers, kind isa.RegisterKind, registerIndex byte) (reflect.Value, bool) {
 	switch kind {
-	case isa.RegisterSliceInt:
+	case isa.RegisterSliceInt64:
 		return reflect.ValueOf(registers.SlicesInt[registerIndex]), true
-	case isa.RegisterSliceFloat:
+	case isa.RegisterSliceFloat64:
 		return reflect.ValueOf(registers.slicesFloat[registerIndex]), true
 	case isa.RegisterSliceString:
 		return reflect.ValueOf(registers.slicesString[registerIndex]), true
 	case isa.RegisterSliceBool:
 		return reflect.ValueOf(registers.slicesBool[registerIndex]), true
-	case isa.RegisterSliceUint:
+	case isa.RegisterSliceUint64:
 		return reflect.ValueOf(registers.slicesUint[registerIndex]), true
 	case isa.RegisterSliceByte:
 		return reflect.ValueOf(registers.slicesByte[registerIndex]), true
@@ -441,15 +484,16 @@ func sliceBankToReflect(registers *Registers, kind isa.RegisterKind, registerInd
 	return reflect.Value{}, false
 }
 
-// handleSyncClosureUpvalues synchronises a called closure's shared upvalue cells back to
-// the caller's registers after the callee may have written the captured variables.
+// handleSynchroniseClosureCapturedVariables synchronises a called closure's shared
+// upvalue cells back to the caller's registers after the callee may have written the
+// captured variables.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes registers (*Registers) which holds the caller's register banks.
 // Takes instruction (instruction) which names the closure register in C.
 //
 // Returns OpResult indicating the next execution step.
-func handleSyncClosureUpvalues(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSynchroniseClosureCapturedVariables(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	if vm.CallStack[vm.FramePointer].sharedCells == nil {
 		return opContinue
 	}
@@ -457,14 +501,59 @@ func handleSyncClosureUpvalues(vm *VM, _ *CallFrame, registers *Registers, instr
 	return opContinue
 }
 
-// handleSyncIIFEUpvalues copies the local upvalue cells of the immediately invoked
-// function expression that has just returned back into this frame's registers.
+// handlePanicRangeFunctionContinuedInt64 checks a range-over-func loop's state flag in
+// ints[C] and raises Go's runtime error when it says the loop may not continue.
+//
+// At the start of the body a zero flag lets the body run. Any other value means the
+// iterator called the body when Go does not allow it, after the body returned false,
+// after the range statement finished, or after a call of the body panicked
+// (isa.RangeFunctionStatePanicked). After the iterator returns, the range statement
+// passes isa.RangeFunctionStateRecovered when the flag still marks a panicked body call,
+// because the iterator recovered the panic instead of letting it continue.
+//
+// Takes vm (*VM) which is the executing VM.
+// Takes registers (*Registers) which holds the register banks.
+// Takes instruction (instruction) which names the state flag's int register in C.
+//
+// Returns OpResult which continues while the loop runs, or raises the runtime error.
+func handlePanicRangeFunctionContinuedInt64(vm *VM, _ *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+	if message, stopped := rangeFunctionStateMessage(registers.Ints[instruction.C]); stopped {
+		return raiseNativePanicAsInterpreted(vm, newRuntimePanicError("%s", message))
+	}
+	return opContinue
+}
+
+// rangeFunctionStateMessage returns Go's runtime error for a range-over-func loop's state
+// flag.
+//
+// Takes state (int64) which is the flag.
+//
+// Returns string which is the message.
+// Returns bool which is false for a zero flag, which lets the loop continue.
+func rangeFunctionStateMessage(state int64) (string, bool) {
+	switch state {
+	case 0:
+		return "", false
+	case isa.RangeFunctionStateExited:
+		return rangeFunctionContinuedAfterExitMessage, true
+	case isa.RangeFunctionStatePanicked:
+		return rangeFunctionContinuedAfterPanicMessage, true
+	case isa.RangeFunctionStateRecovered:
+		return rangeFunctionRecoveredPanicMessage, true
+	default:
+		return rangeFunctionContinuedAfterFalseMessage, true
+	}
+}
+
+// handleSynchroniseIIFECapturedVariables copies the local upvalue cells of the
+// immediately invoked function expression that has just returned back into this frame's
+// registers.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes registers (*Registers) which holds the caller's register banks.
 //
 // Returns OpResult indicating the next execution step.
-func handleSyncIIFEUpvalues(vm *VM, _ *CallFrame, registers *Registers, _ isa.Instruction) OpResult {
+func handleSynchroniseIIFECapturedVariables(vm *VM, _ *CallFrame, registers *Registers, _ isa.Instruction) OpResult {
 	syncCalleeUpvalues(vm, registers)
 	return opContinue
 }
@@ -484,9 +573,10 @@ func syncCalleeUpvalues(vm *VM, registers *Registers) {
 	}
 }
 
-// syncClosureSharedUpvalues writes back upvalue cells that are shared between the caller
-// frame and a closure, updating the caller's registers with any values mutated by the
-// closure during execution.
+// syncClosureSharedUpvalues writes shared closure cells back to their caller's registers.
+//
+// A cell is written back only when it is the very cell the caller's frame shares under
+// that register.
 //
 // Takes vm (*VM) which provides access to the call stack.
 // Takes registers (*Registers) which is the caller's register set.
@@ -505,7 +595,7 @@ func syncClosureSharedUpvalues(vm *VM, registers *Registers, closureRegister uin
 			continue
 		}
 		key := isa.JoinWide(uint8(descriptor.Kind), descriptor.Index)
-		if !callerFrame.sharedCells.has(key) {
+		if shared, ok := callerFrame.sharedCells.get(key); !ok || shared != closure.upvalues[i] {
 			continue
 		}
 		syncUpvalueCellToRegister(registers, descriptor, closure.upvalues[i])
@@ -537,7 +627,7 @@ func handleResetSharedCell(_ *VM, frame *CallFrame, _ *Registers, instruction is
 	return opContinue
 }
 
-// handleWriteSharedCell copies the current register value into the corresponding shared
+// handleSetSharedCell copies the current register value into the corresponding shared
 // upvalue cell, keeping the cell in sync after a parent-frame write to a captured
 // variable.
 //
@@ -547,7 +637,7 @@ func handleResetSharedCell(_ *VM, frame *CallFrame, _ *Registers, instruction is
 // Takes instruction (instruction) which encodes the register (A) and kind (B).
 //
 // Returns OpResult indicating the next execution step.
-func handleWriteSharedCell(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetSharedCell(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	if frame.sharedCells == nil {
 		return opContinue
 	}

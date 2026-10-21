@@ -43,7 +43,7 @@ func newAllocFrame(t *testing.T, pointeeType reflect.Type, heapCell uint8, arena
 	return vm, frame, registers
 }
 
-func TestAllocIndirectProducesATypedPointer(t *testing.T) {
+func TestAllocateIndirectProducesATypedPointer(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -57,15 +57,15 @@ func TestAllocIndirectProducesATypedPointer(t *testing.T) {
 	}{
 		{
 			name: "an int pointee carries the converted register value", pointeeType: reflect.TypeFor[int](),
-			load: func(r *Registers) { r.Ints[1] = 5 }, sourceKind: isa.RegisterInt,
+			load: func(r *Registers) { r.Ints[1] = 5 }, sourceKind: isa.RegisterInt64,
 			inspect: func(t *testing.T, pointer reflect.Value) {
 				t.Helper()
 				require.Equal(t, 5, pointer.Elem().Interface())
 			},
 		},
 		{
-			name: "a heap cell is requested explicitly", pointeeType: reflect.TypeFor[int](), heapCell: isa.AllocIndirectHeapCell,
-			load: func(r *Registers) { r.Ints[1] = 6 }, sourceKind: isa.RegisterInt,
+			name: "a heap cell is requested explicitly", pointeeType: reflect.TypeFor[int](), heapCell: isa.AllocateIndirectHeapCell,
+			load: func(r *Registers) { r.Ints[1] = 6 }, sourceKind: isa.RegisterInt64,
 			inspect: func(t *testing.T, pointer reflect.Value) {
 				t.Helper()
 				require.Equal(t, 6, pointer.Elem().Interface())
@@ -73,7 +73,7 @@ func TestAllocIndirectProducesATypedPointer(t *testing.T) {
 		},
 		{
 			name: "an arena-safe pointer-free pointee still carries its value", pointeeType: reflect.TypeFor[int64](),
-			arenaSafe: true, load: func(r *Registers) { r.Ints[1] = 7 }, sourceKind: isa.RegisterInt,
+			arenaSafe: true, load: func(r *Registers) { r.Ints[1] = 7 }, sourceKind: isa.RegisterInt64,
 			inspect: func(t *testing.T, pointer reflect.Value) {
 				t.Helper()
 				require.Equal(t, int64(7), pointer.Elem().Interface())
@@ -98,7 +98,7 @@ func TestAllocIndirectProducesATypedPointer(t *testing.T) {
 		},
 		{
 			name: "a slice pointee comes from the arena slice-header slab", pointeeType: reflect.TypeFor[[]int64](),
-			load: func(r *Registers) { r.SlicesInt[1] = []int64{3, 4} }, sourceKind: isa.RegisterSliceInt,
+			load: func(r *Registers) { r.SlicesInt[1] = []int64{3, 4} }, sourceKind: isa.RegisterSliceInt64,
 			inspect: func(t *testing.T, pointer reflect.Value) {
 				t.Helper()
 				require.Equal(t, []int64{3, 4}, pointer.Elem().Interface())
@@ -129,7 +129,7 @@ func TestAllocIndirectProducesATypedPointer(t *testing.T) {
 			vm, frame, registers := newAllocFrame(t, tt.pointeeType, tt.heapCell, tt.arenaSafe)
 			tt.load(registers)
 
-			got := handleAllocIndirect(vm, frame, registers, op(0, 1, uint8(tt.sourceKind)))
+			got := handleAllocateIndirect(vm, frame, registers, op(0, 1, uint8(tt.sourceKind)))
 			require.Equal(t, opContinue, got)
 			require.Equal(t, 2, frame.ProgramCounter, "the type-index word must be stepped over")
 
@@ -141,7 +141,7 @@ func TestAllocIndirectProducesATypedPointer(t *testing.T) {
 	}
 }
 
-func TestAllocIndirectTakesTheAddressOfAnAddressableSource(t *testing.T) {
+func TestAllocateIndirectTakesTheAddressOfAnAddressableSource(t *testing.T) {
 	t.Parallel()
 
 	vm, frame, registers := newAllocFrame(t, reflect.TypeFor[allocPointee](), 0, false)
@@ -149,25 +149,25 @@ func TestAllocIndirectTakesTheAddressOfAnAddressableSource(t *testing.T) {
 	cell.Set(reflect.ValueOf(allocPointee{Name: "existing", Count: 1}))
 	registers.General[1] = cell
 
-	got := handleAllocIndirect(vm, frame, registers, op(0, 1, uint8(isa.RegisterGeneral)))
+	got := handleAllocateIndirect(vm, frame, registers, op(0, 1, uint8(isa.RegisterGeneral)))
 	require.Equal(t, opContinue, got)
 	require.Equal(t, cell.Addr().Pointer(), registers.General[0].Pointer(),
 		"an addressable source of the right type needs no fresh cell")
 }
 
-func TestAllocIndirectRefusesATypeIndexPastTheTable(t *testing.T) {
+func TestAllocateIndirectRefusesATypeIndexPastTheTable(t *testing.T) {
 	t.Parallel()
 
 	vm, frame, registers := newExtWordFrame(t, op(4, 0, 0))
 	frame.Function.TypeTable = []reflect.Type{reflect.TypeFor[int]()}
 	registers.Ints[1] = 1
 
-	got := handleAllocIndirect(vm, frame, registers, op(0, 1, uint8(isa.RegisterInt)))
+	got := handleAllocateIndirect(vm, frame, registers, op(0, 1, uint8(isa.RegisterInt64)))
 	require.Equal(t, opPanicError, got)
 	require.Error(t, vm.evalError)
 }
 
-func TestMaterialiseAllocIndirectSourceHonoursTheEscapeVerdict(t *testing.T) {
+func TestMaterialiseAllocateIndirectSourceHonoursTheEscapeVerdict(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -188,7 +188,7 @@ func TestMaterialiseAllocIndirectSourceHonoursTheEscapeVerdict(t *testing.T) {
 			vm, _, _ := newStandardVM(t)
 			source := reflect.ValueOf([]int{1, 2, 3})
 
-			got := materialiseAllocIndirectSource(vm, source, tt.arenaSafe, tt.heapCell)
+			got := materialiseAllocateIndirectSource(vm, source, tt.arenaSafe, tt.heapCell)
 			require.Equal(t, source.Interface(), got.Interface(), "the value itself must survive either route")
 			if tt.wantSame {
 				require.Equal(t, source.Pointer(), got.Pointer(), "the confined route must not copy")

@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerCallInline handles OpCall with ASM-inlined fast path.
-TEXT ·handlerCallInline(SB), NOSPLIT|NOFRAME, $0
+// handlerCall handles OpCall with ASM-inlined fast path.
+TEXT ·handlerCall(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, CX
 	SHRQ    $16, CX
 
@@ -145,6 +145,8 @@ ci_static_entry:
 	MOVQ    CTX_ARENA_INT_SLAB(R15), DX
 	LEAQ    (DX)(CX*8), DX
 	MOVQ    ACI_CALLEE_NUM_INTS(AX), DI
+	TESTQ   DI, DI
+	CMOVQEQ DI, DX
 	MOVQ    DX, CF_REGS_INTS_PTR(BX)
 	MOVQ    DI, CF_REGS_INTS_LEN(BX)
 	MOVQ    DI, CF_REGS_INTS_CAP(BX)
@@ -155,6 +157,8 @@ ci_static_entry:
 	MOVQ    CTX_ARENA_FLT_SLAB(R15), DX
 	LEAQ    (DX)(CX*8), DX
 	MOVQ    ACI_CALLEE_NUM_FLOATS(AX), DI
+	TESTQ   DI, DI
+	CMOVQEQ DI, DX
 	MOVQ    DX, CF_REGS_FLOATS_PTR(BX)
 	MOVQ    DI, CF_REGS_FLOATS_LEN(BX)
 	MOVQ    DI, CF_REGS_FLOATS_CAP(BX)
@@ -576,8 +580,8 @@ ci_overflow:
 	MOVQ    R14, CTX_EXIT_PC(R15)
 	RET     
 
-// handlerCallInlineScalar handles opCallScalar; the compile-time gate guarantees scalar-only callees, so it shares handlerCallInline's inline-call body via EmitCallInline.
-TEXT ·handlerCallInlineScalar(SB), NOSPLIT|NOFRAME, $0
+// handlerCallScalar handles isa.SubOpCallScalar. The compile-time gate guarantees scalar-only callees, so it shares handlerCall's inline-call body via EmitCallInline.
+TEXT ·handlerCallScalar(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, CX
 	SHRQ    $16, CX
 
@@ -696,6 +700,8 @@ ci_static_entry:
 	MOVQ    CTX_ARENA_INT_SLAB(R15), DX
 	LEAQ    (DX)(CX*8), DX
 	MOVQ    ACI_CALLEE_NUM_INTS(AX), DI
+	TESTQ   DI, DI
+	CMOVQEQ DI, DX
 	MOVQ    DX, CF_REGS_INTS_PTR(BX)
 	MOVQ    DI, CF_REGS_INTS_LEN(BX)
 	MOVQ    DI, CF_REGS_INTS_CAP(BX)
@@ -706,6 +712,8 @@ ci_static_entry:
 	MOVQ    CTX_ARENA_FLT_SLAB(R15), DX
 	LEAQ    (DX)(CX*8), DX
 	MOVQ    ACI_CALLEE_NUM_FLOATS(AX), DI
+	TESTQ   DI, DI
+	CMOVQEQ DI, DX
 	MOVQ    DX, CF_REGS_FLOATS_PTR(BX)
 	MOVQ    DI, CF_REGS_FLOATS_LEN(BX)
 	MOVQ    DI, CF_REGS_FLOATS_CAP(BX)
@@ -1127,8 +1135,8 @@ ci_overflow:
 	MOVQ    R14, CTX_EXIT_PC(R15)
 	RET     
 
-// handlerCallMethodInline handles opCallMethod with a per-site receiver-type table and the ASM-inlined fast path.
-TEXT ·handlerCallMethodInline(SB), NOSPLIT|NOFRAME, $0
+// handlerCallMethod handles isa.SubOpCallMethod with a per-site receiver-type table and the ASM-inlined fast path.
+TEXT ·handlerCallMethod(SB), NOSPLIT|NOFRAME, $0
 	INCQ    R14
 	MOVQ    DX, CX
 	SHRQ    $16, CX
@@ -1280,6 +1288,8 @@ ci_static_entry:
 	MOVQ    CTX_ARENA_INT_SLAB(R15), DX
 	LEAQ    (DX)(CX*8), DX
 	MOVQ    ACI_CALLEE_NUM_INTS(AX), DI
+	TESTQ   DI, DI
+	CMOVQEQ DI, DX
 	MOVQ    DX, CF_REGS_INTS_PTR(BX)
 	MOVQ    DI, CF_REGS_INTS_LEN(BX)
 	MOVQ    DI, CF_REGS_INTS_CAP(BX)
@@ -1290,6 +1300,8 @@ ci_static_entry:
 	MOVQ    CTX_ARENA_FLT_SLAB(R15), DX
 	LEAQ    (DX)(CX*8), DX
 	MOVQ    ACI_CALLEE_NUM_FLOATS(AX), DI
+	TESTQ   DI, DI
+	CMOVQEQ DI, DX
 	MOVQ    DX, CF_REGS_FLOATS_PTR(BX)
 	MOVQ    DI, CF_REGS_FLOATS_LEN(BX)
 	MOVQ    DI, CF_REGS_FLOATS_CAP(BX)
@@ -1746,8 +1758,8 @@ TEXT ·handlerCallInlineClearGeneralBank(SB), NOSPLIT, $24-0
 	MOVQ    CTX_JUMP_TABLE(R15), R10
 	RET
 
-// handlerReturnInline handles OpReturn with ASM-inlined fast path.
-TEXT ·handlerReturnInline(SB), NOSPLIT|NOFRAME, $0
+// handlerReturn handles OpReturn with ASM-inlined fast path.
+TEXT ·handlerReturn(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_FRAME_POINTER(R15), SI
 	CMPQ    SI, CTX_BASE_FRAME_POINTER(R15)
 	JLE     ri_fallback
@@ -1773,6 +1785,13 @@ ri_no_simple_defer:
 	JNE     ri_fallback
 	CMPQ    CF_SHARED_CELLS(DI), $0
 	JNE     ri_fallback
+
+	MOVQ    CTX_ARENA_SLICEBYTE_IDX(R15), CX
+	CMPQ    CX, (CF_ARENA_SAVE+96)(DI)
+	JLE     ri_sb_guard_done
+	CMPB    runtime·writeBarrier(SB), $0
+	JNE     ri_fallback
+ri_sb_guard_done:
 
 	MOVL    DX, AX
 	SHRL    $24, AX
@@ -2014,6 +2033,22 @@ ri_str_clear_loop:
 	JL      ri_str_clear_loop
 
 ri_str_clear_done:
+	MOVQ    CTX_ARENA_SLICEBYTE_IDX(R15), SI
+	MOVQ    (CF_ARENA_SAVE+96)(DI), CX
+	SUBQ    CX, SI
+	JLE     ri_sb_clear_done
+	LEAQ    (CX)(CX*2), CX
+	MOVQ    CTX_ARENA_SLICEBYTE_SLAB(R15), AX
+	LEAQ    (AX)(CX*8), AX
+ri_sb_clear_loop:
+	MOVQ    $0, (AX)
+	MOVQ    $0, 8(AX)
+	MOVQ    $0, 16(AX)
+	ADDQ    $24, AX
+	DECQ    SI
+	JNZ     ri_sb_clear_loop
+ri_sb_clear_done:
+
 	MOVQ    (CF_ARENA_SAVE+0)(DI), AX
 	MOVQ    AX, CTX_ARENA_INT_IDX(R15)
 	MOVQ    (CF_ARENA_SAVE+8)(DI), AX
@@ -2127,8 +2162,8 @@ ri_fallback:
 	MOVQ    R14, CTX_EXIT_PC(R15)
 	RET     
 
-// handlerReturnVoidInline handles OpReturnVoid with ASM-inlined fast path.
-TEXT ·handlerReturnVoidInline(SB), NOSPLIT|NOFRAME, $0
+// handlerReturnVoid handles OpReturnVoid with ASM-inlined fast path.
+TEXT ·handlerReturnVoid(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CTX_FRAME_POINTER(R15), SI
 	CMPQ    SI, CTX_BASE_FRAME_POINTER(R15)
 	JLE     rvi_fallback
@@ -2155,6 +2190,13 @@ rvi_no_simple_defer:
 	CMPQ    CF_SHARED_CELLS(DI), $0
 	JNE     rvi_fallback
 
+	MOVQ    CTX_ARENA_SLICEBYTE_IDX(R15), CX
+	CMPQ    CX, (CF_ARENA_SAVE+96)(DI)
+	JLE     rvi_sb_guard_done
+	CMPB    runtime·writeBarrier(SB), $0
+	JNE     rvi_fallback
+rvi_sb_guard_done:
+
 	LEAQ    -1(SI), R13
 	MOVQ    $CALLFRAME_SIZE, CX
 	MOVQ    R13, DX
@@ -2180,6 +2222,22 @@ rvi_str_clear_loop:
 	JL      rvi_str_clear_loop
 
 rvi_str_clear_done:
+	MOVQ    CTX_ARENA_SLICEBYTE_IDX(R15), SI
+	MOVQ    (CF_ARENA_SAVE+96)(DI), CX
+	SUBQ    CX, SI
+	JLE     rvi_sb_clear_done
+	LEAQ    (CX)(CX*2), CX
+	MOVQ    CTX_ARENA_SLICEBYTE_SLAB(R15), AX
+	LEAQ    (AX)(CX*8), AX
+rvi_sb_clear_loop:
+	MOVQ    $0, (AX)
+	MOVQ    $0, 8(AX)
+	MOVQ    $0, 16(AX)
+	ADDQ    $24, AX
+	DECQ    SI
+	JNZ     rvi_sb_clear_loop
+rvi_sb_clear_done:
+
 	MOVQ    (CF_ARENA_SAVE+0)(DI), AX
 	MOVQ    AX, CTX_ARENA_INT_IDX(R15)
 	MOVQ    (CF_ARENA_SAVE+8)(DI), AX
@@ -2293,14 +2351,21 @@ rvi_fallback:
 	MOVQ    R14, CTX_EXIT_PC(R15)
 	RET     
 
-// handlerTailCallInline handles OpTailCall in-loop via handlerTailCallInlineSubroutine (no exit-reason round-trip).
-TEXT ·handlerTailCallInline(SB), NOSPLIT|NOFRAME, $0
+// handlerTailCall handles isa.SubOpTailCall in-loop via handlerTailCallInlineSubroutine (no exit-reason round-trip).
+TEXT ·handlerTailCall(SB), NOSPLIT|NOFRAME, $0
 	DECQ    R14
 	MOVQ    R14, CTX_PC(R15)
 	CALL    ·handlerTailCallInlineSubroutine(SB)
+	DECQ    CTX_POLL_BUDGET(R15)
+	JG      poll_ok
+	MOVQ    R14, CTX_PC(R15)
+	MOVQ    $EXIT_POLL, CTX_EXIT_REASON(R15)
+	MOVQ    R14, CTX_EXIT_PC(R15)
+	RET     
+poll_ok:
 	DISPATCH_NEXT()
 
-// handlerTailCallInlineSubroutine performs the asmTailCallExecute round-trip and reloads dispatcher registers; CALLed from handlerTailCallInline.
+// handlerTailCallInlineSubroutine performs the asmTailCallExecute round-trip and reloads dispatcher registers. Called from handlerTailCall.
 TEXT ·handlerTailCallInlineSubroutine(SB), NOSPLIT, $24-0
 	NO_LOCAL_POINTERS
 	MOVQ    R15, 0(SP)

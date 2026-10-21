@@ -20,6 +20,7 @@ package compile
 
 import (
 	"context"
+	"fmt"
 	"go/ast"
 	"go/types"
 	"math"
@@ -28,6 +29,7 @@ import (
 	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/compile/typemap"
 	"pipit.sh/pipit/internal/engine/program"
+	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
 	"pipit.sh/pipit/internal/symtab/descriptor"
 )
@@ -45,30 +47,45 @@ func (c *Compiler) registerPackageLevelVar(_ context.Context, spec *ast.ValueSpe
 			continue
 		}
 		kind := typemap.KindForType(typeObject.Type())
-		if c.addressTakenGlobals[name.Name] {
-			c.globalVariables[name.Name] = program.GlobalVariableInfo{Index: c.globals.AllocGeneral(reflect.Value{}), Kind: kind, IsIndirect: true}
-			continue
+		indirect := c.addressTakenGlobals[name.Name]
+		slotKind := kind
+		if indirect {
+			slotKind = isa.RegisterGeneral
 		}
-		var index int
-		switch kind {
-		case isa.RegisterInt:
-			index = c.globals.AllocInt(0)
-		case isa.RegisterFloat:
-			index = c.globals.AllocFloat(0)
-		case isa.RegisterString:
-			index = c.globals.AllocString("")
-		case isa.RegisterBool:
-			index = c.globals.AllocBool(false)
-		case isa.RegisterUint:
-			index = c.globals.AllocUint(0)
-		case isa.RegisterComplex:
-			index = c.globals.AllocComplex(0)
-		case isa.RegisterGeneral:
-			index = c.globals.AllocGeneral(reflect.Value{})
-		default:
-		}
-		c.globalVariables[name.Name] = program.GlobalVariableInfo{Index: index, Kind: kind, IsIndirect: false}
+		index := c.reserveGlobalSlot(name, slotKind)
+		c.globalVariables[name.Name] = program.GlobalVariableInfo{Index: index, Kind: kind, IsIndirect: indirect}
 	}
+}
+
+// reserveGlobalSlot takes one zeroed slot of kind's bank for the package variable name.
+//
+// The store checks its limit and grows under one lock, so a compile and a load reserving
+// slots at the same time cannot pass it. When the bank is full the variable gets an index
+// no instruction can address, kept in unaddressableGlobals with the error, which is
+// recorded as the compile's sticky error.
+//
+// Takes name (*ast.Ident) which is the variable.
+// Takes kind (isa.RegisterKind) which selects the bank.
+//
+// Returns int which is the slot, or an index past the addressable ones on failure.
+func (c *Compiler) reserveGlobalSlot(name *ast.Ident, kind isa.RegisterKind) int {
+	if !isGlobalSlotKind(kind) {
+		return 0
+	}
+	var request program.SlotAllocation
+	request[kind] = 1
+	bases, err := c.globals.TryReserveSlots(request)
+	if err == nil {
+		return int(bases[kind])
+	}
+	err = fmt.Errorf("%w: package variable %s at %s", err, name.Name, c.positionString(name.Pos()))
+	if c.unaddressableGlobals == nil {
+		c.unaddressableGlobals = make(map[int]error)
+	}
+	index := math.MaxUint16 + 1 + len(c.unaddressableGlobals)
+	c.unaddressableGlobals[index] = err
+	c.recordStickyError(err)
+	return index
 }
 
 // compilePackageLevelVarInit emits bytecode to initialise each package-level variable in
@@ -198,7 +215,13 @@ func (c *Compiler) emitGlobalZeroGeneral(ctx context.Context, name *ast.Ident, g
 	if zeroValue, ok := c.zeroValueForCompositeType(ctx, typeObject.Type()); ok {
 		c.emitGlobalGeneralConst(ctx, gv, zeroValue, descriptor.GeneralConstantDescriptor{Kind: descriptor.GeneralConstantCompositeZero,
 			TypeDescriptor: descriptor.TypeDescriptor{}, PackagePath: "", SymbolName: ""})
+		return
 	}
+
+	register := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
+	c.emitLocalZeroValue(ctx, typeObject, program.VarLocation{Register: register, Kind: isa.RegisterGeneral})
+	c.emitSetGlobalOp(ctx, register, gv)
+	c.Scopes.Alloc.FreeTemp(isa.RegisterGeneral, register)
 }
 
 // emitGlobalGeneralConst adds value to the function's general constant pool and stores it
@@ -217,7 +240,7 @@ func (c *Compiler) emitGlobalGeneralConst(ctx context.Context, gv program.Global
 		c.Scopes.Alloc.FreeTemp(isa.RegisterGeneral, register)
 		return
 	}
-	program.EmitWide(c.Function, isa.OpLoadGeneralConst, register, constIndex)
+	program.EmitWide(c.Function, isa.OpLoadGeneralConstant, register, constIndex)
 	c.emitSetGlobalOp(ctx, register, gv)
 	c.Scopes.Alloc.FreeTemp(isa.RegisterGeneral, register)
 }
@@ -238,11 +261,11 @@ func (c *Compiler) emitGetGlobal(_ context.Context, gv program.GlobalVariableInf
 	cell := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
 	c.emitGetGlobalSlotInto(cell, gv)
 	if gv.Kind == isa.RegisterGeneral {
-		program.Emit(c.Function, isa.OpDeref, dest, cell, 0)
+		program.Emit(c.Function, isa.OpDereference, dest, cell, 0)
 	} else {
 		boxed := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
-		program.Emit(c.Function, isa.OpDeref, boxed, cell, 0)
-		program.Emit(c.Function, isa.OpUnpackInterface, dest, boxed, uint8(gv.Kind))
+		program.Emit(c.Function, isa.OpDereference, boxed, cell, 0)
+		program.Emit(c.Function, isa.OpUnboxFromInterface, dest, boxed, uint8(gv.Kind))
 		c.Scopes.Alloc.FreeTemp(isa.RegisterGeneral, boxed)
 	}
 	c.Scopes.Alloc.FreeTemp(isa.RegisterGeneral, cell)
@@ -269,6 +292,9 @@ func (c *Compiler) emitGetGlobalSlot(gv program.GlobalVariableInfo) program.VarL
 // source global.
 func (c *Compiler) emitGetGlobalSlotInto(dest uint8, gv program.GlobalVariableInfo) {
 	bank := gv.SlotKind()
+	if !c.globalSlotAddressable(gv) {
+		return
+	}
 	if gv.Index <= math.MaxUint8 {
 		program.Emit(c.Function, isa.OpGetGlobal, dest, safeconv.MustIntToUint8(gv.Index), uint8(bank))
 		return
@@ -330,12 +356,34 @@ func (c *Compiler) emitSetIndirectGlobal(ctx context.Context, gv program.GlobalV
 // destination global.
 func (c *Compiler) emitSetGlobalOp(_ context.Context, sourceRegister uint8, gv program.GlobalVariableInfo) {
 	bank := gv.SlotKind()
+	if !c.globalSlotAddressable(gv) {
+		return
+	}
 	if gv.Index <= math.MaxUint8 {
 		program.Emit(c.Function, isa.OpSetGlobal, sourceRegister, safeconv.MustIntToUint8(gv.Index), uint8(bank))
 	} else {
 		program.EmitTier1(c.Function, isa.SubOpSetGlobalWide, sourceRegister, uint8(bank))
 		program.EmitExtension(c.Function, safeconv.MustIntToUint16(gv.Index), 0)
 	}
+}
+
+// globalSlotAddressable reports whether an instruction can address a global's slot. A
+// slot past the last one is refused when the variable is registered, which fails the
+// compile, so no instruction is emitted for it.
+//
+// Takes gv (program.GlobalVariableInfo) which is the global.
+//
+// Returns bool which is true when the slot index fits an instruction.
+func (c *Compiler) globalSlotAddressable(gv program.GlobalVariableInfo) bool {
+	if gv.Index >= 0 && gv.Index <= math.MaxUint16 {
+		return true
+	}
+	if err, known := c.unaddressableGlobals[gv.Index]; known {
+		c.recordStickyError(err)
+		return false
+	}
+	c.recordStickyError(fmt.Errorf("%w: global slot %d is past the %d an instruction can address", fault.ErrGlobalSlotsExhausted, gv.Index, math.MaxUint16+1))
+	return false
 }
 
 // multiValueSpec reports whether spec declares several names from one multi-valued
@@ -347,4 +395,19 @@ func (c *Compiler) emitSetGlobalOp(_ context.Context, sourceRegister uint8, gv p
 // Returns true for the one-value, many-names shape.
 func multiValueSpec(spec *ast.ValueSpec) bool {
 	return len(spec.Values) == 1 && len(spec.Names) > 1
+}
+
+// isGlobalSlotKind reports whether kind has a GlobalStore bank.
+//
+// Takes kind (isa.RegisterKind) which is the variable's register kind.
+//
+// Returns bool which is true for the seven banks.
+func isGlobalSlotKind(kind isa.RegisterKind) bool {
+	switch kind {
+	case isa.RegisterInt64, isa.RegisterFloat64, isa.RegisterString, isa.RegisterBool,
+		isa.RegisterUint64, isa.RegisterComplex128, isa.RegisterGeneral:
+		return true
+	default:
+		return false
+	}
 }

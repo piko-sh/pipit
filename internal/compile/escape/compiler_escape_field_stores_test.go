@@ -19,23 +19,33 @@
 package escape
 
 import (
-	"context"
 	"reflect"
 	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/compile/passes"
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
+)
+
+const (
+	grantedReceiver  = 1
+	grantedValue     = 2
+	copyTemporary    = 3
+	copyDestination  = 4
+	allocationSource = 7
+	grantedStorePC   = 1
+	copyGetPC        = 2
 )
 
 func fieldStoreFunction(between ...isa.Instruction) (*program.CompiledFunction, int) {
 	body := make([]isa.Instruction, 0, 5+len(between))
 	body = append(body,
-		isa.NewInstruction(isa.OpAllocIndirect, 0, 0, uint8(isa.RegisterInt)),
-		isa.NewInstruction(isa.OpExt, 0, 0, 0),
-		isa.NewInstruction(isa.OpLoadGeneralConst, 1, 0, 0),
+		isa.NewInstruction(isa.OpAllocateIndirect, 0, 0, uint8(isa.RegisterInt64)),
+		isa.NewInstruction(isa.OpExtension, 0, 0, 0),
+		isa.NewInstruction(isa.OpLoadGeneralConstant, 1, 0, 0),
 	)
 	body = append(body, between...)
 	storePC := len(body)
@@ -60,13 +70,13 @@ func TestAnnotateArenaSafeFieldStores(t *testing.T) {
 		annotated bool
 	}{
 		{name: "receiver straight from the allocation", annotated: true},
-		{name: "unrelated work in between", between: []isa.Instruction{isa.NewInstruction(isa.OpLoadIntConst, 0, 0, 0)}, annotated: true},
+		{name: "unrelated work in between", between: []isa.Instruction{isa.NewInstruction(isa.OpLoadInt64Constant, 0, 0, 0)}, annotated: true},
 		{name: "receiver copied to another register", between: []isa.Instruction{isa.NewInstruction(isa.OpMoveGeneral, 2, 0, 1)}, annotated: false},
 		{name: "a call that touches neither the receiver nor its register", between: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpCall, 0, 0)}, site: otherResult, annotated: true},
 		{name: "a call that returns into the receiver register", between: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpCall, 0, 0)}, site: receiverResult, annotated: false},
 		{name: "a call that receives the receiver", between: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpCall, 0, 0)}, site: receiverArgument, annotated: false},
 		{name: "the store is a jump target", between: []isa.Instruction{isa.NewTier1Instruction(isa.SubOpJump, jumpLo, jumpHi)}, annotated: false},
-		{name: "receiver reassigned by another arena-safe allocation", between: []isa.Instruction{isa.NewInstruction(isa.OpLoadGeneralConst, 0, 0, 0)}, annotated: true},
+		{name: "receiver reassigned by another arena-safe allocation", between: []isa.Instruction{isa.NewInstruction(isa.OpLoadGeneralConstant, 0, 0, 0)}, annotated: true},
 		{name: "receiver reassigned from another register", between: []isa.Instruction{isa.NewInstruction(isa.OpMoveGeneral, 0, 2, 1)}, annotated: false},
 		{name: "allocation escapes", escapeAll: true, annotated: false},
 	}
@@ -94,13 +104,13 @@ func TestAnnotateArenaSafeFieldStores(t *testing.T) {
 func structLiteralStoreFunction(callee *program.CompiledFunction, literalTypeIndex uint8, tail ...isa.Instruction) (*program.CompiledFunction, int) {
 	body := slices.Concat([]isa.Instruction{
 		isa.NewTier2Instruction(isa.SubOpTier2MakeMap, 0),
-		isa.NewInstruction(isa.OpExt, literalTypeIndex, 0, 0),
+		isa.NewInstruction(isa.OpExtension, literalTypeIndex, 0, 0),
 		isa.NewTier1Instruction(isa.SubOpCall, 0, 0),
-		isa.NewInstruction(isa.OpLoadIntConst, 3, 0, 0),
-		isa.NewInstruction(isa.OpSetStructFieldIntT0, 0, 3, 1),
+		isa.NewInstruction(isa.OpLoadInt64Constant, 3, 0, 0),
+		isa.NewInstruction(isa.OpSetStructFieldInt64, 0, 3, 1),
 		isa.NewInstruction(isa.OpSetStructFieldGeneral, 0, 1, 0),
-		isa.NewInstruction(isa.OpAllocIndirect, 1, 0, uint8(isa.RegisterGeneral)),
-		isa.NewInstruction(isa.OpExt, 0, 0, 0),
+		isa.NewInstruction(isa.OpAllocateIndirect, 1, 0, uint8(isa.RegisterGeneral)),
+		isa.NewInstruction(isa.OpExtension, 0, 0, 0),
 		isa.NewTier1Instruction(isa.SubOpCall, 1, 0),
 	}, tail, []isa.Instruction{isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid)})
 	compiledFunction := &program.CompiledFunction{
@@ -182,8 +192,8 @@ func TestAnnotateArenaSafeFieldStoresIntoStructLiterals(t *testing.T) {
 func TestArenaSafeAddressAliasesInsteadOfEscaping(t *testing.T) {
 	t.Parallel()
 	body := []isa.Instruction{
-		isa.NewInstruction(isa.OpAllocIndirect, 1, 0, uint8(isa.RegisterGeneral)),
-		isa.NewInstruction(isa.OpExt, 0, 0, 0),
+		isa.NewInstruction(isa.OpAllocateIndirect, 1, 0, uint8(isa.RegisterGeneral)),
+		isa.NewInstruction(isa.OpExtension, 0, 0, 0),
 		isa.NewInstruction(isa.OpSetGlobal, 0, 1, uint8(isa.RegisterGeneral)),
 		isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid),
 	}
@@ -227,7 +237,7 @@ func TestRunEscapeAnalysisPassWithOptionsArenaPromotion(t *testing.T) {
 			compiledFunction, storePC := fieldStoreFunction()
 			compiledFunction.CallSites = []program.CallSite{{}}
 
-			err := RunEscapeAnalysisPassWithOptions(context.Background(), compiledFunction, PassOptions{ArenaPromotion: testCase.promotion})
+			err := RunEscapeAnalysisPassWithOptions(t.Context(), compiledFunction, PassOptions{ArenaPromotion: testCase.promotion})
 			require.NoError(t, err)
 
 			require.Equal(t, testCase.promotion, len(compiledFunction.ArenaSafeAllocPCs) > 0, "ArenaSafeAllocPCs %v", compiledFunction.ArenaSafeAllocPCs)
@@ -256,7 +266,7 @@ func TestEscapeWalkKillsOnDefiniteWriteAndTypedOperands(t *testing.T) {
 			name: "a jump target between the write and the store restores the taint",
 			body: []isa.Instruction{
 				isa.NewTier1Instruction(isa.SubOpCall, 0, 0),
-				isa.NewInstruction(isa.OpLoadIntConst, 0, 0, 0),
+				isa.NewInstruction(isa.OpLoadInt64Constant, 0, 0, 0),
 				isa.NewInstruction(isa.OpSetGlobal, 0, 0, uint8(isa.RegisterGeneral)),
 				isa.NewInstruction(isa.OpJumpIfFalse, 0, 0xFE, 0xFF),
 			},
@@ -269,7 +279,7 @@ func TestEscapeWalkKillsOnDefiniteWriteAndTypedOperands(t *testing.T) {
 		},
 		{
 			name: "tier-2 int increment on register 0 is not a general read",
-			body: []isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2IncInt, 0)},
+			body: []isa.Instruction{isa.NewTier2Instruction(isa.SubOpTier2IncrementInt64, 0)},
 			want: false,
 		},
 	}
@@ -280,4 +290,49 @@ func TestEscapeWalkKillsOnDefiniteWriteAndTypedOperands(t *testing.T) {
 			require.Equal(t, tt.want, analyseGeneralRegisterEscapeRange(compiledFunction, 0, 0, len(tt.body)))
 		})
 	}
+}
+
+func grantedThenCopiedFunction() *program.CompiledFunction {
+	layout := program.StructFieldLayout{Kind: uint8(reflect.Slice), FieldTypeIndex: 0}
+	return &program.CompiledFunction{
+		Body: []isa.Instruction{
+			isa.NewInstruction(isa.OpAllocateIndirect, grantedReceiver, allocationSource, 0),
+			isa.NewInstruction(isa.OpSetStructFieldGeneral, grantedReceiver, grantedValue, 0),
+			isa.NewInstruction(isa.OpGetStructFieldGeneral, copyTemporary, grantedReceiver, 0),
+			isa.NewInstruction(isa.OpSetStructFieldGeneral, copyDestination, copyTemporary, 1),
+			isa.NewTier2Instruction(isa.SubOpTier2Return, 0),
+		},
+		StructLayoutTable:      []program.StructFieldLayout{layout, layout},
+		ArenaSafeAllocPCs:      map[int]bool{0: true},
+		FieldStoreArenaSafePCs: map[int]bool{grantedStorePC: true},
+	}
+}
+
+func TestRevalidationKeepsAGrantNoCopyReads(t *testing.T) {
+	t.Parallel()
+	compiledFunction := grantedThenCopiedFunction()
+	require.Zero(t, RevalidateArenaSafeFieldStores(compiledFunction),
+		"a field read of the granted receiver is not a copying read")
+	require.True(t, compiledFunction.FieldStoreArenaSafePCs[grantedStorePC])
+}
+
+func TestRevalidationDropsAGrantWhoseReceiverAFusedCopyReads(t *testing.T) {
+	t.Parallel()
+	compiledFunction := grantedThenCopiedFunction()
+	body := compiledFunction.Body
+	require.True(t, passes.FuseCopyStructFieldGeneral(compiledFunction, body, copyGetPC, len(body), passes.BuildAllJumpTargets(body)),
+		"the post-inline peephole fuses the pair, as reoptimiseAfterInline does")
+	require.Equal(t, isa.OpCopyStructFieldGeneral, body[copyGetPC].Op)
+
+	require.Equal(t, 1, RevalidateArenaSafeFieldStores(compiledFunction),
+		"the fused copy reads the granted receiver, so its store must materialise again")
+	require.Empty(t, compiledFunction.FieldStoreArenaSafePCs)
+}
+
+func TestRevalidationDropsAGrantOnAStoreThatIsGone(t *testing.T) {
+	t.Parallel()
+	compiledFunction := grantedThenCopiedFunction()
+	compiledFunction.FieldStoreArenaSafePCs[copyGetPC] = true
+	require.Equal(t, 1, RevalidateArenaSafeFieldStores(compiledFunction), "a grant on a non-store is dropped")
+	require.True(t, compiledFunction.FieldStoreArenaSafePCs[grantedStorePC])
 }

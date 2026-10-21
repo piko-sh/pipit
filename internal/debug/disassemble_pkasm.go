@@ -37,6 +37,11 @@ const (
 
 	// pkasmConstantSeparator separates entries in constant pool dumps.
 	pkasmConstantSeparator = "  "
+
+	// pkasmCommentColumn is the column an instruction line's comment starts at, after the
+	// program counter and dispatch marker ("0000 A "), the label column, the three operand
+	// columns and four spaces.
+	pkasmCommentColumn = len("0000 A ") + isa.DisplayLabelWidth + len("   0   0   0    ")
 )
 
 // dispatchMarkers maps each dispatch path to its marker character.
@@ -196,9 +201,9 @@ func (w *pkasmWriter) writeSourceAnnotation(compiledFunction *program.CompiledFu
 		return lastFile, lastLine
 	}
 	if file != lastFile {
-		w.writeLineRaw(w.indent() + fmt.Sprintf("%52s; %s:%d", "", file, line))
+		w.writeLineRaw(w.indent() + fmt.Sprintf("%*s; %s:%d", pkasmCommentColumn, "", file, line))
 	} else {
-		w.writeLineRaw(w.indent() + fmt.Sprintf("%52s; :%d", "", line))
+		w.writeLineRaw(w.indent() + fmt.Sprintf("%*s; :%d", pkasmCommentColumn, "", line))
 	}
 	return file, line
 }
@@ -213,11 +218,11 @@ func (w *pkasmWriter) writeInstruction(compiledFunction *program.CompiledFunctio
 	marker := dispatchMarker(instr)
 	comment := pkasmComment(compiledFunction, pc, instr)
 	if comment != "" {
-		w.writeLine(fmt.Sprintf("%04d %c %-26s %3d %3d %3d    ; %s",
-			pc, marker, label, instr.A, instr.B, instr.C, comment))
+		w.writeLine(fmt.Sprintf("%04d %c %-*s %3d %3d %3d    ; %s",
+			pc, marker, isa.DisplayLabelWidth, label, instr.A, instr.B, instr.C, comment))
 	} else {
-		w.writeLine(fmt.Sprintf("%04d %c %-26s %3d %3d %3d",
-			pc, marker, label, instr.A, instr.B, instr.C))
+		w.writeLine(fmt.Sprintf("%04d %c %-*s %3d %3d %3d",
+			pc, marker, isa.DisplayLabelWidth, label, instr.A, instr.B, instr.C))
 	}
 }
 
@@ -255,8 +260,11 @@ func (w *pkasmWriter) indent() string {
 //
 // Takes cfs (*program.CompiledFileSet) which is the compiled file set to disassemble.
 //
-// Returns the assembly listing as a string.
+// Returns the assembly listing as a string, empty for a nil file set.
 func DisassembleAssembly(cfs *program.CompiledFileSet) string {
+	if cfs == nil {
+		return ""
+	}
 	w := &pkasmWriter{builder: &strings.Builder{}, indentLevel: 0}
 
 	w.writeLine("; pkasm - pipit bytecode assembly")
@@ -289,8 +297,11 @@ func DisassembleAssembly(cfs *program.CompiledFileSet) string {
 // Takes compiledFunction (*program.CompiledFunction) which is the function to
 // disassemble.
 //
-// Returns the assembly listing as a string.
+// Returns the assembly listing as a string, empty for a nil function.
 func DisassembleFunctionAssembly(compiledFunction *program.CompiledFunction) string {
+	if compiledFunction == nil {
+		return ""
+	}
 	w := &pkasmWriter{builder: &strings.Builder{}, indentLevel: 0}
 	w.writeFunctionRecursive(compiledFunction)
 	return w.builder.String()
@@ -379,14 +390,14 @@ func resolveCallTarget(compiledFunction *program.CompiledFunction, instr isa.Ins
 //
 // Returns byte which is the marker character.
 func dispatchMarker(instr isa.Instruction) byte {
-	if instr.Op == isa.OpExt {
+	if instr.Op == isa.OpExtension {
 		return ' '
 	}
-	spec, ok := isa.SpecForInstruction(instr)
-	if !ok {
+	path := isa.DispatchForInstruction(instr)
+	if path == isa.DispatchNone {
 		return ' '
 	}
-	return dispatchMarkers[spec.Dispatch()]
+	return dispatchMarkers[path]
 }
 
 // formatDispatchCounts tallies a body's instructions by dispatch marker.

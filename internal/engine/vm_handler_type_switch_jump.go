@@ -24,7 +24,7 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-// handleSubOpTypeSwitchJump dispatches a jump-table type switch.
+// handleTypeSwitchJump dispatches a jump-table type switch.
 //
 // The OpTypeSwitchCase rows that follow the instruction form the table and the tier-1
 // jump after them is the default edge. The switched value in general[C] is unwrapped from
@@ -39,7 +39,7 @@ import (
 //
 // Returns OpResult which is opContinue after the jump, or opPanicError when the table is
 // not terminated by a default jump inside the body.
-func handleSubOpTypeSwitchJump(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleTypeSwitchJump(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	body := frame.Function.Body
 	tablePC := frame.ProgramCounter
 	defaultPC := tablePC

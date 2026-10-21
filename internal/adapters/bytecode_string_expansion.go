@@ -60,12 +60,38 @@ func validateFileStrings(ctx context.Context, fileSet *schemagen.CompiledFileSet
 	}); err != nil {
 		return err
 	}
-	return checkStringEntries(ctx, fileSet.PackageVariablesLength(), func(index int) error {
+	if err := checkStringEntries(ctx, fileSet.PackageVariablesLength(), func(index int) error {
 		var entry schemagen.PackageVariableEntry
 		if !fileSet.PackageVariables(&entry, index) {
 			return nil
 		}
 		return budget.chargeStrings(entry.Name(), entry.PackagePath())
+	}); err != nil {
+		return err
+	}
+	return validateNamedInterfaceStrings(ctx, fileSet, budget)
+}
+
+// validateNamedInterfaceStrings charges the package path, name and method names of every
+// named interface entry, aliases included.
+//
+// Takes fileSet (*schemagen.CompiledFileSet) which has already had its named-interface
+// vectors admitted.
+// Takes budget (*bytecodeExpansionBudget) which tracks the shared string byte budget.
+//
+// Returns error before the entries' strings are copied.
+func validateNamedInterfaceStrings(ctx context.Context, fileSet *schemagen.CompiledFileSet, budget *bytecodeExpansionBudget) error {
+	return checkStringEntries(ctx, fileSet.NamedInterfacesLength(), func(index int) error {
+		var entry schemagen.NamedInterfaceEntry
+		if !fileSet.NamedInterfaces(&entry, index) {
+			return nil
+		}
+		if err := budget.chargeStrings(entry.PackagePath(), entry.Name()); err != nil {
+			return err
+		}
+		return checkStringEntries(ctx, entry.MethodsLength(), func(method int) error {
+			return budget.chargeStrings(entry.Methods(method))
+		})
 	})
 }
 
@@ -88,7 +114,37 @@ func validateFunctionStrings(ctx context.Context, function *schemagen.CompiledFu
 	if err := validateFunctionMetadataStrings(ctx, function, budget); err != nil {
 		return err
 	}
+	if err := validateCallSiteStrings(ctx, function, budget); err != nil {
+		return err
+	}
 	return validateInterfaceStrings(ctx, function, budget)
+}
+
+// validateCallSiteStrings charges each call site's recorded argument type names.
+//
+// Takes function (*schemagen.CompiledFunction) which has already had its vectors
+// admitted.
+// Takes budget (*bytecodeExpansionBudget) which tracks the shared string byte budget.
+//
+// Returns error when the names exceed cumulative expansion limits.
+func validateCallSiteStrings(ctx context.Context, function *schemagen.CompiledFunction, budget *bytecodeExpansionBudget) error {
+	return checkStringEntries(ctx, function.CallSitesLength(), func(index int) error {
+		var site schemagen.CallSite
+		if !function.CallSites(&site, index) {
+			return nil
+		}
+		for name := range site.ArgumentStaticTypeNamesLength() {
+			if err := budget.chargeStrings(site.ArgumentStaticTypeNames(name)); err != nil {
+				return err
+			}
+		}
+		for typeString := range site.ArgumentStaticTypeStringsLength() {
+			if err := budget.chargeStrings(site.ArgumentStaticTypeStrings(typeString)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // validateFunctionMetadataStrings accounts for constant, type and method names.

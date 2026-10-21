@@ -19,13 +19,47 @@
 package isa
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 var reservedOpcodes = map[Opcode]string{}
+
+var expensiveOperations = []int{
+	FlatIndexOf(OpAppend),
+	FlatIndexOf(OpAppendSpread),
+	FlatIndexOf(OpAppendByte),
+	FlatIndexOf(OpAppendByteInPlace),
+	FlatIndexOf(OpAppendInPlace),
+	FlatIndexOf(OpAppendSpreadInPlace),
+	FlatIndexOf(OpAppendStruct),
+	FlatIndexOf(OpAppendInt64),
+	FlatIndexOf(OpAppendFloat64),
+	FlatIndexOf(OpAppendString),
+	FlatIndexOfSub1(SubOpAppendUint64Wide),
+	FlatIndexOfSub1(SubOpAppendInt64Wide),
+	FlatIndexOfSub1(SubOpAppendStringWide),
+	FlatIndexOfSub1(SubOpAppendFloat64Wide),
+	FlatIndexOfSub1(SubOpAppendBoolWide),
+	FlatIndexOfSub1(SubOpAppendByteViaPointer),
+	FlatIndexOfSub1(SubOpAppendSpreadByteViaPointer),
+	FlatIndexOfSub1(SubOpCall),
+	FlatIndexOfSub1(SubOpTailCall),
+	FlatIndexOfSub1(SubOpCallNative),
+	FlatIndexOfSub1(SubOpCallBuiltin),
+	FlatIndexOfSub1(SubOpCallMethod),
+	FlatIndexOfSub1(SubOpCallIIFE),
+	FlatIndexOfSub1(SubOpCallMethodInlineable),
+	FlatIndexOfSub1(SubOpAppendSliceInt64),
+	FlatIndexOfSub1(SubOpAppendSliceFloat64),
+	FlatIndexOfSub1(SubOpAppendSliceString),
+	FlatIndexOfSub1(SubOpAppendSliceBool),
+	FlatIndexOfSub1(SubOpAppendSliceUint64),
+	FlatIndexOfSub1(SubOpAppendSliceByte),
+	FlatIndexOfSub1(SubOpAppendUint64WideInPlace),
+	FlatIndexOfSub1(SubOpAppendSpreadByteInPlace),
+}
 
 func TestOpcodeNamesCoverEveryOpcode(t *testing.T) {
 	t.Parallel()
@@ -47,6 +81,23 @@ func TestOpcodeNamesCoverEveryOpcode(t *testing.T) {
 			"Add the name, or list the slot in reservedOpcodes if it implements nothing.", unnamed)
 }
 
+func TestOpcodeCountIsOnePastTheLastMainTierRow(t *testing.T) {
+	t.Parallel()
+
+	last := -1
+	for _, row := range AllSpecs() {
+		if row.Tier == TierMain {
+			last = max(last, int(row.Code))
+		}
+	}
+
+	require.Equalf(t, last+1, OpcodeCount,
+		"the main tier's last row is opcode %d (%s), so OpcodeCount has to be %d.\n"+
+			"A loop over OpcodeCount that stops short never looks at the opcodes past it:\n"+
+			"anchor the constant on the opcode appended last.",
+		last, Opcode(max(last, 0)), last+1)
+}
+
 func TestOpcodeNamesAreUnique(t *testing.T) {
 	t.Parallel()
 
@@ -63,15 +114,6 @@ func TestOpcodeNamesAreUnique(t *testing.T) {
 	}
 }
 
-var costFamilies = map[string]int64{
-	"APPEND": costExpensive,
-	"CALL":   costExpensive,
-}
-
-var costFamilyExceptions = map[string]string{
-	"CALL_SCALAR": "scalar-only callee with no boxing, so it is closer to an arithmetic op than a call",
-}
-
 func TestCallScalarIsMeteredAsArithmetic(t *testing.T) {
 	t.Parallel()
 
@@ -85,25 +127,14 @@ func TestCostTableFamilyWeightsAreConsistent(t *testing.T) {
 
 	table := DefaultCostTable()
 
-	for _, row := range AllSpecs() {
-		if row.Name == "" {
-			continue
-		}
-		if reason, excepted := costFamilyExceptions[row.Name]; excepted {
-			require.NotEmpty(t, reason)
-			continue
-		}
-		for prefix, want := range costFamilies {
-			if !strings.HasPrefix(row.Name, prefix) {
-				continue
-			}
-			require.Equalf(t, want, table[int(row.Tier)*SlotsPerTier+int(row.Code)],
-				"%s is in the %s family but is metered at %d instead of %d.\n"+
-					"Operations default to costCheap and are only overridden by declaring a cost on\n"+
-					"their spec row, so an omission silently under-meters the sandbox budget.\n"+
-					"Add the cost, or record why it differs in costFamilyExceptions.",
-				row.Name, prefix, table[int(row.Tier)*SlotsPerTier+int(row.Code)], want)
-		}
+	for _, slot := range expensiveOperations {
+		row, ok := SpecAt(Tier(slot/SlotsPerTier), uint8(slot%SlotsPerTier))
+		require.Truef(t, ok, "slot %d is listed in expensiveOperations but has no specification row", slot)
+		require.Equalf(t, costExpensive, table[slot],
+			"%s calls or appends but is metered at %d instead of %d.\n"+
+				"Operations default to costCheap and are only overridden by declaring a cost on\n"+
+				"their spec row, so an omission silently under-meters the sandbox budget.",
+			row, table[slot], costExpensive)
 	}
 }
 
@@ -132,4 +163,17 @@ func opcodeNameOrEmpty(op Opcode) string {
 		return ""
 	}
 	return row.Name
+}
+
+func TestDisplayLabelWidthFitsEveryName(t *testing.T) {
+	t.Parallel()
+
+	widest := 0
+	for _, row := range AllSpecs() {
+		widest = max(widest, len("0:")+len(row.Name))
+	}
+	require.Equalf(t, widest, DisplayLabelWidth,
+		"DisplayLabelWidth must be the longest display label (the longest name plus the tier "+
+			"prefix), so the operand columns line up without wasted space; change it and "+
+			"re-record the goldens")
 }

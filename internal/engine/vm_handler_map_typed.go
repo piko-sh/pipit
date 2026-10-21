@@ -33,20 +33,9 @@ const (
 	// specialisation.
 	mapKeyFast64SizeBytes = 8
 
-	// mapFastPathMaxElemBytes is Go's maximum inline map-element size
-	// (abi.MapMaxElemBytes).
+	// mapFastPathMaxElemBytes is Go's maximum inline map-element size (abi.MapMaxElemBytes).
 	mapFastPathMaxElemBytes = 128
 )
-
-// mapElemStoredInline reports whether a map with element type elemType stores the element
-// inline in its slot, the layout the faststr and fast64 fast paths read and write.
-//
-// Takes elemType (reflect.Type) which is the map's element type.
-//
-// Returns true when the element is at most mapFastPathMaxElemBytes.
-func mapElemStoredInline(elemType reflect.Type) bool {
-	return elemType.Size() <= mapFastPathMaxElemBytes
-}
 
 // mapAccessCacheEntry memoises the per-map-type info that typed map handlers would
 // otherwise recompute on every invocation.
@@ -57,6 +46,12 @@ type mapAccessCacheEntry struct {
 	// elemType is the cached m.Type().Elem() result.
 	elemType reflect.Type
 
+	// zeroElement is elemType's zero value, which a lookup of an absent key yields.
+	zeroElement reflect.Value
+
+	// keyScratch is the VM's settable scratch value of keyType.
+	keyScratch reflect.Value
+
 	// fast64Eligible records whether keyType passes mapKeyIsFast64Eligible so the handler
 	// can branch without recomputing the size+kind check.
 	fast64Eligible bool
@@ -64,6 +59,16 @@ type mapAccessCacheEntry struct {
 	// elemInline records whether elemType passes mapElemStoredInline, which every faststr or
 	// fast64 slot access requires.
 	elemInline bool
+}
+
+// mapElemStoredInline reports whether a map with element type elemType stores the element
+// inline in its slot, the layout the faststr and fast64 fast paths read and write.
+//
+// Takes elemType (reflect.Type) which is the map's element type.
+//
+// Returns true when the element is at most mapFastPathMaxElemBytes.
+func mapElemStoredInline(elemType reflect.Type) bool {
+	return elemType.Size() <= mapFastPathMaxElemBytes
 }
 
 // mapKindError reports whether the supplied value is a map, raising an interpreted
@@ -113,6 +118,8 @@ func resolveMapAccessCache(vm *VM, mapType reflect.Type) mapAccessCacheEntry {
 	entry := mapAccessCacheEntry{
 		keyType:        keyType,
 		elemType:       elemType,
+		zeroElement:    symtab.ZeroValueForType(elemType),
+		keyScratch:     mapKeyScratchFor(vm, keyType),
 		fast64Eligible: mapKeyIsFast64Eligible(keyType),
 		elemInline:     mapElemStoredInline(elemType),
 	}
@@ -121,9 +128,9 @@ func resolveMapAccessCache(vm *VM, mapType reflect.Type) mapAccessCacheEntry {
 	return entry
 }
 
-// handleMapIndexOkIntInt handles isa.OpMapIndexOkIntInt: reads ints[A] = map[int]int (or
-// map[int]int64) in general[B] with key ints[C], plus the extension word's A field as the
-// ok register.
+// handleGetMapInt64Int64Ok handles isa.OpGetMapInt64Int64Ok, which reads ints[A] =
+// map[int]int (or map[int]int64) in general[B] with key ints[C], plus the extension
+// word's A field as the ok register.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which provides the extension word.
@@ -131,10 +138,10 @@ func resolveMapAccessCache(vm *VM, mapType reflect.Type) mapAccessCacheEntry {
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapIndexOkIntInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapInt64Int64Ok(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapIndexOkIntInt", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapInt64Int64Ok", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -154,7 +161,7 @@ func handleMapIndexOkIntInt(vm *VM, frame *CallFrame, registers *Registers, inst
 		registers.Ints[extensionWord.A] = boolToInt64(present)
 		return opContinue
 	}
-	keyReflectValue := mapKeyScratchFor(vm, m.Type().Key())
+	keyReflectValue := resolveMapAccessCache(vm, m.Type()).keyScratch
 	keyReflectValue.SetInt(key)
 	result := m.MapIndex(keyReflectValue)
 	if result.IsValid() {
@@ -167,7 +174,7 @@ func handleMapIndexOkIntInt(vm *VM, frame *CallFrame, registers *Registers, inst
 	return opContinue
 }
 
-// handleMapIndexOkStringInt handles isa.OpMapIndexOkStringInt: reads ints[A] =
+// handleGetMapStringInt64Ok handles isa.OpGetMapStringInt64Ok, which reads ints[A] =
 // map[string]int (or map[string]int64) in general[B] with key strings[C], plus the
 // extension word's A field as the ok register.
 //
@@ -177,10 +184,10 @@ func handleMapIndexOkIntInt(vm *VM, frame *CallFrame, registers *Registers, inst
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapIndexOkStringInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapStringInt64Ok(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapIndexOkStringInt", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapStringInt64Ok", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -212,7 +219,7 @@ func handleMapIndexOkStringInt(vm *VM, frame *CallFrame, registers *Registers, i
 	return opContinue
 }
 
-// handleMapIndexOkStringString handles isa.OpMapIndexOkStringString: reads strings[A] =
+// handleGetMapStringStringOk handles isa.OpGetMapStringStringOk, which reads strings[A] =
 // map[string]string in general[B] with key strings[C], plus the extension word's A field
 // as the ok register.
 //
@@ -222,10 +229,10 @@ func handleMapIndexOkStringInt(vm *VM, frame *CallFrame, registers *Registers, i
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapIndexOkStringString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapStringStringOk(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapIndexOkStringString", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapStringStringOk", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -251,7 +258,7 @@ func handleMapIndexOkStringString(vm *VM, frame *CallFrame, registers *Registers
 	return opContinue
 }
 
-// handleMapIndexOkIntString handles isa.OpMapIndexOkIntString: reads strings[A] =
+// handleGetMapInt64StringOk handles isa.OpGetMapInt64StringOk, which reads strings[A] =
 // map[int]string (or map[int64]string) in general[B] with key ints[C], plus the extension
 // word's A field as the ok register.
 //
@@ -261,10 +268,10 @@ func handleMapIndexOkStringString(vm *VM, frame *CallFrame, registers *Registers
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapIndexOkIntString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapInt64StringOk(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapIndexOkIntString", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapInt64StringOk", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -284,7 +291,7 @@ func handleMapIndexOkIntString(vm *VM, frame *CallFrame, registers *Registers, i
 		registers.Ints[extensionWord.A] = boolToInt64(present)
 		return opContinue
 	}
-	keyReflectValue := mapKeyScratchFor(vm, m.Type().Key())
+	keyReflectValue := resolveMapAccessCache(vm, m.Type()).keyScratch
 	keyReflectValue.SetInt(key)
 	result := m.MapIndex(keyReflectValue)
 	if result.IsValid() {
@@ -297,8 +304,8 @@ func handleMapIndexOkIntString(vm *VM, frame *CallFrame, registers *Registers, i
 	return opContinue
 }
 
-// mapKeyScratchFor returns reusable addressable storage for a map key type. Callers
-// must set its contents before each use.
+// mapKeyScratchFor returns reusable addressable storage for a map key type. Callers must
+// set its contents before each use.
 //
 // Takes vm (*VM) which owns the per-VM scratch cache.
 // Takes keyType (reflect.Type) which is the map's declared key type.
@@ -333,9 +340,7 @@ func mapIndexStringKey(vm *VM, m reflect.Value, keyType reflect.Type, key string
 }
 
 // mapLookupStringKeyGeneral reads key from a string-kinded-key map whose element lives in
-// the general bank. Elements stored inline take runtime.mapaccess2_faststr; larger
-// elements, and every lookup in a build without the linknamed fast paths, go through
-// mapIndexStringKey, which converts the key to the map's declared key type.
+// the general bank.
 //
 // Takes vm (*VM) which owns the access cache and the key scratch.
 // Takes m (reflect.Value) which is the map.
@@ -349,22 +354,16 @@ func mapLookupStringKeyGeneral(vm *VM, m reflect.Value, key string) (reflect.Val
 		if result := mapIndexStringKey(vm, m, entry.keyType, key); result.IsValid() {
 			return result, true
 		}
-		return symtab.ZeroValueForType(entry.elemType), false
+		return entry.zeroElement, false
 	}
 	resultPtr, present := mapAccessFastStrToGeneral(m, key)
 	if !present {
-		return symtab.ZeroValueForType(entry.elemType), false
+		return entry.zeroElement, false
 	}
 	return wrapMapElemFast(vm, entry.elemType, resultPtr), true
 }
 
-// handleMapGetIntGeneral handles isa.OpMapGetIntGeneral.
-//
-// Reads general[A] = map[int]V (or map[int64]V) in general[B] with key ints[C], where V
-// is any value type whose register kind is isa.RegisterGeneral (pointers, interfaces,
-// slices, maps of nested types, user structs). Avoids boxing the int key into a fresh
-// reflect.Value per call by reusing a per-keyType scratch (vm.mapKeyScratch). The result
-// allocation for the value is unavoidable without unsafe map access.
+// handleGetMapInt64General reads an integer-keyed map value into the general bank.
 //
 // Takes vm (*VM) which owns the per-VM key scratch cache.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -372,32 +371,28 @@ func mapLookupStringKeyGeneral(vm *VM, m reflect.Value, key string) (reflect.Val
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapGetIntGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapInt64General(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapGetIntGeneral", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapInt64General", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
 	}
 	key := registers.Ints[instruction.C]
-	keyScratch := mapKeyScratchFor(vm, m.Type().Key())
+	cacheEntry := resolveMapAccessCache(vm, m.Type())
+	keyScratch := cacheEntry.keyScratch
 	keyScratch.SetInt(key)
 	result := m.MapIndex(keyScratch)
 	if result.IsValid() {
 		registers.General[instruction.A] = result
 	} else {
-		registers.General[instruction.A] = symtab.ZeroValueForType(m.Type().Elem())
+		registers.General[instruction.A] = cacheEntry.zeroElement
 	}
 	return opContinue
 }
 
-// handleMapIndexOkIntGeneral handles isa.OpMapIndexOkIntGeneral.
-//
-// Reads general[A] = map[int]V (or map[int64]V) in general[B] with key ints[C], plus the
-// extension word's A field as the int register holding the ok flag. Mirrors
-// handleMapGetIntGeneral but sets instruction.a to the zero value of the map's element
-// type when the key is absent (matching Go's `v, ok := m[k]` semantics).
+// handleGetMapInt64GeneralOk reads an integer-keyed map value and its presence flag.
 //
 // Takes vm (*VM) which owns the per-VM key scratch cache.
 // Takes frame (*CallFrame) which provides the extension word.
@@ -405,10 +400,10 @@ func handleMapGetIntGeneral(vm *VM, frame *CallFrame, registers *Registers, inst
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapIndexOkIntGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapInt64GeneralOk(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapIndexOkIntGeneral", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapInt64GeneralOk", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -417,12 +412,11 @@ func handleMapIndexOkIntGeneral(vm *VM, frame *CallFrame, registers *Registers, 
 	frame.ProgramCounter++
 	key := registers.Ints[instruction.C]
 	cacheEntry := resolveMapAccessCache(vm, m.Type())
-	keyType := cacheEntry.keyType
 	elemType := cacheEntry.elemType
 	if useMapFastLinkname() && cacheEntry.fast64Eligible && cacheEntry.elemInline {
 		resultPtr, present := mapAccessFast64ToGeneral(m, key)
 		if !present {
-			registers.General[instruction.A] = symtab.ZeroValueForType(elemType)
+			registers.General[instruction.A] = cacheEntry.zeroElement
 			registers.Ints[extensionWord.A] = 0
 			return opContinue
 		}
@@ -430,14 +424,14 @@ func handleMapIndexOkIntGeneral(vm *VM, frame *CallFrame, registers *Registers, 
 		registers.Ints[extensionWord.A] = 1
 		return opContinue
 	}
-	keyScratch := mapKeyScratchFor(vm, keyType)
+	keyScratch := cacheEntry.keyScratch
 	keyScratch.SetInt(key)
 	result := m.MapIndex(keyScratch)
 	if result.IsValid() {
 		registers.General[instruction.A] = result
 		registers.Ints[extensionWord.A] = 1
 	} else {
-		registers.General[instruction.A] = symtab.ZeroValueForType(elemType)
+		registers.General[instruction.A] = cacheEntry.zeroElement
 		registers.Ints[extensionWord.A] = 0
 	}
 	return opContinue
@@ -498,8 +492,8 @@ func wrapMapElemFast(vm *VM, elemType reflect.Type, slotPtr unsafe.Pointer) refl
 	return copyReflectValue(unsafeNewAt(abiType, slotPtr, elemType.Kind()))
 }
 
-// handleMapGetIntInt handles the isa.OpMapGetIntInt instruction by reading an integer
-// value from a map with an integer key.
+// handleGetMapInt64Int64 handles the isa.OpGetMapInt64Int64 instruction by reading an
+// integer value from a map with an integer key.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -507,10 +501,10 @@ func wrapMapElemFast(vm *VM, elemType reflect.Type, slotPtr unsafe.Pointer) refl
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapGetIntInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapInt64Int64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapGetIntInt", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapInt64Int64", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -522,7 +516,7 @@ func handleMapGetIntInt(vm *VM, frame *CallFrame, registers *Registers, instruct
 		return opContinue
 	}
 
-	keyReflectValue := mapKeyScratchFor(vm, m.Type().Key())
+	keyReflectValue := resolveMapAccessCache(vm, m.Type()).keyScratch
 	keyReflectValue.SetInt(key)
 	result := m.MapIndex(keyReflectValue)
 	if result.IsValid() {
@@ -533,8 +527,8 @@ func handleMapGetIntInt(vm *VM, frame *CallFrame, registers *Registers, instruct
 	return opContinue
 }
 
-// handleMapSetIntInt handles the isa.OpMapSetIntInt instruction by writing an integer
-// value to a map with an integer key.
+// handleSetMapInt64Int64 handles the isa.OpSetMapInt64Int64 instruction by writing an
+// integer value to a map with an integer key.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -542,10 +536,10 @@ func handleMapGetIntInt(vm *VM, frame *CallFrame, registers *Registers, instruct
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapSetIntInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetMapInt64Int64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.A]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapSetIntInt", registerRoleMap, instruction.A, instruction, frame, registers)
+		vMPanicInvalidRegister("handleSetMapInt64Int64", registerRoleMap, instruction.A, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -558,7 +552,7 @@ func handleMapSetIntInt(vm *VM, frame *CallFrame, registers *Registers, instruct
 			concreteMap[int(key)] = int(value)
 			return
 		}
-		keyReflectValue := mapKeyScratchFor(vm, m.Type().Key())
+		keyReflectValue := resolveMapAccessCache(vm, m.Type()).keyScratch
 		keyReflectValue.SetInt(key)
 		valueReflectValue := reflect.New(m.Type().Elem()).Elem()
 		valueReflectValue.SetInt(value)
@@ -569,9 +563,10 @@ func handleMapSetIntInt(vm *VM, frame *CallFrame, registers *Registers, instruct
 	return opContinue
 }
 
-// handleMapGetStringInt handles isa.OpMapGetStringInt: reads ints[A] = map[string]int (or
-// map[string]int64) in general[B] with string key strings[C]. Type-asserts the typed map
-// handle to dispatch directly, bypassing reflect.MapIndex on the hot path.
+// handleGetMapStringInt64 handles isa.OpGetMapStringInt64, which reads ints[A] =
+// map[string]int (or map[string]int64) in general[B] with string key strings[C].
+// Type-asserts the typed map handle to dispatch directly, bypassing reflect.MapIndex on
+// the hot path.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -579,10 +574,10 @@ func handleMapSetIntInt(vm *VM, frame *CallFrame, registers *Registers, instruct
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapGetStringInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapStringInt64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapGetStringInt", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapStringInt64", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -606,8 +601,8 @@ func handleMapGetStringInt(vm *VM, frame *CallFrame, registers *Registers, instr
 	return opContinue
 }
 
-// handleMapSetStringInt handles isa.OpMapSetStringInt: writes general[A][strings[B]] =
-// ints[C] for map[string]int (or map[string]int64).
+// handleSetMapStringInt64 handles isa.OpSetMapStringInt64, which writes
+// general[A][strings[B]] = ints[C] for map[string]int (or map[string]int64).
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -615,10 +610,10 @@ func handleMapGetStringInt(vm *VM, frame *CallFrame, registers *Registers, instr
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapSetStringInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetMapStringInt64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.A]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapSetStringInt", registerRoleMap, instruction.A, instruction, frame, registers)
+		vMPanicInvalidRegister("handleSetMapStringInt64", registerRoleMap, instruction.A, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -626,7 +621,7 @@ func handleMapSetStringInt(vm *VM, frame *CallFrame, registers *Registers, instr
 	rawKey := registers.Strings[instruction.B]
 	value := registers.Ints[instruction.C]
 	if recovered, panicked := guardChannelOp(func() {
-		if mapSetStringIntProbeFirst(vm, m, rawKey, value) {
+		if setMapStringInt64ProbeFirst(vm, m, rawKey, value) {
 			return
 		}
 		key := materialiseString(vm.Arena, rawKey)
@@ -648,7 +643,7 @@ func handleMapSetStringInt(vm *VM, frame *CallFrame, registers *Registers, instr
 	return opContinue
 }
 
-// handleMapGetStringString handles isa.OpMapGetStringString: reads strings[A] =
+// handleGetMapStringString handles isa.OpGetMapStringString, which reads strings[A] =
 // map[string]string in general[B] with key strings[C].
 //
 // Takes vm (*VM) which is the virtual machine.
@@ -657,10 +652,10 @@ func handleMapSetStringInt(vm *VM, frame *CallFrame, registers *Registers, instr
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapGetStringString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapStringString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapGetStringString", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapStringString", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -680,7 +675,7 @@ func handleMapGetStringString(vm *VM, frame *CallFrame, registers *Registers, in
 	return opContinue
 }
 
-// handleMapSetStringString handles isa.OpMapSetStringString: writes
+// handleSetMapStringString handles isa.OpSetMapStringString, which writes
 // general[A][strings[B]] = strings[C] for map[string]string.
 //
 // Takes vm (*VM) which is the virtual machine.
@@ -689,10 +684,10 @@ func handleMapGetStringString(vm *VM, frame *CallFrame, registers *Registers, in
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapSetStringString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetMapStringString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.A]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapSetStringString", registerRoleMap, instruction.A, instruction, frame, registers)
+		vMPanicInvalidRegister("handleSetMapStringString", registerRoleMap, instruction.A, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -700,11 +695,13 @@ func handleMapSetStringString(vm *VM, frame *CallFrame, registers *Registers, in
 	rawKey := registers.Strings[instruction.B]
 	rawValue := registers.Strings[instruction.C]
 	if recovered, panicked := guardChannelOp(func() {
-		if mapSetStringStringProbeFirst(vm, m, rawKey, rawValue) {
+		if setMapStringStringProbeFirst(vm, m, rawKey, rawValue) {
 			return
 		}
 		key := materialiseString(vm.Arena, rawKey)
 		value := materialiseString(vm.Arena, rawValue)
+		noteHandOffString(vm.Arena, handOffUntracedContainer, key)
+		noteHandOffString(vm.Arena, handOffUntracedContainer, value)
 		keyReflectValue := reflect.ValueOf(key).Convert(m.Type().Key())
 		valueReflectValue := reflect.ValueOf(value).Convert(m.Type().Elem())
 		m.SetMapIndex(keyReflectValue, valueReflectValue)
@@ -714,8 +711,8 @@ func handleMapSetStringString(vm *VM, frame *CallFrame, registers *Registers, in
 	return opContinue
 }
 
-// handleMapGetIntString handles isa.OpMapGetIntString: reads strings[A] = map[int]string
-// (or map[int64]string) in general[B] with key ints[C].
+// handleGetMapInt64String handles isa.OpGetMapInt64String, which reads strings[A] =
+// map[int]string (or map[int64]string) in general[B] with key ints[C].
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -723,10 +720,10 @@ func handleMapSetStringString(vm *VM, frame *CallFrame, registers *Registers, in
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapGetIntString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapInt64String(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapGetIntString", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapInt64String", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -740,7 +737,7 @@ func handleMapGetIntString(vm *VM, frame *CallFrame, registers *Registers, instr
 		registers.Strings[instruction.A] = concrete[key]
 		return opContinue
 	}
-	keyReflectValue := mapKeyScratchFor(vm, m.Type().Key())
+	keyReflectValue := resolveMapAccessCache(vm, m.Type()).keyScratch
 	keyReflectValue.SetInt(key)
 	result := m.MapIndex(keyReflectValue)
 	if result.IsValid() {
@@ -751,8 +748,8 @@ func handleMapGetIntString(vm *VM, frame *CallFrame, registers *Registers, instr
 	return opContinue
 }
 
-// handleMapSetIntString handles isa.OpMapSetIntString: writes general[A][ints[B]] =
-// strings[C] for map[int]string (or map[int64]string).
+// handleSetMapInt64String handles isa.OpSetMapInt64String, which writes
+// general[A][ints[B]] = strings[C] for map[int]string (or map[int64]string).
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -760,16 +757,17 @@ func handleMapGetIntString(vm *VM, frame *CallFrame, registers *Registers, instr
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapSetIntString(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetMapInt64String(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.A]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapSetIntString", registerRoleMap, instruction.A, instruction, frame, registers)
+		vMPanicInvalidRegister("handleSetMapInt64String", registerRoleMap, instruction.A, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
 	}
 	key := registers.Ints[instruction.B]
 	value := materialiseString(vm.Arena, registers.Strings[instruction.C])
+	noteHandOffString(vm.Arena, handOffUntracedContainer, value)
 	if recovered, panicked := guardChannelOp(func() {
 		if concrete, ok := reflect.TypeAssert[map[int]string](m); ok {
 			concrete[int(key)] = value
@@ -779,7 +777,7 @@ func handleMapSetIntString(vm *VM, frame *CallFrame, registers *Registers, instr
 			concrete[key] = value
 			return
 		}
-		keyReflectValue := mapKeyScratchFor(vm, m.Type().Key())
+		keyReflectValue := resolveMapAccessCache(vm, m.Type()).keyScratch
 		keyReflectValue.SetInt(key)
 		valueReflectValue := reflect.ValueOf(value).Convert(m.Type().Elem())
 		m.SetMapIndex(keyReflectValue, valueReflectValue)
@@ -789,12 +787,7 @@ func handleMapSetIntString(vm *VM, frame *CallFrame, registers *Registers, instr
 	return opContinue
 }
 
-// handleMapAddIntInt handles isa.OpMapAddIntInt.
-//
-// Performs general[A][ints[B]] += ints[C] for map[int]int (or map[int64]int64). Absent
-// keys are treated as 0. Fuses get+add+set into one dispatch with a single map probe,
-// eliminating the redundant hash and bucket walk that the unfused get/add/set sequence
-// pays.
+// handleAddToMapInt64Int64 adds to an integer entry in an integer-keyed map.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which is the active call frame.
@@ -802,10 +795,10 @@ func handleMapSetIntString(vm *VM, frame *CallFrame, registers *Registers, instr
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapAddIntInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleAddToMapInt64Int64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.A]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapAddIntInt", registerRoleMap, instruction.A, instruction, frame, registers)
+		vMPanicInvalidRegister("handleAddToMapInt64Int64", registerRoleMap, instruction.A, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -820,7 +813,7 @@ func handleMapAddIntInt(vm *VM, frame *CallFrame, registers *Registers, instruct
 		concrete[key] += delta
 		return opContinue
 	}
-	keyReflectValue := mapKeyScratchFor(vm, m.Type().Key())
+	keyReflectValue := resolveMapAccessCache(vm, m.Type()).keyScratch
 	keyReflectValue.SetInt(key)
 	current := int64(0)
 	if existing := m.MapIndex(keyReflectValue); existing.IsValid() {
@@ -832,7 +825,7 @@ func handleMapAddIntInt(vm *VM, frame *CallFrame, registers *Registers, instruct
 	return opContinue
 }
 
-// handleMapAddStringInt handles isa.OpMapAddStringInt.
+// handleAddToMapStringInt64 handles isa.OpAddToMapStringInt64.
 //
 // Performs general[A][strings[B]] += ints[C] for map[string]int (or map[string]int64).
 // Absent keys are treated as 0. Fuses get+add+set into one dispatch with one hash of the
@@ -844,17 +837,17 @@ func handleMapAddIntInt(vm *VM, frame *CallFrame, registers *Registers, instruct
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapAddStringInt(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleAddToMapStringInt64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.A]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapAddStringInt", registerRoleMap, instruction.A, instruction, frame, registers)
+		vMPanicInvalidRegister("handleAddToMapStringInt64", registerRoleMap, instruction.A, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
 	}
 	rawKey := registers.Strings[instruction.B]
 	delta := registers.Ints[instruction.C]
-	if mapAddStringIntProbeFirst(vm, m, rawKey, delta) {
+	if addToMapStringInt64ProbeFirst(vm, m, rawKey, delta) {
 		return opContinue
 	}
 	key := materialiseString(vm.Arena, rawKey)
@@ -877,12 +870,9 @@ func handleMapAddStringInt(vm *VM, frame *CallFrame, registers *Registers, instr
 	return opContinue
 }
 
-// handleMapGetStringGeneral handles isa.OpMapGetStringGeneral.
+// handleGetMapStringGeneral handles isa.OpGetMapStringGeneral.
 //
-// Reads general[A] = map[string]V in general[B] with key strings[C]. Mirrors
-// handleMapGetIntGeneral for string keys: routes through runtime.mapaccess2_faststr (via
-// mapAccessFastStrToGeneral) to skip the per-call key-boxing allocation that
-// reflect.Value.MapIndex performs.
+// Reads general[A] = map[string]V in general[B] with key strings[C].
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -890,10 +880,10 @@ func handleMapAddStringInt(vm *VM, frame *CallFrame, registers *Registers, instr
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapGetStringGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapStringGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapGetStringGeneral", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapStringGeneral", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -902,11 +892,10 @@ func handleMapGetStringGeneral(vm *VM, frame *CallFrame, registers *Registers, i
 	return opContinue
 }
 
-// handleMapIndexOkStringGeneral handles isa.OpMapIndexOkStringGeneral.
+// handleGetMapStringGeneralOk handles isa.OpGetMapStringGeneralOk.
 //
 // Reads general[A] = map[string]V in general[B] with key strings[C], plus an extension
-// word whose A field is the int register holding the ok flag. Mirrors
-// handleMapIndexOkIntGeneral for string keys.
+// word whose A field is the int register holding the ok flag.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which provides the extension word.
@@ -914,10 +903,10 @@ func handleMapGetStringGeneral(vm *VM, frame *CallFrame, registers *Registers, i
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapIndexOkStringGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetMapStringGeneralOk(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.B]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapIndexOkStringGeneral", registerRoleMap, instruction.B, instruction, frame, registers)
+		vMPanicInvalidRegister("handleGetMapStringGeneralOk", registerRoleMap, instruction.B, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -930,12 +919,11 @@ func handleMapIndexOkStringGeneral(vm *VM, frame *CallFrame, registers *Register
 	return opContinue
 }
 
-// handleMapSetIntGeneral handles isa.OpMapSetIntGeneral: writes general[A][ints[B]] =
-// general[C] for int-kinded-key maps whose element type lives in the general bank.
+// handleSetMapInt64General handles isa.OpSetMapInt64General, which writes
+// general[A][ints[B]] = general[C] for int-kinded-key maps whose element type lives in
+// the general bank.
 //
-// Pointer-kind elements with 8-byte int-kinded keys route through the
-// runtime.mapassign_fast64 fast path shared with the generic handler; everything else
-// takes the reflect fallback. Interface element types never take the typedmemmove path.
+// Interface element types never take the typedmemmove path.
 //
 // Takes vm (*VM) which is the executing VM.
 // Takes frame (*CallFrame) which provides panic context.
@@ -943,10 +931,10 @@ func handleMapIndexOkStringGeneral(vm *VM, frame *CallFrame, registers *Register
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapSetIntGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetMapInt64General(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.A]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapSetIntGeneral", registerRoleMap, instruction.A, instruction, frame, registers)
+		vMPanicInvalidRegister("handleSetMapInt64General", registerRoleMap, instruction.A, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
@@ -959,9 +947,16 @@ func handleMapSetIntGeneral(vm *VM, frame *CallFrame, registers *Registers, inst
 			return opContinue
 		}
 	}
-	keyScratch := mapKeyScratchFor(vm, cacheEntry.keyType)
+	keyScratch := cacheEntry.keyScratch
 	keyScratch.SetInt(key)
-	value := MaterialiseArenaValue(vm.Arena, coerceValue(vm, registers.General[instruction.C], elemType))
+	value := coerceValue(vm, registers.General[instruction.C], elemType)
+	if !localContainerStore(vm.Arena, frame, m) {
+		value = materialiseArenaValueIntoSlot(vm.Arena, value, elemType)
+		noteBoxedHandOff(vm.Arena, handOffUntracedContainer, value, elemType.Kind() == reflect.Interface)
+	}
+	if cacheEntry.fast64Eligible && setMapInt64BoxedFast(m, elemType, key, value) {
+		return opContinue
+	}
 	if recovered, panicked := guardChannelOp(func() {
 		m.SetMapIndex(keyScratch, value)
 	}); panicked {
@@ -970,7 +965,7 @@ func handleMapSetIntGeneral(vm *VM, frame *CallFrame, registers *Registers, inst
 	return opContinue
 }
 
-// handleMapSetStringGeneral handles isa.OpMapSetStringGeneral, writing
+// handleSetMapStringGeneral handles isa.OpSetMapStringGeneral, writing
 // general[A][strings[B]] = general[C] via the fast-path runtime trampolines.
 //
 // Takes vm (*VM) which surfaces EvalError on nil-map writes.
@@ -979,21 +974,27 @@ func handleMapSetIntGeneral(vm *VM, frame *CallFrame, registers *Registers, inst
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns OpResult indicating the next execution step.
-func handleMapSetStringGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetMapStringGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	m := registers.General[instruction.A]
 	if !m.IsValid() {
-		vMPanicInvalidRegister("handleMapSetStringGeneral", registerRoleMap, instruction.A, instruction, frame, registers)
+		vMPanicInvalidRegister("handleSetMapStringGeneral", registerRoleMap, instruction.A, instruction, frame, registers)
 	}
 	if !mapKindError(vm, m) {
 		return opPanicError
 	}
 	rawKey := registers.Strings[instruction.B]
-	value := MaterialiseArenaValue(vm.Arena, coerceValue(vm, registers.General[instruction.C], m.Type().Elem()))
+	types := resolveMapAccessCache(vm, m.Type())
+	elemType := types.elemType
+	value := coerceValue(vm, registers.General[instruction.C], elemType)
+	if !localContainerStore(vm.Arena, frame, m) && !mapSliceValueRevokedEpoch(vm.Arena, value, elemType) {
+		value = materialiseArenaValueIntoSlot(vm.Arena, value, elemType)
+		noteBoxedHandOff(vm.Arena, handOffUntracedContainer, value, elemType.Kind() == reflect.Interface)
+	}
 	if recovered, panicked := guardChannelOp(func() {
-		if mapSetStringGeneralProbeFirst(vm, m, rawKey, value) {
+		if setMapStringGeneralProbeFirst(vm, m, types, rawKey, value) {
 			return
 		}
-		keyReflectValue := reflect.ValueOf(materialiseString(vm.Arena, rawKey)).Convert(m.Type().Key())
+		keyReflectValue := reflect.ValueOf(materialiseString(vm.Arena, rawKey)).Convert(types.keyType)
 		m.SetMapIndex(keyReflectValue, value)
 	}); panicked {
 		return raiseNativePanicAsInterpreted(vm, recovered)

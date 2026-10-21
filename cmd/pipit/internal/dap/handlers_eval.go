@@ -35,7 +35,7 @@ import (
 // user and may call interpreted and host functions.
 //
 // Takes request (*dap.EvaluateRequest) which carries the expression, frame and context.
-func (s *server) handleEvaluate(request *dap.EvaluateRequest) {
+func (s *server) handleEvaluate(ctx context.Context, request *dap.EvaluateRequest) {
 	stop := s.currentStop()
 	if stop == nil {
 		s.writeEvaluateError(request, "pipit dap: the program is not paused")
@@ -46,7 +46,7 @@ func (s *server) handleEvaluate(request *dap.EvaluateRequest) {
 		frame = frameRef{threadID: stop.event.ThreadID, frameIndex: 0}
 	}
 	hover := request.Arguments.Context == "hover"
-	result, err := s.debugger.Evaluate(context.Background(), frame.threadID, frame.frameIndex, request.Arguments.Expression, pipit.EvalOptions{Timeout: 0, AllowCalls: !hover})
+	result, err := s.debugger.Evaluate(ctx, frame.threadID, frame.frameIndex, request.Arguments.Expression, pipit.EvalOptions{Timeout: 0, AllowCalls: !hover})
 	if err != nil {
 		s.writeEvaluateError(request, "pipit dap: "+err.Error())
 		return

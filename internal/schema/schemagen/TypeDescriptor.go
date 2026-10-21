@@ -216,8 +216,20 @@ func (rcv *TypeDescriptor) MutateIsVariadic(n bool) bool {
 	return rcv._tab.MutateBoolSlot(28, n)
 }
 
+func (rcv *TypeDescriptor) BackReference() bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(30))
+	if o != 0 {
+		return rcv._tab.GetBool(o + rcv._tab.Pos)
+	}
+	return false
+}
+
+func (rcv *TypeDescriptor) MutateBackReference(n bool) bool {
+	return rcv._tab.MutateBoolSlot(30, n)
+}
+
 func TypeDescriptorStart(builder *flatbuffers.Builder) {
-	builder.StartObject(13)
+	builder.StartObject(14)
 }
 func TypeDescriptorAddKind(builder *flatbuffers.Builder, kind TypeDescKind) {
 	builder.PrependInt8Slot(0, int8(kind), 0)
@@ -266,6 +278,9 @@ func TypeDescriptorStartResultsVector(builder *flatbuffers.Builder, numElems int
 }
 func TypeDescriptorAddIsVariadic(builder *flatbuffers.Builder, isVariadic bool) {
 	builder.PrependBoolSlot(12, isVariadic, false)
+}
+func TypeDescriptorAddBackReference(builder *flatbuffers.Builder, backReference bool) {
+	builder.PrependBoolSlot(13, backReference, false)
 }
 func TypeDescriptorEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

@@ -70,6 +70,9 @@ func TestGoldenRoundTrip(t *testing.T) {
 	for _, name := range readListFile(t, manifestPath()) {
 		entry, ok := byName[name]
 		require.True(t, ok, "manifest names unknown snippet %s", name)
+		if entry.err != nil && !entry.recordedForThisBuild() {
+			continue
+		}
 		programs["snippet/"+name] = entry.source
 	}
 	for name, source := range shapeCases(t) {

@@ -63,6 +63,9 @@ total`)
 }
 
 func TestASMInlineCallMixedKindReturns(t *testing.T) {
+	if storeCensusOn {
+		t.Skip("the store census dispatches every instruction through Go, so the assembly lane's return counter never moves")
+	}
 	t.Parallel()
 	result, vm := runASMMultiReturnScript(t, `
 func split(i int) (int, float64, string, bool, uint) {
@@ -160,23 +163,23 @@ total`)
 
 func TestConfigureASMReturnAcceptsUpToFourMatchingScalars(t *testing.T) {
 	t.Parallel()
-	callee := &program.CompiledFunction{ResultKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterFloat, isa.RegisterString, isa.RegisterBool}}
+	callee := &program.CompiledFunction{ResultKinds: []isa.RegisterKind{isa.RegisterInt64, isa.RegisterFloat64, isa.RegisterString, isa.RegisterBool}}
 	site := &program.CallSite{Returns: []program.VarLocation{
-		{Kind: isa.RegisterInt, Register: 1}, {Kind: isa.RegisterFloat, Register: 2},
+		{Kind: isa.RegisterInt64, Register: 1}, {Kind: isa.RegisterFloat64, Register: 2},
 		{Kind: isa.RegisterString, Register: 3}, {Kind: isa.RegisterBool, Register: 4},
 	}}
 	var info engine.AsmCallInfo
 	require.True(t, engine.ConfigureASMReturn(&info, site, callee))
 	require.EqualValues(t, 4, info.ReturnCount)
 
-	site.Returns = append(site.Returns, program.VarLocation{Kind: isa.RegisterUint, Register: 5})
-	callee.ResultKinds = append(callee.ResultKinds, isa.RegisterUint)
+	site.Returns = append(site.Returns, program.VarLocation{Kind: isa.RegisterUint64, Register: 5})
+	callee.ResultKinds = append(callee.ResultKinds, isa.RegisterUint64)
 	require.False(t, engine.ConfigureASMReturn(&engine.AsmCallInfo{}, site, callee), "five returns exceed the inline limit")
 
-	mismatched := &program.CallSite{Returns: []program.VarLocation{{Kind: isa.RegisterInt, Register: 1}, {Kind: isa.RegisterInt, Register: 2}}}
+	mismatched := &program.CallSite{Returns: []program.VarLocation{{Kind: isa.RegisterInt64, Register: 1}, {Kind: isa.RegisterInt64, Register: 2}}}
 	require.False(t, engine.ConfigureASMReturn(&engine.AsmCallInfo{}, mismatched, callee), "destination kinds must match the callee result kinds")
 
-	general := &program.CompiledFunction{ResultKinds: []isa.RegisterKind{isa.RegisterInt, isa.RegisterGeneral}}
-	generalSite := &program.CallSite{Returns: []program.VarLocation{{Kind: isa.RegisterInt, Register: 1}, {Kind: isa.RegisterGeneral, Register: 2}}}
+	general := &program.CompiledFunction{ResultKinds: []isa.RegisterKind{isa.RegisterInt64, isa.RegisterGeneral}}
+	generalSite := &program.CallSite{Returns: []program.VarLocation{{Kind: isa.RegisterInt64, Register: 1}, {Kind: isa.RegisterGeneral, Register: 2}}}
 	require.False(t, engine.ConfigureASMReturn(&engine.AsmCallInfo{}, generalSite, general), "general-bank results stay on the Go path")
 }

@@ -66,28 +66,7 @@ type isolatedReplSession interface {
 	// Close releases the native session resources.
 	//
 	// Returns error when cleanup fails.
-	Close() error
-}
-
-// isolatedReplSubmitter wraps a session so submissions use the caller's context instead
-// of the input loop's.
-type isolatedReplSubmitter struct {
-	// isolatedReplSession is the underlying session.
-	isolatedReplSession
-
-	// ctx is the caller's context, independent of input cancellation.
-	ctx context.Context
-}
-
-// Submit preserves the caller's context independently of input cancellation. Worker exit
-// can stop input without discarding a final already-reaped response.
-//
-// Takes source (string) which is the bounded input text.
-//
-// Returns pipit.RestrictedResult which is the session output.
-// Returns error when execution or caller cancellation fails.
-func (submitter isolatedReplSubmitter) Submit(_ context.Context, source string) (pipit.RestrictedResult, error) {
-	return submitter.isolatedReplSession.Submit(submitter.ctx, source)
+	Close(ctx context.Context) error
 }
 
 // isolatedReplState tracks the line framing state for the REPL input loop.
@@ -203,7 +182,7 @@ func runIsolatedRepl(ctx context.Context, config pipit.IsolatedConfig, streams o
 	session, err := pipit.NewIsolatedSession(ctx, config)
 	if session != nil {
 		defer func() {
-			if err := session.Close(); err != nil {
+			if err := session.Close(ctx); err != nil {
 				fmt.Fprintf(streams.Stderr, errorFormat, err)
 				exitCode = 1
 			}
@@ -255,31 +234,31 @@ func driveIsolatedRepl(ctx context.Context, session isolatedReplSession, input c
 	}()
 	interactive := streams.IsStdinTTY()
 	streams.Stdin = input
-	submitter := isolatedReplSubmitter{isolatedReplSession: session, ctx: ctx}
-	err := isolatedReplLoop(loopContext, submitter, streams, printResult, interactive)
+	err := isolatedReplLoop(ctx, loopContext.Err, session, streams, printResult, interactive)
 	if errors.Is(err, context.Canceled) && ctx.Err() == nil {
-		return session.Close()
+		return session.Close(ctx)
 	}
 	return err
 }
 
-// isolatedReplLoop reads bounded lines and explicit multiline blocks. It never parses,
-// compiles, loads files, changes grants or exposes interpreter state in the host.
+// isolatedReplLoop reads bounded lines and explicit multiline blocks.
 //
+// Takes stopped (func() error) which reports why the input loop must stop, such as the
+// worker exiting, or nil while it may go on.
 // Takes session (isolatedReplSession) which is the dedicated worker session.
 // Takes streams (output.IO) which supplies input and output writers.
 // Takes printResult (bool) which enables JSON scalar output.
 // Takes interactive (bool) which enables terminal prompts.
 //
 // Returns the first input, submission or output error. Failures are not recoverable.
-func isolatedReplLoop(ctx context.Context, session isolatedReplSession, streams output.IO, printResult, interactive bool) error {
+func isolatedReplLoop(ctx context.Context, stopped func() error, session isolatedReplSession, streams output.IO, printResult, interactive bool) error {
 	input := &io.LimitedReader{R: streams.Stdin, N: isolatedReplInputLimit + 1}
 	scanner := bufio.NewScanner(input)
 	scanner.Buffer(make([]byte, isolatedReplReadBuffer), isolatedSourceLimit+1)
 	var state isolatedReplState
 	remainingLines := isolatedReplLineLimit
 	for {
-		if err := ctx.Err(); err != nil {
+		if err := stopped(); err != nil {
 			return err
 		}
 		if err := state.prompt(streams.Stderr, interactive); err != nil {
@@ -300,7 +279,7 @@ func isolatedReplLoop(ctx context.Context, session isolatedReplSession, streams 
 			return err
 		}
 	}
-	return errors.Join(ctx.Err(), scanner.Err(), state.finish())
+	return errors.Join(stopped(), scanner.Err(), state.finish())
 }
 
 // appendIsolatedReplLine bounds a multiline block before allocating retained source.

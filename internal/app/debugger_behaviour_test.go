@@ -57,7 +57,7 @@ func newDebugHarness(t *testing.T, source string, exports map[string]reflect.Val
 		setup(dbg)
 	}
 	execution := debugtest.Run(t, dbg, func() (any, error) {
-		return service.ExecuteEntrypoint(context.Background(), cfs, "run")
+		return service.ExecuteEntrypoint(t.Context(), cfs, "run")
 	})
 	return &debugHarness{dbg: dbg, service: service, execution: execution}
 }

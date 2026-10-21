@@ -24,6 +24,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"pipit.sh/pipit/internal/isa"
 )
 
 func TestCollectionLengthOrCapHonoursTheArrayPointerRule(t *testing.T) {
@@ -81,7 +83,7 @@ func TestLenHandlerReadsTheGeneralBankCollection(t *testing.T) {
 			registers := standardRegisters()
 			registers.General[1] = reflect.ValueOf(tt.value)
 
-			require.Equal(t, opContinue, handleLen(nil, nil, &registers, op(0, 1, 0)))
+			require.Equal(t, opContinue, handleLengthGeneralBody(nil, nil, &registers, op(0, 1, 0)))
 			require.Equal(t, tt.want, registers.Ints[0])
 		})
 	}
@@ -188,7 +190,7 @@ func TestCopyHandlerRefusesOperandsItCannotCopy(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(destination)
 		registers.General[2] = reflect.ValueOf([]int{1, 2, 3, 4})
 
-		require.Equal(t, opContinue, handleCopy(vm, nil, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleCopyGeneral(vm, nil, registers, op(0, 1, 2)))
 		require.Equal(t, int64(3), registers.Ints[0], "copy stops at the shorter operand")
 		require.Equal(t, []int{1, 2, 3}, destination)
 	})
@@ -200,7 +202,7 @@ func TestCopyHandlerRefusesOperandsItCannotCopy(t *testing.T) {
 		registers.General[1] = reflect.ValueOf(destination)
 		registers.General[2] = reflect.ValueOf("pipit")
 
-		require.Equal(t, opContinue, handleCopy(vm, nil, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleCopyGeneral(vm, nil, registers, op(0, 1, 2)))
 		require.Equal(t, int64(2), registers.Ints[0])
 	})
 
@@ -223,7 +225,7 @@ func TestCopyHandlerRefusesOperandsItCannotCopy(t *testing.T) {
 			registers.General[1] = reflect.ValueOf(tt.destination)
 			registers.General[2] = reflect.ValueOf(tt.source)
 
-			require.Equal(t, opPanicError, handleCopy(vm, nil, registers, op(0, 1, 2)))
+			require.Equal(t, opPanicError, handleCopyGeneral(vm, nil, registers, op(0, 1, 2)))
 			require.Error(t, vm.evalError)
 			require.Contains(t, vm.evalError.Error(), tt.message)
 		})
@@ -234,7 +236,7 @@ func TestCopyHandlerRefusesOperandsItCannotCopy(t *testing.T) {
 		vm, _, registers := newStandardVM(t)
 		registers.General[1] = reflect.ValueOf([]int{1})
 
-		require.Equal(t, opPanicError, handleCopy(vm, nil, registers, op(0, 1, 2)))
+		require.Equal(t, opPanicError, handleCopyGeneral(vm, nil, registers, op(0, 1, 2)))
 		require.Contains(t, vm.evalError.Error(), "source is invalid")
 	})
 }
@@ -263,4 +265,167 @@ func TestPointerKindPredicatesAgree(t *testing.T) {
 				"the two predicates admit the same kinds")
 		})
 	}
+}
+
+func TestSliceGeneralAppliesOnlyTheSuppliedBounds(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		collection any
+		flags      uint8
+		low        int64
+		high       int64
+		want       any
+		wantCap    int
+	}{
+		{name: "no bounds copies the whole slice", collection: []int{1, 2, 3}, want: []int{1, 2, 3}, wantCap: 3},
+		{
+			name: "a low bound alone runs to the end", collection: []int{1, 2, 3}, flags: isa.SliceLowBoundFlag,
+			low: 1, want: []int{2, 3}, wantCap: 2,
+		},
+		{
+			name: "a high bound alone starts at zero", collection: []int{1, 2, 3}, flags: isa.SliceHighBoundFlag,
+			high: 2, want: []int{1, 2}, wantCap: 3,
+		},
+		{
+			name: "both bounds cut from each end", collection: []int{1, 2, 3, 4},
+			flags: isa.SliceLowBoundFlag | isa.SliceHighBoundFlag, low: 1, high: 3, want: []int{2, 3}, wantCap: 3,
+		},
+		{
+			name: "an empty window is allowed", collection: []int{1, 2, 3},
+			flags: isa.SliceLowBoundFlag | isa.SliceHighBoundFlag, low: 2, high: 2, want: []int{}, wantCap: 1,
+		},
+		{
+			name: "a string slice keeps its element type", collection: []string{"a", "b"},
+			flags: isa.SliceLowBoundFlag, low: 1, want: []string{"b"}, wantCap: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			vm, frame, registers := newExtWordFrame(t, op(tt.flags, 4, 5))
+			registers.General[2] = reflect.ValueOf(tt.collection)
+			registers.Ints[4] = tt.low
+			registers.Ints[5] = tt.high
+
+			got := handleSliceGeneral(vm, frame, registers, op(0, 1, 2))
+			require.Equal(t, opContinue, got)
+			require.Equal(t, 2, frame.ProgramCounter, "the bounds word must be stepped over")
+			require.Equal(t, tt.want, registers.General[1].Interface())
+			require.Equal(t, tt.wantCap, registers.General[1].Cap())
+		})
+	}
+}
+
+func TestSliceGeneralSlicesAnArrayByItsLength(t *testing.T) {
+	t.Parallel()
+
+	vm, frame, registers := newExtWordFrame(t, op(isa.SliceHighBoundFlag, 4, 5))
+
+	array := reflect.New(reflect.TypeFor[[3]int]()).Elem()
+	array.Set(reflect.ValueOf([3]int{1, 2, 3}))
+	registers.General[2] = array
+	registers.Ints[5] = 2
+
+	got := handleSliceGeneral(vm, frame, registers, op(0, 1, 2))
+	require.Equal(t, opContinue, got)
+	require.Equal(t, []int{1, 2}, registers.General[1].Interface())
+	require.Equal(t, 3, registers.General[1].Cap(), "an array slice takes its capacity from the array length")
+}
+
+func TestSliceGeneralHonoursTheThirdIndex(t *testing.T) {
+	t.Parallel()
+
+	vm, frame, registers := newExtWordFrame(t,
+		op(isa.SliceLowBoundFlag|isa.SliceHighBoundFlag|isa.SliceMaxBitFlag, 4, 5),
+		op(6, 0, 0),
+	)
+	registers.General[2] = reflect.ValueOf([]int{1, 2, 3, 4, 5})
+	registers.Ints[4] = 1
+	registers.Ints[5] = 3
+	registers.Ints[6] = 4
+
+	got := handleSliceGeneral(vm, frame, registers, op(0, 1, 2))
+	require.Equal(t, opContinue, got)
+	require.Equal(t, 3, frame.ProgramCounter, "the three-index form carries a second bounds word")
+	require.Equal(t, []int{2, 3}, registers.General[1].Interface())
+	require.Equal(t, 3, registers.General[1].Cap(), "the capacity bound is measured from the low bound")
+}
+
+func TestSliceGeneralRefusesBoundsOutsideTheCollection(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		flags   uint8
+		low     int64
+		high    int64
+		maximum int64
+		wantMsg string
+	}{
+		{
+			name: "a negative low bound", flags: isa.SliceLowBoundFlag, low: -1,
+			wantMsg: "slice bounds out of range [-1:]",
+		},
+		{
+			name: "a crossed pair", flags: isa.SliceLowBoundFlag | isa.SliceHighBoundFlag, low: 3, high: 1,
+			wantMsg: "slice bounds out of range [3:1]",
+		},
+		{
+			name: "a high bound past the capacity", flags: isa.SliceHighBoundFlag, high: 9,
+			wantMsg: "slice bounds out of range [:9] with capacity 4",
+		},
+		{
+			name:  "a capacity bound below the high bound",
+			flags: isa.SliceHighBoundFlag | isa.SliceMaxBitFlag, high: 3, maximum: 2,
+			wantMsg: "slice bounds out of range [:3:2]",
+		},
+		{
+			name:  "a capacity bound past the storage",
+			flags: isa.SliceHighBoundFlag | isa.SliceMaxBitFlag, high: 1, maximum: 9,
+			wantMsg: "slice bounds out of range [:1:9] with capacity 4",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			vm, frame, registers := newExtWordFrame(t, op(tt.flags, 4, 5), op(6, 0, 0))
+			registers.General[2] = reflect.ValueOf([]int{1, 2, 3, 4})
+			registers.Ints[4] = tt.low
+			registers.Ints[5] = tt.high
+			registers.Ints[6] = tt.maximum
+
+			got := handleSliceGeneral(vm, frame, registers, op(0, 1, 2))
+			requireRuntimePanic(t, vm, got, tt.wantMsg)
+		})
+	}
+}
+
+func TestSetZeroGeneralClearsTheTargetInPlace(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a struct is reset to its zero value", func(t *testing.T) {
+		t.Parallel()
+
+		vm, frame, registers := newStandardVM(t)
+		holder := &recordHolder{Count: 3, Label: "text"}
+		registers.General[0] = reflect.ValueOf(holder).Elem()
+
+		got := handleSetZeroGeneralBody(vm, frame, registers, op(0, 0, 0))
+		require.Equal(t, opContinue, got)
+		require.Equal(t, recordHolder{}, *holder)
+	})
+
+	t.Run("an unset register is an invariant break", func(t *testing.T) {
+		t.Parallel()
+
+		vm, frame, registers := newStandardVM(t)
+
+		require.Panics(t, func() { handleSetZeroGeneralBody(vm, frame, registers, op(0, 0, 0)) })
+	})
 }

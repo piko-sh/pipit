@@ -74,7 +74,7 @@ func TestRangeStructValueNoMoveWhenReadOnly(t *testing.T) {
 	t.Parallel()
 	dump := compileSourceForOpcodeCheck(t, rangeStructReadOnlyProgram)
 	require.Zerof(t, rangeValueMoveCount(dump), "read-only struct range value must alias the element; disasm:\n%s", dump)
-	require.Positivef(t, strings.Count(dump, ":INDEX "), "expected the element index into the value register; disasm:\n%s", dump)
+	require.Positivef(t, strings.Count(dump, ":GET_ELEMENT "), "expected the element index into the value register; disasm:\n%s", dump)
 
 	result, err := app.NewService().Eval(t.Context(), `
 type body struct{ x, y float64 }
@@ -143,7 +143,12 @@ func EntrypointRun() float64 { return sum([]body{{x: 1, y: 2}}) }`)
 	impure := compileSourceForOpcodeCheck(t, `package main
 type body struct{ x, y float64 }
 var sink []body
-func poke(v float64) float64 { sink[0].x = v; return v }
+func poke(v float64) float64 {
+	for index := 0; index < len(sink); index++ {
+		sink[index].x = v
+	}
+	return v
+}
 func sum(bodies []body) float64 {
 	total := 0.0
 	for _, b := range bodies {

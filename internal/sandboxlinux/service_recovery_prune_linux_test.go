@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +16,11 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -32,7 +31,7 @@ import (
 
 func TestServiceRecoveryPruneRequiresQuiescence(t *testing.T) {
 	var absent *ServiceRecoveryClaim
-	if err := absent.Prune(context.Background()); !errors.Is(err, errClosed) {
+	if err := absent.Prune(t.Context()); !errors.Is(err, errClosed) {
 		t.Fatal("missing claim accepted:", err)
 	}
 	owner := &ServiceRecoveryClaim{snapshot: &sandboxbroker.LinuxRecoveryClaim{}}
@@ -40,13 +39,13 @@ func TestServiceRecoveryPruneRequiresQuiescence(t *testing.T) {
 	if err := owner.Prune(nil); !errors.Is(err, ErrInvalidLimits) {
 		t.Fatal("missing context accepted:", err)
 	}
-	if err := owner.Prune(context.Background()); !errors.Is(err, ErrServiceBusy) {
+	if err := owner.Prune(t.Context()); !errors.Is(err, ErrServiceBusy) {
 		t.Fatal("pruned before quiescence:", err)
 	}
 	if err := owner.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := owner.Prune(context.Background()); !errors.Is(err, errClosed) {
+	if err := owner.Prune(t.Context()); !errors.Is(err, errClosed) {
 		t.Fatal("closed claim accepted:", err)
 	}
 }
@@ -61,7 +60,7 @@ func TestRecoveryPruneRejectsOrdinaryDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	if err := pruneRecoveryDescendants(context.Background(), root); !errors.Is(err, ErrUnavailable) {
+	if err := pruneRecoveryDescendants(t.Context(), root); !errors.Is(err, ErrUnavailable) {
 		t.Fatal("ordinary filesystem accepted for pruning:", err)
 	}
 	if _, err := os.Stat(filepath.Join(path, "untouched")); err != nil {

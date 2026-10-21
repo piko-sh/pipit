@@ -19,8 +19,13 @@
 package engine
 
 import (
+	"bytes"
+	"fmt"
+	"go/ast"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -212,4 +217,107 @@ func TestShapeBoundMethodResultUnwrapsInterfaceResults(t *testing.T) {
 		"a nil interface becomes the zero of the promised type")
 	require.Equal(t, 4, shapeBoundMethodResult(boxed, reflect.TypeFor[any]()).Interface(),
 		"an interface result promised as any keeps its wrapper")
+}
+
+type methodLookupProbe struct{ n int }
+
+func (p methodLookupProbe) Value() int { return p.n }
+
+func (p *methodLookupProbe) Pointer() int { return p.n * 2 }
+
+func (methodLookupProbe) unexported() int { return 0 }
+
+type methodLookupHolder struct{ probe methodLookupProbe }
+
+func TestSafeMethodByNameFindsWhatReflectFinds(t *testing.T) {
+	probe := methodLookupProbe{n: 3}
+	var stringer fmt.Stringer = time.Second
+	receivers := map[string]reflect.Value{
+		"a value":                  reflect.ValueOf(probe),
+		"a pointer":                reflect.ValueOf(&probe),
+		"an addressable value":     reflect.ValueOf(&probe).Elem(),
+		"a read-only value":        reflect.ValueOf(methodLookupHolder{probe: probe}).Field(0),
+		"a named scalar":           reflect.ValueOf(time.Second),
+		"a buffer":                 reflect.ValueOf(&bytes.Buffer{}),
+		"an interface":             reflect.ValueOf(&stringer).Elem(),
+		"a nil interface":          reflect.ValueOf((*fmt.Stringer)(nil)).Elem(),
+		"a function":               reflect.ValueOf(strings.ToUpper),
+		"a method value":           reflect.ValueOf(&probe).MethodByName("Pointer"),
+		"an ast node":              reflect.ValueOf(&ast.Ident{Name: "x"}),
+		"a type with no methods":   reflect.ValueOf(struct{ A int }{A: 1}),
+		"a value of an empty type": reflect.ValueOf(struct{}{}),
+	}
+	names := []string{"Value", "Pointer", "unexported", "Absent", "String", "Len", "Pos", "End", "Hours", ""}
+	for label, receiver := range receivers {
+		for _, name := range names {
+			want, wantPanic := methodByNameOutcome(func() reflect.Value { return receiver.MethodByName(name) })
+			got, err := safeMethodByName(receiver, name)
+			if wantPanic != "" {
+				require.Error(t, err, "%s.%s", label, name)
+				continue
+			}
+			require.NoError(t, err, "%s.%s", label, name)
+			require.Equal(t, want.IsValid(), got.IsValid(), "%s.%s", label, name)
+			if !want.IsValid() {
+				continue
+			}
+			require.Equal(t, want.Type(), got.Type(), "%s.%s", label, name)
+			require.Equal(t, want.CanInterface(), got.CanInterface(), "%s.%s", label, name)
+			if want.CanInterface() && want.Type().NumIn() == 0 && want.Type().NumOut() == 1 {
+				require.Equal(t, want.Call(nil)[0].Interface(), got.Call(nil)[0].Interface(), "%s.%s", label, name)
+			}
+		}
+	}
+}
+
+func methodByNameOutcome(lookup func() reflect.Value) (method reflect.Value, panicked string) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			panicked = fmt.Sprint(recovered)
+		}
+	}()
+	return lookup(), ""
+}
+
+func TestSafeMethodByNameAllocatesNothingOnceATypeIsKnown(t *testing.T) {
+	if raceDetectorOn {
+		t.Skip("the race detector changes allocation counts")
+	}
+	receiver := reflect.ValueOf(&bytes.Buffer{})
+	_, err := safeMethodByName(receiver, "Len")
+	require.NoError(t, err)
+	allocations := testing.AllocsPerRun(100, func() {
+		if method, _ := safeMethodByName(receiver, "Len"); !method.IsValid() {
+			t.Fatal("Len must be found")
+		}
+		if method, _ := safeMethodByName(receiver, "Absent"); method.IsValid() {
+			t.Fatal("Absent must not be found")
+		}
+	})
+	require.Zero(t, allocations, "reflect.Type.MethodByName builds the method's func type on every call")
+}
+
+func TestSafeMethodByNameAgreesWithReflectAndCachesOnlyMethodsFound(t *testing.T) {
+	receivers := []reflect.Value{
+		reflect.ValueOf(&strings.Builder{}), reflect.ValueOf(&strings.Reader{}), reflect.ValueOf(time.Minute),
+		reflect.ValueOf(&ast.BasicLit{}), reflect.ValueOf(&ast.CallExpr{}), reflect.ValueOf(time.Time{}),
+	}
+	for _, receiver := range receivers {
+		for _, name := range []string{"Len", "String", "Pos", "Absent"} {
+			want := receiver.MethodByName(name)
+			got, err := safeMethodByName(receiver, name)
+			require.NoError(t, err)
+			require.Equal(t, want.IsValid(), got.IsValid(), "%s.%s", receiver.Type(), name)
+		}
+	}
+	require.LessOrEqual(t, processMethodIndexCount.Load(), int64(processMethodIndexMax),
+		"a process that calls methods on ever more native types must not grow the cache without bound")
+	before := processMethodIndexCount.Load()
+	_, err := safeMethodByName(reflect.ValueOf(struct {
+		A int
+
+		B int
+	}{}), "Absent")
+	require.NoError(t, err)
+	require.Equal(t, before, processMethodIndexCount.Load(), "a method the type lacks takes no entry")
 }

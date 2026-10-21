@@ -39,9 +39,9 @@ import (
 )
 
 const (
-	cancellationChildEnv = "PIPIT_CALLBACK_CANCELLATION_CHILD"
+	cancellationChildEnv    = "PIPIT_CALLBACK_CANCELLATION_CHILD"
 	cancellationDispatchEnv = "PIPIT_CALLBACK_CANCELLATION_DISPATCH"
-	cancellationWatchdog = 20 * time.Second
+	cancellationWatchdog    = 20 * time.Second
 )
 
 var cancellationModes = []struct {
@@ -53,6 +53,42 @@ var cancellationModes = []struct {
 	{name: "go dispatch", dispatch: "go", procs: ""},
 	{name: "asm dispatch on one P", dispatch: "asm", procs: "1"},
 	{name: "go dispatch on one P", dispatch: "go", procs: "1"},
+}
+
+const goExitLoopProgram = `package main
+
+import "host"
+
+type point struct{ x, y int }
+
+%s
+
+func run() int {
+	n := 0
+	lookup := map[string]int{"a": 1, "b": 2}
+	keys := []string{"a", "b"}
+	var grown []point
+	var p *point
+	_ = p
+	host.Each(1, func(int) {
+		for {
+			%s
+		}
+	})
+	return n + len(grown) + len(keys) + len(lookup)
+}
+`
+
+var goExitLoops = []struct {
+	name         string
+	declarations string
+	body         string
+}{
+	{name: "a native call", body: `n = host.Inc(n)`},
+	{name: "a map index", body: `n += lookup[keys[n&1]]`},
+	{name: "a growing append", body: `grown = append(grown, point{x: n, y: n})`},
+	{name: "a tail call", declarations: "func spin(n int) int {\n\tif n < 0 {\n\t\treturn n\n\t}\n\treturn spin(n + 1)\n}", body: `n = spin(n)`},
+	{name: "a nil test", body: "if p == nil {\n\t\t\t\tn = host.Inc(n)\n\t\t\t}"},
 }
 
 func runCancellationChild(t *testing.T, child string) {
@@ -240,42 +276,6 @@ func cancellationExports() map[string]reflect.Value {
 		"Try":   reflect.ValueOf(func(fn func() error) error { return fn() }),
 		"Sleep": reflect.ValueOf(time.Sleep),
 	}
-}
-
-const goExitLoopProgram = `package main
-
-import "host"
-
-type point struct{ x, y int }
-
-%s
-
-func run() int {
-	n := 0
-	lookup := map[string]int{"a": 1, "b": 2}
-	keys := []string{"a", "b"}
-	var grown []point
-	var p *point
-	_ = p
-	host.Each(1, func(int) {
-		for {
-			%s
-		}
-	})
-	return n + len(grown) + len(keys) + len(lookup)
-}
-`
-
-var goExitLoops = []struct {
-	name         string
-	declarations string
-	body         string
-}{
-	{name: "a native call", body: `n = host.Inc(n)`},
-	{name: "a map index", body: `n += lookup[keys[n&1]]`},
-	{name: "a growing append", body: `grown = append(grown, point{x: n, y: n})`},
-	{name: "a tail call", declarations: "func spin(n int) int {\n\tif n < 0 {\n\t\treturn n\n\t}\n\treturn spin(n + 1)\n}", body: `n = spin(n)`},
-	{name: "a nil test", body: "if p == nil {\n\t\t\t\tn = host.Inc(n)\n\t\t\t}"},
 }
 
 func TestCallbackTimeoutStopsGoExitLoops(t *testing.T) {

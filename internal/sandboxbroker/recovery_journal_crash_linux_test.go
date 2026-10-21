@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxbroker
 
@@ -44,7 +44,7 @@ func TestRecoveryJournalProcessDeath(t *testing.T) {
 	for _, mode := range []string{"durable", "anonymous"} {
 		t.Run(mode, func(t *testing.T) {
 			directory := testRecoveryDirectory(t)
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 			command := sandboxtest.Command(ctx, "TestRecoveryJournalProcessDeath", recoveryCrashEnvironment+"="+mode, "PIPIT_TEST_RECOVERY_DIRECTORY="+directory)
 			command.Stderr = os.Stderr

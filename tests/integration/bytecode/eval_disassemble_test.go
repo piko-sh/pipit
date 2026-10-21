@@ -45,12 +45,12 @@ func TestDisassembleOutput(t *testing.T) {
 				b := newBytecodeBuilder()
 				b.addIntConst(42)
 				b.intRegisters(1)
-				b.Emit(isa.OpLoadIntConst, 0, 0, 0)
+				b.Emit(isa.OpLoadInt64Constant, 0, 0, 0)
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				b.returnInt()
 				return b.build()
 			},
-			contains: []string{"LOAD_INT_CONST", "ints[0] = 42"},
+			contains: []string{"LOAD_INT64_CONSTANT", "ints[0] = 42"},
 		},
 		{
 			name: "float_constant",
@@ -58,12 +58,12 @@ func TestDisassembleOutput(t *testing.T) {
 				b := newBytecodeBuilder()
 				b.addFloatConst(3.14)
 				b.floatRegisters(1)
-				b.Emit(isa.OpLoadFloatConst, 0, 0, 0)
+				b.Emit(isa.OpLoadFloat64Constant, 0, 0, 0)
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				b.returnFloat()
 				return b.build()
 			},
-			contains: []string{"LOAD_FLOAT_CONST", "floats[0] = 3.14"},
+			contains: []string{"LOAD_FLOAT64_CONSTANT", "floats[0] = 3.14"},
 		},
 		{
 			name: "string_constant",
@@ -71,12 +71,12 @@ func TestDisassembleOutput(t *testing.T) {
 				b := newBytecodeBuilder()
 				b.addStringConst("hello")
 				b.stringRegisters(1)
-				b.Emit(isa.OpLoadStringConst, 0, 0, 0)
+				b.Emit(isa.OpLoadStringConstant, 0, 0, 0)
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				b.returnString()
 				return b.build()
 			},
-			contains: []string{"LOAD_STRING_CONST", "strings[0] = \"hello\""},
+			contains: []string{"LOAD_STRING_CONSTANT", "strings[0] = \"hello\""},
 		},
 		{
 			name: "bool_constant",
@@ -84,36 +84,36 @@ func TestDisassembleOutput(t *testing.T) {
 				b := newBytecodeBuilder()
 				b.addBoolConst(true)
 				b.boolRegisters(1)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBoolConst), 0, 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBoolConstant), 0, 0)
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				b.returnBool()
 				return b.build()
 			},
-			contains: []string{"LOAD_BOOL_CONST", "bools[0] = true"},
+			contains: []string{"LOAD_BOOL_CONSTANT", "bools[0] = true"},
 		},
 		{
 			name: "load_bool_inline",
 			compiledFunction: func() *program.CompiledFunction {
 				b := newBytecodeBuilder()
 				b.intRegisters(1)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBool), 0, 1)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBoolImmediateAsInt64), 0, 1)
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				b.returnInt()
 				return b.build()
 			},
-			contains: []string{"LOAD_BOOL", "ints[0] = true"},
+			contains: []string{"LOAD_BOOL_IMMEDIATE_AS_INT64", "ints[0] = true"},
 		},
 		{
 			name: "load_bool_false",
 			compiledFunction: func() *program.CompiledFunction {
 				b := newBytecodeBuilder()
 				b.intRegisters(1)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBool), 0, 0)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadBoolImmediateAsInt64), 0, 0)
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				b.returnInt()
 				return b.build()
 			},
-			contains: []string{"LOAD_BOOL", "ints[0] = false"},
+			contains: []string{"LOAD_BOOL_IMMEDIATE_AS_INT64", "ints[0] = false"},
 		},
 		{
 			name: "load_nil",
@@ -125,19 +125,19 @@ func TestDisassembleOutput(t *testing.T) {
 				b.returnGeneral()
 				return b.build()
 			},
-			contains: []string{"TIER2_LOAD_NIL"},
+			contains: []string{"LOAD_NIL"},
 		},
 		{
 			name: "load_int_const_small",
 			compiledFunction: func() *program.CompiledFunction {
 				b := newBytecodeBuilder()
 				b.intRegisters(1)
-				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadIntConstSmall), 0, 7)
+				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpLoadInt64Immediate), 0, 7)
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				b.returnInt()
 				return b.build()
 			},
-			contains: []string{"LOAD_INT_CONST_SMALL", "ints[0] = 7"},
+			contains: []string{"LOAD_INT64_IMMEDIATE", "ints[0] = 7"},
 		},
 		{
 			name: "jump_comment",
@@ -145,7 +145,7 @@ func TestDisassembleOutput(t *testing.T) {
 				b := newBytecodeBuilder()
 				b.intRegisters(1)
 				b.EmitJump(isa.OpDrillTier1, uint8(isa.SubOpJump), 2)
-				b.Emit(isa.OpNop, 0, 0, 0)
+				b.Emit(isa.OpNoOperation, 0, 0, 0)
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				b.returnInt()
 				return b.build()
@@ -169,7 +169,7 @@ func TestDisassembleOutput(t *testing.T) {
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DrillTier3), uint8(isa.SubOpTier3ReturnVoid))
 				return b.build()
 			},
-			contains: []string{"TIER3_RETURN_VOID"},
+			contains: []string{"RETURN_VOID"},
 		},
 		{
 			name: "add_int_const_comment",
@@ -177,12 +177,12 @@ func TestDisassembleOutput(t *testing.T) {
 				b := newBytecodeBuilder()
 				b.addIntConst(5)
 				b.intRegisters(2)
-				b.Emit(isa.OpAddIntConst, 0, 1, 0)
+				b.Emit(isa.OpAddInt64Constant, 0, 1, 0)
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				b.returnInt()
 				return b.build()
 			},
-			contains: []string{"ADD_INT_CONST", "const = 5"},
+			contains: []string{"ADD_INT64_CONSTANT", "const = 5"},
 		},
 		{
 			name: "long_string_truncated",
@@ -190,12 +190,12 @@ func TestDisassembleOutput(t *testing.T) {
 				b := newBytecodeBuilder()
 				b.addStringConst("this is a very long string that should be truncated in disassembly output")
 				b.stringRegisters(1)
-				b.Emit(isa.OpLoadStringConst, 0, 0, 0)
+				b.Emit(isa.OpLoadStringConstant, 0, 0, 0)
 				b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 				b.returnString()
 				return b.build()
 			},
-			contains: []string{"...", "LOAD_STRING_CONST"},
+			contains: []string{"...", "LOAD_STRING_CONSTANT"},
 		},
 		{
 			name: "empty_body",
@@ -254,9 +254,9 @@ func TestDisassembleRange(t *testing.T) {
 	b.addIntConst(1)
 	b.addIntConst(2)
 	b.intRegisters(2)
-	b.Emit(isa.OpLoadIntConst, 0, 0, 0)
-	b.Emit(isa.OpLoadIntConst, 1, 0, 1)
-	b.Emit(isa.OpAddInt, 0, 0, 1)
+	b.Emit(isa.OpLoadInt64Constant, 0, 0, 0)
+	b.Emit(isa.OpLoadInt64Constant, 1, 0, 1)
+	b.Emit(isa.OpAddInt64, 0, 0, 1)
 	b.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	b.returnInt()
 	compiledFunction := b.build()

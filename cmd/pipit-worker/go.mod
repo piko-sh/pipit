@@ -9,9 +9,11 @@ require (
 
 require (
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
-	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/tools v0.50.0 // indirect
-	piko.sh/asmgen v0.2.0 // indirect
+	piko.sh/asmgen v0.3.0 // indirect
+	piko.sh/safeconv v0.1.0 // indirect
+	piko.sh/stablepool v0.3.0 // indirect
 	piko.sh/vectormaths v0.2.0 // indirect
 )
 

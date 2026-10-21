@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +16,11 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
-	"context"
 	"crypto/sha256"
 	"errors"
 	"os"
@@ -38,7 +37,7 @@ func ownedImageFixture(t *testing.T) (*WorkerImage, string) {
 	if err := os.WriteFile(source, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	image, err := PrepareWorkerImage(context.Background(), source, sha256.Sum256(data))
+	image, err := PrepareWorkerImage(t.Context(), source, sha256.Sum256(data))
 	if err != nil {
 		t.Fatal(err)
 	}

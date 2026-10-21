@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +16,8 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
+//go:build linux && (amd64 || arm64)
+
 package sandboxlinux
 
 import (
@@ -30,7 +30,7 @@ import (
 
 func TestServiceRecoveryReleaseGuards(t *testing.T) {
 	var absent *ServiceRecoveryClaim
-	if err := absent.Release(context.Background()); !errors.Is(err, errClosed) {
+	if err := absent.Release(t.Context()); !errors.Is(err, errClosed) {
 		t.Fatal("missing claim accepted:", err)
 	}
 	for _, owner := range []*ServiceRecoveryClaim{
@@ -40,7 +40,7 @@ func TestServiceRecoveryReleaseGuards(t *testing.T) {
 		{snapshot: &sandboxbroker.LinuxRecoveryClaim{}, group: &Group{}, quiesced: true, recovered: true, recovering: true},
 		{snapshot: &sandboxbroker.LinuxRecoveryClaim{}, group: &Group{}, quiesced: true, recovered: true, process: &WorkerProcess{}},
 	} {
-		if err := owner.Release(context.Background()); !errors.Is(err, ErrServiceBusy) || owner.pending || owner.closed {
+		if err := owner.Release(t.Context()); !errors.Is(err, ErrServiceBusy) || owner.pending || owner.closed {
 			t.Fatal("unfinished recovery released service:", err)
 		}
 	}
@@ -48,7 +48,7 @@ func TestServiceRecoveryReleaseGuards(t *testing.T) {
 	if err := owner.Release(nil); !errors.Is(err, ErrInvalidLimits) {
 		t.Fatal("missing context accepted:", err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if err := owner.Release(ctx); !errors.Is(err, context.Canceled) || owner.pending {
 		t.Fatal("cancelled release changed ownership:", err)
@@ -56,7 +56,7 @@ func TestServiceRecoveryReleaseGuards(t *testing.T) {
 	if err := owner.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := owner.Release(context.Background()); !errors.Is(err, errClosed) {
+	if err := owner.Release(t.Context()); !errors.Is(err, errClosed) {
 		t.Fatal("aborted claim treated as completed release:", err)
 	}
 }
@@ -64,7 +64,7 @@ func TestServiceRecoveryReleaseGuards(t *testing.T) {
 func TestServiceRecoveryReleaseCachesTerminalError(t *testing.T) {
 	failure := errors.New("terminal descriptor closure failure")
 	owner := &ServiceRecoveryClaim{released: true, closed: true, releaseResult: failure}
-	if err := owner.Release(context.Background()); !errors.Is(err, failure) {
+	if err := owner.Release(t.Context()); !errors.Is(err, failure) {
 		t.Fatal("release lost terminal failure:", err)
 	}
 	if err := owner.Close(); !errors.Is(err, failure) {

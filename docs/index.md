@@ -36,6 +36,7 @@ application, evaluate an expression, then try a script through the CLI.
 
 - [Execution security](security.md): host access and what each execution mode means.
 - [Architecture](architecture.md): how the compiler and runtime fit together.
+- [Licensed reuse](licensed-reuse.md): how the runtime reuses arena storage only where no value can still reach it.
 
 For project policies, see [Contributing](https://github.com/piko-sh/pipit/blob/master/CONTRIBUTING.md) and
 [Security policy](https://github.com/piko-sh/pipit/blob/master/SECURITY.md). Runnable scripts also live in [examples](https://github.com/piko-sh/pipit/tree/master/examples).

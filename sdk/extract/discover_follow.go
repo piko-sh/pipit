@@ -91,8 +91,8 @@ func (follower *projectFollower) follow(ctx context.Context, importPath string) 
 	return found, nil
 }
 
-// followed reports whether importPath belongs to the project and is neither
-// host-provided nor ignored.
+// followed reports whether importPath belongs to the project and is neither host-provided
+// nor ignored.
 //
 // Takes importPath (string) which is the import path to test.
 //

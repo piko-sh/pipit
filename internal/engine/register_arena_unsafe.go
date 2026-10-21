@@ -20,13 +20,6 @@
 
 package engine
 
-// SAFETY: the ownership tests in this file compare a pointer's address against the bounds
-// of the arena's current and retired slabs. They are sound because a slab is a single Go
-// allocation whose address range is fixed for its lifetime, retired slabs stay referenced
-// by the arena until MinorGC drops a whole dead generation, and the tests only compare
-// addresses; the pointee is dereferenced only by callers that already hold a typed
-// reference to it.
-
 import (
 	"strconv"
 	"unicode/utf8"
@@ -63,7 +56,7 @@ const (
 //
 // Returns true when s is backed by the arena's byte slabs.
 func (a *RegisterArena) OwnsString(s string) bool {
-	if len(s) == 0 {
+	if len(s) == 0 || a.heapData {
 		return false
 	}
 
@@ -116,7 +109,7 @@ func (a *RegisterArena) OwnsStringBox(p unsafe.Pointer) bool {
 //
 // Returns true when p falls inside any arena slice-header slab.
 func (a *RegisterArena) OwnsSliceHeaderPointer(p unsafe.Pointer) bool {
-	if p == nil {
+	if p == nil || a.heapData {
 		return false
 	}
 	pointer := uintptr(p)
@@ -142,7 +135,7 @@ func (a *RegisterArena) OwnsSliceHeaderPointer(p unsafe.Pointer) bool {
 }
 
 // ownsIndirectCell reports whether p addresses a cell the arena placed for an
-// isa.OpAllocIndirect site.
+// isa.OpAllocateIndirect site.
 //
 // Takes p (unsafe.Pointer) which is the cell address.
 //
@@ -164,7 +157,7 @@ func (a *RegisterArena) ownsIndirectCell(p unsafe.Pointer) bool {
 //
 // Returns true when p is in the arena's pointer-free byte slabs.
 func (a *RegisterArena) ownsBytePointer(p unsafe.Pointer) bool {
-	if p == nil {
+	if p == nil || a.heapData {
 		return false
 	}
 	pointer := uintptr(p)
@@ -224,16 +217,16 @@ func (a *RegisterArena) isStringAtSlabTail(s string) bool {
 	return sEnd == slabPos
 }
 
-// ArenaConcatString concatenates a and b, bump-allocating the result into the arena's
-// byte slab. When a ends at the slab tail, the bytes of b are appended in place without
-// copying a.
+// ArenaConcatenateString concatenates a and b, bump-allocating the result into the
+// arena's byte slab. When a ends at the slab tail, the bytes of b are appended in place
+// without copying a.
 //
 // Takes arena (*RegisterArena) which provides the byte slab.
 // Takes a (string) which is the left operand.
 // Takes b (string) which is the right operand.
 //
 // Returns the concatenated string backed by the arena.
-func ArenaConcatString(arena *RegisterArena, a, b string) string {
+func ArenaConcatenateString(arena *RegisterArena, a, b string) string {
 	n := len(a) + len(b)
 	if n == 0 {
 		return ""
@@ -250,15 +243,15 @@ func ArenaConcatString(arena *RegisterArena, a, b string) string {
 	return mem.String(buffer)
 }
 
-// arenaConcatRuneString appends rune r to string s using bump allocation. When s ends at
-// the slab tail, the rune bytes are written in place without copying s.
+// arenaConcatenateStringRune appends rune r to string s using bump allocation. When s
+// ends at the slab tail, the rune bytes are written in place without copying s.
 //
 // Takes arena (*RegisterArena) which provides the byte slab.
 // Takes s (string) which is the base string.
 // Takes r (rune) which is the rune to append.
 //
 // Returns the resulting string backed by the arena.
-func arenaConcatRuneString(arena *RegisterArena, s string, r rune) string {
+func arenaConcatenateStringRune(arena *RegisterArena, s string, r rune) string {
 	runeLen := utf8.RuneLen(r)
 	if runeLen < 0 {
 		runeLen = utf8.RuneLen(utf8.RuneError)
@@ -373,23 +366,23 @@ func appendIntoArenaBacking[T any](s []T, x T, backing []T) []T {
 	return backing
 }
 
-// arenaAppendInt appends x to an arena-backed []int64, bump-allocating a doubled backing
-// from the arena when the slice is full and falling through to Go's builtin append for
-// heap-resident slices to avoid escape-barrier copies.
+// arenaAppendInt64 appends x to an arena-backed []int64, bump-allocating a doubled
+// backing from the arena when the slice is full and falling through to Go's builtin
+// append for heap-resident slices to avoid escape-barrier copies.
 //
 // Takes arena (*RegisterArena) which provides the backing slab.
 // Takes s ([]int64) which is the slice to append to.
 // Takes x (int64) which is the value to append.
 //
 // Returns the resulting slice.
-func arenaAppendInt(arena *RegisterArena, s []int64, x int64) []int64 {
+func arenaAppendInt64(arena *RegisterArena, s []int64, x int64) []int64 {
 	if len(s) < cap(s) || sliceGrowsOnHeap(arena, s) {
 		return append(s, x)
 	}
 	return appendIntoArenaBacking(s, x, arena.AllocIntBacking(max(2*cap(s), len(s)+1)))
 }
 
-// arenaAppendFloat is the float64 sibling of arenaAppendInt.
+// arenaAppendFloat64 is the float64 sibling of arenaAppendInt64.
 //
 // Takes arena (*RegisterArena) which provides the backing slab.
 // Takes s ([]float64) which is the slice to append to.
@@ -397,17 +390,14 @@ func arenaAppendInt(arena *RegisterArena, s []int64, x int64) []int64 {
 //
 // Returns the resulting slice, either reusing s or pointing at a fresh arena-backed
 // backing.
-func arenaAppendFloat(arena *RegisterArena, s []float64, x float64) []float64 {
+func arenaAppendFloat64(arena *RegisterArena, s []float64, x float64) []float64 {
 	if len(s) < cap(s) || sliceGrowsOnHeap(arena, s) {
 		return append(s, x)
 	}
 	return appendIntoArenaBacking(s, x, arena.AllocFloatBacking(max(2*cap(s), len(s)+1)))
 }
 
-// arenaAppendString is the string sibling of arenaAppendInt.
-//
-// Writes to the arena-backed slot go through the normal Go store barrier because the
-// underlying allocation is a real []string sub-slice.
+// arenaAppendString is the string sibling of arenaAppendInt64.
 //
 // Takes arena (*RegisterArena) which provides the backing slab.
 // Takes s ([]string) which is the slice to append to.
@@ -422,7 +412,7 @@ func arenaAppendString(arena *RegisterArena, s []string, x string) []string {
 	return appendIntoArenaBacking(s, x, arena.AllocStringBacking(max(2*cap(s), len(s)+1)))
 }
 
-// arenaAppendBool is the bool sibling of arenaAppendInt.
+// arenaAppendBool is the bool sibling of arenaAppendInt64.
 //
 // Takes arena (*RegisterArena) which provides the backing slab.
 // Takes s ([]bool) which is the slice to append to.
@@ -437,7 +427,7 @@ func arenaAppendBool(arena *RegisterArena, s []bool, x bool) []bool {
 	return appendIntoArenaBacking(s, x, arena.AllocBoolBacking(max(2*cap(s), len(s)+1)))
 }
 
-// arenaAppendUint is the uint64 sibling of arenaAppendInt.
+// arenaAppendUint64 is the uint64 sibling of arenaAppendInt64.
 //
 // Takes arena (*RegisterArena) which provides the backing slab.
 // Takes s ([]uint64) which is the slice to append to.
@@ -445,17 +435,14 @@ func arenaAppendBool(arena *RegisterArena, s []bool, x bool) []bool {
 //
 // Returns the resulting slice, either reusing s or pointing at a fresh arena-backed
 // backing.
-func arenaAppendUint(arena *RegisterArena, s []uint64, x uint64) []uint64 {
+func arenaAppendUint64(arena *RegisterArena, s []uint64, x uint64) []uint64 {
 	if len(s) < cap(s) || sliceGrowsOnHeap(arena, s) {
 		return append(s, x)
 	}
 	return appendIntoArenaBacking(s, x, arena.AllocUintBacking(max(2*cap(s), len(s)+1)))
 }
 
-// arenaAppendByte is the byte sibling of arenaAppendInt.
-//
-// Shares the arena's byte slab with AllocStringBytes / AllocByteBacking via 3-index
-// slicing.
+// arenaAppendByte is the byte sibling of arenaAppendInt64.
 //
 // Takes arena (*RegisterArena) which provides the backing slab.
 // Takes s ([]byte) which is the slice to append to.

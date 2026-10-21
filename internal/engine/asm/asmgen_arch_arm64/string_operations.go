@@ -40,11 +40,11 @@ var (
 	_ asmgen.StringOperationsPort = (*arm64StringOps)(nil)
 )
 
-// EmitLenString emits the LEN_STRING handler body, loading the string header length field
-// and storing it into the integer bank.
+// EmitLengthString emits the LENGTH_STRING handler body, loading the string header length
+// field and storing it into the integer bank.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-func (*arm64StringOps) EmitLenString(e *asmgen.Emitter) {
+func (*arm64StringOps) EmitLengthString(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$8, R0, R3")
 	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R3, R3")
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$16, R0, R4")
@@ -56,13 +56,13 @@ func (*arm64StringOps) EmitLenString(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationMove64Bits, "R7, (R23)(R3<<3)")
 }
 
-// EmitStringIndex emits the STRING_INDEX handler body, indexing into a string by an
+// EmitGetStringByte emits the GET_STRING_BYTE handler body, indexing into a string by an
 // integer offset and storing the resulting byte as a uint.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-func (s *arm64StringOps) EmitStringIndex(e *asmgen.Emitter) {
-	s.emitStringIndexExtractAndLoad(e)
-	s.emitStringIndexBoundsCheckAndStoreUint(e)
+func (s *arm64StringOps) EmitGetStringByte(e *asmgen.Emitter) {
+	s.emitGetStringByteExtractAndLoad(e)
+	s.emitGetStringByteBoundsCheckAndStoreUint(e)
 }
 
 // EmitEqualString emits the EQUAL_STRING handler body, comparing two strings for equality
@@ -100,29 +100,30 @@ func (s *arm64StringOps) EmitSliceString(e *asmgen.Emitter) {
 	s.emitSliceStringBoundsFail(e)
 }
 
-// EmitStringIndexToInt emits the STRING_INDEX_TO_INT handler body, indexing into a string
-// and storing the resulting byte as a signed integer.
+// EmitGetStringByteAsInt64 emits the GET_STRING_BYTE_AS_INT64 handler body, indexing into
+// a string and storing the resulting byte as a signed integer.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-func (s *arm64StringOps) EmitStringIndexToInt(e *asmgen.Emitter) {
-	s.emitStringIndexExtractAndLoad(e)
-	s.emitStringIndexToIntBoundsCheckAndStore(e)
+func (s *arm64StringOps) EmitGetStringByteAsInt64(e *asmgen.Emitter) {
+	s.emitGetStringByteExtractAndLoad(e)
+	s.emitGetStringByteAsInt64BoundsCheckAndStore(e)
 }
 
-// EmitLenStringLtJumpFalse emits the LEN_STRING_LT_JUMP_FALSE handler body, comparing an
-// integer against a string's length and conditionally branching.
+// EmitLessThanLengthStringThenJumpIfFalse emits the
+// LESS_THAN_LENGTH_STRING_THEN_JUMP_IF_FALSE handler body, comparing an integer against a
+// string's length and conditionally branching.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-func (s *arm64StringOps) EmitLenStringLtJumpFalse(e *asmgen.Emitter) {
-	s.emitLenStringLtLoadAndCompare(e)
-	s.emitLenStringLtJumpOffsetAndDispatch(e)
+func (s *arm64StringOps) EmitLessThanLengthStringThenJumpIfFalse(e *asmgen.Emitter) {
+	s.emitLessThanLengthStringLoadAndCompare(e)
+	s.emitLessThanLengthStringJumpOffsetAndDispatch(e)
 }
 
-// emitStringIndexExtractAndLoad emits the operand extraction and string header loading
-// sequence shared by EmitStringIndex and EmitStringIndexToInt.
+// emitGetStringByteExtractAndLoad emits the operand extraction and string header loading
+// sequence shared by EmitGetStringByte and EmitGetStringByteAsInt64.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-func (*arm64StringOps) emitStringIndexExtractAndLoad(e *asmgen.Emitter) {
+func (*arm64StringOps) emitGetStringByteExtractAndLoad(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$8, R0, R3")
 	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R3, R3")
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$16, R0, R4")
@@ -136,11 +137,11 @@ func (*arm64StringOps) emitStringIndexExtractAndLoad(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationMove64Bits, "(R23)(R5<<3), R10")
 }
 
-// emitStringIndexBoundsCheckAndStoreUint emits the bounds check, byte load, store to the
-// unsigned integer bank, and fallback exit for EmitStringIndex.
+// emitGetStringByteBoundsCheckAndStoreUint emits the bounds check, byte load, store to
+// the unsigned integer bank, and fallback exit for EmitGetStringByte.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-func (*arm64StringOps) emitStringIndexBoundsCheckAndStoreUint(e *asmgen.Emitter) {
+func (*arm64StringOps) emitGetStringByteBoundsCheckAndStoreUint(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationCompare, "$0, R10")
 	inst5(e, asmarm64.OperationBranchIfLessSigned, "si_fallback_arm")
 	inst5(e, asmarm64.OperationCompare, "R9, R10")
@@ -298,7 +299,9 @@ func (*arm64StringOps) emitSliceStringComputeHighBound(e *asmgen.Emitter) {
 }
 
 // emitSliceStringValidateAndStore validates the computed slice bounds and stores the new
-// string header on success.
+// string header on success. An empty result keeps the source's data pointer, as Go's own
+// slicing does, since base+low is one past the end of the source when low == len, and the
+// collector rejects such a pointer.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
 func (*arm64StringOps) emitSliceStringValidateAndStore(e *asmgen.Emitter) {
@@ -308,8 +311,10 @@ func (*arm64StringOps) emitSliceStringValidateAndStore(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationBranchIfLessSigned, labelSlBoundsFail)
 	inst5(e, asmarm64.OperationCompare, "R9, R11")
 	inst5(e, asmarm64.OperationBranchIfGreaterSigned, labelSlBoundsFail)
-	inst5(e, asmarm64.OperationAdd, "R10, R8, R8")
 	inst5(e, asmarm64.OperationSubtract, "R10, R11, R11")
+	inst5(e, asmarm64.OperationAdd, "R10, R8, R12")
+	inst5(e, asmarm64.OperationCompare, "$0, R11")
+	inst5(e, asmarm64.OperationConditionalSelect, conditionNE+", R12, R8, R8")
 	inst5(e, asmarm64.OperationMove64Bits, "CTX_STRINGS_BASE(R19), R6")
 	inst5(e, asmarm64.OperationLogicalShiftLeft, "$4, R3, R3")
 	inst5(e, asmarm64.OperationAdd, "R3, R6, R7")
@@ -332,11 +337,11 @@ func (*arm64StringOps) emitSliceStringBoundsFail(e *asmgen.Emitter) {
 	e.Instruction(asmarm64.OperationReturn)
 }
 
-// emitStringIndexToIntBoundsCheckAndStore emits the bounds check, byte load, store to the
-// integer bank, and fallback exit for EmitStringIndexToInt.
+// emitGetStringByteAsInt64BoundsCheckAndStore emits the bounds check, byte load, store to
+// the integer bank, and fallback exit for EmitGetStringByteAsInt64.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-func (*arm64StringOps) emitStringIndexToIntBoundsCheckAndStore(e *asmgen.Emitter) {
+func (*arm64StringOps) emitGetStringByteAsInt64BoundsCheckAndStore(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationCompare, "$0, R10")
 	inst5(e, asmarm64.OperationBranchIfLessSigned, "sit_fallback_arm")
 	inst5(e, asmarm64.OperationCompare, "R9, R10")
@@ -354,12 +359,13 @@ func (*arm64StringOps) emitStringIndexToIntBoundsCheckAndStore(e *asmgen.Emitter
 	e.Instruction(asmarm64.OperationReturn)
 }
 
-// emitLenStringLtLoadAndCompare emits the operand extraction, string length loading, and
-// comparison for EmitLenStringLtJumpFalse in its tier-1 form. Both register operands sit
-// at byte 2 (R_int) and byte 3 (R_str) of the instruction word.
+// emitLessThanLengthStringLoadAndCompare emits the operand extraction, string length
+// loading, and comparison for EmitLessThanLengthStringThenJumpIfFalse in its tier-1 form.
+// Both register operands sit at byte 2 (R_int) and byte 3 (R_str) of the instruction
+// word.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-func (*arm64StringOps) emitLenStringLtLoadAndCompare(e *asmgen.Emitter) {
+func (*arm64StringOps) emitLessThanLengthStringLoadAndCompare(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$16, R0, R3")
 	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R3, R3")
 	inst5(e, asmarm64.OperationLogicalShiftRight, "$24, R0, R4")
@@ -373,11 +379,11 @@ func (*arm64StringOps) emitLenStringLtLoadAndCompare(e *asmgen.Emitter) {
 	inst5(e, asmarm64.OperationBranchIfLessSigned, "lsj_taken_arm")
 }
 
-// emitLenStringLtJumpOffsetAndDispatch emits the jump offset loading and the branch-taken
-// path, both ending in DISPATCH_NEXT.
+// emitLessThanLengthStringJumpOffsetAndDispatch emits the jump offset loading and the
+// branch-taken path, both ending in DISPATCH_NEXT.
 //
 // Takes e (*asmgen.Emitter) which receives the emitted instructions.
-func (*arm64StringOps) emitLenStringLtJumpOffsetAndDispatch(e *asmgen.Emitter) {
+func (*arm64StringOps) emitLessThanLengthStringJumpOffsetAndDispatch(e *asmgen.Emitter) {
 	e.Blank()
 	inst(e, asmarm64.OperationMove32BitsUnsigned, "(R22)(R20<<2), R0", mnemonicColumnWidth)
 	inst(e, asmarm64.OperationAdd, "$1, R20, R20", mnemonicColumnWidth)

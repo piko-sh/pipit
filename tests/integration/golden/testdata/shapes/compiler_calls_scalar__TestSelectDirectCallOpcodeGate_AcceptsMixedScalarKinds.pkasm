@@ -4,34 +4,33 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function mix
-;   registers: int=4 float=1 string=1 bool=1 uint=1
-;   dispatch:  asm=10 shim=0 exit=0 go=2
-;   params:    (int, uint, float, bool, string)
-;   returns:   (int)
+;   registers: int64=4 float64=1 string=1 bool=1 uint64=1
+;   dispatch:  asm=10 shim=0 exit=0 go=0
+;   params:    (int64, uint64, float64, bool, string)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=0
 
-0000 G 1:BOOL_TO_INT               53   1   0
-0001 A 0:JUMP_IF_FALSE              1   7   0    ; if ints[1] == 0 goto +7
-0002 G 1:UINT_TO_INT               56   1   0
-0003 A 0:ADD_INT                    2   0   1
-0004 A 1:FLOAT_TO_INT              51   3   0
-0005 A 0:ADD_INT                    2   2   3
-0006 A 1:LEN_STRING                65   3   0
-0007 A 0:ADD_INT                    0   2   3
-0008 A 2:TIER2_RETURN               0  10   1    ; 1 values
-0009 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0010 A 1:MOVE_INT                  35   0   1
-0011 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 2:JUMP_IF_FALSE_BOOL                                   0  20   0
+0001   0:EXTENSION                                            7   0   0
+0002 A 1:CONVERT_UINT64_TO_INT64                             56   1   0
+0003 A 0:ADD_INT64                                            2   0   1
+0004 A 1:CONVERT_FLOAT64_TO_INT64                            51   3   0
+0005 A 0:ADD_INT64                                            2   2   3
+0006 A 1:LENGTH_STRING                                       65   3   0
+0007 A 0:ADD_INT64                                            0   2   3
+0008 A 2:RETURN                                               0  10   1    ; 1 values
+0009 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0010 A 2:RETURN                                               0  10   1    ; 1 values
 
 ; ═════════════════════════════════════════════════════════════
 ; function EntrypointRun
-;   registers: int=2 float=1 string=1 bool=1 uint=1
-;   dispatch:  asm=9 shim=0 exit=0 go=0
+;   registers: int64=6 float64=1 string=1 bool=1 uint64=1
+;   dispatch:  asm=17 shim=0 exit=0 go=0
 ;   params:    (none)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
@@ -41,12 +40,21 @@
 ;   bools:   [0]=true
 ;   uints:   [0]=2
 
-0000 A 1:LOAD_INT_CONST_SMALL      75   0   1    ; ints[0] = 1
-0001 A 1:LOAD_UINT_CONST_SMALL     99   0   2    ; uints[0] = 2
-0002 A 0:LOAD_FLOAT_CONST           0   0   0    ; floats[0] = 3
-0003 A 1:LOAD_BOOL_CONST          138   0   0    ; bools[0] = true
-0004 A 0:LOAD_STRING_CONST          0   0   0    ; strings[0] = "abcd"
-0005 A 1:CALL_SCALAR              134   0   0
-0006 A 1:MOVE_INT                  35   0   1
-0007 A 0:ADD_INT_CONST              0   0   0    ; const = 1
-0008 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 1:LOAD_INT64_IMMEDIATE                                75   0   1    ; ints[0] = 1
+0001 A 1:LOAD_UINT64_IMMEDIATE                               99   0   2    ; uints[0] = 2
+0002 A 0:LOAD_FLOAT64_CONSTANT                                0   0   0    ; floats[0] = 3
+0003 A 1:LOAD_BOOL_CONSTANT                                 138   0   0    ; bools[0] = true
+0004 A 0:LOAD_STRING_CONSTANT                                 0   0   0    ; strings[0] = "abcd"
+0005 A 1:MOVE_INT64                                          35   1   0
+0006 A 2:JUMP_IF_FALSE_BOOL                                   0  20   0    ; inlined body of function 0 called at PC 5
+0007   0:EXTENSION                                            7   0   0
+0008 A 1:CONVERT_UINT64_TO_INT64                             56   3   0
+0009 A 0:ADD_INT64                                            4   1   3
+0010 A 1:CONVERT_FLOAT64_TO_INT64                            51   5   0
+0011 A 0:ADD_INT64                                            4   4   5
+0012 A 1:LENGTH_STRING                                       65   5   0
+0013 A 0:ADD_INT64                                            0   4   5
+0014 A 1:JUMP                                                74   1   0    ; goto 1
+0015 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0016 A 0:ADD_INT64_CONSTANT                                   0   0   0    ; const = 1
+0017 A 2:RETURN                                               0  10   1    ; 1 values

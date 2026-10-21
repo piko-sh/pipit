@@ -60,7 +60,7 @@ func TestParanoidResetPoisonsStringBytes(t *testing.T) {
 		escaped := arena.AllocStringBytes(5)
 		copy(escaped, "hello")
 
-		arena.abandonEscapedSlabs()
+		arena.abandonEscapedSlabsLazily()
 		arena.Reset()
 
 		require.Equal(t, []byte("hello"), escaped, "a value the abandon path left behind must stay readable")

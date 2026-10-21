@@ -4,8 +4,8 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function <varinit>
-;   registers: uint=1
-;   dispatch:  asm=3 shim=2 exit=0 go=0
+;   registers: uint64=1
+;   dispatch:  asm=5 shim=0 exit=0 go=0
 ;   params:    (none)
 ;   returns:   (none)
 ; ═════════════════════════════════════════════════════════════
@@ -13,58 +13,52 @@
 ; constants:
 ;   uints:   [0]=10  [1]=20
 
-0000 A 0:LOAD_UINT_CONST            0   0   0
-0001 S 0:SET_GLOBAL                 0   0   5
-0002 A 0:LOAD_UINT_CONST            0   1   0
-0003 S 0:SET_GLOBAL                 0   1   5
-0004 A 3:TIER3_RETURN_VOID          0   0   1
+0000 A 0:LOAD_UINT64_CONSTANT                                 0   0   0
+0001 A 0:SET_GLOBAL                                           0   0   5
+0002 A 0:LOAD_UINT64_CONSTANT                                 0   1   0
+0003 A 0:SET_GLOBAL                                           0   1   5
+0004 A 3:RETURN_VOID                                          0   0   1
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=3 uint=2
-;   dispatch:  asm=26 shim=12 exit=0 go=0
+;   registers: int64=3 uint64=2
+;   dispatch:  asm=30 shim=0 exit=0 go=0
 ;   params:    (none)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=0  [1]=1  [2]=2  [3]=4  [4]=8  [5]=16  [6]=32
 
-0000 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0001 S 0:GET_GLOBAL                 0   0   5
-0002 S 0:GET_GLOBAL                 1   1   5
-0003 A 0:LT_UINT                    1   0   1
-0004 A 0:JUMP_IF_FALSE              1   2   0    ; if ints[1] == 0 goto +2
-0005 A 0:ADD_INT_CONST              2   0   1    ; const = 1
-0006 A 1:MOVE_INT                  35   0   2
-0007 S 0:GET_GLOBAL                 0   0   5
-0008 S 0:GET_GLOBAL                 1   1   5
-0009 A 0:LE_UINT                    1   0   1
-0010 A 0:JUMP_IF_FALSE              1   2   0    ; if ints[1] == 0 goto +2
-0011 A 0:ADD_INT_CONST              2   0   2    ; const = 2
-0012 A 1:MOVE_INT                  35   0   2
-0013 S 0:GET_GLOBAL                 0   1   5
-0014 S 0:GET_GLOBAL                 1   0   5
-0015 A 0:GT_UINT                    1   0   1
-0016 A 0:JUMP_IF_FALSE              1   2   0    ; if ints[1] == 0 goto +2
-0017 A 0:ADD_INT_CONST              2   0   3    ; const = 4
-0018 A 1:MOVE_INT                  35   0   2
-0019 S 0:GET_GLOBAL                 0   1   5
-0020 S 0:GET_GLOBAL                 1   0   5
-0021 A 0:GE_UINT                    1   0   1
-0022 A 0:JUMP_IF_FALSE              1   2   0    ; if ints[1] == 0 goto +2
-0023 A 0:ADD_INT_CONST              2   0   4    ; const = 8
-0024 A 1:MOVE_INT                  35   0   2
-0025 S 0:GET_GLOBAL                 0   0   5
-0026 S 0:GET_GLOBAL                 1   0   5
-0027 A 0:EQ_UINT                    1   0   1
-0028 A 0:JUMP_IF_FALSE              1   2   0    ; if ints[1] == 0 goto +2
-0029 A 0:ADD_INT_CONST              2   0   5    ; const = 16
-0030 A 1:MOVE_INT                  35   0   2
-0031 S 0:GET_GLOBAL                 0   0   5
-0032 S 0:GET_GLOBAL                 1   1   5
-0033 A 0:NE_UINT                    1   0   1
-0034 A 0:JUMP_IF_FALSE              1   2   0    ; if ints[1] == 0 goto +2
-0035 A 0:ADD_INT_CONST              2   0   6    ; const = 32
-0036 A 1:MOVE_INT                  35   0   2
-0037 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0001 A 0:GET_GLOBAL                                           0   0   5
+0002 A 0:GET_GLOBAL                                           1   1   5
+0003 A 0:LESS_THAN_UINT64                                     1   0   1
+0004 A 0:JUMP_IF_FALSE                                        1   1   0    ; if ints[1] == 0 goto +1
+0005 A 0:ADD_INT64_CONSTANT                                   0   0   1    ; const = 1
+0006 A 0:GET_GLOBAL                                           0   0   5
+0007 A 0:GET_GLOBAL                                           1   1   5
+0008 A 0:LESS_OR_EQUAL_UINT64                                 1   0   1
+0009 A 0:JUMP_IF_FALSE                                        1   1   0    ; if ints[1] == 0 goto +1
+0010 A 0:ADD_INT64_CONSTANT                                   0   0   2    ; const = 2
+0011 A 0:GET_GLOBAL                                           0   1   5
+0012 A 0:GET_GLOBAL                                           1   0   5
+0013 A 0:GREATER_THAN_UINT64                                  1   0   1
+0014 A 0:JUMP_IF_FALSE                                        1   1   0    ; if ints[1] == 0 goto +1
+0015 A 0:ADD_INT64_CONSTANT                                   0   0   3    ; const = 4
+0016 A 0:GET_GLOBAL                                           0   1   5
+0017 A 0:GET_GLOBAL                                           1   0   5
+0018 A 0:GREATER_OR_EQUAL_UINT64                              1   0   1
+0019 A 0:JUMP_IF_FALSE                                        1   1   0    ; if ints[1] == 0 goto +1
+0020 A 0:ADD_INT64_CONSTANT                                   0   0   4    ; const = 8
+0021 A 0:GET_GLOBAL                                           0   0   5
+0022 A 0:GET_GLOBAL                                           1   0   5
+0023 A 1:EQUAL_UINT64_THEN_JUMP_IF_FALSE                    221   0   1
+0024   0:EXTENSION                                            1   0   0
+0025 A 0:ADD_INT64_CONSTANT                                   0   0   5    ; const = 16
+0026 A 0:GET_GLOBAL                                           0   0   5
+0027 A 0:GET_GLOBAL                                           1   1   5
+0028 A 1:NOT_EQUAL_UINT64_THEN_JUMP_IF_FALSE                222   0   1
+0029   0:EXTENSION                                            1   0   0
+0030 A 0:ADD_INT64_CONSTANT                                   0   0   6    ; const = 32
+0031 A 2:RETURN                                               0  10   1    ; 1 values

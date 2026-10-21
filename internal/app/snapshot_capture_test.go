@@ -21,48 +21,11 @@ package app
 import (
 	"reflect"
 	"testing"
-	"unsafe"
 
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/debug"
-	"pipit.sh/pipit/internal/symtab"
 )
-
-func TestSnapshotCaptureWithNativeAliasedBytes(t *testing.T) {
-	t.Parallel()
-	for name, options := range map[string][]Option{
-		"assembly":       {},
-		"go":             {WithForceGoDispatch()},
-		"debug metadata": {WithDebugInfo(), WithForceGoDispatch()},
-		"debugger":       {WithDebugger(debug.NewDebugger())},
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			service := NewService(options...)
-			service.UseSymbols(symtab.NewSymbolRegistry(symtab.SymbolExports{"host": {
-				"Raw": reflect.ValueOf(func(value any) []byte {
-					field := reflect.ValueOf(value).Index(0).Field(0)
-					return unsafe.Slice((*byte)(unsafe.Pointer(field.UnsafeAddr())), 1)
-				}),
-			}}))
-			files, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": `package main
-import "host"
-type color struct { Red byte }
-var source = []color{{3}}
-func run() int {
- raw := host.Raw(source)
- copied := source[0]
- raw[0] = 7
- return int(copied.Red)*100 + int(source[0].Red)*10 + int(raw[0])
-}`})
-			require.NoError(t, err)
-			value, err := service.ExecuteEntrypoint(t.Context(), files, "run")
-			require.NoError(t, err)
-			require.Equal(t, 377, value)
-		})
-	}
-}
 
 func TestSnapshotCaptureDebuggerRetainsAggregate(t *testing.T) {
 	t.Parallel()

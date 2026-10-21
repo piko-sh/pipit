@@ -34,11 +34,11 @@ func TestWatchdogLaunchLifetime(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, lifetime := range []time.Duration{-1, maximumHostWatchdogLifetime + 1} {
-		if _, err := watchdogLaunchLifetime(context.Background(), lifetime); !errors.Is(err, ErrInvalidLimits) {
+		if _, err := watchdogLaunchLifetime(t.Context(), lifetime); !errors.Is(err, ErrInvalidLimits) {
 			t.Fatal(err)
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	remaining, err := watchdogLaunchLifetime(ctx, maximumHostWatchdogLifetime)
 	if err != nil || remaining <= 0 || remaining > time.Second {
@@ -48,7 +48,7 @@ func TestWatchdogLaunchLifetime(t *testing.T) {
 	if _, err := watchdogLaunchLifetime(ctx, time.Second); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	if duration, err := watchdogLaunchLifetime(context.Background(), 0); err != nil || duration != defaultWorkerLifetime {
+	if duration, err := watchdogLaunchLifetime(t.Context(), 0); err != nil || duration != defaultWorkerLifetime {
 		t.Fatalf("invalid watchdog default: %v %v", duration, err)
 	}
 }
@@ -64,17 +64,18 @@ func TestWatchdogReadinessValidation(t *testing.T) {
 			}
 			defer reader.Close()
 			defer writer.Close()
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			defer cancel()
 			if mode == "caller-cancelled" {
 				cancel()
-				ctx, cancel = context.WithTimeout(context.Background(), 10*time.Millisecond)
+				ctx, cancel = context.WithTimeout(t.Context(), 10*time.Millisecond)
 				defer cancel()
 			}
-			supervisor, stop := context.WithCancel(context.Background())
+			supervisor, stop := context.WithCancel(t.Context())
 			defer stop()
 			var process WorkerProcess
-			process.stream, process.context = reader, supervisor
+			process.stream = reader
+			process.watchLifetime(supervisor)
 			deadline := time.Now().Add(time.Second)
 			switch mode {
 			case "valid", "supervisor-exited", "zero-deadline":

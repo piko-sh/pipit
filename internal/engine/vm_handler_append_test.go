@@ -139,7 +139,7 @@ func TestTypedAppendHandlersWriteThroughTheScalarBanks(t *testing.T) {
 		name    string
 	}{
 		{
-			name: "an integer element", handler: handleAppendInt, slice: []int64{1},
+			name: "an integer element", handler: handleAppendInt64, slice: []int64{1},
 			seed: func(registers *Registers) { registers.Ints[2] = 2 },
 			check: func(t *testing.T, got reflect.Value) {
 				t.Helper()
@@ -148,7 +148,7 @@ func TestTypedAppendHandlersWriteThroughTheScalarBanks(t *testing.T) {
 			},
 		},
 		{
-			name: "an integer element onto a plain int slice", handler: handleAppendInt, slice: []int{1},
+			name: "an integer element onto a plain int slice", handler: handleAppendInt64, slice: []int{1},
 			seed: func(registers *Registers) { registers.Ints[2] = 2 },
 			check: func(t *testing.T, got reflect.Value) {
 				t.Helper()
@@ -165,7 +165,7 @@ func TestTypedAppendHandlersWriteThroughTheScalarBanks(t *testing.T) {
 			},
 		},
 		{
-			name: "a float element", handler: handleAppendFloat, slice: []float64{1},
+			name: "a float element", handler: handleAppendFloat64, slice: []float64{1},
 			seed: func(registers *Registers) { registers.Floats[2] = 2.5 },
 			check: func(t *testing.T, got reflect.Value) {
 				t.Helper()
@@ -174,7 +174,7 @@ func TestTypedAppendHandlersWriteThroughTheScalarBanks(t *testing.T) {
 			},
 		},
 		{
-			name: "a boolean element", handler: handleAppendBool, slice: []bool{true},
+			name: "a boolean element", handler: handleAppendBoolWideBody, slice: []bool{true},
 			seed: func(registers *Registers) { registers.Bools[2] = false },
 			check: func(t *testing.T, got reflect.Value) {
 				t.Helper()
@@ -201,7 +201,7 @@ func TestTypedAppendHandlersWriteThroughTheScalarBanks(t *testing.T) {
 		vm, frame, registers := newStandardVM(t)
 		registers.Ints[2] = 7
 
-		require.Equal(t, opContinue, handleAppendInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAppendInt64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, 1, registers.General[0].Len())
 		require.Equal(t, int64(7), registers.General[0].Index(0).Int())
 	})
@@ -286,4 +286,53 @@ func TestAppendScalarWritesTheDestinationRegister(t *testing.T) {
 		require.Equal(t, opContinue, appendScalar(&registers, op(0, 1, 2), "b"))
 		require.Equal(t, 2, registers.General[0].Len())
 	})
+}
+
+func TestConformSliceWidthKeepsTheBackingArrayOfASameWidthElement(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		value      any
+		targetType reflect.Type
+		read       func(value any) any
+		name       string
+	}{
+		{name: "int64 storage for an int slice", value: []int64{3, 1, 2}, targetType: reflect.TypeFor[[]int](), read: func(v any) any { return v.([]int64)[0] }},
+		{name: "uint64 storage for a uint slice", value: []uint64{3, 1, 2}, targetType: reflect.TypeFor[[]uint](), read: func(v any) any { return v.([]uint64)[0] }},
+		{name: "uint64 storage for a uintptr slice", value: []uint64{3, 1, 2}, targetType: reflect.TypeFor[[]uintptr](), read: func(v any) any { return v.([]uint64)[0] }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, ok := conformSliceWidth(reflect.ValueOf(tt.value), tt.targetType)
+
+			require.True(t, ok)
+			require.Equal(t, tt.targetType, got.Type())
+			require.Equal(t, 3, got.Len())
+			got.Index(0).Set(reflect.ValueOf(9).Convert(tt.targetType.Elem()))
+			require.EqualValues(t, 9, tt.read(tt.value), "a write through the conformed slice reaches the original backing array")
+		})
+	}
+}
+
+func TestConformSliceWidthKeepsANilSliceNil(t *testing.T) {
+	t.Parallel()
+
+	got, ok := conformSliceWidth(reflect.ValueOf([]int64(nil)), reflect.TypeFor[[]int]())
+
+	require.True(t, ok)
+	require.True(t, got.IsNil())
+}
+
+func TestBankScalarClassGroupsKindsBySignedness(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, reflect.Int64, bankScalarClass(reflect.Int))
+	require.Equal(t, reflect.Int64, bankScalarClass(reflect.Int8))
+	require.Equal(t, reflect.Uint64, bankScalarClass(reflect.Uintptr))
+	require.Equal(t, reflect.Uint64, bankScalarClass(reflect.Uint))
+	require.Equal(t, reflect.Float64, bankScalarClass(reflect.Float32))
+	require.Equal(t, reflect.String, bankScalarClass(reflect.String))
 }

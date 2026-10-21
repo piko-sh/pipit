@@ -1372,7 +1372,7 @@ func main() {}
 	require.True(t, fn.HasDebugSourceMap())
 }
 
-func TestCompilerUnaryNegComplex(t *testing.T) {
+func TestCompilerUnaryNegateComplex128(t *testing.T) {
 	t.Parallel()
 
 	code := `var c complex128 = complex(3.0, 4.0); -c`

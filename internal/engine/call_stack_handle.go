@@ -103,12 +103,12 @@ func handleKey(entry *pipitFunc) uintptr {
 	return reflect.ValueOf(funcHandle(entry)).Pointer()
 }
 
-// handleAddress returns the registry key of a *runtime.Func value a script holds.
+// funcHandleAddress returns the registry key of a *runtime.Func value a script holds.
 //
 // Takes value (reflect.Value) which holds the handle.
 //
 // Returns uintptr which is the key, 0 for a nil handle.
-func handleAddress(value reflect.Value) uintptr {
+func funcHandleAddress(value reflect.Value) uintptr {
 	if !value.IsValid() || value.Kind() != reflect.Pointer || value.IsNil() {
 		return 0
 	}

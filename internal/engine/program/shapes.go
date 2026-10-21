@@ -38,13 +38,13 @@ const (
 	// an int-kind field and env is a uint slice parameter.
 	TinyLeafReturnEnvUintAtIntFieldSlot
 
-	// TinyLeafIncIntField marks a recv.fieldX++ body with no return value, emitted as
-	// isa.SubOpIncStructFieldInt on the receiver.
-	TinyLeafIncIntField
+	// TinyLeafIncrementIntField marks a recv.fieldX++ body with no return value, emitted as
+	// isa.SubOpIncrementStructFieldInt64 on the receiver.
+	TinyLeafIncrementIntField
 
-	// TinyLeafIncUintField is the uint-field sibling of TinyLeafIncIntField, emitted as
-	// isa.SubOpIncStructFieldUint.
-	TinyLeafIncUintField
+	// TinyLeafIncrementUintField is the uint-field sibling of TinyLeafIncrementIntField,
+	// emitted as isa.SubOpIncrementStructFieldUint64.
+	TinyLeafIncrementUintField
 
 	// TinyLeafSetScalarFieldFromArg marks a recv.fieldX = argument body with no return
 	// value.
@@ -85,4 +85,8 @@ const (
 
 	// FusedEvalIfPos evaluates childA; non-zero selects childB, zero selects childC.
 	FusedEvalIfPos
+
+	// FusedEvalModGuardedWhole is FusedEvalModGuarded for a body that returns the remainder
+	// as it is, with no truncation to 32 bits.
+	FusedEvalModGuardedWhole
 )

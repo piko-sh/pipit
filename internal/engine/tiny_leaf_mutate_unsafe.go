@@ -16,7 +16,7 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
-//go:build !safe && !(js && wasm)
+//go:build !safe
 
 package engine
 
@@ -27,9 +27,9 @@ import (
 	"pipit.sh/pipit/internal/engine/program"
 )
 
-// runTinyLeafIncIntField implements the inlined body for the void `recv.fieldX++` shape
-// on an int-kind field: the field is incremented in place through the receiver's struct
-// base pointer, and receivers the unsafe path cannot crack fall back to
+// runTinyLeafIncrementIntField implements the inlined body for the void `recv.fieldX++`
+// shape on an int-kind field. The field is incremented in place through the receiver's
+// struct base pointer, and receivers the unsafe path cannot crack fall back to
 // tinyLeafMutateFallback.
 //
 // Takes vm (*VM) which carries the panic machinery for nil-pointer receivers.
@@ -38,7 +38,7 @@ import (
 // Takes callee (*CompiledFunction) which carries the layout selected by the classifier.
 //
 // Returns opContinue after the increment, or the fallback's result.
-func runTinyLeafIncIntField(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) OpResult {
+func runTinyLeafIncrementIntField(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) OpResult {
 	recv := registers.General[site.Arguments[0].Register]
 	if base, ok := structFieldUnsafeBaseFromValue(recv); ok {
 		if incrementIntFieldInPlace(unsafe.Add(base, uintptr(callee.TinyLeafLayout.Offset)), reflect.Kind(callee.TinyLeafLayout.Kind)) {
@@ -48,7 +48,8 @@ func runTinyLeafIncIntField(vm *VM, registers *Registers, site *program.CallSite
 	return tinyLeafMutateFallback(vm, registers, site, callee, recv)
 }
 
-// runTinyLeafIncUintField is the uint-field sibling of runTinyLeafIncIntField.
+// runTinyLeafIncrementUintField is the uint-field sibling of
+// runTinyLeafIncrementIntField.
 //
 // Takes vm (*VM) which carries the panic machinery for nil-pointer receivers.
 // Takes registers (*Registers) which is the caller's register file.
@@ -56,7 +57,7 @@ func runTinyLeafIncIntField(vm *VM, registers *Registers, site *program.CallSite
 // Takes callee (*CompiledFunction) which carries the layout selected by the classifier.
 //
 // Returns opContinue after the increment, or the fallback's result.
-func runTinyLeafIncUintField(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) OpResult {
+func runTinyLeafIncrementUintField(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) OpResult {
 	recv := registers.General[site.Arguments[0].Register]
 	if base, ok := structFieldUnsafeBaseFromValue(recv); ok {
 		if incrementUintFieldInPlace(unsafe.Add(base, uintptr(callee.TinyLeafLayout.Offset)), reflect.Kind(callee.TinyLeafLayout.Kind)) {

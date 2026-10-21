@@ -132,8 +132,13 @@ type debugSession struct {
 	// waitErr is why the last wait for a pause ended without one.
 	waitErr error
 
-	// ctx bounds the execution; cancelled by stop or the session ceiling.
-	ctx context.Context
+	// waitForPause blocks until the debugger pauses, under the context that bounds the
+	// execution.
+	waitForPause func() (pipit.DebugEvent, error)
+
+	// evaluateIn evaluates an expression in a paused frame under that same context, with the
+	// evaluation timeout.
+	evaluateIn func(threadID uint64, frame int, expression string) (pipit.EvalResult, error)
 
 	// debugger drives the execution.
 	debugger *pipit.Debugger
@@ -141,7 +146,7 @@ type debugSession struct {
 	// capture collects output for the whole session.
 	capture *outputCapture
 
-	// cancel cancels ctx.
+	// cancel cancels the execution's context.
 	cancel context.CancelFunc
 
 	// stopCeiling deregisters the stop the session ceiling schedules.
@@ -207,9 +212,9 @@ func startDebugSession(source string, lines []int, stopOnEntry bool) map[string]
 		pipit.WithMaxCallDepth(caps.maxCallDepth),
 		stdlib.WithStandardLibrary(),
 	)
-	ctx, cancel := context.WithTimeout(context.Background(), debugSessionCeiling)
+	ctx, cancel := context.WithTimeoutCause(context.Background(), debugSessionCeiling, pipit.ErrExecutionCancelled)
 	session := newDebugSession(ctx, cancel, debugger, caps.maxOutput)
-	session.stopCeiling = context.AfterFunc(ctx, session.expire)
+	session.stopCeiling = context.AfterFunc(ctx, func() { session.expire(ctx) })
 
 	compiled, err := interpreter.CompileFileSet(ctx, map[string]string{debugFile: source})
 	if err != nil {
@@ -241,18 +246,25 @@ func startDebugSession(source string, lines []int, stopOnEntry bool) map[string]
 
 // newDebugSession builds a running session that captures output from now on.
 //
-// Takes cancel (context.CancelFunc) which cancels ctx.
+// Takes cancel (context.CancelFunc) which cancels the execution's context.
 // Takes debugger (*pipit.Debugger) which drives the execution.
 // Takes maxOutput (int) which bounds the output retained over the whole session.
 //
 // Returns *debugSession which is in the running state.
 func newDebugSession(ctx context.Context, cancel context.CancelFunc, debugger *pipit.Debugger, maxOutput int) *debugSession {
 	return &debugSession{
-		runStarted:  time.Time{},
-		exitErr:     nil,
-		result:      nil,
-		waitErr:     nil,
-		ctx:         ctx,
+		runStarted: time.Time{},
+		exitErr:    nil,
+		result:     nil,
+		waitErr:    nil,
+		waitForPause: func() (pipit.DebugEvent, error) {
+			return debugger.WaitForPause(ctx)
+		},
+		evaluateIn: func(threadID uint64, frame int, expression string) (pipit.EvalResult, error) {
+			evaluationCtx, cancelEvaluation := context.WithTimeoutCause(ctx, debugEvalTimeout, pipit.ErrExecutionCancelled)
+			defer cancelEvaluation()
+			return debugger.Evaluate(evaluationCtx, threadID, frame, expression, pipit.EvalOptions{Timeout: debugEvalTimeout, AllowCalls: false})
+		},
 		debugger:    debugger,
 		capture:     installCapture(maxOutput),
 		cancel:      cancel,
@@ -278,7 +290,7 @@ func newDebugSession(ctx context.Context, cancel context.CancelFunc, debugger *p
 // briefly.
 func (s *debugSession) waitForStop() map[string]any {
 	for {
-		event, err := s.debugger.WaitForPause(s.ctx)
+		event, err := s.waitForPause()
 		if err == nil && event.Reason == debug.StopReasonOtherThread {
 			continue
 		}
@@ -382,9 +394,10 @@ func (s *debugSession) stop() map[string]any {
 // expire stops the session once the session ceiling has passed, paused or not, so an
 // abandoned paused session does not keep the browser interpreter busy.
 //
-// It runs on the goroutine context.AfterFunc starts when the ceiling passes.
-func (s *debugSession) expire() {
-	if !errors.Is(s.ctx.Err(), context.DeadlineExceeded) {
+// It runs on the goroutine context.AfterFunc starts when ctx, the execution's context,
+// ends.
+func (s *debugSession) expire(ctx context.Context) {
+	if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return
 	}
 	s.stop()
@@ -472,9 +485,7 @@ func (s *debugSession) evaluate(threadID uint64, frame int, expression string) m
 	if len(expression) > debugMaxExpression {
 		return debugFailure("expression exceeds 4 KiB")
 	}
-	ctx, cancel := context.WithTimeout(s.ctx, debugEvalTimeout)
-	defer cancel()
-	result, err := s.debugger.Evaluate(ctx, s.thread(threadID), frame, expression, pipit.EvalOptions{Timeout: debugEvalTimeout, AllowCalls: false})
+	result, err := s.evaluateIn(s.thread(threadID), frame, expression)
 	if err != nil {
 		return debugFailure(err.Error())
 	}

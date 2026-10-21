@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_arm64.h"
 
-// handlerSubOpNegInt computes ints[B] = -ints[C] for the tier-1 integer-negate sub-op.
-TEXT ·handlerSubOpNegInt(SB), NOSPLIT|NOFRAME, $0
+// handlerNegateInt64 computes ints[B] = -ints[C] for the tier-1 integer-negate sub-op.
+TEXT ·handlerNegateInt64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -35,8 +35,8 @@ TEXT ·handlerSubOpNegInt(SB), NOSPLIT|NOFRAME, $0
 	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpBitNot computes ints[B] = ^ints[C] for the tier-1 bitwise-NOT sub-op.
-TEXT ·handlerSubOpBitNot(SB), NOSPLIT|NOFRAME, $0
+// handlerBitNotInt64 computes ints[B] = ^ints[C] for the tier-1 bitwise-NOT sub-op.
+TEXT ·handlerBitNotInt64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
@@ -45,12 +45,23 @@ TEXT ·handlerSubOpBitNot(SB), NOSPLIT|NOFRAME, $0
 	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()
 
-// handlerSubOpNegFloat computes floats[B] = -floats[C] for the tier-1 float-negate sub-op.
-TEXT ·handlerSubOpNegFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerNegateFloat64 computes floats[B] = -floats[C] for the tier-1 float-negate sub-op.
+TEXT ·handlerNegateFloat64(SB), NOSPLIT|NOFRAME, $0
 	LSR  $16, R0, R3
 	AND  $0xFF, R3, R3
 	LSR  $24, R0, R4
 	FMOVD (R24)(R4<<3), F0
 	FNEGD F0, F0
 	FMOVD F0, (R24)(R3<<3)
+	DISPATCH_NEXT()
+
+// handlerNotInt64 sets ints[B] to one when ints[C] is zero and to zero otherwise.
+TEXT ·handlerNotInt64(SB), NOSPLIT|NOFRAME, $0
+	LSR  $16, R0, R3
+	AND  $0xFF, R3, R3
+	LSR  $24, R0, R4
+	MOVD (R23)(R4<<3), R5
+	CMP  $0, R5
+	CSET EQ, R5
+	MOVD R5, (R23)(R3<<3)
 	DISPATCH_NEXT()

@@ -1,5 +1,3 @@
-//go:build linux && (amd64 || arm64)
-
 // Copyright 2026 PolitePixels Limited
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +15,8 @@
 // This project stands against fascism, authoritarianism, and all forms of
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
+
+//go:build linux && (amd64 || arm64)
 
 package sandboxlinux
 
@@ -36,11 +36,11 @@ import (
 func TestAdmissionBoundsAndTransfer(t *testing.T) {
 	t.Parallel()
 	var gate admission
-	release, err := gate.acquire(context.Background())
+	release, err := gate.acquire(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	waiter := make(chan func(), 1)
 	go func() {
@@ -80,30 +80,30 @@ func TestServiceCleanupRetainsAdmissionOnFailure(t *testing.T) {
 	defer directory.Close()
 	released := false
 	var process WorkerProcess
-	process.context = context.Background()
+	process.watchLifetime(t.Context())
 	process.serviceGroup = &Group{directory: directory}
 	process.releaseAdmission = func() { released = true }
-	if err := process.cleanup(); err == nil || released {
+	if err := process.cleanup(t.Context()); err == nil || released {
 		t.Fatal("failed service cleanup released admission")
 	}
 	process.serviceGroup.closed = true
-	if err := process.cleanup(); err != nil || !released {
+	if err := process.cleanup(t.Context()); err != nil || !released {
 		t.Fatalf("completed service cleanup retained admission: %v", err)
 	}
 }
 
 func TestNativeServiceAdmissionPrecedesImage(t *testing.T) {
 	parent := sandboxtest.CgroupParent(t)
-	group, err := newServiceGroup(parent, Limits{}, testTenant)
+	group, err := newServiceGroup(t.Context(), parent, Limits{}, testTenant)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	defer group.closeGroup(ctx)
 	process, err := LaunchWorker(ctx, WorkerConfig{Tenant: testTenant, CgroupParent: parent, Executable: "/missing-worker"})
 	if process != nil {
-		defer process.Close()
+		defer process.Close(t.Context())
 	}
 	if !errors.Is(err, ErrServiceBusy) {
 		t.Fatalf("occupied service slot reached executable preparation: %v", err)
@@ -117,11 +117,11 @@ func TestAdmissionCancellationRace(t *testing.T) {
 	t.Parallel()
 	for range 200 {
 		var gate admission
-		release, err := gate.acquire(context.Background())
+		release, err := gate.acquire(t.Context())
 		if err != nil {
 			t.Fatal(err)
 		}
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		finished := make(chan struct{})
 		go func() {
 			defer close(finished)
@@ -147,12 +147,12 @@ func TestAdmissionCancellationRace(t *testing.T) {
 func TestAdmissionCancelledQueueVacatesSlot(t *testing.T) {
 	t.Parallel()
 	var gate admission
-	release, err := gate.acquire(context.Background())
+	release, err := gate.acquire(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
 		_, err := gate.acquire(ctx)
@@ -178,7 +178,7 @@ func TestAdmissionCancelledQueueVacatesSlot(t *testing.T) {
 func TestWorkerCleanupRetainsAdmission(t *testing.T) {
 	t.Parallel()
 	var gate admission
-	release, err := gate.acquire(context.Background())
+	release, err := gate.acquire(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestWorkerCleanupRetainsAdmission(t *testing.T) {
 	var process WorkerProcess
 	process.releaseAdmission = release
 	process.image = image
-	if err := process.cleanup(); err == nil {
+	if err := process.cleanup(t.Context()); err == nil {
 		t.Fatal("unexpected image entry did not prevent cleanup")
 	}
 	if !gate.active || process.releaseAdmission == nil {
@@ -203,24 +203,24 @@ func TestWorkerCleanupRetainsAdmission(t *testing.T) {
 	if err := os.Remove(blocker); err != nil {
 		t.Fatal(err)
 	}
-	if err := process.cleanup(); err != nil {
+	if err := process.cleanup(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if gate.active || process.releaseAdmission != nil {
 		t.Fatal("successful cleanup retained capacity")
 	}
-	if err := process.cleanup(); err != nil {
+	if err := process.cleanup(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestLaunchWorkerAdmissionBeforePreparation(t *testing.T) {
-	release, err := workerAdmission.acquire(context.Background(), testTenant)
+	release, err := workerAdmission.acquire(t.Context(), testTenant)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
@@ -231,7 +231,7 @@ func TestLaunchWorkerAdmissionBeforePreparation(t *testing.T) {
 		done <- err
 	}()
 	waitAdmissionPending(t, workerAdmission.gate(testTenant))
-	process, err := LaunchWorker(context.Background(), WorkerConfig{Tenant: testTenant})
+	process, err := LaunchWorker(t.Context(), WorkerConfig{Tenant: testTenant})
 	if process != nil || !errors.Is(err, errAdmissionFull) {
 		t.Fatalf("worker preparation bypassed admission: process=%v error=%v", process, err)
 	}
@@ -239,7 +239,7 @@ func TestLaunchWorkerAdmissionBeforePreparation(t *testing.T) {
 	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	deadline, stop := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	deadline, stop := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer stop()
 	process, err = LaunchWorker(deadline, WorkerConfig{Tenant: testTenant})
 	if process != nil || !errors.Is(err, context.DeadlineExceeded) {

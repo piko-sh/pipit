@@ -26,19 +26,23 @@ import (
 
 // aliasReadOnlyRangeValues resolves every range-value snapshot candidate in the body.
 //
-// The snapshot becomes a no-op when the rest of the enclosing loop mutates no heap state
-// and calls only heap-pure functions, and a plain snapshot otherwise. The pass runs after
-// the heap purity analysis so callee classifications are available.
-//
 // Takes compiledFunction (*program.CompiledFunction) whose body is rewritten in place.
 func aliasReadOnlyRangeValues(compiledFunction *program.CompiledFunction) {
 	body := compiledFunction.Body
+	var flow *controlFlowLists
 	for pc, inst := range body {
 		if inst.Op != isa.OpMoveGeneral || inst.C != isa.MoveGeneralModeSnapshotRangeCandidate {
 			continue
 		}
-		if inst.A == inst.B && loopRemainderIsHeapPure(compiledFunction, pc) {
-			body[pc] = isa.NewInstruction(isa.OpNop, 0, 0, 0)
+		if inst.A != inst.B {
+			body[pc].C = engine.MoveGeneralModeSnapshot
+			continue
+		}
+		if flow == nil {
+			flow = controlFlowListsOf(body)
+		}
+		if loopRemainderIsHeapPure(compiledFunction, flow, pc) {
+			body[pc] = isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)
 			continue
 		}
 		body[pc].C = engine.MoveGeneralModeSnapshot

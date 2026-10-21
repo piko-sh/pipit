@@ -53,6 +53,10 @@ type CompiledFileSet struct {
 	// coordinates are bundle-relative so they work in any target Service after LoadModule.
 	packageVariables []PackageVariableMetadata
 
+	// namedInterfaces describes the interface types the program declares and names in a
+	// reflect.TypeOf call. The compiling service registers them as it compiles.
+	namedInterfaces []NamedInterface
+
 	// slotAllocation records how many global-store slots this bundle reserved during
 	// compilation, per register-kind bank. Populated by Service.PackageModule before the
 	// bundle is serialised; reused by Service.LoadModule to reserve the matching counts in
@@ -78,7 +82,7 @@ func NewCompiledFileSet(
 	return &CompiledFileSet{root: root,
 		entrypoints:          entrypoints,
 		initFunctionIndices:  initFunctionIndices,
-		variableInitFunction: variableInitFunction, packageVariables: nil, slotAllocation: SlotAllocation{}}
+		variableInitFunction: variableInitFunction, packageVariables: nil, slotAllocation: SlotAllocation{}, namedInterfaces: nil}
 }
 
 // SlotAllocation returns the bundle's per-kind slot reservations.
@@ -139,6 +143,27 @@ func (cfs *CompiledFileSet) SetSlotAllocation(allocation SlotAllocation) {
 	cfs.slotAllocation = allocation
 }
 
+// NamedInterfaces returns the interface types the program declares and names in a
+// reflect.TypeOf call. The returned slice is not a copy.
+//
+// Do not mutate the returned slice.
+//
+// Returns []NamedInterface which describes each interface.
+func (cfs *CompiledFileSet) NamedInterfaces() []NamedInterface {
+	if cfs == nil {
+		return nil
+	}
+	return cfs.namedInterfaces
+}
+
+// SetNamedInterfaces records the interface types the program declares and names in a
+// reflect.TypeOf call, for the bytecode a service saves.
+//
+// Takes interfaces ([]NamedInterface) which describes each interface.
+func (cfs *CompiledFileSet) SetNamedInterfaces(interfaces []NamedInterface) {
+	cfs.namedInterfaces = interfaces
+}
+
 // SetPackageVariables records the bundle's exported package-level variable metadata.
 //
 // Takes variables ([]PackageVariableMetadata) which describes the exported variables.
@@ -175,6 +200,19 @@ func (cfs *CompiledFileSet) InitFunctions() []uint16 { return cfs.initFunctionIn
 // Index by register-kind ordinal (one of the first NumGlobalRegisterKinds register
 // kinds).
 type SlotAllocation [NumGlobalRegisterKinds]uint16
+
+// NamedInterface describes an interface type a program declares, including its package,
+// its name and its sorted method names.
+type NamedInterface struct {
+	// PackagePath is the full import path of the declaring package.
+	PackagePath string
+
+	// Name is the interface's identifier, with no package qualifier.
+	Name string
+
+	// Methods lists the interface's method names, sorted.
+	Methods []string
+}
 
 // PackageVariableMetadata describes one exported package-level var captured during
 // Service.PackageModule. Type is preserved as a TypeDescriptor so the unpack path can

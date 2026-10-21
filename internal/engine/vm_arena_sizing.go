@@ -19,6 +19,9 @@
 package engine
 
 import (
+	"runtime"
+	"weak"
+
 	"pipit.sh/pipit/internal/engine/program"
 	"pipit.sh/pipit/internal/isa"
 )
@@ -35,12 +38,66 @@ const (
 	arenaDepthEstimateCeiling = 64
 )
 
+// arenaSizingKey identifies a memoised static sizing by program root, entry function and
+// root function-table length.
+//
+// A changed table length therefore requires a new sizing.
+type arenaSizingKey struct {
+	// root is the program root, held weakly so the memo never keeps a program alive.
+	root weak.Pointer[program.CompiledFunction]
+
+	// entry is the function the execution starts in.
+	entry weak.Pointer[program.CompiledFunction]
+
+	// functions is len(root.Functions) when the sizing was computed.
+	functions int
+}
+
+// arenaSizingMemo holds staticArenaSizing's results by arenaSizingKey. A cleanup on the
+// root deletes its entries once the program is collected.
+var arenaSizingMemo typedCache[arenaSizingKey, *program.TypedSlabCounts]
+
 // sizeArenaForEntry pre-sizes the VM's arena for an execution that starts at entry, using
 // the peak register counts of statically reachable functions scaled by call depth.
 //
 // Takes root (*CompiledFunction) which carries the program's function table.
 // Takes entry (*CompiledFunction) which is the function the execution starts in.
 func (vm *VM) sizeArenaForEntry(root, entry *program.CompiledFunction) {
+	totals := staticArenaSizing(root, entry)
+	totals.FrameStack = vm.frameStackPreSize(root)
+	vm.Arena.ensureCapacity(totals)
+}
+
+// staticArenaSizing returns the run-independent arena sizing for root starting at entry.
+//
+// Only the frame-stack count varies by run, following the recorded call depth.
+//
+// The bytecode walk over every function body that produces it is done once per program
+// and entry, not once per execution.
+//
+// Takes root (*CompiledFunction) which carries the program's function table.
+// Takes entry (*CompiledFunction) which is the function the execution starts in.
+//
+// Returns program.TypedSlabCounts with FrameStack zero.
+func staticArenaSizing(root, entry *program.CompiledFunction) program.TypedSlabCounts {
+	key := arenaSizingKey{root: weak.Make(root), entry: weak.Make(entry), functions: len(root.Functions)}
+	if cached, ok := arenaSizingMemo.load(key); ok && cached != nil {
+		return *cached
+	}
+	totals := computeStaticArenaSizing(root, entry)
+	if _, loaded := arenaSizingMemo.loadOrStore(key, &totals); !loaded {
+		runtime.AddCleanup(root, func(key arenaSizingKey) { arenaSizingMemo.delete(key) }, key)
+	}
+	return totals
+}
+
+// computeStaticArenaSizing is staticArenaSizing without the memo.
+//
+// Takes root (*CompiledFunction) which carries the program's function table.
+// Takes entry (*CompiledFunction) which is the function the execution starts in.
+//
+// Returns program.TypedSlabCounts with FrameStack zero.
+func computeStaticArenaSizing(root, entry *program.CompiledFunction) program.TypedSlabCounts {
 	var bytecodeHints arenaBytecodeHints
 
 	allFuncs := append([]*program.CompiledFunction{root}, root.Functions...)
@@ -57,15 +114,13 @@ func (vm *VM) sizeArenaForEntry(root, entry *program.CompiledFunction) {
 
 	const depthEstimate = arenaDepthEstimateCeiling
 	totals.Bytes = saturatingProduct(bytecodeHints.Bytes, depthEstimate)
-	totals.IntBacking = saturatingProduct3(bytecodeHints.MakeSliceInt, arenaMakeSliceAvgCapacity, depthEstimate)
-	totals.FloatBacking = saturatingProduct3(bytecodeHints.MakeSliceFloat, arenaMakeSliceAvgCapacity, depthEstimate)
+	totals.IntBacking = saturatingProduct3(bytecodeHints.MakeSliceInt64, arenaMakeSliceAvgCapacity, depthEstimate)
+	totals.FloatBacking = saturatingProduct3(bytecodeHints.MakeSliceFloat64, arenaMakeSliceAvgCapacity, depthEstimate)
 	totals.StringBacking = saturatingProduct3(bytecodeHints.MakeSliceString, arenaMakeSliceAvgCapacity, depthEstimate)
 	totals.BoolBacking = saturatingProduct3(bytecodeHints.MakeSliceBool, arenaMakeSliceAvgCapacity, depthEstimate)
-	totals.UintBacking = saturatingProduct3(bytecodeHints.MakeSliceUint, arenaMakeSliceAvgCapacity, depthEstimate)
+	totals.UintBacking = saturatingProduct3(bytecodeHints.MakeSliceUint64, arenaMakeSliceAvgCapacity, depthEstimate)
 	totals.GenericBytes = clampAtMost(saturatingProduct(bytecodeHints.genericBytes, depthEstimate), maxGenericBytesPreSize)
 	totals.SliceHeaders = clampAtMost(saturatingProduct(bytecodeHints.sliceHeaders, depthEstimate), maxSliceHeaderPreSize)
-
-	totals.FrameStack = vm.frameStackPreSize(root)
 
 	totals.IntBoxes = clampAtMost(saturatingProduct(bytecodeHints.boxInts, boxSlabPerOccurrenceFactor), maxBoxSlabPreSize)
 	totals.UintBoxes = clampAtMost(saturatingProduct(bytecodeHints.boxUints, boxSlabPerOccurrenceFactor), maxBoxSlabPreSize)
@@ -76,7 +131,7 @@ func (vm *VM) sizeArenaForEntry(root, entry *program.CompiledFunction) {
 	totals.UpvalueCells = clampAtMost(saturatingProduct(bytecodeHints.upvalueCells, depthEstimate), maxUpvalueSlabPreSize)
 	totals.UpvalueReferences = clampAtMost(saturatingProduct(bytecodeHints.upvalueReferences, depthEstimate), maxUpvalueSlabPreSize)
 
-	vm.Arena.ensureCapacity(totals)
+	return totals
 }
 
 // frameStackPreSize returns the frame count the arena is sized for before root runs.
@@ -202,18 +257,18 @@ func functionHasUnresolvableCalls(function *program.CompiledFunction) bool {
 func peakRegisterCounts(functions []*program.CompiledFunction) program.TypedSlabCounts {
 	var peaks program.TypedSlabCounts
 	for _, f := range functions {
-		peaks.Ints = max(peaks.Ints, int(f.NumRegisters[isa.RegisterInt]))
-		peaks.Floats = max(peaks.Floats, int(f.NumRegisters[isa.RegisterFloat]))
+		peaks.Ints = max(peaks.Ints, int(f.NumRegisters[isa.RegisterInt64]))
+		peaks.Floats = max(peaks.Floats, int(f.NumRegisters[isa.RegisterFloat64]))
 		peaks.Strings = max(peaks.Strings, int(f.NumRegisters[isa.RegisterString]))
 		peaks.Generals = max(peaks.Generals, int(f.NumRegisters[isa.RegisterGeneral]))
 		peaks.Bools = max(peaks.Bools, int(f.NumRegisters[isa.RegisterBool]))
-		peaks.Uints = max(peaks.Uints, int(f.NumRegisters[isa.RegisterUint]))
-		peaks.Complexes = max(peaks.Complexes, int(f.NumRegisters[isa.RegisterComplex]))
-		peaks.SlicesInts = max(peaks.SlicesInts, int(f.NumRegisters[isa.RegisterSliceInt]))
-		peaks.SlicesFloats = max(peaks.SlicesFloats, int(f.NumRegisters[isa.RegisterSliceFloat]))
+		peaks.Uints = max(peaks.Uints, int(f.NumRegisters[isa.RegisterUint64]))
+		peaks.Complexes = max(peaks.Complexes, int(f.NumRegisters[isa.RegisterComplex128]))
+		peaks.SlicesInts = max(peaks.SlicesInts, int(f.NumRegisters[isa.RegisterSliceInt64]))
+		peaks.SlicesFloats = max(peaks.SlicesFloats, int(f.NumRegisters[isa.RegisterSliceFloat64]))
 		peaks.SlicesStrings = max(peaks.SlicesStrings, int(f.NumRegisters[isa.RegisterSliceString]))
 		peaks.SlicesBools = max(peaks.SlicesBools, int(f.NumRegisters[isa.RegisterSliceBool]))
-		peaks.SlicesUints = max(peaks.SlicesUints, int(f.NumRegisters[isa.RegisterSliceUint]))
+		peaks.SlicesUints = max(peaks.SlicesUints, int(f.NumRegisters[isa.RegisterSliceUint64]))
 	}
 	return peaks
 }

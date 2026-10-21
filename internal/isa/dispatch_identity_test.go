@@ -34,10 +34,10 @@ func TestFlatIndexGivesEveryTierItsOwnBand(t *testing.T) {
 		lower int
 		upper int
 	}{
-		{name: "a tier-0 opcode", index: FlatIndexOf(OpAddInt), lower: 0, upper: SlotsPerTier},
+		{name: "a tier-0 opcode", index: FlatIndexOf(OpAddInt64), lower: 0, upper: SlotsPerTier},
 		{name: "a tier-1 sub-op", index: FlatIndexOfSub1(SubOpCall), lower: SlotsPerTier, upper: 2 * SlotsPerTier},
 		{name: "a tier-2 sub-op", index: FlatIndexOfSub2(SubOpTier2Return), lower: 2 * SlotsPerTier, upper: 3 * SlotsPerTier},
-		{name: "a tier-3 sub-op", index: FlatIndexOfSub3(SubOpTier3Nop), lower: 3 * SlotsPerTier, upper: FlatDispatchSlots},
+		{name: "a tier-3 sub-op", index: FlatIndexOfSub3(SubOpTier3NoOperation), lower: 3 * SlotsPerTier, upper: FlatDispatchSlots},
 	}
 
 	for _, tt := range tests {
@@ -58,15 +58,15 @@ func TestFlatIndexForFollowsTheDrillCascade(t *testing.T) {
 		instruction Instruction
 		want        int
 	}{
-		{name: "a tier-0 opcode", instruction: NewInstruction(OpAddInt, 0, 0, 0), want: FlatIndexOf(OpAddInt)},
+		{name: "a tier-0 opcode", instruction: NewInstruction(OpAddInt64, 0, 0, 0), want: FlatIndexOf(OpAddInt64)},
 		{name: "a tier-1 sub-op", instruction: NewTier1Instruction(SubOpCall, 0, 0), want: FlatIndexOfSub1(SubOpCall)},
 		{
 			name: "a tier-2 sub-op", instruction: NewTier2Instruction(SubOpTier2Return, 0),
 			want: FlatIndexOfSub2(SubOpTier2Return),
 		},
 		{
-			name: "a tier-3 sub-op", instruction: NewTier3Instruction(SubOpTier3Nop),
-			want: FlatIndexOfSub3(SubOpTier3Nop),
+			name: "a tier-3 sub-op", instruction: NewTier3Instruction(SubOpTier3NoOperation),
+			want: FlatIndexOfSub3(SubOpTier3NoOperation),
 		},
 	}
 
@@ -96,8 +96,8 @@ func TestInstrIsTier3SubOpMatchesOnlyTheFullCascade(t *testing.T) {
 		instruction Instruction
 		want        bool
 	}{
-		{name: "the matching tier-3 sub-op", instruction: NewTier3Instruction(SubOpTier3Nop), want: true},
-		{name: "a tier-0 opcode", instruction: NewInstruction(OpAddInt, 0, 0, 0)},
+		{name: "the matching tier-3 sub-op", instruction: NewTier3Instruction(SubOpTier3NoOperation), want: true},
+		{name: "a tier-0 opcode", instruction: NewInstruction(OpAddInt64, 0, 0, 0)},
 		{name: "a tier-1 sub-op", instruction: NewTier1Instruction(SubOpCall, 0, 0)},
 		{name: "a tier-2 sub-op", instruction: NewTier2Instruction(SubOpTier2Return, 0)},
 		{name: "another tier-3 sub-op", instruction: NewTier3Instruction(SubOpTier3ReturnVoid)},
@@ -107,7 +107,7 @@ func TestInstrIsTier3SubOpMatchesOnlyTheFullCascade(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			require.Equal(t, tt.want, InstrIsTier3SubOp(tt.instruction, SubOpTier3Nop))
+			require.Equal(t, tt.want, InstrIsTier3SubOp(tt.instruction, SubOpTier3NoOperation))
 		})
 	}
 }
@@ -120,10 +120,10 @@ func TestInstructionDisplayNameLabelsTheTier(t *testing.T) {
 		instruction Instruction
 		wantPrefix  string
 	}{
-		{name: "a tier-0 opcode", instruction: NewInstruction(OpAddInt, 0, 0, 0), wantPrefix: "0:"},
+		{name: "a tier-0 opcode", instruction: NewInstruction(OpAddInt64, 0, 0, 0), wantPrefix: "0:"},
 		{name: "a tier-1 sub-op", instruction: NewTier1Instruction(SubOpCall, 0, 0), wantPrefix: "1:"},
 		{name: "a tier-2 sub-op", instruction: NewTier2Instruction(SubOpTier2Return, 0), wantPrefix: "2:"},
-		{name: "a tier-3 sub-op", instruction: NewTier3Instruction(SubOpTier3Nop), wantPrefix: "3:"},
+		{name: "a tier-3 sub-op", instruction: NewTier3Instruction(SubOpTier3NoOperation), wantPrefix: "3:"},
 	}
 
 	for _, tt := range tests {
@@ -140,10 +140,10 @@ func TestInstructionDisplayNameLabelsTheTier(t *testing.T) {
 func TestSpecForResolvesTierZeroRows(t *testing.T) {
 	t.Parallel()
 
-	row, ok := SpecFor(OpAddInt)
+	row, ok := SpecFor(OpAddInt64)
 	require.True(t, ok)
 	require.Equal(t, TierMain, row.Tier)
-	require.Equal(t, uint8(OpAddInt), row.Code)
+	require.Equal(t, uint8(OpAddInt64), row.Code)
 
 	_, ok = SpecAt(Tier(99), 0)
 	require.False(t, ok, "a tier past the encoding has no rows")
@@ -152,7 +152,7 @@ func TestSpecForResolvesTierZeroRows(t *testing.T) {
 func TestOpSpecRendersItsOwnIdentity(t *testing.T) {
 	t.Parallel()
 
-	row, ok := SpecFor(OpAddInt)
+	row, ok := SpecFor(OpAddInt64)
 	require.True(t, ok)
 
 	rendered := row.String()
@@ -195,14 +195,14 @@ func TestRegisterKindNamesEveryBank(t *testing.T) {
 		kind RegisterKind
 		want string
 	}{
-		{name: "the int bank", kind: RegisterInt, want: "int"},
-		{name: "the float bank", kind: RegisterFloat, want: "float"},
+		{name: "the int64 bank", kind: RegisterInt64, want: "int64"},
+		{name: "the float64 bank", kind: RegisterFloat64, want: "float64"},
 		{name: "the string bank", kind: RegisterString, want: "string"},
 		{name: "the general bank", kind: RegisterGeneral, want: "general"},
 		{name: "the bool bank", kind: RegisterBool, want: "bool"},
-		{name: "the uint bank", kind: RegisterUint, want: "uint"},
-		{name: "the complex bank", kind: RegisterComplex, want: "complex"},
-		{name: "the int-slice bank", kind: RegisterSliceInt, want: "sliceInt"},
+		{name: "the uint64 bank", kind: RegisterUint64, want: "uint64"},
+		{name: "the complex128 bank", kind: RegisterComplex128, want: "complex128"},
+		{name: "the int64-slice bank", kind: RegisterSliceInt64, want: "sliceInt64"},
 	}
 
 	for _, tt := range tests {
@@ -234,13 +234,13 @@ func TestElementKindForTypedSliceNamesTheElementBank(t *testing.T) {
 		kind RegisterKind
 		want RegisterKind
 	}{
-		{name: "an int slice", kind: RegisterSliceInt, want: RegisterInt},
-		{name: "a float slice", kind: RegisterSliceFloat, want: RegisterFloat},
+		{name: "an int slice", kind: RegisterSliceInt64, want: RegisterInt64},
+		{name: "a float slice", kind: RegisterSliceFloat64, want: RegisterFloat64},
 		{name: "a string slice", kind: RegisterSliceString, want: RegisterString},
 		{name: "a bool slice", kind: RegisterSliceBool, want: RegisterBool},
-		{name: "a uint slice", kind: RegisterSliceUint, want: RegisterUint},
-		{name: "a byte slice", kind: RegisterSliceByte, want: RegisterUint},
-		{name: "a bank that is not a typed slice", kind: RegisterInt, want: RegisterGeneral},
+		{name: "a uint slice", kind: RegisterSliceUint64, want: RegisterUint64},
+		{name: "a byte slice", kind: RegisterSliceByte, want: RegisterUint64},
+		{name: "a bank that is not a typed slice", kind: RegisterInt64, want: RegisterGeneral},
 	}
 
 	for _, tt := range tests {

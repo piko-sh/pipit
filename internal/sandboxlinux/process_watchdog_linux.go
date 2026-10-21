@@ -114,13 +114,13 @@ func watchdogLaunchLifetime(ctx context.Context, lifetime time.Duration) (time.D
 //
 // Returns error on cancellation, premature exit, malformed readiness or expired startup.
 func awaitWatchdogReady(ctx context.Context, process *WorkerProcess, deadline time.Time) error {
-	if ctx == nil || process == nil || process.stream == nil || process.context == nil {
+	if ctx == nil || process == nil || process.stream == nil || process.lifetimeCause == nil {
 		return ErrInvalidLimits
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := process.context.Err(); err != nil {
+	if err := process.lifetimeErr(); err != nil {
 		return err
 	}
 	if deadline.IsZero() {
@@ -136,7 +136,7 @@ func awaitWatchdogReady(ctx context.Context, process *WorkerProcess, deadline ti
 	defer stop()
 	var ready [1]byte
 	_, err := io.ReadFull(process.stream, ready[:])
-	if err := errors.Join(err, ctx.Err(), process.context.Err()); err != nil {
+	if err := errors.Join(err, ctx.Err(), process.lifetimeErr()); err != nil {
 		return err
 	}
 	if ready[0] != watchdogReadyByte {

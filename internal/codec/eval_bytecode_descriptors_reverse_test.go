@@ -71,7 +71,7 @@ func TestDescriptorToReflectTypeBasicKinds(t *testing.T) {
 				BasicKind: uint8(tt.basicKind),
 			}
 
-			got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+			got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, got)
 		})
@@ -93,7 +93,7 @@ func TestDescriptorToReflectTypeComposite(t *testing.T) {
 			Kind:    descriptor.KindPtr,
 			Element: &basicIntDesc,
 		}
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		require.Equal(t, reflect.TypeFor[*int](), got)
 	})
@@ -104,7 +104,7 @@ func TestDescriptorToReflectTypeComposite(t *testing.T) {
 			Kind:    descriptor.KindSlice,
 			Element: &basicIntDesc,
 		}
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		require.Equal(t, reflect.TypeFor[[]int](), got)
 	})
@@ -116,7 +116,7 @@ func TestDescriptorToReflectTypeComposite(t *testing.T) {
 			Element: &basicStringDesc,
 			Length:  3,
 		}
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		require.Equal(t, reflect.TypeFor[[3]string](), got)
 	})
@@ -128,7 +128,7 @@ func TestDescriptorToReflectTypeComposite(t *testing.T) {
 			Key:   &basicStringDesc,
 			Value: &basicIntDesc,
 		}
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		require.Equal(t, reflect.TypeFor[map[string]int](), got)
 	})
@@ -140,7 +140,7 @@ func TestDescriptorToReflectTypeComposite(t *testing.T) {
 			Element: &basicIntDesc,
 			Dir:     int(reflect.BothDir),
 		}
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		require.Equal(t, reflect.TypeFor[chan int](), got)
 	})
@@ -152,7 +152,7 @@ func TestDescriptorToReflectTypeComposite(t *testing.T) {
 			Element: &basicIntDesc,
 			Dir:     int(reflect.SendDir),
 		}
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		expected := reflect.ChanOf(reflect.SendDir, reflect.TypeFor[int]())
 		require.Equal(t, expected, got)
@@ -165,7 +165,7 @@ func TestDescriptorToReflectTypeComposite(t *testing.T) {
 			Element: &basicIntDesc,
 			Dir:     int(reflect.RecvDir),
 		}
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		expected := reflect.ChanOf(reflect.RecvDir, reflect.TypeFor[int]())
 		require.Equal(t, expected, got)
@@ -179,7 +179,7 @@ func TestDescriptorToReflectTypeComposite(t *testing.T) {
 			Results:    []descriptor.TypeDescriptor{basicBoolDesc},
 			IsVariadic: false,
 		}
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		expected := reflect.FuncOf(
 			[]reflect.Type{reflect.TypeFor[int](), reflect.TypeFor[string]()},
@@ -201,7 +201,7 @@ func TestDescriptorToReflectTypeComposite(t *testing.T) {
 			Results:    []descriptor.TypeDescriptor{basicBoolDesc},
 			IsVariadic: true,
 		}
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		expected := reflect.FuncOf(
 			[]reflect.Type{reflect.TypeFor[int](), reflect.TypeFor[[]string]()},
@@ -220,7 +220,7 @@ func TestDescriptorToReflectTypeComposite(t *testing.T) {
 				{Name: "Y", Tag: `json:"y"`, Typ: basicStringDesc},
 			},
 		}
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		expected := reflect.StructOf([]reflect.StructField{
 			{Name: "X", Type: reflect.TypeFor[int]()},
@@ -232,7 +232,7 @@ func TestDescriptorToReflectTypeComposite(t *testing.T) {
 	t.Run("InterfaceEmpty", func(t *testing.T) {
 		t.Parallel()
 		typeDescriptor := descriptor.TypeDescriptor{Kind: descriptor.KindInterface}
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		require.Equal(t, reflect.TypeFor[any](), got)
 	})
@@ -240,7 +240,7 @@ func TestDescriptorToReflectTypeComposite(t *testing.T) {
 	t.Run("UnknownKindFallback", func(t *testing.T) {
 		t.Parallel()
 		typeDescriptor := descriptor.TypeDescriptor{Kind: descriptor.TypeDescriptorKind(255)}
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		require.Equal(t, reflect.TypeFor[any](), got)
 	})
@@ -248,7 +248,7 @@ func TestDescriptorToReflectTypeComposite(t *testing.T) {
 	t.Run("NilType", func(t *testing.T) {
 		t.Parallel()
 		typeDescriptor := descriptor.TypeDescriptor{Kind: descriptor.KindNil}
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		require.Nil(t, got)
 	})
@@ -256,7 +256,7 @@ func TestDescriptorToReflectTypeComposite(t *testing.T) {
 	t.Run("NilTypeNestedIsCorrupt", func(t *testing.T) {
 		t.Parallel()
 		typeDescriptor := descriptor.TypeDescriptor{Kind: descriptor.KindPtr, Element: &descriptor.TypeDescriptor{Kind: descriptor.KindNil}}
-		_, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		_, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.Error(t, err)
 	})
 }
@@ -279,7 +279,7 @@ func TestReflectTypeToDescriptorNil(t *testing.T) {
 			t.Parallel()
 			got := descriptor.ReflectTypeToDescriptor(tc.typ)
 			require.Equal(t, tc.want, got.Kind)
-			back, err := symtab.ReflectTypeFor(got, symtab.NewSymbolRegistry(nil))
+			back, err := symtab.ReflectTypeFor(t.Context(), got, symtab.NewSymbolRegistry(nil))
 			require.NoError(t, err)
 			if tc.typ == nil {
 				require.Nil(t, back)
@@ -308,7 +308,7 @@ func TestDescriptorToReflectTypeNamed(t *testing.T) {
 			Name:        "Time",
 		}
 
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		require.Equal(t, reflect.TypeFor[time.Time](), got)
 	})
@@ -324,7 +324,7 @@ func TestDescriptorToReflectTypeNamed(t *testing.T) {
 			Name:        "Missing",
 		}
 
-		_, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		_, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "nonexistent.Missing")
 		require.Contains(t, err.Error(), "not found")
@@ -345,7 +345,7 @@ func TestDescriptorToReflectTypeNamed(t *testing.T) {
 			Name:        "Pi",
 		}
 
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		require.Equal(t, reflect.TypeFor[float64](), got)
 	})
@@ -363,7 +363,7 @@ func TestDescriptorToReflectTypeNestedComposites(t *testing.T) {
 		ptrDesc := descriptor.TypeDescriptor{Kind: descriptor.KindPtr, Element: &basicIntDesc}
 		typeDescriptor := descriptor.TypeDescriptor{Kind: descriptor.KindSlice, Element: &ptrDesc}
 
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		require.Equal(t, reflect.TypeFor[[]*int](), got)
 	})
@@ -376,7 +376,7 @@ func TestDescriptorToReflectTypeNestedComposites(t *testing.T) {
 		sliceDesc := descriptor.TypeDescriptor{Kind: descriptor.KindSlice, Element: &basicIntDesc}
 		typeDescriptor := descriptor.TypeDescriptor{Kind: descriptor.KindMap, Key: &basicStringDesc, Value: &sliceDesc}
 
-		got, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		got, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		require.Equal(t, reflect.TypeFor[map[string][]int](), got)
 	})
@@ -396,7 +396,7 @@ func TestDescriptorToReflectTypeErrorPropagation(t *testing.T) {
 	t.Run("PointerWithBadElement", func(t *testing.T) {
 		t.Parallel()
 		typeDescriptor := descriptor.TypeDescriptor{Kind: descriptor.KindPtr, Element: &badNamed}
-		_, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		_, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "nonexistent.Bad")
 	})
@@ -404,14 +404,14 @@ func TestDescriptorToReflectTypeErrorPropagation(t *testing.T) {
 	t.Run("SliceWithBadElement", func(t *testing.T) {
 		t.Parallel()
 		typeDescriptor := descriptor.TypeDescriptor{Kind: descriptor.KindSlice, Element: &badNamed}
-		_, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		_, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.Error(t, err)
 	})
 
 	t.Run("ArrayWithBadElement", func(t *testing.T) {
 		t.Parallel()
 		typeDescriptor := descriptor.TypeDescriptor{Kind: descriptor.KindArray, Element: &badNamed, Length: 5}
-		_, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		_, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.Error(t, err)
 	})
 
@@ -419,7 +419,7 @@ func TestDescriptorToReflectTypeErrorPropagation(t *testing.T) {
 		t.Parallel()
 		basicIntDesc := descriptor.TypeDescriptor{Kind: descriptor.KindBasic, BasicKind: uint8(reflect.Int)}
 		typeDescriptor := descriptor.TypeDescriptor{Kind: descriptor.KindMap, Key: &badNamed, Value: &basicIntDesc}
-		_, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		_, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.Error(t, err)
 	})
 
@@ -427,14 +427,14 @@ func TestDescriptorToReflectTypeErrorPropagation(t *testing.T) {
 		t.Parallel()
 		basicIntDesc := descriptor.TypeDescriptor{Kind: descriptor.KindBasic, BasicKind: uint8(reflect.Int)}
 		typeDescriptor := descriptor.TypeDescriptor{Kind: descriptor.KindMap, Key: &basicIntDesc, Value: &badNamed}
-		_, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		_, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.Error(t, err)
 	})
 
 	t.Run("ChanWithBadElement", func(t *testing.T) {
 		t.Parallel()
 		typeDescriptor := descriptor.TypeDescriptor{Kind: descriptor.KindChan, Element: &badNamed, Dir: int(reflect.BothDir)}
-		_, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		_, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.Error(t, err)
 	})
 
@@ -444,7 +444,7 @@ func TestDescriptorToReflectTypeErrorPropagation(t *testing.T) {
 			Kind:   descriptor.KindFunc,
 			Params: []descriptor.TypeDescriptor{badNamed},
 		}
-		_, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		_, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.Error(t, err)
 	})
 
@@ -456,7 +456,7 @@ func TestDescriptorToReflectTypeErrorPropagation(t *testing.T) {
 			Params:  []descriptor.TypeDescriptor{basicIntDesc},
 			Results: []descriptor.TypeDescriptor{badNamed},
 		}
-		_, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		_, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.Error(t, err)
 	})
 
@@ -468,7 +468,7 @@ func TestDescriptorToReflectTypeErrorPropagation(t *testing.T) {
 				{Name: "Bad", Typ: badNamed},
 			},
 		}
-		_, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		_, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.Error(t, err)
 	})
 }
@@ -491,7 +491,7 @@ func TestReconstructGeneralConstant(t *testing.T) {
 			SymbolName:  "Pi",
 		}
 
-		got, err := symtab.ReconstructConstant(constDescriptor, registry)
+		got, err := symtab.ReconstructConstant(t.Context(), constDescriptor, registry)
 		require.NoError(t, err)
 		require.InDelta(t, math.Pi, got.Float(), 0)
 	})
@@ -507,7 +507,7 @@ func TestReconstructGeneralConstant(t *testing.T) {
 			SymbolName:  "Foo",
 		}
 
-		_, err := symtab.ReconstructConstant(constDescriptor, registry)
+		_, err := symtab.ReconstructConstant(t.Context(), constDescriptor, registry)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "nonexistent.Foo")
 		require.Contains(t, err.Error(), "not found")
@@ -528,7 +528,7 @@ func TestReconstructGeneralConstant(t *testing.T) {
 			SymbolName:  "Duration",
 		}
 
-		got, err := symtab.ReconstructConstant(constDescriptor, registry)
+		got, err := symtab.ReconstructConstant(t.Context(), constDescriptor, registry)
 		require.NoError(t, err)
 		require.Equal(t, reflect.TypeFor[time.Duration](), got.Type())
 		require.True(t, got.IsZero())
@@ -545,7 +545,7 @@ func TestReconstructGeneralConstant(t *testing.T) {
 			SymbolName:  "Missing",
 		}
 
-		_, err := symtab.ReconstructConstant(constDescriptor, registry)
+		_, err := symtab.ReconstructConstant(t.Context(), constDescriptor, registry)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "nonexistent.Missing")
 	})
@@ -571,7 +571,7 @@ func TestReconstructGeneralConstant(t *testing.T) {
 			TypeDescriptor: structDesc,
 		}
 
-		got, err := symtab.ReconstructConstant(constDescriptor, registry)
+		got, err := symtab.ReconstructConstant(t.Context(), constDescriptor, registry)
 		require.NoError(t, err)
 		require.Equal(t, reflect.Struct, got.Kind())
 		require.Equal(t, 2, got.NumField())
@@ -592,7 +592,7 @@ func TestReconstructGeneralConstant(t *testing.T) {
 			},
 		}
 
-		_, err := symtab.ReconstructConstant(constDescriptor, registry)
+		_, err := symtab.ReconstructConstant(t.Context(), constDescriptor, registry)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "reconstructing composite type")
 	})
@@ -606,7 +606,7 @@ func TestReconstructGeneralConstant(t *testing.T) {
 			Kind: descriptor.GeneralConstantKind(255),
 		}
 
-		_, err := symtab.ReconstructConstant(constDescriptor, registry)
+		_, err := symtab.ReconstructConstant(t.Context(), constDescriptor, registry)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unknown general constant kind")
 	})
@@ -627,7 +627,7 @@ func TestReconstructGeneralConstantExportedAPI(t *testing.T) {
 		Kind:        uint8(descriptor.GeneralConstantPackageSymbol),
 	}
 
-	got, err := ReconstructGeneralConstant(data, registry)
+	got, err := ReconstructGeneralConstant(t.Context(), data, registry)
 	require.NoError(t, err)
 	require.InDelta(t, math.Pi, got.Float(), 0)
 }
@@ -642,7 +642,7 @@ func TestDescriptorToReflectTypeExportedAPI(t *testing.T) {
 		BasicKind: uint8(reflect.Int),
 	}
 
-	got, err := DescriptorToReflectType(data, registry)
+	got, err := DescriptorToReflectType(t.Context(), data, registry)
 	require.NoError(t, err)
 	require.Equal(t, reflect.TypeFor[int](), got)
 }
@@ -682,7 +682,7 @@ func TestDescriptorRoundTrip(t *testing.T) {
 
 			typeDescriptor := descriptor.ReflectTypeToDescriptor(tt.goType)
 
-			reconstructed, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+			reconstructed, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 			require.NoError(t, err)
 			require.Equal(t, tt.goType, reconstructed,
 				"round-trip failed for %s: expected %v, got %v", tt.name, tt.goType, reconstructed)
@@ -702,7 +702,7 @@ func TestDescriptorRoundTripStruct(t *testing.T) {
 	})
 
 	typeDescriptor := descriptor.ReflectTypeToDescriptor(original)
-	reconstructed, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+	reconstructed, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 	require.NoError(t, err)
 	require.Equal(t, original.NumField(), reconstructed.NumField())
 
@@ -728,7 +728,7 @@ func TestDescriptorRoundTripFunc(t *testing.T) {
 			false,
 		)
 		typeDescriptor := descriptor.ReflectTypeToDescriptor(original)
-		reconstructed, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		reconstructed, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		require.Equal(t, original.Kind(), reconstructed.Kind())
 		require.Equal(t, original.NumIn(), reconstructed.NumIn())
@@ -750,7 +750,7 @@ func TestDescriptorRoundTripFunc(t *testing.T) {
 			true,
 		)
 		typeDescriptor := descriptor.ReflectTypeToDescriptor(original)
-		reconstructed, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		reconstructed, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		require.Equal(t, original.Kind(), reconstructed.Kind())
 		require.Equal(t, original.NumIn(), reconstructed.NumIn())
@@ -762,7 +762,7 @@ func TestDescriptorRoundTripFunc(t *testing.T) {
 		t.Parallel()
 		original := reflect.FuncOf(nil, nil, false)
 		typeDescriptor := descriptor.ReflectTypeToDescriptor(original)
-		reconstructed, err := symtab.ReflectTypeFor(typeDescriptor, registry)
+		reconstructed, err := symtab.ReflectTypeFor(t.Context(), typeDescriptor, registry)
 		require.NoError(t, err)
 		require.Equal(t, reflect.Func, reconstructed.Kind())
 		require.Equal(t, 0, reconstructed.NumIn())
@@ -803,7 +803,7 @@ func TestImportExportTypeDescriptorRoundTrip(t *testing.T) {
 
 	imported := ImportTypeDescriptor(exported)
 
-	reconstructed, err := symtab.ReflectTypeFor(imported, registry)
+	reconstructed, err := symtab.ReflectTypeFor(t.Context(), imported, registry)
 	require.NoError(t, err)
 
 	require.Equal(t, original.Kind(), reconstructed.Kind())

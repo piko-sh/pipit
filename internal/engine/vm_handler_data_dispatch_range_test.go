@@ -38,7 +38,7 @@ func rangeIteratorFor(t *testing.T, collection any) (*VM, *CallFrame, *Registers
 	vm, frame, registers := newStandardVM(t)
 	registers.General[2] = reflect.ValueOf(collection)
 
-	got := handleRangeInit(vm, frame, registers, op(0, 1, 2))
+	got := handleRangeInitialise(vm, frame, registers, op(0, 1, 2))
 	require.Equal(t, opContinue, got, "building an iterator never leaves the dispatch loop")
 
 	iterator, ok := reflect.TypeAssert[*rangeIterator](registers.General[1])
@@ -46,7 +46,7 @@ func rangeIteratorFor(t *testing.T, collection any) (*VM, *CallFrame, *Registers
 	return vm, frame, registers, iterator
 }
 
-func TestRangeInitClassifiesTheCollection(t *testing.T) {
+func TestRangeInitialiseClassifiesTheCollection(t *testing.T) {
 	t.Parallel()
 
 	array := [3]int{1, 2, 3}
@@ -177,7 +177,7 @@ func TestRangeNextWalksSlicesToExhaustion(t *testing.T) {
 		want       []any
 	}{
 		{
-			name: "an int slice", collection: []int{4, 5}, valueKind: isa.RegisterInt,
+			name: "an int slice", collection: []int{4, 5}, valueKind: isa.RegisterInt64,
 			read: func(r *Registers) any { return r.Ints[6] }, want: []any{int64(4), int64(5)},
 		},
 		{
@@ -185,7 +185,7 @@ func TestRangeNextWalksSlicesToExhaustion(t *testing.T) {
 			read: func(r *Registers) any { return r.Strings[6] }, want: []any{"a", "b"},
 		},
 		{
-			name: "a float slice", collection: []float64{1.5, 2.5}, valueKind: isa.RegisterFloat,
+			name: "a float slice", collection: []float64{1.5, 2.5}, valueKind: isa.RegisterFloat64,
 			read: func(r *Registers) any { return r.Floats[6] }, want: []any{1.5, 2.5},
 		},
 		{
@@ -193,7 +193,7 @@ func TestRangeNextWalksSlicesToExhaustion(t *testing.T) {
 			read: func(r *Registers) any { return r.Bools[6] }, want: []any{true, false},
 		},
 		{
-			name: "a slice with no typed fast path falls back to reflect", collection: []uint8{7, 8}, valueKind: isa.RegisterUint,
+			name: "a slice with no typed fast path falls back to reflect", collection: []uint8{7, 8}, valueKind: isa.RegisterUint64,
 			read: func(r *Registers) any { return r.Uints[6] }, want: []any{uint64(7), uint64(8)},
 		},
 	}
@@ -207,7 +207,7 @@ func TestRangeNextWalksSlicesToExhaustion(t *testing.T) {
 				frame.ProgramCounter = 1
 				frame.Function.Body = []isa.Instruction{
 					{},
-					op(rangeBindsKey|rangeBindsValue, 5, uint8(isa.RegisterInt)),
+					op(rangeBindsKey|rangeBindsValue, 5, uint8(isa.RegisterInt64)),
 					op(0, 6, uint8(tt.valueKind)),
 					{},
 				}
@@ -238,7 +238,7 @@ func TestRangeNextWalksAMapAndAString(t *testing.T) {
 		frame.Function.Body = []isa.Instruction{
 			{},
 			op(rangeBindsKey|rangeBindsValue, 5, uint8(isa.RegisterString)),
-			op(0, 6, uint8(isa.RegisterInt)),
+			op(0, 6, uint8(isa.RegisterInt64)),
 			{},
 		}
 
@@ -262,8 +262,8 @@ func TestRangeNextWalksAMapAndAString(t *testing.T) {
 		vm, frame, registers, _ := rangeIteratorFor(t, "aé")
 		frame.Function.Body = []isa.Instruction{
 			{},
-			op(rangeBindsKey|rangeBindsValue, 5, uint8(isa.RegisterInt)),
-			op(0, 6, uint8(isa.RegisterInt)),
+			op(rangeBindsKey|rangeBindsValue, 5, uint8(isa.RegisterInt64)),
+			op(0, 6, uint8(isa.RegisterInt64)),
 			{},
 		}
 
@@ -291,8 +291,8 @@ func TestRangeNextWalksAMapAndAString(t *testing.T) {
 		vm, frame, registers, _ := rangeIteratorFor(t, "\xff\xfe")
 		frame.Function.Body = []isa.Instruction{
 			{},
-			op(rangeBindsKey|rangeBindsValue, 5, uint8(isa.RegisterInt)),
-			op(0, 6, uint8(isa.RegisterInt)),
+			op(rangeBindsKey|rangeBindsValue, 5, uint8(isa.RegisterInt64)),
+			op(0, 6, uint8(isa.RegisterInt64)),
 			{},
 		}
 
@@ -316,8 +316,8 @@ func TestRangeNextWalksAChannelUntilClosed(t *testing.T) {
 	vm, frame, registers, _ := rangeIteratorFor(t, channel)
 	frame.Function.Body = []isa.Instruction{
 		{},
-		op(rangeBindsKey, 5, uint8(isa.RegisterInt)),
-		op(0, 6, uint8(isa.RegisterInt)),
+		op(rangeBindsKey, 5, uint8(isa.RegisterInt64)),
+		op(0, 6, uint8(isa.RegisterInt64)),
 		{},
 	}
 
@@ -404,8 +404,8 @@ func TestRangeNextSkipsUnboundDestinations(t *testing.T) {
 	vm, frame, registers, _ := rangeIteratorFor(t, []int{11})
 	frame.Function.Body = []isa.Instruction{
 		{},
-		op(0, 5, uint8(isa.RegisterInt)),
-		op(0, 6, uint8(isa.RegisterInt)),
+		op(0, 5, uint8(isa.RegisterInt64)),
+		op(0, 6, uint8(isa.RegisterInt64)),
 		{},
 	}
 	frame.ProgramCounter = 1

@@ -19,6 +19,7 @@
 package sandboxlinux
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -99,11 +100,11 @@ func isServiceGroupName(name string) bool {
 // Takes tenant (string) which selects the reservation; two tenants never contend.
 //
 // Returns a new bounded owner. Existing reservations are never adopted or removed.
-func newServiceGroup(parent string, limits Limits, tenant string) (*Group, error) {
+func newServiceGroup(ctx context.Context, parent string, limits Limits, tenant string) (*Group, error) {
 	if err := validateTenant(tenant); err != nil {
 		return nil, err
 	}
-	group, err := newRootGroup(parent, limits, serviceGroupNameFor(tenant))
+	group, err := newRootGroup(ctx, parent, limits, serviceGroupNameFor(tenant))
 	if errors.Is(err, unix.EEXIST) {
 		return nil, fmt.Errorf(fault.ErrChainFmt, ErrServiceBusy, err)
 	}

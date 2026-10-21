@@ -53,13 +53,13 @@ func run(a int, b int) int {
 }
 `)
 	run := program.ExportFunctions(cfs.Root())[cfs.Entrypoints()["run"]]
-	subPC := findOpcode(run, isa.OpSubInt)
+	subPC := findOpcode(run, isa.OpSubtractInt64)
 	require.GreaterOrEqual(t, subPC, 0, "expected the subtraction in the body:\n%s", run.Disassemble())
-	mulPC := findOpcode(run, isa.OpMulInt)
+	mulPC := findOpcode(run, isa.OpMultiplyInt64)
 	require.GreaterOrEqual(t, mulPC, 0)
 	require.Equal(t, run.Body[subPC].A, run.Body[mulPC].B, "the subtraction writes x's register, the one the multiplication read x from")
-	require.False(t, isa.InstrIsTier1SubOp(run.Body[subPC+1], isa.SubOpMoveInt), "no move follows the assignment's arithmetic:\n%s", run.Disassemble())
-	require.Equal(t, 1, countTier1SubOp(run, isa.SubOpMoveInt), "only the return slot move remains:\n%s", run.Disassemble())
+	require.False(t, isa.InstrIsTier1SubOp(run.Body[subPC+1], isa.SubOpMoveInt64), "no move follows the assignment's arithmetic:\n%s", run.Disassemble())
+	require.Zero(t, countTier1SubOp(run, isa.SubOpMoveInt64), "the last subtraction is made in the return slot, so no move remains:\n%s", run.Disassemble())
 }
 
 func TestReturnBinaryOpEmitsIntoReturnSlot(t *testing.T) {
@@ -71,8 +71,8 @@ func run(a int, b int) int {
 }
 `)
 	run := program.ExportFunctions(cfs.Root())[cfs.Entrypoints()["run"]]
-	require.Zero(t, countTier1SubOp(run, isa.SubOpMoveInt), "the return must not move the arithmetic result:\n%s", run.Disassemble())
-	addPC := findOpcode(run, isa.OpAddInt)
+	require.Zero(t, countTier1SubOp(run, isa.SubOpMoveInt64), "the return must not move the arithmetic result:\n%s", run.Disassemble())
+	addPC := findOpcode(run, isa.OpAddInt64)
 	require.GreaterOrEqual(t, addPC, 0, "expected the addition in the body:\n%s", run.Disassemble())
 	require.Zero(t, run.Body[addPC].A, "the addition writes return slot zero directly")
 }
@@ -103,8 +103,8 @@ func TestDestinationDrivenArithmeticKeepsOperandOrder(t *testing.T) {
 func TestArithConstFusionKeepsLiveLoad(t *testing.T) {
 	t.Parallel()
 	compiledFunction := compileExpression(t, `x := 2; y := x * x; x + y`)
-	requireContainsOpcode(t, compiledFunction, isa.OpMulInt)
-	requireNoOpcode(t, compiledFunction, isa.OpMulIntConst)
+	requireContainsOpcode(t, compiledFunction, isa.OpMultiplyInt64)
+	requireNoOpcode(t, compiledFunction, isa.OpMultiplyInt64Constant)
 	result, err := app.NewService().Eval(t.Context(), `x := 2; y := x * x; x + y`)
 	require.NoError(t, err)
 	require.EqualValues(t, 6, result)

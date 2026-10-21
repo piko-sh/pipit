@@ -53,18 +53,18 @@ type inPlaceAppendForm struct {
 // inPlaceAppendForms maps an element's underlying type name to its typed in-place form.
 // An element kind missing here is boxed and appended through the general-bank opcode.
 var inPlaceAppendForms = func() map[string]inPlaceAppendForm {
-	byteForm := inPlaceAppendForm{bank: isa.RegisterUint, emit: func(c *Compiler, slice, value uint8) {
-		program.Emit(c.Function, isa.OpAppendByteFastInPlace, slice, slice, value)
+	byteForm := inPlaceAppendForm{bank: isa.RegisterUint64, emit: func(c *Compiler, slice, value uint8) {
+		program.Emit(c.Function, isa.OpAppendByteInPlace, slice, slice, value)
 	}}
-	uintForm := inPlaceAppendForm{bank: isa.RegisterUint, emit: func(c *Compiler, slice, value uint8) {
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpAppendUintInPlace), slice, slice)
-		program.Emit(c.Function, isa.OpExt, value, 0, 0)
+	uintForm := inPlaceAppendForm{bank: isa.RegisterUint64, emit: func(c *Compiler, slice, value uint8) {
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpAppendUint64WideInPlace), slice, slice)
+		program.Emit(c.Function, isa.OpExtension, value, 0, 0)
 	}}
-	intForm := inPlaceAppendForm{bank: isa.RegisterInt, emit: func(c *Compiler, slice, value uint8) {
-		program.Emit(c.Function, isa.OpAppendIntFast, slice, slice, value)
+	intForm := inPlaceAppendForm{bank: isa.RegisterInt64, emit: func(c *Compiler, slice, value uint8) {
+		program.Emit(c.Function, isa.OpAppendInt64, slice, slice, value)
 	}}
-	floatForm := inPlaceAppendForm{bank: isa.RegisterFloat, emit: func(c *Compiler, slice, value uint8) {
-		program.Emit(c.Function, isa.OpAppendFloatFast, slice, slice, value)
+	floatForm := inPlaceAppendForm{bank: isa.RegisterFloat64, emit: func(c *Compiler, slice, value uint8) {
+		program.Emit(c.Function, isa.OpAppendFloat64, slice, slice, value)
 	}}
 	forms := map[string]inPlaceAppendForm{
 		"uint16":  uintForm,
@@ -80,11 +80,11 @@ var inPlaceAppendForms = func() map[string]inPlaceAppendForm {
 		"float32": floatForm,
 		"float64": floatForm,
 		"string": {bank: isa.RegisterString, emit: func(c *Compiler, slice, value uint8) {
-			program.Emit(c.Function, isa.OpAppendStringFast, slice, slice, value)
+			program.Emit(c.Function, isa.OpAppendString, slice, slice, value)
 		}},
 		"bool": {bank: isa.RegisterBool, emit: func(c *Compiler, slice, value uint8) {
-			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpAppendBool), slice, slice)
-			program.Emit(c.Function, isa.OpExt, value, 0, 0)
+			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpAppendBoolWide), slice, slice)
+			program.Emit(c.Function, isa.OpExtension, value, 0, 0)
 		}},
 	}
 	for _, name := range byteElementKinds {
@@ -166,7 +166,7 @@ func (c *Compiler) emitInPlaceAppendSingle(ctx context.Context, location program
 // Takes callRHS (*ast.CallExpr) which is the append call, used to recover the slice type.
 func (c *Compiler) emitInPlaceGeneralAppend(ctx context.Context, location, valueLocation program.VarLocation, callRHS *ast.CallExpr) {
 	if sliceTypeInfo, found := c.Info.Types[callRHS.Args[0]]; found {
-		if c.emitStructFastAppendInto(ctx, location.Register, location, valueLocation, sliceTypeInfo.Type) {
+		if c.emitAppendStructInto(ctx, location.Register, location, valueLocation, sliceTypeInfo.Type) {
 			return
 		}
 	}
@@ -212,7 +212,7 @@ func (c *Compiler) emitInPlaceAppendSpread(ctx context.Context, location program
 		return program.VarLocation{}, true, err
 	}
 	c.boxToGeneralTemp(ctx, &valueLocation)
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpAppendByteSpreadInPlace), location.Register, valueLocation.Register)
+	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpAppendSpreadByteInPlace), location.Register, valueLocation.Register)
 	return location, true, nil
 }
 

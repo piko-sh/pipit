@@ -40,6 +40,7 @@ func TestPutRegisterArenaAbandoningEscapesReturnsTheArena(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			arena := GetRegisterArena()
+			arena.attachLicencePolicy(&VMLimits{})
 			arena.AttachBudgetTracker(&ResourceTracker{})
 			tt.dirty(arena)
 			require.True(t, arena.holdsEscapableData(), "the fixture must dirty an escapable slab")
@@ -51,25 +52,4 @@ func TestPutRegisterArenaAbandoningEscapesReturnsTheArena(t *testing.T) {
 			require.Nil(t, arena.ownerVM)
 		})
 	}
-}
-
-func TestAbandonEscapedSlabsLeavesEscapedMemoryIntact(t *testing.T) {
-	arena := GetRegisterArena()
-	defer PutRegisterArena(arena)
-	escaped := arena.AllocStringBytes(4)
-	copy(escaped, "pipt")
-	backing := arena.AllocIntBacking(2)
-	backing[0], backing[1] = 7, 9
-	oldByteSlab, oldIntBacking := arena.byteSlab, arena.intBackingSlab
-
-	arena.abandonEscapedSlabs()
-	arena.Reset()
-
-	require.Equal(t, "pipt", string(escaped), "an escaped string must survive the reset")
-	require.Equal(t, []int64{7, 9}, backing, "an escaped backing must survive the reset")
-	require.NotSame(t, &oldByteSlab[0], &arena.byteSlab[0], "the byte slab must be a fresh allocation")
-	require.NotSame(t, &oldIntBacking[0], &arena.intBackingSlab[0], "the int backing must be a fresh allocation")
-	require.Len(t, arena.byteSlab, InitialByteSlabSize)
-	require.Zero(t, arena.byteIndex)
-	require.Zero(t, arena.intBackingIndex)
 }

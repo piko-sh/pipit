@@ -26,7 +26,7 @@ import (
 )
 
 // PromoteCompositeZeroReuse rewrites struct and array zero-constant loads into
-// isa.OpLoadCompositeZeroReuse wherever the destination register's storage is provably
+// isa.OpLoadCompositeZeroInPlace wherever the destination register's storage is provably
 // frame-confined (ArenaSafeAllocPCs) and unaliased by any other live general register.
 //
 // Takes compiledFunction (*program.CompiledFunction) whose body is rewritten in place.
@@ -49,7 +49,7 @@ func promoteCompositeZeroReuse(compiledFunction *program.CompiledFunction, analy
 	jumpTargets := analysis.JumpTargets()
 	for index := range compiledFunction.Body {
 		instruction := compiledFunction.Body[index]
-		if instruction.Op != isa.OpLoadGeneralConst {
+		if instruction.Op != isa.OpLoadGeneralConstant {
 			continue
 		}
 		if !loadsCompositeZero(compiledFunction, instruction) {
@@ -58,7 +58,7 @@ func promoteCompositeZeroReuse(compiledFunction *program.CompiledFunction, analy
 		if !compositeZeroReuseSiteIsSafe(compiledFunction, index, instruction.A, jumpTargets) {
 			continue
 		}
-		compiledFunction.Body[index] = isa.NewInstruction(isa.OpLoadCompositeZeroReuse,
+		compiledFunction.Body[index] = isa.NewInstruction(isa.OpLoadCompositeZeroInPlace,
 			instruction.A, instruction.B, instruction.C)
 	}
 }

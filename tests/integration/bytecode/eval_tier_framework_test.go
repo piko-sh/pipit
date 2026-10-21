@@ -35,18 +35,18 @@ func TestTieredDisassemblyShowsSubOpName(t *testing.T) {
 	builder := newBytecodeBuilder()
 	lengthConstantIndex := builder.addIntConst(3)
 	builder.intRegisters(2).sliceIntRegisters(1).returnInt()
-	builder.Emit(isa.OpLoadIntConst, 1, lengthConstantIndex, 0)
-	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpMakeSliceInt), 0, 1)
-	builder.Emit(isa.OpExt, 1, 0, 0)
-	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpLenSliceIntDirect), 0, 0)
+	builder.Emit(isa.OpLoadInt64Constant, 1, lengthConstantIndex, 0)
+	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpMakeSliceInt64), 0, 1)
+	builder.Emit(isa.OpExtension, 1, 0, 0)
+	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpLengthSliceInt64), 0, 0)
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	compiled := builder.build()
 
 	disassembly := compiled.Disassemble()
 
-	require.Contains(t, disassembly, "1:MAKE_SLICE_INT",
+	require.Contains(t, disassembly, "1:MAKE_SLICE_INT64",
 		"expected disassembly to label the tier-1 sub-op by name; got:\n%s", disassembly)
-	require.Contains(t, disassembly, "1:LEN_SLICE_INT_DIRECT",
+	require.Contains(t, disassembly, "1:LENGTH_SLICE_INT64",
 		"expected disassembly to label the second tier-1 sub-op by name; got:\n%s", disassembly)
 	require.NotContains(t, disassembly, "UMBRELLA", "no legacy UMBRELLA labels remain")
 }
@@ -67,12 +67,12 @@ func TestTier2DispatchRejectsInvalidSubOp(t *testing.T) {
 		"expected tier-2 dispatch error; got: %v", err)
 }
 
-func TestTier3DispatchTreatsZeroWordAsNop(t *testing.T) {
+func TestTier3DispatchTreatsZeroWordAsNoOperation(t *testing.T) {
 	t.Parallel()
 
 	builder := newBytecodeBuilder()
 	builder.intRegisters(1).returnInt()
-	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DrillTier3), uint8(isa.SubOpTier3Nop))
+	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2DrillTier3), uint8(isa.SubOpTier3NoOperation))
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 1)
 	compiled := builder.build()
 
@@ -100,10 +100,10 @@ func TestTier3DispatchRejectsInvalidSubOp(t *testing.T) {
 func TestEverySubOpcodeRendersItsOwnName(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "MAKE_SLICE_INT", isa.SubOpMakeSliceInt.String())
+	require.Equal(t, "MAKE_SLICE_INT64", isa.SubOpMakeSliceInt64.String())
 	require.Equal(t, "DRILL_TIER2", isa.SubOpDrillTier2.String())
 	require.Equal(t, "DRILL_TIER3", isa.SubOpTier2DrillTier3.String())
-	require.Equal(t, "TIER3_NOP", isa.SubOpTier3Nop.String())
+	require.Equal(t, "NO_OPERATION", isa.SubOpTier3NoOperation.String())
 	require.Equal(t, "UNKNOWN_SUBOP", isa.SubOpcode(255).String())
 	require.Equal(t, "UNKNOWN_TIER2", isa.SubOpcodeTier2(255).String())
 	require.Equal(t, "UNKNOWN_TIER3", isa.SubOpcodeTier3(255).String())

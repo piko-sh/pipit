@@ -4,42 +4,42 @@
 
 ; ═════════════════════════════════════════════════════════════
 ; function run
-;   registers: int=2 general=6
-;   dispatch:  asm=10 shim=13 exit=0 go=4
+;   registers: int64=2 general=6
+;   dispatch:  asm=10 shim=17 exit=0 go=0
 ;   params:    (none)
-;   returns:   (int)
+;   returns:   (int64)
 ; ═════════════════════════════════════════════════════════════
 
 ; constants:
 ;   ints:    [0]=11  [1]=0  [2]=22  [3]=1  [4]=33  [5]=2  [6]=8
 
-0000 S 0:LOAD_GENERAL_CONST         0   0   0
-0001 A 1:LOAD_INT_CONST_SMALL      75   0  11    ; ints[0] = 11
-0002 A 1:LOAD_INT_CONST_SMALL      75   1   0    ; ints[1] = 0
-0003 G 1:MOVE_INT_TO_GENERAL       40   1   0
-0004 S 0:INDEX_SET                  0   1   1
-0005 A 1:LOAD_INT_CONST_SMALL      75   0  22    ; ints[0] = 22
-0006 A 1:LOAD_INT_CONST_SMALL      75   1   1    ; ints[1] = 1
-0007 G 1:MOVE_INT_TO_GENERAL       40   1   0
-0008 S 0:INDEX_SET                  0   1   1
-0009 A 1:LOAD_INT_CONST_SMALL      75   0  33    ; ints[0] = 33
-0010 A 1:LOAD_INT_CONST_SMALL      75   1   2    ; ints[1] = 2
-0011 G 1:MOVE_INT_TO_GENERAL       40   1   0
-0012 S 0:INDEX_SET                  0   1   1
-0013 S 0:DEREF                      0   0   1
-0014 S 0:ALLOC_INDIRECT             1   0   3
-0015   0:EXT                        0   0   0
-0016 S 0:DEREF                      2   1   0
-0017 A 1:LOAD_INT_CONST_SMALL      75   0   0    ; ints[0] = 0
-0018 S 0:INDEX                      3   2   0
-0019 S 0:ADDR                       4   3   1
-0020 S 0:CONVERT                    5   4   0
-0021   0:EXT                        1   0   0
-0022 A 0:MOVE_GENERAL               2   5   1
-0023 A 1:LOAD_INT_CONST_SMALL      75   0   8    ; ints[0] = 8
-0024 S 0:UNSAFE_ADD                 3   2   0
-0025 S 0:CONVERT                    4   3   0
-0026   0:EXT                        2   0   0
-0027 S 0:DEREF                      5   4   0
-0028 G 1:MOVE_GENERAL_TO_INT       41   0   5
-0029 A 2:TIER2_RETURN               0  10   1    ; 1 values
+0000 S 0:LOAD_GENERAL_CONSTANT                                0   0   0
+0001 A 1:LOAD_INT64_IMMEDIATE                                75   0  11    ; ints[0] = 11
+0002 A 1:LOAD_INT64_IMMEDIATE                                75   1   0    ; ints[1] = 0
+0003 S 1:BOX_INT64                                           40   1   0
+0004 S 0:SET_ELEMENT                                          0   1   1
+0005 A 1:LOAD_INT64_IMMEDIATE                                75   0  22    ; ints[0] = 22
+0006 A 1:LOAD_INT64_IMMEDIATE                                75   1   1    ; ints[1] = 1
+0007 S 1:BOX_INT64                                           40   1   0
+0008 S 0:SET_ELEMENT                                          0   1   1
+0009 A 1:LOAD_INT64_IMMEDIATE                                75   0  33    ; ints[0] = 33
+0010 A 1:LOAD_INT64_IMMEDIATE                                75   1   2    ; ints[1] = 2
+0011 S 1:BOX_INT64                                           40   1   0
+0012 S 0:SET_ELEMENT                                          0   1   1
+0013 S 0:DEREFERENCE                                          0   0   1
+0014 S 0:ALLOCATE_INDIRECT                                    1   0   3
+0015   0:EXTENSION                                            0   0   0
+0016 S 0:DEREFERENCE                                          2   1   0
+0017 A 1:LOAD_INT64_IMMEDIATE                                75   0   0    ; ints[0] = 0
+0018 S 0:GET_ELEMENT                                          3   2   0
+0019 S 0:ADDRESS                                              4   3   1
+0020 S 0:CONVERT_GENERAL                                      5   4   0
+0021   0:EXTENSION                                            1   0   0
+0022 A 0:MOVE_GENERAL                                         2   5   1
+0023 A 1:LOAD_INT64_IMMEDIATE                                75   0   8    ; ints[0] = 8
+0024 S 0:UNSAFE_ADD                                           3   2   0
+0025 S 0:CONVERT_GENERAL                                      4   3   0
+0026   0:EXTENSION                                            2   0   0
+0027 S 0:DEREFERENCE                                          5   4   0
+0028 S 1:UNBOX_INT64                                         41   0   5
+0029 A 2:RETURN                                               0  10   1    ; 1 values

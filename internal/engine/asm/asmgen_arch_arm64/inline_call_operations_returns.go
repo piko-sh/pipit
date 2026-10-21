@@ -53,6 +53,7 @@ func (*arm64InlineCallOps) emitReturnInlineGuardChecks(e *asmgen.Emitter) {
 	e.Label("ri_no_simple_defer")
 	e.Blank()
 	emitReturnInlineFrameOwnershipGuardsARM64(e, "R8", labelRIFallback)
+	emitReturnInlineByteSliceBarrierGuardARM64(e, "ri", labelRIFallback)
 
 	inst5(e, asmarm64.OperationLogicalShiftRight32Bits, "$24, R0, R1")
 	inst5(e, asmarm64.OperationBitwiseAnd, "$0xFF, R1, R1")
@@ -241,6 +242,7 @@ func (*arm64InlineCallOps) emitReturnInlineClearStringArena(e *asmgen.Emitter) {
 	e.Blank()
 
 	e.Label("ri_str_clear_done")
+	emitReturnInlineClearByteSliceArenaARM64(e, "ri")
 	inst5(e, asmarm64.OperationMove64Bits, "(CF_ARENA_SAVE+0)(R8), R1")
 	inst5(e, asmarm64.OperationMove64Bits, "R1, CTX_ARENA_INT_IDX(R19)")
 	inst5(e, asmarm64.OperationMove64Bits, "(CF_ARENA_SAVE+8)(R8), R1")
@@ -333,6 +335,50 @@ func emitReturnInlineFrameOwnershipGuardsARM64(e *asmgen.Emitter, frameRegister 
 	e.Blank()
 }
 
+// emitReturnInlineByteSliceBarrierGuardARM64 falls back to the Go return when the callee
+// holds byte-slice registers and the write barrier is on, because the inline clear of
+// those slots writes without one.
+//
+// Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
+// Takes prefix (string) which selects the label namespace.
+// Takes fallback (string) which is the label of the Go return path.
+func emitReturnInlineByteSliceBarrierGuardARM64(e *asmgen.Emitter, prefix string, fallback string) {
+	inst5(e, asmarm64.OperationMove64Bits, "CTX_ARENA_SLICEBYTE_IDX(R19), R7")
+	inst5(e, asmarm64.OperationMove64Bits, "(CF_ARENA_SAVE+96)(R8), R9")
+	inst5(e, asmarm64.OperationCompare, "R9, R7")
+	inst5(e, asmarm64.OperationBranchIfLessOrEqualSigned, prefix+"_sb_guard_done")
+	inst5(e, asmarm64.OperationMove64Bits, "$runtime·writeBarrier(SB), R7")
+	inst5(e, asmarm64.OperationMove8BitsUnsigned, "(R7), R7")
+	inst5(e, asmarm64.OperationCompareAndBranchIfNotZero, "R7, "+fallback)
+	e.Label(prefix + "_sb_guard_done")
+	e.Blank()
+}
+
+// emitReturnInlineClearByteSliceArenaARM64 zeroes the callee's byte-slice headers.
+//
+// Takes e (*asmgen.Emitter) which is the assembly emitter to write to.
+// Takes prefix (string) which selects the label namespace.
+func emitReturnInlineClearByteSliceArenaARM64(e *asmgen.Emitter, prefix string) {
+	inst5(e, asmarm64.OperationMove64Bits, "CTX_ARENA_SLICEBYTE_IDX(R19), R3")
+	inst5(e, asmarm64.OperationMove64Bits, "(CF_ARENA_SAVE+96)(R8), R5")
+	inst5(e, asmarm64.OperationSubtract, "R5, R3, R3")
+	inst5(e, asmarm64.OperationCompare, "$0, R3")
+	inst5(e, asmarm64.OperationBranchIfLessOrEqualSigned, prefix+"_sb_clear_done")
+	inst5(e, asmarm64.OperationMove64Bits, "$24, R1")
+	inst5(e, asmarm64.OperationMultiply, "R5, R1, R1")
+	inst5(e, asmarm64.OperationMove64Bits, "CTX_ARENA_SLICEBYTE_SLAB(R19), R6")
+	inst5(e, asmarm64.OperationAdd, "R6, R1, R1")
+	e.Label(prefix + "_sb_clear_loop")
+	inst5(e, asmarm64.OperationMove64Bits, "ZR, (R1)")
+	inst5(e, asmarm64.OperationMove64Bits, "ZR, 8(R1)")
+	inst5(e, asmarm64.OperationMove64Bits, "ZR, 16(R1)")
+	inst5(e, asmarm64.OperationAdd, "$24, R1, R1")
+	inst5(e, asmarm64.OperationSubtract, "$1, R3, R3")
+	inst5(e, asmarm64.OperationCompareAndBranchIfNotZero, "R3, "+prefix+"_sb_clear_loop")
+	e.Label(prefix + "_sb_clear_done")
+	e.Blank()
+}
+
 // emitReturnInlineExitPath emits the ri_fallback label for cases where the return cannot
 // be handled inline.
 //
@@ -378,6 +424,7 @@ func (*arm64InlineCallOps) emitReturnVoidInlineGuardChecks(e *asmgen.Emitter) {
 	e.Label("rvi_no_simple_defer")
 	e.Blank()
 	emitReturnInlineFrameOwnershipGuardsARM64(e, "R8", "rvi_fallback")
+	emitReturnInlineByteSliceBarrierGuardARM64(e, "rvi", "rvi_fallback")
 
 	inst5(e, asmarm64.OperationSubtract, "$1, R4, R21")
 	inst5(e, asmarm64.OperationMove64Bits, "$CALLFRAME_SIZE, R7")
@@ -411,6 +458,7 @@ func (*arm64InlineCallOps) emitReturnVoidInlineClearStringArena(e *asmgen.Emitte
 	e.Blank()
 
 	e.Label("rvi_str_clear_done")
+	emitReturnInlineClearByteSliceArenaARM64(e, "rvi")
 	inst5(e, asmarm64.OperationMove64Bits, "(CF_ARENA_SAVE+0)(R8), R1")
 	inst5(e, asmarm64.OperationMove64Bits, "R1, CTX_ARENA_INT_IDX(R19)")
 	inst5(e, asmarm64.OperationMove64Bits, "(CF_ARENA_SAVE+8)(R8), R1")

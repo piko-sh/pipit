@@ -33,12 +33,12 @@ var pinnedRegisters = map[string]map[string]bool{
 }
 
 var frameSwitchingHandlers = map[string]bool{
-	"dispatchLoop":            true,
-	"handlerCallInline":       true,
-	"handlerCallInlineScalar": true,
-	"handlerCallMethodInline": true,
-	"handlerReturnInline":     true,
-	"handlerReturnVoidInline": true,
+	"dispatchLoop":      true,
+	"handlerCall":       true,
+	"handlerCallScalar": true,
+	"handlerCallMethod": true,
+	"handlerReturn":     true,
+	"handlerReturnVoid": true,
 }
 
 var pinnedRestore = regexp.MustCompile(`^(?:CTX_\w+\((?:R15|R19)\)|-?\d+\((?:SP|RSP)\))$`)

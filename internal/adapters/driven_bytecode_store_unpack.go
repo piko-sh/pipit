@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"reflect"
 
 	"pipit.sh/pipit/internal/codec"
@@ -29,6 +30,7 @@ import (
 	"pipit.sh/pipit/internal/symtab/descriptor"
 
 	"pipit.sh/pipit/internal/isa"
+	"pipit.sh/pipit/internal/logging"
 	"pipit.sh/pipit/internal/symtab"
 
 	"piko.sh/safeconv"
@@ -94,7 +96,7 @@ var (
 // Returns *program.CompiledFileSet which is the reconstructed, verified file set.
 // Returns error when the schema header does not match the current binary, the payload is
 // corrupt, or the bytecode fails verification.
-func LoadCompiledFromBytes(data []byte, registry *symtab.SymbolRegistry) (*program.CompiledFileSet, error) {
+func LoadCompiledFromBytes(ctx context.Context, data []byte, registry *symtab.SymbolRegistry) (*program.CompiledFileSet, error) {
 	if len(data) == 0 {
 		return nil, errors.New("bytecode payload is empty")
 	}
@@ -102,7 +104,6 @@ func LoadCompiledFromBytes(data []byte, registry *symtab.SymbolRegistry) (*progr
 	if err != nil {
 		return nil, fmt.Errorf("unpacking bytecode header: %w", err)
 	}
-	ctx := context.Background()
 	fileSet, err := decodeCompiledFileSet(ctx, payload, registry)
 	if err != nil {
 		return nil, err
@@ -237,7 +238,28 @@ func unpackCompiledFileSet(ctx context.Context, fbFileSet *schemagen.CompiledFil
 		return nil, err
 	}
 
-	return codec.NewCompiledFileSetFromDataWithVars(root, variableInitFunction, entrypoints, initFunctionIndices, slotAllocation, packageVariables), nil
+	namedInterfaces, err := unpackNamedInterfaces(fbFileSet, payloadLen)
+	if err != nil {
+		return nil, err
+	}
+
+	fileSet := codec.NewCompiledFileSetFromDataWithVars(root, variableInitFunction, entrypoints, initFunctionIndices, slotAllocation, packageVariables)
+	fileSet.SetNamedInterfaces(namedInterfaces)
+	reportDroppedReceiverEntries(ctx, cache)
+	return fileSet, nil
+}
+
+// reportDroppedReceiverEntries logs, once per load, how many receiver-method entries were
+// left out because their receiver type could not be rebuilt.
+//
+// Takes cache (*descriptorDecodeCache) which counted the drops during the load.
+func reportDroppedReceiverEntries(ctx context.Context, cache *descriptorDecodeCache) {
+	if cache == nil || cache.droppedReceiverEntries == 0 {
+		return
+	}
+	_, logger := logging.From(ctx)
+	logger.Warn("Loaded bytecode names receiver types this registry cannot build, so calls on those receivers are refused",
+		slog.Int("entries", cache.droppedReceiverEntries))
 }
 
 // unpackEntrypoints reconstructs the entrypoint name-to-index map from its FlatBuffer
@@ -263,76 +285,6 @@ func unpackEntrypoints(fbFileSet *schemagen.CompiledFileSet, payloadLen int) (ma
 		}
 	}
 	return entrypoints, nil
-}
-
-// unpackSlotAllocation reconstructs the per-bank global-store slot reservation counts
-// from their FlatBuffer struct. A nil struct (no reservations were serialised) yields the
-// zero allocation.
-//
-// Takes fbFileSet (*schemagen.CompiledFileSet) which contains the serialised slot
-// allocation.
-//
-// Returns program.SlotAllocation with one count per bank.
-func unpackSlotAllocation(fbFileSet *schemagen.CompiledFileSet) program.SlotAllocation {
-	var slotAllocation program.SlotAllocation
-	if alloc := fbFileSet.SlotAllocation(nil); alloc != nil {
-		slotAllocation[slotBankInt] = alloc.IntCount()
-		slotAllocation[slotBankFloat] = alloc.FloatCount()
-		slotAllocation[slotBankString] = alloc.StringCount()
-		slotAllocation[slotBankBool] = alloc.BoolCount()
-		slotAllocation[slotBankUint] = alloc.UintCount()
-		slotAllocation[slotBankComplex] = alloc.ComplexCount()
-		slotAllocation[slotBankGeneral] = alloc.GeneralCount()
-	}
-	return slotAllocation
-}
-
-// unpackPackageVariables reconstructs the exported package-variable metadata vector,
-// recursively unpacking each entry's optional type descriptor.
-//
-// Takes fbFileSet (*schemagen.CompiledFileSet) which contains the serialised
-// package-variable entries.
-// Takes payloadLen (int) which is the total untrusted payload size in bytes, used to
-// bound the declared entry count.
-// Takes cache (*descriptorDecodeCache) which shares decoded type descriptors across the
-// load.
-//
-// Returns []program.PackageVariableMetadata which holds the reconstructed metadata.
-// Returns error when a serialised type descriptor cannot be unpacked, the declared entry
-// count exceeds the payload size, or a register kind is out of range.
-func unpackPackageVariables(fbFileSet *schemagen.CompiledFileSet, payloadLen int, cache *descriptorDecodeCache) ([]program.PackageVariableMetadata, error) {
-	count, err := boundedCount(fbFileSet.PackageVariablesLength(), payloadLen, "package variables")
-	if err != nil {
-		return nil, err
-	}
-	packageVariables := make([]program.PackageVariableMetadata, 0, count)
-	var fbVar schemagen.PackageVariableEntry
-	for i := range count {
-		if !fbFileSet.PackageVariables(&fbVar, i) {
-			continue
-		}
-		var typeData *descriptor.TypeDescriptorData
-		if td := fbVar.TypeDescriptor(nil); td != nil {
-			value, err := unpackTypeDescriptor(td, 0, payloadLen, cache)
-			if err != nil {
-				return nil, fmt.Errorf("unpacking package-variable type descriptor for %s.%s: %w", mem.String(fbVar.PackagePath()), mem.String(fbVar.Name()), err)
-			}
-			typeData = &value
-		}
-		registerKind, err := validatedRegisterKind(int8(fbVar.RegisterKind()), "package variable")
-		if err != nil {
-			return nil, fmt.Errorf("unpacking package variable %s.%s: %w", mem.String(fbVar.PackagePath()), mem.String(fbVar.Name()), err)
-		}
-		packageVariables = append(packageVariables, program.PackageVariableMetadata{
-			Name:         mem.String(fbVar.Name()),
-			PackagePath:  mem.String(fbVar.PackagePath()),
-			Type:         typeData,
-			RegisterKind: registerKind,
-			RelativeSlot: fbVar.RelativeSlot(),
-			IsIndirect:   fbVar.IsIndirect(),
-		})
-	}
-	return packageVariables, nil
 }
 
 // unpackCompiledFunction reconstructs a CompiledFunction from its FlatBuffer
@@ -368,7 +320,7 @@ func unpackCompiledFunction(
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("bytecode unpack cancelled: %w", err)
 	}
-	data, err := unpackFunctionHeader(fbFunction, registry, payloadLen, cache)
+	data, err := unpackFunctionHeader(ctx, fbFunction, registry, payloadLen, cache)
 	if err != nil {
 		return nil, err
 	}
@@ -378,14 +330,14 @@ func unpackCompiledFunction(
 	if err := unpackFunctionConstantPools(fbFunction, payloadLen, data); err != nil {
 		return nil, err
 	}
-	data.GeneralConstantDescriptors, data.GeneralConstants, err = unpackGeneralConstants(fbFunction, registry, payloadLen, values, cache)
+	data.GeneralConstantDescriptors, data.GeneralConstants, err = unpackGeneralConstants(ctx, fbFunction, registry, payloadLen, values, cache)
 	if err != nil {
 		return nil, err
 	}
-	if err := unpackFunctionTypeTables(fbFunction, registry, payloadLen, cache, data); err != nil {
+	if err := unpackFunctionTypeTables(ctx, fbFunction, registry, payloadLen, cache, data); err != nil {
 		return nil, err
 	}
-	if err := unpackFunctionSiteTables(fbFunction, payloadLen, data); err != nil {
+	if err := unpackFunctionSiteTables(ctx, fbFunction, registry, payloadLen, cache, data); err != nil {
 		return nil, err
 	}
 	unpackChild := func(fbChild *schemagen.CompiledFunction) (*program.CompiledFunction, error) {
@@ -420,7 +372,13 @@ func unpackCompiledFunction(
 // Returns *codec.CompiledFunctionData which holds the header fields, with every other
 // field left at its zero value.
 // Returns error when the signature type cannot be reconstructed.
-func unpackFunctionHeader(fbFunction *schemagen.CompiledFunction, registry *symtab.SymbolRegistry, payloadLen int, cache *descriptorDecodeCache) (*codec.CompiledFunctionData, error) {
+func unpackFunctionHeader(
+	ctx context.Context,
+	fbFunction *schemagen.CompiledFunction,
+	registry *symtab.SymbolRegistry,
+	payloadLen int,
+	cache *descriptorDecodeCache,
+) (*codec.CompiledFunctionData, error) {
 	name := mem.String(fbFunction.Name())
 	sourceFile := mem.String(fbFunction.SourceFile())
 	isVariadic := fbFunction.IsVariadic()
@@ -428,7 +386,7 @@ func unpackFunctionHeader(fbFunction *schemagen.CompiledFunction, registry *symt
 	hasReceiver := fbFunction.HasReceiver()
 	hasRecover := fbFunction.HasRecover()
 
-	signatureReflectType, err := unpackSignatureReflectType(fbFunction, registry, payloadLen, cache)
+	signatureReflectType, err := unpackSignatureReflectType(ctx, fbFunction, registry, payloadLen, cache)
 	if err != nil {
 		return nil, err
 	}
@@ -457,6 +415,7 @@ func unpackFunctionHeader(fbFunction *schemagen.CompiledFunction, registry *symt
 		TypeTableDescriptors:       nil,
 		TypeTableInterfaceMethods:  nil,
 		TypeNames:                  nil,
+		ReceiverMethods:            nil,
 		CallSites:                  nil,
 		UpvalueDescriptors:         nil,
 		Functions:                  nil,
@@ -653,16 +612,26 @@ func unpackComplexConstants(fbFunction *schemagen.CompiledFunction, payloadLen i
 //
 // Returns error when a type cannot be reconstructed or a declared vector length exceeds
 // the payload size.
-func unpackFunctionTypeTables(fbFunction *schemagen.CompiledFunction, registry *symtab.SymbolRegistry, payloadLen int, cache *descriptorDecodeCache, data *codec.CompiledFunctionData) error {
+func unpackFunctionTypeTables(
+	ctx context.Context,
+	fbFunction *schemagen.CompiledFunction,
+	registry *symtab.SymbolRegistry,
+	payloadLen int,
+	cache *descriptorDecodeCache,
+	data *codec.CompiledFunctionData,
+) error {
 	var err error
-	data.TypeTableDescriptors, data.TypeTable, err = unpackTypeTable(fbFunction, registry, payloadLen, cache)
+	data.TypeTableDescriptors, data.TypeTable, err = unpackTypeTable(ctx, fbFunction, registry, payloadLen, cache)
 	if err != nil {
 		return err
 	}
 	if data.TypeTableInterfaceMethods, err = unpackInterfaceMethodSets(fbFunction, payloadLen); err != nil {
 		return err
 	}
-	data.TypeNames, err = unpackTypeNames(fbFunction, registry, payloadLen, cache)
+	if data.TypeNames, err = unpackTypeNames(ctx, fbFunction, registry, payloadLen, cache); err != nil {
+		return err
+	}
+	data.ReceiverMethods, err = unpackReceiverMethods(ctx, fbFunction, registry, payloadLen, cache)
 	return err
 }
 
@@ -671,15 +640,25 @@ func unpackFunctionTypeTables(fbFunction *schemagen.CompiledFunction, registry *
 //
 // Takes fbFunction (*schemagen.CompiledFunction) which is the serialised FlatBuffer
 // function.
+// Takes registry (*symtab.SymbolRegistry) which rebuilds linked calls' type arguments.
 // Takes payloadLen (int) which is the total untrusted payload size in bytes, used to
 // bound every declared vector length.
+// Takes cache (*descriptorDecodeCache) which shares decoded type descriptors across the
+// load.
 // Takes data (*codec.CompiledFunctionData) which receives the tables.
 //
 // Returns error when a declared vector length exceeds the payload size or an entry is
 // malformed.
-func unpackFunctionSiteTables(fbFunction *schemagen.CompiledFunction, payloadLen int, data *codec.CompiledFunctionData) error {
+func unpackFunctionSiteTables(
+	ctx context.Context,
+	fbFunction *schemagen.CompiledFunction,
+	registry *symtab.SymbolRegistry,
+	payloadLen int,
+	cache *descriptorDecodeCache,
+	data *codec.CompiledFunctionData,
+) error {
 	var err error
-	if data.CallSites, err = unpackCallSites(fbFunction, payloadLen); err != nil {
+	if data.CallSites, err = unpackCallSites(ctx, fbFunction, registry, payloadLen, cache); err != nil {
 		return err
 	}
 	if data.UpvalueDescriptors, err = unpackUpvalueDescriptors(fbFunction, payloadLen); err != nil {
@@ -858,6 +837,7 @@ func unpackStructLayoutTable(fbFunction *schemagen.CompiledFunction, payloadLen 
 // Returns error when any constant cannot be reconstructed or the declared count exceeds
 // the payload size.
 func unpackGeneralConstants(
+	ctx context.Context,
 	fbFunction *schemagen.CompiledFunction,
 	registry *symtab.SymbolRegistry,
 	payloadLen int,
@@ -883,7 +863,7 @@ func unpackGeneralConstants(
 			return nil, nil, fmt.Errorf("unpacking general constant descriptor %d: %w", i, err)
 		}
 		descriptors[i] = codec.ImportGeneralConstantDescriptor(data)
-		value, err := budget.reconstruct(data, registry)
+		value, err := budget.reconstruct(ctx, data, registry)
 		if err != nil {
 			return nil, nil, fmt.Errorf("reconstructing general constant %d: %w", i, err)
 		}
@@ -911,6 +891,7 @@ func unpackGeneralConstants(
 // Returns error when any type cannot be reconstructed or the declared count exceeds the
 // payload size.
 func unpackTypeTable(
+	ctx context.Context,
 	fbFunction *schemagen.CompiledFunction,
 	registry *symtab.SymbolRegistry,
 	payloadLen int,
@@ -935,7 +916,7 @@ func unpackTypeTable(
 			return nil, nil, fmt.Errorf("unpacking type descriptor %d: %w", i, err)
 		}
 		descriptors[i] = codec.ImportTypeDescriptor(data)
-		reconstructedType, err := reflectTypeForTable(cache, fbDescriptor.Table().Pos, data, registry)
+		reconstructedType, err := reflectTypeForTable(ctx, cache, fbDescriptor.Table().Pos, data, registry)
 		if err != nil {
 			return nil, nil, fmt.Errorf("reconstructing type %d: %w", i, err)
 		}
@@ -958,7 +939,7 @@ func unpackTypeTable(
 //
 // Returns reflect.Type which is the signature type, or nil when unrecorded.
 // Returns error when the recorded descriptor cannot be rebuilt.
-func unpackSignatureReflectType(fbFunction *schemagen.CompiledFunction, registry *symtab.SymbolRegistry, payloadLen int, cache *descriptorDecodeCache) (reflect.Type, error) {
+func unpackSignatureReflectType(ctx context.Context, fbFunction *schemagen.CompiledFunction, registry *symtab.SymbolRegistry, payloadLen int, cache *descriptorDecodeCache) (reflect.Type, error) {
 	var fbDescriptor schemagen.TypeDescriptor
 	if fbFunction.SignatureTypeDescriptor(&fbDescriptor) == nil {
 		return nil, nil
@@ -967,7 +948,7 @@ func unpackSignatureReflectType(fbFunction *schemagen.CompiledFunction, registry
 	if err != nil {
 		return nil, fmt.Errorf("unpacking signature descriptor: %w", err)
 	}
-	signature, err := reflectTypeForTable(cache, fbDescriptor.Table().Pos, data, registry)
+	signature, err := reflectTypeForTable(ctx, cache, fbDescriptor.Table().Pos, data, registry)
 	if err != nil {
 		return nil, fmt.Errorf("reconstructing signature type: %w", err)
 	}
@@ -990,6 +971,7 @@ func unpackSignatureReflectType(fbFunction *schemagen.CompiledFunction, registry
 // Returns error when a serialised type descriptor exceeds the recursion depth bound or
 // the declared entry count exceeds the payload size.
 func unpackTypeNames(
+	ctx context.Context,
 	fbFunction *schemagen.CompiledFunction,
 	registry *symtab.SymbolRegistry,
 	payloadLen int,
@@ -1017,7 +999,7 @@ func unpackTypeNames(
 		if err != nil {
 			return nil, fmt.Errorf("unpacking type name descriptor %d: %w", i, err)
 		}
-		reconstructedType, err := codec.DescriptorToReflectType(data, registry)
+		reconstructedType, err := codec.DescriptorToReflectType(ctx, data, registry)
 		if err == nil {
 			result[reconstructedType] = name
 		}
@@ -1025,18 +1007,112 @@ func unpackTypeNames(
 	return result, nil
 }
 
+// unpackReceiverMethods reconstructs the receiver method table.
+//
+// An entry whose receiver type cannot be rebuilt is left out and counted on the cache.
+// Its method keeps its other entries, so a call on such a receiver is refused rather than
+// run with the shared body. An entry naming a function outside the function table, or a
+// second entry for the same receiver and method with a different body, marks the payload
+// as corrupt.
+//
+// Takes fbFunction (*schemagen.CompiledFunction) which contains the serialised entries.
+// Takes registry (*symtab.SymbolRegistry) which provides type lookups for runtime
+// reconstruction.
+// Takes payloadLen (int) which is the total untrusted payload size in bytes, used to
+// bound the declared entry count.
+// Takes cache (*descriptorDecodeCache) which shares decoded type descriptors across the
+// load and counts dropped entries.
+//
+// Returns map[program.ReceiverMethodKey]uint16 which maps each method and receiver type
+// to the body to run.
+// Returns error when the declared count exceeds the payload size, a descriptor is
+// malformed, an index is out of range or two entries disagree.
+func unpackReceiverMethods(
+	ctx context.Context,
+	fbFunction *schemagen.CompiledFunction,
+	registry *symtab.SymbolRegistry,
+	payloadLen int,
+	cache *descriptorDecodeCache,
+) (map[program.ReceiverMethodKey]uint16, error) {
+	count, err := boundedCount(fbFunction.ReceiverMethodsLength(), payloadLen, "receiver methods")
+	if err != nil {
+		return nil, err
+	}
+	if count == 0 {
+		return nil, nil
+	}
+	functionCount := fbFunction.FunctionsLength()
+	result := make(map[program.ReceiverMethodKey]uint16, count)
+	var fbEntry schemagen.ReceiverMethodEntry
+	for i := range count {
+		if !fbFunction.ReceiverMethods(&fbEntry, i) {
+			continue
+		}
+		method, target := fbEntry.MethodIndex(), fbEntry.FunctionIndex()
+		if int(method) >= functionCount || int(target) >= functionCount {
+			return nil, fmt.Errorf("%w: receiver method %d names function %d or %d outside a table of %d", errCorruptBytecodePayload, i, method, target, functionCount)
+		}
+		receiverType, err := unpackReceiverType(ctx, &fbEntry, i, registry, payloadLen, cache)
+		if err != nil {
+			return nil, err
+		}
+		if receiverType == nil {
+			continue
+		}
+		key := program.ReceiverMethodKey{Receiver: receiverType, Method: method}
+		if existing, duplicate := result[key]; duplicate && existing != target {
+			return nil, fmt.Errorf("%w: receiver method %d repeats an entry with a different body", errCorruptBytecodePayload, i)
+		}
+		result[key] = target
+	}
+	return result, nil
+}
+
+// unpackReceiverType rebuilds the receiver type of one receiver-method entry.
+//
+// Takes fbEntry (*schemagen.ReceiverMethodEntry) which is the entry.
+// Takes index (int) which is the entry's position, for messages.
+// Takes registry (*symtab.SymbolRegistry) which provides type lookups.
+// Takes payloadLen (int) which is the total untrusted payload size in bytes.
+// Takes cache (*descriptorDecodeCache) which shares decoded descriptors and counts drops.
+//
+// Returns reflect.Type which is the receiver type, or nil when its type cannot be rebuilt
+// (the drop is counted on the cache).
+// Returns error when the descriptor is absent or malformed.
+func unpackReceiverType(ctx context.Context, fbEntry *schemagen.ReceiverMethodEntry, index int, registry *symtab.SymbolRegistry, payloadLen int, cache *descriptorDecodeCache) (reflect.Type, error) {
+	fbTypeDescriptor := fbEntry.ReceiverTypeDescriptor(nil)
+	if fbTypeDescriptor == nil {
+		return nil, fmt.Errorf("%w: receiver method %d has no receiver type", errCorruptBytecodePayload, index)
+	}
+	data, err := unpackTypeDescriptor(fbTypeDescriptor, 0, payloadLen, cache)
+	if err != nil {
+		return nil, fmt.Errorf("unpacking receiver method descriptor %d: %w", index, err)
+	}
+	receiverType, err := codec.DescriptorToReflectType(ctx, data, registry)
+	if err != nil {
+		if cache != nil {
+			cache.droppedReceiverEntries++
+		}
+		return nil, nil
+	}
+	return receiverType, nil
+}
+
 // unpackCallSites reconstructs call sites from their FlatBuffer representation. Only
-// static metadata is deserialised; runtime caches are initialised to their zero values.
+// static metadata is deserialised.
 //
 // Takes fbFunction (*schemagen.CompiledFunction) which contains the serialised call
 // sites.
+// Takes registry (*symtab.SymbolRegistry) which rebuilds linked calls' type arguments.
 // Takes payloadLen (int) which is the total untrusted payload size in bytes, used to
 // bound the declared call-site and argument counts.
+// Takes cache (*descriptorDecodeCache) which shares decoded type descriptors across the
+// load.
 //
 // Returns []codec.CallSiteInternal which holds the reconstructed call sites.
 // Returns error when a declared count exceeds the payload size or a register kind is out
 // of range.
-func unpackCallSites(fbFunction *schemagen.CompiledFunction, payloadLen int) ([]codec.CallSiteInternal, error) {
+func unpackCallSites(ctx context.Context, fbFunction *schemagen.CompiledFunction, registry *symtab.SymbolRegistry, payloadLen int, cache *descriptorDecodeCache) ([]codec.CallSiteInternal, error) {
 	count, err := boundedCount(fbFunction.CallSitesLength(), payloadLen, "call sites")
 	if err != nil {
 		return nil, err
@@ -1050,34 +1126,87 @@ func unpackCallSites(fbFunction *schemagen.CompiledFunction, payloadLen int) ([]
 		if !fbFunction.CallSites(&fbCallSite, i) {
 			continue
 		}
-		arguments, err := unpackVarLocationData(fbCallSite.ArgumentsLength(), func(location *schemagen.VarLocation, index int) bool {
-			return fbCallSite.Arguments(location, index)
-		}, payloadLen)
-		if err != nil {
-			return nil, fmt.Errorf("unpacking call site %d arguments: %w", i, err)
+		if sites[i], err = unpackCallSite(ctx, &fbCallSite, registry, payloadLen, cache); err != nil {
+			return nil, fmt.Errorf("unpacking call site %d: %w", i, err)
 		}
-		returns, err := unpackVarLocationData(fbCallSite.ReturnsLength(), func(location *schemagen.VarLocation, index int) bool {
-			return fbCallSite.Returns(location, index)
-		}, payloadLen)
-		if err != nil {
-			return nil, fmt.Errorf("unpacking call site %d returns: %w", i, err)
-		}
-		data := codec.CallSiteData{
-			FunctionIndex:          fbCallSite.FunctionIndex(),
-			ClosureRegister:        fbCallSite.ClosureRegister(),
-			NativeRegister:         fbCallSite.NativeRegister(),
-			IsClosure:              fbCallSite.IsClosure(),
-			IsNative:               fbCallSite.IsNative(),
-			IsMethod:               fbCallSite.IsMethod(),
-			MethodReceiverRegister: fbCallSite.MethodReceiverRegister(),
-			IsEllipsisSpread:       fbCallSite.IsEllipsisSpread(),
-			BlocksHostGoroutine:    fbCallSite.BlocksHostGoroutine(),
-			Arguments:              arguments,
-			Returns:                returns,
-		}
-		sites[i] = codec.MakeCallSite(data)
 	}
 	return sites, nil
+}
+
+// unpackCallSite reconstructs one call site.
+//
+// Takes fbCallSite (*schemagen.CallSite) which is the serialised call site.
+// Takes registry (*symtab.SymbolRegistry) which rebuilds linked calls' type arguments.
+// Takes payloadLen (int) which bounds the declared counts.
+// Takes cache (*descriptorDecodeCache) which shares decoded type descriptors.
+//
+// Returns the call site and any error.
+func unpackCallSite(ctx context.Context, fbCallSite *schemagen.CallSite, registry *symtab.SymbolRegistry, payloadLen int, cache *descriptorDecodeCache) (codec.CallSiteInternal, error) {
+	arguments, err := unpackVarLocationData(fbCallSite.ArgumentsLength(), func(location *schemagen.VarLocation, index int) bool {
+		return fbCallSite.Arguments(location, index)
+	}, payloadLen)
+	if err != nil {
+		return codec.CallSiteInternal{}, fmt.Errorf("arguments: %w", err)
+	}
+	returns, err := unpackVarLocationData(fbCallSite.ReturnsLength(), func(location *schemagen.VarLocation, index int) bool {
+		return fbCallSite.Returns(location, index)
+	}, payloadLen)
+	if err != nil {
+		return codec.CallSiteInternal{}, fmt.Errorf("returns: %w", err)
+	}
+	staticNames, err := unpackStrings(fbCallSite.ArgumentStaticTypeNamesLength(), fbCallSite.ArgumentStaticTypeNames, payloadLen)
+	if err != nil {
+		return codec.CallSiteInternal{}, fmt.Errorf("static type names: %w", err)
+	}
+	staticStrings, err := unpackStrings(fbCallSite.ArgumentStaticTypeStringsLength(), fbCallSite.ArgumentStaticTypeStrings, payloadLen)
+	if err != nil {
+		return codec.CallSiteInternal{}, fmt.Errorf("static type strings: %w", err)
+	}
+	linkedTypeArgs, err := unpackTypeDescriptorList(fbCallSite.LinkedTypeArgsLength(), fbCallSite.LinkedTypeArgs, "linked type arguments", 0, payloadLen, cache)
+	if err != nil {
+		return codec.CallSiteInternal{}, fmt.Errorf("linked type arguments: %w", err)
+	}
+	site := codec.MakeCallSite(codec.CallSiteData{
+		ArgumentStaticTypeNames:   staticNames,
+		ArgumentStaticTypeStrings: staticStrings,
+		LinkedTypeArgs:            linkedTypeArgs,
+		FunctionIndex:             fbCallSite.FunctionIndex(),
+		ClosureRegister:           fbCallSite.ClosureRegister(),
+		NativeRegister:            fbCallSite.NativeRegister(),
+		IsClosure:                 fbCallSite.IsClosure(),
+		IsNative:                  fbCallSite.IsNative(),
+		IsMethod:                  fbCallSite.IsMethod(),
+		MethodReceiverRegister:    fbCallSite.MethodReceiverRegister(),
+		IsEllipsisSpread:          fbCallSite.IsEllipsisSpread(),
+		BlocksHostGoroutine:       fbCallSite.BlocksHostGoroutine(),
+		Arguments:                 arguments,
+		Returns:                   returns,
+	})
+	if site.LinkedTypeArgs, err = codec.ResolveLinkedTypeArgs(ctx, linkedTypeArgs, registry); err != nil {
+		return codec.CallSiteInternal{}, err
+	}
+	return site, nil
+}
+
+// unpackStrings reconstructs a vector of strings.
+//
+// Takes declared (int) which is the vector's declared length.
+// Takes stringAt (func(int) []byte) which returns the string at an index.
+// Takes payloadLen (int) which is the total untrusted payload size in bytes, used to
+// bound the declared count.
+//
+// Returns []string which holds the strings, nil for an empty vector.
+// Returns error when the declared count exceeds the payload size.
+func unpackStrings(declared int, stringAt func(int) []byte, payloadLen int) ([]string, error) {
+	count, err := boundedCount(declared, payloadLen, "strings")
+	if err != nil || count == 0 {
+		return nil, err
+	}
+	values := make([]string, count)
+	for index := range count {
+		values[index] = mem.String(stringAt(index))
+	}
+	return values, nil
 }
 
 // unpackUpvalueDescriptors reconstructs upvalue descriptors from their FlatBuffer
@@ -1301,13 +1430,14 @@ func unpackTypeDescriptorShared(fbDescriptor *schemagen.TypeDescriptor, depth, p
 		return shared, nil
 	}
 	data := descriptor.TypeDescriptorData{
-		Kind:        safeconv.MustInt8ToUint8(int8(fbDescriptor.Kind())),
-		PackagePath: mem.String(fbDescriptor.PackagePath()),
-		Name:        mem.String(fbDescriptor.Name()),
-		BasicKind:   fbDescriptor.BasicKind(),
-		Length:      fbDescriptor.Length(),
-		Dir:         fbDescriptor.Direction(),
-		IsVariadic:  fbDescriptor.IsVariadic(),
+		Kind:          safeconv.MustInt8ToUint8(int8(fbDescriptor.Kind())),
+		PackagePath:   mem.String(fbDescriptor.PackagePath()),
+		Name:          mem.String(fbDescriptor.Name()),
+		BasicKind:     fbDescriptor.BasicKind(),
+		Length:        fbDescriptor.Length(),
+		Dir:           fbDescriptor.Direction(),
+		IsVariadic:    fbDescriptor.IsVariadic(),
+		BackReference: fbDescriptor.BackReference(),
 	}
 	var err error
 	if data.Elem, err = unpackChildTypeDescriptor(fbDescriptor.Element(nil), depth, payloadLen, cache); err != nil {
@@ -1446,6 +1576,7 @@ func unpackTypeDescriptorFieldData(fbField *schemagen.TypeDescField, depth, payl
 		Name:        mem.String(fbField.Name()),
 		Tag:         mem.String(fbField.Tag()),
 		PackagePath: mem.String(fbField.PackagePath()),
+		Embedded:    fbField.Embedded(),
 	}
 	fbFieldType := fbField.TypeDescriptor(nil)
 	if fbFieldType == nil {

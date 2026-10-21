@@ -31,8 +31,8 @@ func newMapOkFrame(t *testing.T, okRegister uint8) (*VM, *CallFrame, *Registers)
 	t.Helper()
 	builder := newBytecodeBuilder()
 	builder.numRegisters = wideRegCounts(8)
-	builder.Emit(isa.OpMapIndexOkIntInt, 0, 1, 2)
-	builder.body = append(builder.body, isa.NewInstruction(isa.OpExt, okRegister, 0, 0))
+	builder.Emit(isa.OpGetMapInt64Int64Ok, 0, 1, 2)
+	builder.body = append(builder.body, isa.NewInstruction(isa.OpExtension, okRegister, 0, 0))
 	builder.Emit(isa.OpDrillTier1, uint8(isa.SubOpDrillTier2), uint8(isa.SubOpTier2Return), 0)
 
 	vm, frame, registers := newFramedVM(t, builder.build())
@@ -52,7 +52,7 @@ func TestTypedMapReadsReturnTheZeroValueOnAMiss(t *testing.T) {
 	}{
 		{
 			name:    "an integer-keyed integer map",
-			handler: handleMapGetIntInt,
+			handler: handleGetMapInt64Int64,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int]int{7: 42}) },
 			seedKey: func(registers *Registers) { registers.Ints[2] = 7 },
 			check: func(t *testing.T, registers *Registers, hit bool) {
@@ -62,7 +62,7 @@ func TestTypedMapReadsReturnTheZeroValueOnAMiss(t *testing.T) {
 		},
 		{
 			name:    "a named integer key on the reflect path",
-			handler: handleMapGetIntInt,
+			handler: handleGetMapInt64Int64,
 			build:   func() reflect.Value { return reflect.ValueOf(map[namedMapKey]int64{7: 42}) },
 			seedKey: func(registers *Registers) { registers.Ints[2] = 7 },
 			check: func(t *testing.T, registers *Registers, hit bool) {
@@ -72,7 +72,7 @@ func TestTypedMapReadsReturnTheZeroValueOnAMiss(t *testing.T) {
 		},
 		{
 			name:    "a string-keyed integer map",
-			handler: handleMapGetStringInt,
+			handler: handleGetMapStringInt64,
 			build:   func() reflect.Value { return reflect.ValueOf(map[string]int{"k": 42}) },
 			seedKey: func(registers *Registers) { registers.Strings[2] = "k" },
 			check: func(t *testing.T, registers *Registers, hit bool) {
@@ -82,7 +82,7 @@ func TestTypedMapReadsReturnTheZeroValueOnAMiss(t *testing.T) {
 		},
 		{
 			name:    "a string-keyed string map",
-			handler: handleMapGetStringString,
+			handler: handleGetMapStringString,
 			build:   func() reflect.Value { return reflect.ValueOf(map[string]string{"k": "v"}) },
 			seedKey: func(registers *Registers) { registers.Strings[2] = "k" },
 			check: func(t *testing.T, registers *Registers, hit bool) {
@@ -92,7 +92,7 @@ func TestTypedMapReadsReturnTheZeroValueOnAMiss(t *testing.T) {
 		},
 		{
 			name:    "an integer-keyed string map",
-			handler: handleMapGetIntString,
+			handler: handleGetMapInt64String,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int]string{7: "v"}) },
 			seedKey: func(registers *Registers) { registers.Ints[2] = 7 },
 			check: func(t *testing.T, registers *Registers, hit bool) {
@@ -102,7 +102,7 @@ func TestTypedMapReadsReturnTheZeroValueOnAMiss(t *testing.T) {
 		},
 		{
 			name:    "an integer-keyed general map",
-			handler: handleMapGetIntGeneral,
+			handler: handleGetMapInt64General,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int][]string{7: {"v"}}) },
 			seedKey: func(registers *Registers) { registers.Ints[2] = 7 },
 			check: func(t *testing.T, registers *Registers, hit bool) {
@@ -113,7 +113,7 @@ func TestTypedMapReadsReturnTheZeroValueOnAMiss(t *testing.T) {
 		},
 		{
 			name:    "a string-keyed general map",
-			handler: handleMapGetStringGeneral,
+			handler: handleGetMapStringGeneral,
 			build:   func() reflect.Value { return reflect.ValueOf(map[string][]string{"k": {"v"}}) },
 			seedKey: func(registers *Registers) { registers.Strings[2] = "k" },
 			check: func(t *testing.T, registers *Registers, hit bool) {
@@ -161,7 +161,7 @@ func TestTypedMapCommaOkWritesThePresenceBit(t *testing.T) {
 	}{
 		{
 			name:    "an integer-keyed integer map",
-			handler: handleMapIndexOkIntInt,
+			handler: handleGetMapInt64Int64Ok,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int]int{7: 42}) },
 			seedKey: func(registers *Registers, present bool) {
 				registers.Ints[2] = map[bool]int64{true: 7, false: 999}[present]
@@ -169,7 +169,7 @@ func TestTypedMapCommaOkWritesThePresenceBit(t *testing.T) {
 		},
 		{
 			name:    "an int64-keyed int64 map",
-			handler: handleMapIndexOkIntInt,
+			handler: handleGetMapInt64Int64Ok,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int64]int64{7: 42}) },
 			seedKey: func(registers *Registers, present bool) {
 				registers.Ints[2] = map[bool]int64{true: 7, false: 999}[present]
@@ -177,7 +177,7 @@ func TestTypedMapCommaOkWritesThePresenceBit(t *testing.T) {
 		},
 		{
 			name:    "a named integer key on the reflect path",
-			handler: handleMapIndexOkIntInt,
+			handler: handleGetMapInt64Int64Ok,
 			build:   func() reflect.Value { return reflect.ValueOf(map[namedMapKey]int64{7: 42}) },
 			seedKey: func(registers *Registers, present bool) {
 				registers.Ints[2] = map[bool]int64{true: 7, false: 999}[present]
@@ -185,7 +185,7 @@ func TestTypedMapCommaOkWritesThePresenceBit(t *testing.T) {
 		},
 		{
 			name:    "a string-keyed integer map",
-			handler: handleMapIndexOkStringInt,
+			handler: handleGetMapStringInt64Ok,
 			build:   func() reflect.Value { return reflect.ValueOf(map[string]int{"k": 42}) },
 			seedKey: func(registers *Registers, present bool) {
 				registers.Strings[2] = map[bool]string{true: "k", false: "absent"}[present]
@@ -193,7 +193,7 @@ func TestTypedMapCommaOkWritesThePresenceBit(t *testing.T) {
 		},
 		{
 			name:    "a string-keyed string map",
-			handler: handleMapIndexOkStringString,
+			handler: handleGetMapStringStringOk,
 			build:   func() reflect.Value { return reflect.ValueOf(map[string]string{"k": "v"}) },
 			seedKey: func(registers *Registers, present bool) {
 				registers.Strings[2] = map[bool]string{true: "k", false: "absent"}[present]
@@ -201,7 +201,7 @@ func TestTypedMapCommaOkWritesThePresenceBit(t *testing.T) {
 		},
 		{
 			name:    "an integer-keyed string map",
-			handler: handleMapIndexOkIntString,
+			handler: handleGetMapInt64StringOk,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int]string{7: "v"}) },
 			seedKey: func(registers *Registers, present bool) {
 				registers.Ints[2] = map[bool]int64{true: 7, false: 999}[present]
@@ -209,7 +209,7 @@ func TestTypedMapCommaOkWritesThePresenceBit(t *testing.T) {
 		},
 		{
 			name:    "an integer-keyed general map",
-			handler: handleMapIndexOkIntGeneral,
+			handler: handleGetMapInt64GeneralOk,
 			build:   func() reflect.Value { return reflect.ValueOf(map[int][]string{7: {"v"}}) },
 			seedKey: func(registers *Registers, present bool) {
 				registers.Ints[2] = map[bool]int64{true: 7, false: 999}[present]
@@ -217,7 +217,7 @@ func TestTypedMapCommaOkWritesThePresenceBit(t *testing.T) {
 		},
 		{
 			name:    "a string-keyed general map",
-			handler: handleMapIndexOkStringGeneral,
+			handler: handleGetMapStringGeneralOk,
 			build:   func() reflect.Value { return reflect.ValueOf(map[string][]string{"k": {"v"}}) },
 			seedKey: func(registers *Registers, present bool) {
 				registers.Strings[2] = map[bool]string{true: "k", false: "absent"}[present]
@@ -261,7 +261,7 @@ func TestTypedMapWritesStoreThroughTheDeclaredKeyType(t *testing.T) {
 		registers.Ints[1] = 7
 		registers.Ints[2] = 42
 
-		require.Equal(t, opContinue, handleMapSetIntInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetMapInt64Int64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, 42, target[7])
 	})
 
@@ -273,7 +273,7 @@ func TestTypedMapWritesStoreThroughTheDeclaredKeyType(t *testing.T) {
 		registers.Ints[1] = 7
 		registers.Ints[2] = 42
 
-		require.Equal(t, opContinue, handleMapSetIntInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetMapInt64Int64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, int64(42), target[7])
 	})
 
@@ -285,7 +285,7 @@ func TestTypedMapWritesStoreThroughTheDeclaredKeyType(t *testing.T) {
 		registers.Strings[1] = "k"
 		registers.Ints[2] = 42
 
-		require.Equal(t, opContinue, handleMapSetStringInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetMapStringInt64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, 42, target["k"])
 	})
 
@@ -297,7 +297,7 @@ func TestTypedMapWritesStoreThroughTheDeclaredKeyType(t *testing.T) {
 		registers.Strings[1] = "k"
 		registers.Strings[2] = "v"
 
-		require.Equal(t, opContinue, handleMapSetStringString(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetMapStringString(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, "v", target["k"])
 	})
 
@@ -309,7 +309,7 @@ func TestTypedMapWritesStoreThroughTheDeclaredKeyType(t *testing.T) {
 		registers.Ints[1] = 7
 		registers.Strings[2] = "v"
 
-		require.Equal(t, opContinue, handleMapSetIntString(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetMapInt64String(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, "v", target[7])
 	})
 
@@ -321,7 +321,7 @@ func TestTypedMapWritesStoreThroughTheDeclaredKeyType(t *testing.T) {
 		registers.Ints[1] = 7
 		registers.General[2] = reflect.ValueOf([]string{"v"})
 
-		require.Equal(t, opContinue, handleMapSetIntGeneral(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetMapInt64General(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, []string{"v"}, target[7])
 	})
 
@@ -333,7 +333,7 @@ func TestTypedMapWritesStoreThroughTheDeclaredKeyType(t *testing.T) {
 		registers.Strings[1] = "k"
 		registers.General[2] = reflect.ValueOf([]string{"v"})
 
-		require.Equal(t, opContinue, handleMapSetStringGeneral(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetMapStringGeneral(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, []string{"v"}, target["k"])
 	})
 
@@ -345,7 +345,7 @@ func TestTypedMapWritesStoreThroughTheDeclaredKeyType(t *testing.T) {
 		registers.Ints[1] = 7
 		registers.Ints[2] = 42
 
-		require.Equal(t, opContinue, handleMapSetIntInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleSetMapInt64Int64(vm, frame, registers, op(0, 1, 2)))
 		require.Len(t, target, 1)
 		require.Equal(t, 42, target[7])
 	})
@@ -362,7 +362,7 @@ func TestTypedMapAccumulationAddsToTheExistingValue(t *testing.T) {
 		registers.Ints[1] = 7
 		registers.Ints[2] = 5
 
-		require.Equal(t, opContinue, handleMapAddIntInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAddToMapInt64Int64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, 15, target[7])
 	})
 
@@ -374,7 +374,7 @@ func TestTypedMapAccumulationAddsToTheExistingValue(t *testing.T) {
 		registers.Ints[1] = 7
 		registers.Ints[2] = 5
 
-		require.Equal(t, opContinue, handleMapAddIntInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAddToMapInt64Int64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, 5, target[7], "an absent key accumulates onto the zero value")
 	})
 
@@ -386,7 +386,7 @@ func TestTypedMapAccumulationAddsToTheExistingValue(t *testing.T) {
 		registers.Strings[1] = "k"
 		registers.Ints[2] = 5
 
-		require.Equal(t, opContinue, handleMapAddStringInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAddToMapStringInt64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, 15, target["k"])
 	})
 
@@ -398,7 +398,7 @@ func TestTypedMapAccumulationAddsToTheExistingValue(t *testing.T) {
 		registers.Strings[1] = "new"
 		registers.Ints[2] = 5
 
-		require.Equal(t, opContinue, handleMapAddStringInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAddToMapStringInt64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, 5, target["new"])
 	})
 
@@ -410,7 +410,7 @@ func TestTypedMapAccumulationAddsToTheExistingValue(t *testing.T) {
 		registers.Ints[1] = 7
 		registers.Ints[2] = -4
 
-		require.Equal(t, opContinue, handleMapAddIntInt(vm, frame, registers, op(0, 1, 2)))
+		require.Equal(t, opContinue, handleAddToMapInt64Int64(vm, frame, registers, op(0, 1, 2)))
 		require.Equal(t, 6, target[7])
 	})
 }
@@ -422,12 +422,12 @@ func TestTypedMapHandlersRefuseANonMapRegister(t *testing.T) {
 		handler opcodeHandler
 		name    string
 	}{
-		{name: "the integer to integer read", handler: handleMapGetIntInt},
-		{name: "the string to integer read", handler: handleMapGetStringInt},
-		{name: "the string to string read", handler: handleMapGetStringString},
-		{name: "the integer to string read", handler: handleMapGetIntString},
-		{name: "the integer to general read", handler: handleMapGetIntGeneral},
-		{name: "the string to general read", handler: handleMapGetStringGeneral},
+		{name: "the integer to integer read", handler: handleGetMapInt64Int64},
+		{name: "the string to integer read", handler: handleGetMapStringInt64},
+		{name: "the string to string read", handler: handleGetMapStringString},
+		{name: "the integer to string read", handler: handleGetMapInt64String},
+		{name: "the integer to general read", handler: handleGetMapInt64General},
+		{name: "the string to general read", handler: handleGetMapStringGeneral},
 	}
 
 	for _, tt := range readers {
@@ -447,10 +447,10 @@ func TestTypedMapHandlersRefuseANonMapRegister(t *testing.T) {
 		handler opcodeHandler
 		name    string
 	}{
-		{name: "the integer to integer write", handler: handleMapSetIntInt},
-		{name: "the string to integer write", handler: handleMapSetStringInt},
-		{name: "the string to string write", handler: handleMapSetStringString},
-		{name: "the integer to string write", handler: handleMapSetIntString},
+		{name: "the integer to integer write", handler: handleSetMapInt64Int64},
+		{name: "the string to integer write", handler: handleSetMapStringInt64},
+		{name: "the string to string write", handler: handleSetMapStringString},
+		{name: "the integer to string write", handler: handleSetMapInt64String},
 	}
 
 	for _, tt := range writers {

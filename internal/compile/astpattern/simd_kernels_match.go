@@ -302,11 +302,11 @@ func emitSimdKernelByKind(ctx context.Context, c patterns.Emitter, match simdKer
 	case simdKernelDotProductFloat64:
 		return emitSimdDotProductFloat64(c, match)
 	case simdKernelSumSliceFloat64:
-		return emitSimdSumSliceFloat64(c, match)
+		return emitSimdSumFloat64(c, match)
 	case simdKernelAddSliceFloat64:
-		return emitSimdAddSliceFloat64(c, match)
+		return emitSimdAddFloat64(c, match)
 	case simdKernelScaleSliceFloat64:
-		return emitSimdScaleSliceFloat64(ctx, c, match)
+		return emitSimdScaleFloat64(ctx, c, match)
 	default:
 	}
 	return program.VarLocation{}, false, nil

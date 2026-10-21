@@ -294,7 +294,10 @@ func (s *Service) compileOrderedPackages(
 			}
 			continue
 		}
-		s.recordCompiledPackage(pkg, result, &compiled, crossPackageMethods)
+		if recordErr := s.recordCompiledPackage(pkg, result, &compiled, crossPackageMethods); recordErr != nil {
+			problems = append(problems, recordErr)
+			failed[importPath] = struct{}{}
+		}
 	}
 
 	return compiled, fault.JoinProblems(problems)
@@ -308,7 +311,9 @@ func (s *Service) compileOrderedPackages(
 // Takes result (*packageCompileResult) which is what it compiled to.
 // Takes compiled (*orderedPackages) which collects the program.
 // Takes crossPackageMethods (map[string]uint16) which collects the methods.
-func (s *Service) recordCompiledPackage(pkg *parsedPackage, result *packageCompileResult, compiled *orderedPackages, crossPackageMethods map[string]uint16) {
+//
+// Returns error when the registry rejects a non-main package's exported types.
+func (s *Service) recordCompiledPackage(pkg *parsedPackage, result *packageCompileResult, compiled *orderedPackages, crossPackageMethods map[string]uint16) error {
 	compiled.bindings = append(compiled.bindings, debug.PackageBinding{
 		Package:         result.typesPackage,
 		FunctionTable:   result.functionTable,
@@ -320,12 +325,12 @@ func (s *Service) recordCompiledPackage(pkg *parsedPackage, result *packageCompi
 	compiled.lastFunctionTable = result.functionTable
 
 	if pkg.packageName != mainPackageName {
-		s.bridgePackageExports(pkg.importPath, result)
-		return
+		return s.bridgePackageExports(pkg.importPath, result)
 	}
 	publishExternalMethods(s.globals, result.rootFunction)
 	compiled.mainFunctionTable = make(map[string]uint16, len(result.functionTable))
 	maps.Copy(compiled.mainFunctionTable, result.functionTable)
+	return nil
 }
 
 // parseAndFilterFiles parses the source files the interpreter compiles, in name order. A
@@ -360,8 +365,8 @@ func (s *Service) parseAndFilterFiles(ctx context.Context, sources map[string]st
 //
 // Returns []*ast.File which are the included files that parsed.
 // Returns error which joins one error per file whose build constraints are malformed or
-// which does not parse, each naming its file, for the caller to wrap with
-// fault.ErrParse; or which wraps fault.ErrExecutionCancelled when ctx ends.
+// which does not parse, each naming its file, for the caller to wrap with fault.ErrParse;
+// or which wraps fault.ErrExecutionCancelled when ctx ends.
 func (s *Service) parseSelectedFiles(ctx context.Context, sources map[string]string) ([]*ast.File, error) {
 	matcher := s.fileMatcher()
 	files := make([]*ast.File, 0, len(sources))
@@ -388,8 +393,8 @@ func (s *Service) parseSelectedFiles(ctx context.Context, sources map[string]str
 	return files, problems.join(errTooManyFileErrors)
 }
 
-// fileMatcher returns a matcher for the host platform with the interp tag and
-// configured build tags.
+// fileMatcher returns a matcher for the host platform with the interp tag and configured
+// build tags.
 //
 // Returns *buildfilter.Matcher which decides each file.
 func (s *Service) fileMatcher() *buildfilter.Matcher {
@@ -406,8 +411,8 @@ func (s *Service) fileMatcher() *buildfilter.Matcher {
 // Takes src ([]byte) which is the file's content.
 //
 // Returns bool which is true when the file is compiled.
-// Returns error which wraps fault.ErrParse when the build constraints are malformed,
-// the file's header cannot be read, or a test file uses cgo.
+// Returns error which wraps fault.ErrParse when the build constraints are malformed, the
+// file's header cannot be read, or a test file uses cgo.
 func (s *Service) MatchFile(name string, src []byte) (bool, error) {
 	matched, err := s.fileMatcher().Match(name, src)
 	if err != nil {
@@ -516,6 +521,17 @@ func (s *Service) optimisations() passes.Options {
 	return passes.DefaultOptions()
 }
 
+// optimisationsFor selects optimisations for one compilation attempt.
+//
+// Returns the passes.Options for the compile's program pipeline.
+func (s *Service) optimisationsFor(ctx context.Context) passes.Options {
+	options := s.optimisations()
+	if arenaPromotionOff(ctx) {
+		options.ArenaPromotion = false
+	}
+	return options
+}
+
 // executeInitFunction runs a single init function in its own VM, ensuring the arena is
 // released on init function exit rather than when the caller returns.
 //
@@ -527,18 +543,22 @@ func (s *Service) optimisations() passes.Options {
 func (s *Service) executeInitFunction(ctx context.Context, rootFunction *program.CompiledFunction, initFunction *program.CompiledFunction) (err error) {
 	defer engine.RecoverArenaBudgetError(&err)
 	vm, cancelExecution := s.newExecutionVM(ctx, engine.DebugRoleInit)
+	defer vm.Recycle()
 	defer cancelExecution(fault.ErrMainReturned)
 	defer s.recordCost(vm)
 	vm.BindFileSet(program.ExportFunctions(rootFunction), rootFunction)
-	vm.EnsureCallStack()
+	vm.EnsureOwnedCallStack(initFunction)
 	defer vm.ReleaseArena()
 	defer vm.FinishWatcher()
 	vm.PushFrame(initFunction)
-	if _, runErr := vm.RunGuarded(0); runErr != nil {
+	if _, runErr := vm.RunDispatchedGuarded(0); runErr != nil {
 		return fmt.Errorf("init: %w", runErr)
 	}
 	if joinErr := vm.JoinSpawnedGoroutines(); joinErr != nil {
 		return fmt.Errorf("init: %w", joinErr)
+	}
+	if info := vm.TakeGoroutinePanic(); info != nil {
+		return fmt.Errorf("init: %w", engine.NewGoroutinePanicError(info.Value()))
 	}
 	vm.MaterialiseGlobalStrings()
 	return nil
@@ -563,7 +583,7 @@ func (s *Service) evalExpr(ctx context.Context, code string) (any, error) {
 	}
 
 	info := frontend.NewTypesInfo()
-	if _, err := s.checkPackageTypes(mainPackageName, []*ast.File{file}, info, typeCheckOptions{interpretedPaths: nil, allowUnusedImports: false}); err != nil {
+	if _, err := s.checkPackageTypes(ctx, mainPackageName, []*ast.File{file}, info, typeCheckOptions{interpretedPaths: nil, allowUnusedImports: false}); err != nil {
 		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, err)
 	}
 
@@ -599,7 +619,7 @@ func (s *Service) doEvalFile(ctx context.Context, file *ast.File) (any, error) {
 	lastExpr, hasResult := s.rewriteLastExprStmt(file)
 
 	info := frontend.NewTypesInfo()
-	if _, err := s.checkPackageTypes(mainPackageName, []*ast.File{file}, info, typeCheckOptions{interpretedPaths: nil, allowUnusedImports: false}); err != nil {
+	if _, err := s.checkPackageTypes(ctx, mainPackageName, []*ast.File{file}, info, typeCheckOptions{interpretedPaths: nil, allowUnusedImports: false}); err != nil {
 		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, err)
 	}
 
@@ -652,15 +672,18 @@ func (s *Service) compileAndRunVarInits(ctx context.Context, c *compile.Compiler
 
 	vm, cancelExecution := s.newExecutionVM(ctx, engine.DebugRoleVarInit)
 	defer cancelExecution(fault.ErrMainReturned)
-	vm.EnsureCallStack()
+	vm.EnsureOwnedCallStack(variableInitialisationFunction)
 	defer vm.ReleaseArena()
 	defer vm.FinishWatcher()
 	vm.PushFrame(variableInitialisationFunction)
-	if _, runErr := vm.RunGuarded(0); runErr != nil {
+	if _, runErr := vm.RunDispatchedGuarded(0); runErr != nil {
 		return fmt.Errorf(errVarinitFmt, runErr)
 	}
 	if joinErr := vm.JoinSpawnedGoroutines(); joinErr != nil {
 		return fmt.Errorf(errVarinitFmt, joinErr)
+	}
+	if info := vm.TakeGoroutinePanic(); info != nil {
+		return fmt.Errorf(errVarinitFmt, engine.NewGoroutinePanicError(info.Value()))
 	}
 	vm.MaterialiseGlobalStrings()
 	return nil
@@ -668,16 +691,13 @@ func (s *Service) compileAndRunVarInits(ctx context.Context, c *compile.Compiler
 
 // newTypesConfig creates a types.Config for type checking.
 //
-// The nil check matters: s.symbols is a concrete pointer, so handing it straight to an
-// importer interface would produce a non-nil interface wrapping a nil pointer, and the
-// checker would call through it.
-//
-// Returns *types.Config configured with the service's symbol importer.
-func (s *Service) newTypesConfig() *types.Config {
+// Returns *types.Config which uses the service's symbol importer to synthesise packages
+// under ctx.
+func (s *Service) newTypesConfig(ctx context.Context) *types.Config {
 	if s.symbols == nil {
 		return frontend.NewTypesConfig(nil)
 	}
-	return frontend.NewTypesConfig(s.symbols)
+	return frontend.NewTypesConfig(s.symbols.Importer(ctx))
 }
 
 // evalMixed handles code that mixes declarations (func, var, type, const) with executable
@@ -770,7 +790,7 @@ func (s *Service) compileExpression(ctx context.Context, code string) (*program.
 	}
 
 	info := frontend.NewTypesInfo()
-	if _, err := s.checkPackageTypes(mainPackageName, []*ast.File{file}, info, typeCheckOptions{interpretedPaths: nil, allowUnusedImports: false}); err != nil {
+	if _, err := s.checkPackageTypes(ctx, mainPackageName, []*ast.File{file}, info, typeCheckOptions{interpretedPaths: nil, allowUnusedImports: false}); err != nil {
 		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, err)
 	}
 
@@ -801,7 +821,7 @@ func (s *Service) compileFile(ctx context.Context, file *ast.File) (*program.Com
 	lastExpr, hasResult := s.rewriteLastExprStmt(file)
 
 	info := frontend.NewTypesInfo()
-	if _, err := s.checkPackageTypes(mainPackageName, []*ast.File{file}, info, typeCheckOptions{interpretedPaths: nil, allowUnusedImports: false}); err != nil {
+	if _, err := s.checkPackageTypes(ctx, mainPackageName, []*ast.File{file}, info, typeCheckOptions{interpretedPaths: nil, allowUnusedImports: false}); err != nil {
 		return nil, fmt.Errorf(fault.ErrChainFmt, fault.ErrTypeCheck, err)
 	}
 

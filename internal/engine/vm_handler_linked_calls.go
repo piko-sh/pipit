@@ -52,8 +52,9 @@ func handleCallLinkedReflect(vm *VM, registers *Registers, site *program.CallSit
 		return opPanicError
 	}
 
-	regularArgs := buildReflectArgs(vm, registers, site, sibling)
-	defer releaseReflectValueBuffer(regularArgs)
+	regularArgs, regularArgsHolder := buildReflectArgs(vm, registers, site, sibling)
+	defer releaseReflectValueBuffer(regularArgsHolder)
+	unwrapLinkedArgumentAdapters(regularArgs)
 	arguments := make([]reflect.Value, 0, len(site.LinkedTypeArgs)+len(regularArgs))
 	for _, typeArgument := range site.LinkedTypeArgs {
 		arguments = append(arguments, reflect.ValueOf(typeArgument))
@@ -65,10 +66,12 @@ func handleCallLinkedReflect(vm *VM, registers *Registers, site *program.CallSit
 		return opPanicError
 	}
 
-	results, err := safeInvokeLinkedSibling(sibling, arguments)
-	if err != nil {
-		vm.evalError = err
-		return opPanicError
+	results, panicValue, handled := dispatchLinkedIntrinsic(vm, site, sibling, regularArgs)
+	if !handled {
+		results, panicValue = safeInvokeLinkedSibling(sibling, arguments)
+	}
+	if panicValue != nil {
+		return raiseNativePanicAsInterpreted(vm, panicValue)
 	}
 
 	nResults := len(results)
@@ -80,26 +83,39 @@ func handleCallLinkedReflect(vm *VM, registers *Registers, site *program.CallSit
 	return opContinue
 }
 
+// unwrapLinkedArgumentAdapters replaces each interface adapter among a linked call's
+// arguments with the script value it wraps.
+//
+// Takes arguments ([]reflect.Value) which are rewritten in place.
+func unwrapLinkedArgumentAdapters(arguments []reflect.Value) {
+	for index, argument := range arguments {
+		inner := argument
+		if inner.IsValid() && inner.Kind() == reflect.Interface && !inner.IsNil() {
+			inner = inner.Elem()
+		}
+		if unwrapped := unwrapAdapterUnderlying(inner); unwrapped != inner {
+			arguments[index] = unwrapped
+		}
+	}
+}
+
 // safeInvokeLinkedSibling invokes the sibling under a recover guard.
 //
-// reflect.Value.Call panics on shape mismatch (wrong arity, assignable-to drift, variadic
-// disagreement). Recovering here lets the VM surface a structured runtime error instead
-// of crashing the host process.
+// A panic in the sibling is the generic function's own panic (rand.N with a bound that is
+// not positive) or reflect.Value.Call's on a shape mismatch. Either is returned to be
+// raised in the program, as a native callee's panic is, so a deferred recover sees it.
 //
 // Takes sibling (reflect.Value) which is the function to invoke.
 // Takes arguments ([]reflect.Value) which are the fully-built args.
 //
-// Returns the result slice plus any recovered panic wrapped as an error with the
-// errLinkedSiblingPanic sentinel.
-func safeInvokeLinkedSibling(sibling reflect.Value, arguments []reflect.Value) (results []reflect.Value, err error) {
+// Returns the result slice, or the recovered panic value.
+func safeInvokeLinkedSibling(sibling reflect.Value, arguments []reflect.Value) (results []reflect.Value, panicValue any) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			results = nil
-			err = fmt.Errorf("%w: %v", errLinkedSiblingPanic, recovered)
+			results, panicValue = nil, recovered
 		}
 	}()
-	results = sibling.Call(arguments)
-	return results, nil
+	return sibling.Call(arguments), nil
 }
 
 // validateLinkedCallShape rejects argument-count mismatches between the prepared call

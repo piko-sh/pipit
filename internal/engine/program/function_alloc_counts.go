@@ -94,7 +94,7 @@ type TypedSlabCounts struct {
 	Bytes int
 
 	// IntBacking is the budget for arena-routed []int64 storage (make([]int64, ...) +
-	// append-grow). Populated from isa.SubOpMakeSliceInt counts.
+	// append-grow). Populated from isa.SubOpMakeSliceInt64 counts.
 	IntBacking int
 
 	// FloatBacking is the budget for arena-routed []float64 storage.
@@ -123,8 +123,8 @@ type TypedSlabCounts struct {
 	// maxFrameStackPreSize.
 	FrameStack int
 
-	// IntBoxes is the int64 box-slab slot budget. Charged by opPackInterface (registerInt
-	// source) and opPackTyped (Int* destinations).
+	// IntBoxes is the int64 box-slab slot budget. Charged by opBoxAsInterface (registerInt
+	// source) and opBoxAsType (Int* destinations).
 	IntBoxes int
 
 	// UintBoxes is the uint64 box-slab slot budget.
@@ -149,9 +149,6 @@ type TypedSlabCounts struct {
 	UpvalueReferences int
 }
 
-// Precomputed per-frame allocation counts, split out of register_arena.go so the arena
-// file declares methods on the arena only.
-
 // EnsurePrecomputedAllocCounts lazily populates the per-function alloc cache. Idempotent
 // and safe to call concurrently - the cache fields are only ever transitioned from zero
 // to populated, and any torn read just falls through to the (correct) lazy path on the
@@ -174,18 +171,18 @@ func (compiledFunction *CompiledFunction) EnsurePrecomputedAllocCounts() {
 //
 // Returns the equivalent TypedSlabCounts.
 func ArenaCountsFromNumRegs(numRegs [isa.NumRegisterKinds]uint32) TypedSlabCounts {
-	return TypedSlabCounts{Ints: int(numRegs[isa.RegisterInt]),
-		Floats:            int(numRegs[isa.RegisterFloat]),
+	return TypedSlabCounts{Ints: int(numRegs[isa.RegisterInt64]),
+		Floats:            int(numRegs[isa.RegisterFloat64]),
 		Strings:           int(numRegs[isa.RegisterString]),
 		Generals:          int(numRegs[isa.RegisterGeneral]),
 		Bools:             int(numRegs[isa.RegisterBool]),
-		Uints:             int(numRegs[isa.RegisterUint]),
-		Complexes:         int(numRegs[isa.RegisterComplex]),
-		SlicesInts:        int(numRegs[isa.RegisterSliceInt]),
-		SlicesFloats:      int(numRegs[isa.RegisterSliceFloat]),
+		Uints:             int(numRegs[isa.RegisterUint64]),
+		Complexes:         int(numRegs[isa.RegisterComplex128]),
+		SlicesInts:        int(numRegs[isa.RegisterSliceInt64]),
+		SlicesFloats:      int(numRegs[isa.RegisterSliceFloat64]),
 		SlicesStrings:     int(numRegs[isa.RegisterSliceString]),
 		SlicesBools:       int(numRegs[isa.RegisterSliceBool]),
-		SlicesUints:       int(numRegs[isa.RegisterSliceUint]),
+		SlicesUints:       int(numRegs[isa.RegisterSliceUint64]),
 		SlicesBytes:       int(numRegs[isa.RegisterSliceByte]),
 		Bytes:             0,
 		IntBacking:        0,

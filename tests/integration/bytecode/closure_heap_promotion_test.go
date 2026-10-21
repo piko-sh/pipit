@@ -207,9 +207,9 @@ func TestEmitIndirectReadGeneralReturnsLiveView(t *testing.T) {
 	require.Equal(t, isa.RegisterGeneral, out.Kind,
 		"indirect read of a registerGeneral local must materialise into the general bank")
 	require.Len(t, c.Function.Body, bodyLenBefore+1,
-		"the read must emit exactly one opDeref instruction (no unpack-interface follow-up needed for general-kind values)")
+		"the read must emit exactly one opDereference instruction (no unpack-interface follow-up needed for general-kind values)")
 	last := c.Function.Body[len(c.Function.Body)-1]
-	require.Equal(t, isa.OpDeref, last.Op)
+	require.Equal(t, isa.OpDereference, last.Op)
 	require.Equal(t, uint8(0), last.C,
 		"general-kind indirect reads return a live view so subsequent field/element writes through the receiver propagate to the heap; the snapshot copy that breaks return-value aliasing is emitted explicitly in compileReturnExprs, not here")
 }
@@ -223,15 +223,15 @@ func TestEmitIndirectReadIntEmitsDerefAndUnpack(t *testing.T) {
 		Register:     0,
 		Kind:         isa.RegisterGeneral,
 		IsIndirect:   true,
-		OriginalKind: isa.RegisterInt,
+		OriginalKind: isa.RegisterInt64,
 	}
 	bodyLenBefore := len(c.Function.Body)
 	_, err := c.EmitIndirectRead(t.Context(), location)
 	require.NoError(t, err)
 	require.Len(t, c.Function.Body, bodyLenBefore+2,
-		"int-kind reads emit opDeref + opUnpackInterface so the value lands in the typed int bank")
+		"int-kind reads emit opDereference + opUnboxFromInterface so the value lands in the typed int bank")
 	derefInstruction := c.Function.Body[bodyLenBefore]
-	require.Equal(t, isa.OpDeref, derefInstruction.Op)
+	require.Equal(t, isa.OpDereference, derefInstruction.Op)
 	require.Equal(t, uint8(0), derefInstruction.C,
 		"typed-bank reads do not need the snapshot flag because the subsequent unpack-interface op captures the value into a register, eliminating any aliasing window")
 }

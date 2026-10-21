@@ -90,9 +90,9 @@ func TestNativeHostWatchdog(t *testing.T) {
 
 func exerciseHostWatchdog(t *testing.T, parent, mode string) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	group, err := newGroup(parent, Limits{})
+	group, err := newGroup(t.Context(), parent, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func exerciseHostWatchdog(t *testing.T, parent, mode string) {
 		defer invalid.Close()
 		hostIdentity = invalid
 	}
-	workerGroup, err := group.newChild(Limits{})
+	workerGroup, err := group.newChild(t.Context(), Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func exerciseHostWatchdog(t *testing.T, parent, mode string) {
 		t.Fatal(err)
 	}
 	defer func() { _ = worker.Process.Kill(); _ = worker.Wait() }()
-	otherGroup, err := group.newChild(Limits{})
+	otherGroup, err := group.newChild(t.Context(), Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}

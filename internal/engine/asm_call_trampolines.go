@@ -20,14 +20,6 @@
 
 package engine
 
-// SAFETY: every trampoline in this file is called from the assembly dispatcher with the
-// live dispatchContext and reads or writes register banks through the base pointers the
-// context carries. The unsafe arithmetic is sound because (1) the bases were populated by
-// buildDispatchContext or rebuildDispatchPointers from the current frame's slices after
-// the last Go-side change, (2) register indices come from instruction operands the
-// compiler bounds to the function's register counts, and (3) the backing slabs are kept
-// alive by the frame's Registers and the arena's save points until the frame pops.
-
 import (
 	"math"
 	"reflect"
@@ -37,11 +29,7 @@ import (
 	"pipit.sh/pipit/internal/engine/program"
 )
 
-// asmCallMathSin is the trampoline for handlerSubOpMathSin.
-//
-// Reads floats[sourceIndex] from the float bank exposed via ctx.floatsBase, computes
-// math.Sin, writes to floats[destinationIndex], and returns ctx so the ASM caller can
-// Restore R15.
+// asmCallMathSin is the trampoline for handlerMathSin.
 //
 // Takes ctx (*dispatchContext) which carries the live float bank base pointer.
 // Takes destinationIndex (int64) which is the float register receiving the result.
@@ -58,10 +46,7 @@ func asmCallMathSin(ctx *dispatchContext, destinationIndex, sourceIndex int64) *
 	return ctx
 }
 
-// asmCallMathCos is the trampoline for handlerSubOpMathCos.
-//
-// Reads floats[sourceIndex], computes math.Cos, writes to floats[destinationIndex], and
-// returns ctx so the ASM caller can restore R15.
+// asmCallMathCos is the trampoline for handlerMathCos.
 //
 // Takes ctx (*dispatchContext) which carries the float bank base pointer.
 // Takes destinationIndex (int64) which is the float register receiving the result.
@@ -78,10 +63,7 @@ func asmCallMathCos(ctx *dispatchContext, destinationIndex, sourceIndex int64) *
 	return ctx
 }
 
-// asmCallMathExp is the trampoline for handlerSubOpMathExp.
-//
-// Reads floats[sourceIndex], computes math.Exp, writes to floats[destinationIndex], and
-// returns ctx so the ASM caller can restore R15.
+// asmCallMathExp is the trampoline for handlerMathExp.
 //
 // Takes ctx (*dispatchContext) which carries the float bank base pointer.
 // Takes destinationIndex (int64) which is the float register receiving the result.
@@ -98,10 +80,7 @@ func asmCallMathExp(ctx *dispatchContext, destinationIndex, sourceIndex int64) *
 	return ctx
 }
 
-// asmCallMathTan is the trampoline for handlerSubOpMathTan.
-//
-// Reads floats[sourceIndex], computes math.Tan, writes to floats[destinationIndex], and
-// returns ctx so the ASM caller can restore R15.
+// asmCallMathTan is the trampoline for handlerMathTan.
 //
 // Takes ctx (*dispatchContext) which carries the float bank base pointer.
 // Takes destinationIndex (int64) which is the float register receiving the result.
@@ -118,7 +97,7 @@ func asmCallMathTan(ctx *dispatchContext, destinationIndex, sourceIndex int64) *
 	return ctx
 }
 
-// asmCallMathMod is the trampoline for handlerSubOpMathMod.
+// asmCallMathMod is the trampoline for handlerMathMod.
 //
 // Takes ctx (*dispatchContext) which carries the float bank base pointer.
 // Takes destinationIndex (int64) which is the float register receiving the result.
@@ -137,8 +116,8 @@ func asmCallMathMod(ctx *dispatchContext, destinationIndex, source1Index, source
 	return ctx
 }
 
-// asmCallStrconvItoa is the trampoline for handlerSubOpStrconvItoa. The result is
-// arena-backed to avoid a Go heap allocation.
+// asmCallStrconvItoa is the trampoline for handlerStrconvItoa. The result is arena-backed
+// to avoid a Go heap allocation.
 //
 // Takes ctx (*dispatchContext) which carries the int and string bank base pointers.
 // Takes destinationIndex (int64) which is the string register receiving the result.
@@ -157,8 +136,8 @@ func asmCallStrconvItoa(ctx *dispatchContext, destinationIndex, sourceIndex int6
 	return ctx
 }
 
-// asmCallStrconvFormatInt is the trampoline for handlerSubOpStrconvFormatInt. The result
-// is arena-backed to avoid a Go heap allocation.
+// asmCallStrconvFormatInt is the trampoline for handlerStrconvFormatInt. The result is
+// arena-backed to avoid a Go heap allocation.
 //
 // Takes ctx (*dispatchContext) which carries the int and string bank base pointers.
 // Takes destinationIndex (int64) which is the string register receiving the result.
@@ -193,10 +172,7 @@ func vmRegistersForCtx(ctx *dispatchContext) *Registers {
 	return &frame.Registers
 }
 
-// asmCallCap is the trampoline for handlerSubOpCap.
-//
-// Writes ints[destinationIndex] = collectionLengthOrCap(general[sourceIndex],
-// reflect.Value.Cap). Returns ctx so the ASM caller can restore R15.
+// asmCallCapacityGeneral is the trampoline for handlerCapacityGeneral.
 //
 // Takes ctx (*dispatchContext) which carries the live frame pointer used to locate the
 // general bank.
@@ -206,16 +182,13 @@ func vmRegistersForCtx(ctx *dispatchContext) *Registers {
 // Returns the same ctx so the ASM caller can reload R15 from AX.
 //
 //go:nosplit
-func asmCallCap(ctx *dispatchContext, destinationIndex, sourceIndex int64) *dispatchContext {
+func asmCallCapacityGeneral(ctx *dispatchContext, destinationIndex, sourceIndex int64) *dispatchContext {
 	registers := vmRegistersForCtx(ctx)
 	registers.Ints[destinationIndex] = collectionLengthOrCap(registers.General[sourceIndex], reflect.Value.Cap)
 	return ctx
 }
 
-// asmCallBytesToString is the trampoline for handlerSubOpBytesToString.
-//
-// Writes strings[destinationIndex] = arenaBytesToString(vm.arena,
-// general[sourceIndex].Bytes()). Returns ctx so the ASM caller can restore R15.
+// asmCallConvertBytesToString is the trampoline for handlerConvertBytesToString.
 //
 // Takes ctx (*dispatchContext) which carries the live frame pointer used to locate the
 // general bank and the arena.
@@ -226,17 +199,13 @@ func asmCallCap(ctx *dispatchContext, destinationIndex, sourceIndex int64) *disp
 // Returns the same ctx so the ASM caller can reload R15 from AX.
 //
 //go:nosplit
-func asmCallBytesToString(ctx *dispatchContext, destinationIndex, sourceIndex int64) *dispatchContext {
+func asmCallConvertBytesToString(ctx *dispatchContext, destinationIndex, sourceIndex int64) *dispatchContext {
 	registers := vmRegistersForCtx(ctx)
 	registers.Strings[destinationIndex] = arenaBytesToString(ctx.vm.Arena, registers.General[sourceIndex].Bytes())
 	return ctx
 }
 
-// asmCallBoxSliceInt is the trampoline for handlerSubOpBoxSliceInt.
-//
-// Writes general[destinationIndex] = reflect.ValueOf(slicesInt[sourceIndex]), boxing a
-// typed-bank int slice into the general (reflect.Value) bank. Returns ctx so the ASM
-// caller can restore R15.
+// asmCallBoxSliceInt64 is the trampoline for handlerBoxSliceInt64.
 //
 // Takes ctx (*dispatchContext) which carries the live frame pointer used to locate both
 // banks.
@@ -246,13 +215,13 @@ func asmCallBytesToString(ctx *dispatchContext, destinationIndex, sourceIndex in
 // Returns the same ctx so the ASM caller can reload R15 from AX.
 //
 //go:nosplit
-func asmCallBoxSliceInt(ctx *dispatchContext, destinationIndex, sourceIndex int64) *dispatchContext {
+func asmCallBoxSliceInt64(ctx *dispatchContext, destinationIndex, sourceIndex int64) *dispatchContext {
 	registers := vmRegistersForCtx(ctx)
 	registers.General[destinationIndex] = boxTypedIntSlice(ctx.vm, registers.SlicesInt[sourceIndex])
 	return ctx
 }
 
-// asmCallAppendSliceIntDirect is the trampoline for handlerSubOpAppendSliceIntDirect.
+// asmCallAppendSliceInt64 is the trampoline for handlerAppendSliceInt64.
 //
 // Takes ctx (*dispatchContext) which carries the live frame pointer and arena handle.
 // Takes destinationIndex (int64) which is the slicesInt register receiving the appended
@@ -263,18 +232,15 @@ func asmCallBoxSliceInt(ctx *dispatchContext, destinationIndex, sourceIndex int6
 // Returns the same ctx so the ASM caller can reload R15 from AX.
 //
 //go:nosplit
-func asmCallAppendSliceIntDirect(ctx *dispatchContext, destinationIndex, sourceIndex, elementIndex int64) *dispatchContext {
+func asmCallAppendSliceInt64(ctx *dispatchContext, destinationIndex, sourceIndex, elementIndex int64) *dispatchContext {
 	registers := vmRegistersForCtx(ctx)
 	source := registers.SlicesInt[sourceIndex]
 	element := registers.Ints[elementIndex]
-	registers.SlicesInt[destinationIndex] = arenaAppendInt(ctx.vm.Arena, source, element)
+	registers.SlicesInt[destinationIndex] = arenaAppendInt64(ctx.vm.Arena, source, element)
 	return ctx
 }
 
-// asmCallAppendSliceFloatDirect is the trampoline for handlerSubOpAppendSliceFloatDirect.
-//
-// Same shape as asmCallAppendSliceIntDirect but for []float64 with the element read from
-// the float bank.
+// asmCallAppendSliceFloat64 is the trampoline for handlerAppendSliceFloat64.
 //
 // Takes ctx (*dispatchContext) which carries the live frame pointer and arena handle.
 // Takes destinationIndex (int64) which is the slicesFloat register receiving the appended
@@ -285,21 +251,15 @@ func asmCallAppendSliceIntDirect(ctx *dispatchContext, destinationIndex, sourceI
 // Returns the same ctx so the ASM caller can reload R15 from AX.
 //
 //go:nosplit
-func asmCallAppendSliceFloatDirect(ctx *dispatchContext, destinationIndex, sourceIndex, elementIndex int64) *dispatchContext {
+func asmCallAppendSliceFloat64(ctx *dispatchContext, destinationIndex, sourceIndex, elementIndex int64) *dispatchContext {
 	registers := vmRegistersForCtx(ctx)
 	source := registers.slicesFloat[sourceIndex]
 	element := registers.Floats[elementIndex]
-	registers.slicesFloat[destinationIndex] = arenaAppendFloat(ctx.vm.Arena, source, element)
+	registers.slicesFloat[destinationIndex] = arenaAppendFloat64(ctx.vm.Arena, source, element)
 	return ctx
 }
 
-// asmCallAppendSliceStringDirect is the trampoline for
-// handlerSubOpAppendSliceStringDirect.
-//
-// Reads slicesString[sourceIndex] and strings[elementIndex], routes the element through
-// materialiseString (so an arena-borrowed header gets a proper backing if needed before
-// being held by the destination slice), appends, and writes to
-// slicesString[destinationIndex].
+// asmCallAppendSliceString is the trampoline for handlerAppendSliceString.
 //
 // Takes ctx (*dispatchContext) which carries the live frame pointer and arena handle.
 // Takes destinationIndex (int64) which is the slicesString register receiving the
@@ -310,7 +270,7 @@ func asmCallAppendSliceFloatDirect(ctx *dispatchContext, destinationIndex, sourc
 // Returns the same ctx so the ASM caller can reload R15 from AX.
 //
 //go:nosplit
-func asmCallAppendSliceStringDirect(ctx *dispatchContext, destinationIndex, sourceIndex, elementIndex int64) *dispatchContext {
+func asmCallAppendSliceString(ctx *dispatchContext, destinationIndex, sourceIndex, elementIndex int64) *dispatchContext {
 	registers := vmRegistersForCtx(ctx)
 	source := registers.slicesString[sourceIndex]
 	element := MaterialiseStringForArenaAppend(ctx.vm.Arena, source, registers.Strings[elementIndex])
@@ -318,10 +278,7 @@ func asmCallAppendSliceStringDirect(ctx *dispatchContext, destinationIndex, sour
 	return ctx
 }
 
-// asmCallAppendSliceBoolDirect is the trampoline for handlerSubOpAppendSliceBoolDirect.
-//
-// Same shape as asmCallAppendSliceIntDirect but for []bool with the element read from the
-// bool bank.
+// asmCallAppendSliceBool is the trampoline for handlerAppendSliceBool.
 //
 // Takes ctx (*dispatchContext) which carries the live frame pointer and arena handle.
 // Takes destinationIndex (int64) which is the slicesBool register receiving the appended
@@ -332,7 +289,7 @@ func asmCallAppendSliceStringDirect(ctx *dispatchContext, destinationIndex, sour
 // Returns the same ctx so the ASM caller can reload R15 from AX.
 //
 //go:nosplit
-func asmCallAppendSliceBoolDirect(ctx *dispatchContext, destinationIndex, sourceIndex, elementIndex int64) *dispatchContext {
+func asmCallAppendSliceBool(ctx *dispatchContext, destinationIndex, sourceIndex, elementIndex int64) *dispatchContext {
 	registers := vmRegistersForCtx(ctx)
 	source := registers.slicesBool[sourceIndex]
 	element := registers.Bools[elementIndex]
@@ -340,10 +297,7 @@ func asmCallAppendSliceBoolDirect(ctx *dispatchContext, destinationIndex, source
 	return ctx
 }
 
-// asmCallAppendSliceUintDirect is the trampoline for handlerSubOpAppendSliceUintDirect.
-//
-// Same shape as asmCallAppendSliceIntDirect but for []uint64 with the element read from
-// the uint bank.
+// asmCallAppendSliceUint64 is the trampoline for handlerAppendSliceUint64.
 //
 // Takes ctx (*dispatchContext) which carries the live frame pointer and arena handle.
 // Takes destinationIndex (int64) which is the slicesUint register receiving the appended
@@ -354,19 +308,15 @@ func asmCallAppendSliceBoolDirect(ctx *dispatchContext, destinationIndex, source
 // Returns the same ctx so the ASM caller can reload R15 from AX.
 //
 //go:nosplit
-func asmCallAppendSliceUintDirect(ctx *dispatchContext, destinationIndex, sourceIndex, elementIndex int64) *dispatchContext {
+func asmCallAppendSliceUint64(ctx *dispatchContext, destinationIndex, sourceIndex, elementIndex int64) *dispatchContext {
 	registers := vmRegistersForCtx(ctx)
 	source := registers.slicesUint[sourceIndex]
 	element := registers.Uints[elementIndex]
-	registers.slicesUint[destinationIndex] = arenaAppendUint(ctx.vm.Arena, source, element)
+	registers.slicesUint[destinationIndex] = arenaAppendUint64(ctx.vm.Arena, source, element)
 	return ctx
 }
 
-// asmCallAppendSliceByteDirect is the trampoline for handlerSubOpAppendSliceByteDirect.
-//
-// Reads slicesByte[sourceIndex] and uints[elementIndex], truncates the uint64 element to
-// a byte (matching handleSubOpAppendSliceByteDirect), appends, and writes to
-// slicesByte[destinationIndex].
+// asmCallAppendSliceByte is the trampoline for handlerAppendSliceByte.
 //
 // Takes ctx (*dispatchContext) which carries the live frame pointer and arena handle.
 // Takes destinationIndex (int64) which is the slicesByte register receiving the appended
@@ -377,7 +327,7 @@ func asmCallAppendSliceUintDirect(ctx *dispatchContext, destinationIndex, source
 // Returns the same ctx so the ASM caller can reload R15 from AX.
 //
 //go:nosplit
-func asmCallAppendSliceByteDirect(ctx *dispatchContext, destinationIndex, sourceIndex, elementIndex int64) *dispatchContext {
+func asmCallAppendSliceByte(ctx *dispatchContext, destinationIndex, sourceIndex, elementIndex int64) *dispatchContext {
 	registers := vmRegistersForCtx(ctx)
 	source := registers.slicesByte[sourceIndex]
 	element := safeconv.Uint64ToByteTruncate(registers.Uints[elementIndex])
@@ -599,14 +549,11 @@ func trampolinePointerBase(registers *Registers, recvReg uint8) (unsafe.Pointer,
 	return slot.ptr, true
 }
 
-// asmCallIncStructFieldInt increments a signed-int struct field via the fast path.
+// asmCallIncrementStructFieldInt64 increments a signed-int struct field via the fast
+// path.
 //
-// Tier-1 sub-op (op=isa.OpDrillTier1, A=sub-op id, B=recvReg, C= layoutIdx low byte)
-// invoked through EmitInlineGoCallTwoOperandShim so the ASM caller passes (ctx, recvReg,
-// layoutIdx). Resolves the field's unsafe address via trampolinePointerBase and INC's the
-// appropriately sized integer in place; on receiver-shape mismatch or non-int Kind the
-// body routes through incStructFieldIntSlowPath which calls the existing reflect-walk
-// fallback. Returns ctx so the ASM caller can restore R15.
+// On receiver-shape mismatch or non-int Kind the body routes through
+// incrementStructFieldInt64SlowPath which calls the existing reflect-walk fallback.
 //
 // Takes ctx (*dispatchContext) which carries the live frame pointer and structLayout
 // table.
@@ -617,13 +564,13 @@ func trampolinePointerBase(registers *Registers, recvReg uint8) (unsafe.Pointer,
 //
 //nolint:dupl // hot-path twin
 //go:nosplit
-func asmCallIncStructFieldInt(ctx *dispatchContext, recvReg, layoutIdx int64) *dispatchContext {
+func asmCallIncrementStructFieldInt64(ctx *dispatchContext, recvReg, layoutIdx int64) *dispatchContext {
 	frame := frameForCtx(ctx)
 	layout := frame.Function.StructLayoutTable[layoutIdx]
 	registers := &frame.Registers
 	base, ok := trampolinePointerBase(registers, safeconv.Int64ToUint8(recvReg))
 	if !ok {
-		incStructFieldIntSlowPath(ctx, frame, registers, recvReg, layout, +1)
+		incrementStructFieldInt64SlowPath(ctx, frame, registers, recvReg, layout, +1)
 		return ctx
 	}
 
@@ -640,16 +587,13 @@ func asmCallIncStructFieldInt(ctx *dispatchContext, recvReg, layoutIdx int64) *d
 	case reflect.Int64:
 		*(*int64)(fieldPtr)++
 	default:
-		incStructFieldIntSlowPath(ctx, frame, registers, recvReg, layout, +1)
+		incrementStructFieldInt64SlowPath(ctx, frame, registers, recvReg, layout, +1)
 	}
 	return ctx
 }
 
-// asmCallDecStructFieldInt decrements a signed-int struct field via the fast path.
-//
-// Sign-flipped twin of asmCallIncStructFieldInt kept separate so the hot-path INC and DEC
-// bodies both remain inlinable. See that function for the dispatch shape and operand
-// layout. Slow path routes through incStructFieldIntSlowPath with delta=-1.
+// asmCallDecrementStructFieldInt64 decrements a signed-int struct field via the fast
+// path.
 //
 // Takes ctx (*dispatchContext) which carries the live frame pointer and structLayout
 // table.
@@ -660,13 +604,13 @@ func asmCallIncStructFieldInt(ctx *dispatchContext, recvReg, layoutIdx int64) *d
 //
 //nolint:dupl // hot-path twin
 //go:nosplit
-func asmCallDecStructFieldInt(ctx *dispatchContext, recvReg, layoutIdx int64) *dispatchContext {
+func asmCallDecrementStructFieldInt64(ctx *dispatchContext, recvReg, layoutIdx int64) *dispatchContext {
 	frame := frameForCtx(ctx)
 	layout := frame.Function.StructLayoutTable[layoutIdx]
 	registers := &frame.Registers
 	base, ok := trampolinePointerBase(registers, safeconv.Int64ToUint8(recvReg))
 	if !ok {
-		incStructFieldIntSlowPath(ctx, frame, registers, recvReg, layout, -1)
+		incrementStructFieldInt64SlowPath(ctx, frame, registers, recvReg, layout, -1)
 		return ctx
 	}
 
@@ -683,19 +627,16 @@ func asmCallDecStructFieldInt(ctx *dispatchContext, recvReg, layoutIdx int64) *d
 	case reflect.Int64:
 		*(*int64)(fieldPtr)--
 	default:
-		incStructFieldIntSlowPath(ctx, frame, registers, recvReg, layout, -1)
+		incrementStructFieldInt64SlowPath(ctx, frame, registers, recvReg, layout, -1)
 	}
 	return ctx
 }
 
-// asmCallIncStructFieldUint increments an unsigned-int struct field via the fast path.
+// asmCallIncrementStructFieldUint64 increments an unsigned-int struct field via the fast
+// path.
 //
-// Unsigned counterpart of asmCallIncStructFieldInt, dispatched the same way
-// (op=isa.OpDrillTier1, A=sub-op id, B=recvReg, C=layoutIdx low byte) through
-// EmitInlineGoCallTwoOperandShim. Resolves the field's unsafe address via
-// trampolinePointerBase and INC's the appropriately sized unsigned integer in place; on
-// receiver-shape mismatch or non-uint Kind the body routes through
-// incStructFieldUintSlowPath. Returns ctx so the ASM caller can restore R15.
+// On receiver-shape mismatch or non-uint Kind the body routes through
+// incrementStructFieldUint64SlowPath.
 //
 // Takes ctx (*dispatchContext) which carries the live frame pointer and structLayout
 // table.
@@ -706,13 +647,13 @@ func asmCallDecStructFieldInt(ctx *dispatchContext, recvReg, layoutIdx int64) *d
 //
 //nolint:dupl // hot-path twin
 //go:nosplit
-func asmCallIncStructFieldUint(ctx *dispatchContext, recvReg, layoutIdx int64) *dispatchContext {
+func asmCallIncrementStructFieldUint64(ctx *dispatchContext, recvReg, layoutIdx int64) *dispatchContext {
 	frame := frameForCtx(ctx)
 	layout := frame.Function.StructLayoutTable[layoutIdx]
 	registers := &frame.Registers
 	base, ok := trampolinePointerBase(registers, safeconv.Int64ToUint8(recvReg))
 	if !ok {
-		incStructFieldUintSlowPath(ctx, frame, registers, recvReg, layout, +1)
+		incrementStructFieldUint64SlowPath(ctx, frame, registers, recvReg, layout, +1)
 		return ctx
 	}
 
@@ -731,16 +672,13 @@ func asmCallIncStructFieldUint(ctx *dispatchContext, recvReg, layoutIdx int64) *
 	case reflect.Uintptr:
 		*(*uintptr)(fieldPtr)++
 	default:
-		incStructFieldUintSlowPath(ctx, frame, registers, recvReg, layout, +1)
+		incrementStructFieldUint64SlowPath(ctx, frame, registers, recvReg, layout, +1)
 	}
 	return ctx
 }
 
-// asmCallDecStructFieldUint decrements an unsigned-int struct field via the fast path.
-//
-// Sign-flipped twin of asmCallIncStructFieldUint kept separate so the hot-path INC and
-// DEC bodies both remain inlinable. See that function for the dispatch shape and operand
-// layout. Slow path routes through incStructFieldUintSlowPath with delta=-1.
+// asmCallDecrementStructFieldUint64 decrements an unsigned-int struct field via the fast
+// path.
 //
 // Takes ctx (*dispatchContext) which carries the live frame pointer and structLayout
 // table.
@@ -751,13 +689,13 @@ func asmCallIncStructFieldUint(ctx *dispatchContext, recvReg, layoutIdx int64) *
 //
 //nolint:dupl // hot-path twin
 //go:nosplit
-func asmCallDecStructFieldUint(ctx *dispatchContext, recvReg, layoutIdx int64) *dispatchContext {
+func asmCallDecrementStructFieldUint64(ctx *dispatchContext, recvReg, layoutIdx int64) *dispatchContext {
 	frame := frameForCtx(ctx)
 	layout := frame.Function.StructLayoutTable[layoutIdx]
 	registers := &frame.Registers
 	base, ok := trampolinePointerBase(registers, safeconv.Int64ToUint8(recvReg))
 	if !ok {
-		incStructFieldUintSlowPath(ctx, frame, registers, recvReg, layout, -1)
+		incrementStructFieldUint64SlowPath(ctx, frame, registers, recvReg, layout, -1)
 		return ctx
 	}
 
@@ -776,14 +714,14 @@ func asmCallDecStructFieldUint(ctx *dispatchContext, recvReg, layoutIdx int64) *
 	case reflect.Uintptr:
 		*(*uintptr)(fieldPtr)--
 	default:
-		incStructFieldUintSlowPath(ctx, frame, registers, recvReg, layout, -1)
+		incrementStructFieldUint64SlowPath(ctx, frame, registers, recvReg, layout, -1)
 	}
 	return ctx
 }
 
-// incStructFieldIntSlowPath routes a failed Inc/Dec to the reflect-walk fallback and
-// raises on a nil pointer receiver. The nil case uses a Go panic rather than an OpResult
-// because the ASM shim cannot observe a returned OpResult.
+// incrementStructFieldInt64SlowPath routes a failed Inc/Dec to the reflect-walk fallback
+// and raises on a nil pointer receiver. The nil case uses a Go panic rather than an
+// OpResult because the ASM shim cannot observe a returned OpResult.
 //
 // Takes frame (*CallFrame) which is the dispatching frame.
 // Takes registers (*Registers) which is the frame's register bundle.
@@ -792,8 +730,8 @@ func asmCallDecStructFieldUint(ctx *dispatchContext, recvReg, layoutIdx int64) *
 // Takes delta (int64) which is +1 for Inc and -1 for Dec.
 //
 //go:nosplit
-func incStructFieldIntSlowPath(_ *dispatchContext, frame *CallFrame, registers *Registers, recvReg int64, layout program.StructFieldLayout, delta int64) {
-	if incDecStructFieldIntApply(frame, registers, safeconv.Int64ToUint8(recvReg), layout, delta) {
+func incrementStructFieldInt64SlowPath(_ *dispatchContext, frame *CallFrame, registers *Registers, recvReg int64, layout program.StructFieldLayout, delta int64) {
+	if incrementOrDecrementStructFieldInt64Apply(frame, registers, safeconv.Int64ToUint8(recvReg), layout, delta) {
 		return
 	}
 	if structFieldReceiverIsNilPointer(registers.General[safeconv.Int64ToUint8(recvReg)]) {
@@ -801,12 +739,8 @@ func incStructFieldIntSlowPath(_ *dispatchContext, frame *CallFrame, registers *
 	}
 }
 
-// incStructFieldUintSlowPath routes a failed Inc/Dec to the reflect-walk fallback and
-// raises on a nil pointer receiver.
-//
-// Unsigned counterpart of incStructFieldIntSlowPath, called from the uint Inc/Dec
-// trampolines when the fast path's shape check fails. Raises the nil-dereference host
-// panic through the same host-stack unwind documented on incStructFieldIntSlowPath.
+// incrementStructFieldUint64SlowPath routes a failed Inc/Dec to the reflect-walk fallback
+// and raises on a nil pointer receiver.
 //
 // Takes frame (*CallFrame) which is the dispatching frame.
 // Takes registers (*Registers) which is the frame's register bundle.
@@ -815,8 +749,8 @@ func incStructFieldIntSlowPath(_ *dispatchContext, frame *CallFrame, registers *
 // Takes delta (int64) which is +1 for Inc and -1 for Dec.
 //
 //go:nosplit
-func incStructFieldUintSlowPath(_ *dispatchContext, frame *CallFrame, registers *Registers, recvReg int64, layout program.StructFieldLayout, delta int64) {
-	if incDecStructFieldUintApply(frame, registers, safeconv.Int64ToUint8(recvReg), layout, delta) {
+func incrementStructFieldUint64SlowPath(_ *dispatchContext, frame *CallFrame, registers *Registers, recvReg int64, layout program.StructFieldLayout, delta int64) {
+	if incrementOrDecrementStructFieldUint64Apply(frame, registers, safeconv.Int64ToUint8(recvReg), layout, delta) {
 		return
 	}
 	if structFieldReceiverIsNilPointer(registers.General[safeconv.Int64ToUint8(recvReg)]) {

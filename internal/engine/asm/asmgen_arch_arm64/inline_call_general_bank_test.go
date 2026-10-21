@@ -104,3 +104,44 @@ func TestEmitReturnInlineGuardsTheCalleeResultKind(t *testing.T) {
 		})
 	}
 }
+
+func TestEmitTailCallInlineLeavesThroughDispatchExitWhenThePollRunsOut(t *testing.T) {
+	t.Parallel()
+	e := asmgen.NewEmitter()
+	(&arm64InlineCallOps{}).EmitTailCallInline(e)
+	output := e.String()
+
+	teardown := strings.Index(output, inlineCallFrameTeardownOperand)
+	require.GreaterOrEqual(t, teardown, 0)
+	require.Contains(t, output[teardown:], "$EXIT_POLL, R0")
+	require.Contains(t, output[teardown:], "JMP  ·dispatchExit(SB)")
+	require.NotContains(t, output[teardown:], "RET", "a RET in a framed handler pops the frame a second time")
+}
+
+func TestEmitReturnsClearTheCalleeByteSliceHeaders(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		name   string
+		emit   func(*arm64InlineCallOps, *asmgen.Emitter)
+		prefix string
+	}{
+		{"value return", (*arm64InlineCallOps).EmitReturnInline, "ri"},
+		{"void return", (*arm64InlineCallOps).EmitReturnVoidInline, "rvi"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			e := asmgen.NewEmitter()
+			testCase.emit(&arm64InlineCallOps{}, e)
+			output := e.String()
+
+			guard := strings.Index(output, testCase.prefix+"_sb_guard_done:")
+			clearLoop := strings.Index(output, testCase.prefix+"_sb_clear_loop:")
+			restore := strings.Index(output, "R1, CTX_ARENA_SLICEBYTE_IDX(R19)")
+			require.GreaterOrEqual(t, guard, 0)
+			require.Less(t, guard, clearLoop, "the write-barrier guard precedes the clear")
+			require.Less(t, clearLoop, restore, "the headers are cleared before the index is restored")
+			require.Contains(t, output, "CTX_ARENA_SLICEBYTE_SLAB(R19), R6")
+			require.Contains(t, output, "ZR, 16(R1)")
+		})
+	}
+}

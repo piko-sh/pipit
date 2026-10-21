@@ -31,23 +31,23 @@ var (
 	// canonicalGeneralBoxType maps each typed bank to the reflect.Type the fast
 	// move-to-general sub-op assumes, so boxNeedsPreciseType can detect mismatches.
 	canonicalGeneralBoxType = [isa.NumRegisterKinds]reflect.Type{
-		isa.RegisterInt:         typeFor[int](),
-		isa.RegisterFloat:       typeFor[float64](),
-		isa.RegisterString:      typeFor[string](),
-		isa.RegisterBool:        typeFor[bool](),
-		isa.RegisterUint:        typeFor[uint64](),
-		isa.RegisterComplex:     typeFor[complex128](),
-		isa.RegisterSliceInt:    typeFor[[]int](),
-		isa.RegisterSliceFloat:  typeFor[[]float64](),
-		isa.RegisterSliceString: typeFor[[]string](),
-		isa.RegisterSliceBool:   typeFor[[]bool](),
-		isa.RegisterSliceUint:   typeFor[[]uint64](),
-		isa.RegisterSliceByte:   typeFor[[]byte](),
+		isa.RegisterInt64:        reflect.TypeFor[int](),
+		isa.RegisterFloat64:      reflect.TypeFor[float64](),
+		isa.RegisterString:       reflect.TypeFor[string](),
+		isa.RegisterBool:         reflect.TypeFor[bool](),
+		isa.RegisterUint64:       reflect.TypeFor[uint64](),
+		isa.RegisterComplex128:   reflect.TypeFor[complex128](),
+		isa.RegisterSliceInt64:   reflect.TypeFor[[]int](),
+		isa.RegisterSliceFloat64: reflect.TypeFor[[]float64](),
+		isa.RegisterSliceString:  reflect.TypeFor[[]string](),
+		isa.RegisterSliceBool:    reflect.TypeFor[[]bool](),
+		isa.RegisterSliceUint64:  reflect.TypeFor[[]uint64](),
+		isa.RegisterSliceByte:    reflect.TypeFor[[]byte](),
 	}
 )
 
 // emitBoxToGeneral emits the instruction that boxes source into the general register,
-// using a dedicated sub-op for int, float and string or isa.OpPackTyped when the source
+// using a dedicated sub-op for int, float and string or isa.OpBoxAsType when the source
 // carries a non-canonical type.
 //
 // Takes destinationGeneralRegister (uint8) which receives the boxed value.
@@ -59,21 +59,20 @@ func (c *Compiler) emitBoxToGeneral(ctx context.Context, destinationGeneralRegis
 		}
 	}
 	switch source.Kind {
-	case isa.RegisterInt:
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveIntToGeneral), destinationGeneralRegister, source.Register)
-	case isa.RegisterFloat:
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveFloatToGeneral), destinationGeneralRegister, source.Register)
+	case isa.RegisterInt64:
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBoxInt64), destinationGeneralRegister, source.Register)
+	case isa.RegisterFloat64:
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBoxFloat64), destinationGeneralRegister, source.Register)
 	case isa.RegisterString:
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveStringToGeneral), destinationGeneralRegister, source.Register)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBoxString), destinationGeneralRegister, source.Register)
 	default:
-		program.Emit(c.Function, isa.OpPackInterface, destinationGeneralRegister, source.Register, uint8(source.Kind))
+		program.Emit(c.Function, isa.OpBoxAsInterface, destinationGeneralRegister, source.Register, uint8(source.Kind))
 	}
 }
 
 // alignForTypedBox moves source into the bank its recorded type's kind implies, which is
-// what the precise isa.OpPackTyped path reads from. Values can legitimately sit
-// elsewhere: comparison results and comma-ok flags have static type bool but live in the
-// int bank.
+// what the precise isa.OpBoxAsType path reads from. Values can legitimately sit
+// elsewhere.
 //
 // Takes source (VarLocation) which carries the recorded sourceType.
 //
@@ -139,7 +138,7 @@ func (c *Compiler) boxElementToGeneral(ctx context.Context, location *program.Va
 }
 
 // boxNeedsPreciseType reports whether boxing source must preserve its exact type via
-// isa.OpPackTyped rather than the fast move-to-general sub-op.
+// isa.OpBoxAsType rather than the fast move-to-general sub-op.
 //
 // Takes source (VarLocation) whose sourceType and kind decide the boxing path.
 //
@@ -151,18 +150,17 @@ func (*Compiler) boxNeedsPreciseType(source program.VarLocation) bool {
 	return source.SourceType != canonicalGeneralBoxType[source.Kind]
 }
 
-// emitTypedBox emits isa.OpPackTyped to box source into the general bank.
+// emitTypedBox emits isa.OpBoxAsType to box source into the general bank.
 //
-// Preserves source's exact source-level reflect.Type. When source carries no recorded
-// type or when the type-table is exhausted the helper emits nothing and returns false,
-// leaving the caller to fall back to the generic isa.OpPackInterface / move-to-general
-// path.
+// When source carries no recorded type or when the type-table is exhausted the helper
+// emits nothing and returns false, leaving the caller to fall back to the generic
+// isa.OpBoxAsInterface / move-to-general path.
 //
 // Takes destinationGeneralRegister (uint8) which receives the box.
 // Takes source (VarLocation) whose sourceType drives the boxing type.
 //
-// Returns bool which is true when isa.OpPackTyped (plus its isa.OpExt type-index word)
-// was emitted.
+// Returns bool which is true when isa.OpBoxAsType (plus its isa.OpExtension type-index
+// word) was emitted.
 func (c *Compiler) emitTypedBox(destinationGeneralRegister uint8, source program.VarLocation) bool {
 	if source.SourceType == nil {
 		return false
@@ -172,7 +170,7 @@ func (c *Compiler) emitTypedBox(destinationGeneralRegister uint8, source program
 		c.recordStickyError(err)
 		return false
 	}
-	program.Emit(c.Function, isa.OpPackTyped, destinationGeneralRegister, source.Register, uint8(source.Kind))
+	program.Emit(c.Function, isa.OpBoxAsType, destinationGeneralRegister, source.Register, uint8(source.Kind))
 	program.EmitExtension(c.Function, typeIndex, 0)
 	return true
 }
@@ -224,35 +222,32 @@ func (c *Compiler) coerceToKind(ctx context.Context, location program.VarLocatio
 	if location.Kind == isa.RegisterGeneral {
 		destination := c.Scopes.Alloc.AllocTemp(destinationKind)
 		switch destinationKind {
-		case isa.RegisterInt:
-			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveGeneralToInt), destination, location.Register)
-		case isa.RegisterFloat:
-			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveGeneralToFloat), destination, location.Register)
+		case isa.RegisterInt64:
+			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpUnboxInt64), destination, location.Register)
+		case isa.RegisterFloat64:
+			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpUnboxFloat64), destination, location.Register)
 		case isa.RegisterString:
-			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveGeneralToString), destination, location.Register)
+			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpUnboxString), destination, location.Register)
 		default:
-			program.Emit(c.Function, isa.OpUnpackInterface, destination, location.Register, uint8(destinationKind))
+			program.Emit(c.Function, isa.OpUnboxFromInterface, destination, location.Register, uint8(destinationKind))
 		}
 		return program.VarLocation{Register: destination, Kind: destinationKind}
 	}
-	if location.Kind == isa.RegisterInt && destinationKind == isa.RegisterBool {
+	if location.Kind == isa.RegisterInt64 && destinationKind == isa.RegisterBool {
 		destination := c.Scopes.Alloc.AllocTemp(isa.RegisterBool)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpIntToBool), destination, location.Register)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertInt64ToBool), destination, location.Register)
 		return program.VarLocation{Register: destination, Kind: isa.RegisterBool}
 	}
-	if location.Kind == isa.RegisterBool && destinationKind == isa.RegisterInt {
-		destination := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpBoolToInt), destination, location.Register)
-		return program.VarLocation{Register: destination, Kind: isa.RegisterInt}
+	if location.Kind == isa.RegisterBool && destinationKind == isa.RegisterInt64 {
+		destination := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpConvertBoolToInt64), destination, location.Register)
+		return program.VarLocation{Register: destination, Kind: isa.RegisterInt64}
 	}
 	return location
 }
 
 // emitUnboxFromGeneral emits the instruction that unboxes the value in general register
 // sourceGeneralRegister into a freshly allocated register of destinationKind.
-//
-// Only the three banks with a dedicated unbox sub-op are listed. The default emits
-// isa.OpUnpackInterface, which services every remaining bank.
 //
 // Takes sourceGeneralRegister (uint8) which is the source general register.
 // Takes destinationKind (isa.RegisterKind) which is the destination bank.
@@ -261,20 +256,20 @@ func (c *Compiler) coerceToKind(ctx context.Context, location program.VarLocatio
 func (c *Compiler) emitUnboxFromGeneral(sourceGeneralRegister uint8, destinationKind isa.RegisterKind) program.VarLocation {
 	destination := c.Scopes.Alloc.Alloc(destinationKind)
 	switch destinationKind {
-	case isa.RegisterInt:
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveGeneralToInt), destination, sourceGeneralRegister)
-	case isa.RegisterFloat:
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveGeneralToFloat), destination, sourceGeneralRegister)
+	case isa.RegisterInt64:
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpUnboxInt64), destination, sourceGeneralRegister)
+	case isa.RegisterFloat64:
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpUnboxFloat64), destination, sourceGeneralRegister)
 	case isa.RegisterString:
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveGeneralToString), destination, sourceGeneralRegister)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpUnboxString), destination, sourceGeneralRegister)
 	default:
-		program.Emit(c.Function, isa.OpUnpackInterface, destination, sourceGeneralRegister, uint8(destinationKind))
+		program.Emit(c.Function, isa.OpUnboxFromInterface, destination, sourceGeneralRegister, uint8(destinationKind))
 	}
 	return program.VarLocation{Register: destination, Kind: destinationKind}
 }
 
 // naturalBankForBoxKind maps a boxed type's reflect.Kind to the register bank
-// handlePackTyped reads the source value from (boxTypedToGeneral and boxScalarToArenaBox
+// handleBoxAsType reads the source value from (boxTypedToGeneral and boxScalarToArenaBox
 // select the bank by the boxed type's kind, not by the instruction's kind marker).
 //
 // Unlike registerKindForReflectKind this maps Complex64/Complex128 to the complex bank,
@@ -286,7 +281,7 @@ func (c *Compiler) emitUnboxFromGeneral(sourceGeneralRegister uint8, destination
 // compound kinds.
 func naturalBankForBoxKind(kind reflect.Kind) isa.RegisterKind {
 	if kind == reflect.Complex64 || kind == reflect.Complex128 {
-		return isa.RegisterComplex
+		return isa.RegisterComplex128
 	}
 	return isaselect.RegisterKindForReflectKind(kind)
 }

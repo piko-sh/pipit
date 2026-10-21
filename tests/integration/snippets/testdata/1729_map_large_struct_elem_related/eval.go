@@ -6,7 +6,7 @@ import (
 )
 
 type Post struct {
-	Title, Description, Slug, Date, Story, Label, Summary, Updated string
+	Title, Description, Slug, Date, Story, Label, Summary, Updated   string
 	Author, Image, Series, ArticleDate, URL, DateLabel, Year, Byline string
 	Tags, Related                                                    []string
 	Order, Minutes                                                   int

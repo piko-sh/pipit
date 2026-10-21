@@ -24,12 +24,14 @@ import (
 	"fmt"
 	"go/build"
 	"maps"
+	"reflect"
 	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"pipit.sh/pipit/internal/fault"
+	"pipit.sh/pipit/internal/symtab"
 )
 
 func TestCompileFileSetFollowsGoFileRules(t *testing.T) {
@@ -155,4 +157,51 @@ func TestParseSelectedFilesStopsWhenCancelled(t *testing.T) {
 	_, err := NewService().parseSelectedFiles(ctx, map[string]string{"main.go": "package main\n"})
 	require.ErrorIs(t, err, fault.ErrExecutionCancelled)
 	require.ErrorIs(t, err, cause)
+}
+
+const garbageInInitSource = `package main
+
+import "runtime"
+
+var kept []byte
+
+func init() {
+	const chunks = 400
+	const megabyte = 1 << 20
+	buffer := make([]byte, megabyte)
+	for i := range buffer {
+		buffer[i] = byte(i%10 + '0')
+	}
+	text := string(buffer)
+
+	stats := new(runtime.MemStats)
+	runtime.ReadMemStats(stats)
+	before := stats.Sys
+	for range chunks {
+		kept = []byte(text)
+	}
+	runtime.ReadMemStats(stats)
+	if grown := stats.Sys - before; grown >= 256*megabyte {
+		println("an init function's garbage grew the process by", grown>>20, "MB")
+		panic("init garbage was not collected")
+	}
+}
+
+func main() {}
+`
+
+func TestAnInitFunctionsGarbageIsCollectedAsItRuns(t *testing.T) {
+	if testing.Short() {
+		t.Skip("makes 400 MB of garbage")
+	}
+	service := NewService()
+	service.UseSymbols(symtab.NewSymbolRegistry(symtab.SymbolExports{"runtime": {
+		"MemStats":     reflect.ValueOf((*runtime.MemStats)(nil)),
+		"ReadMemStats": reflect.ValueOf(runtime.ReadMemStats),
+	}}))
+	compiled, err := service.CompileFileSet(t.Context(), map[string]string{"main.go": garbageInInitSource})
+	require.NoError(t, err)
+
+	_, err = service.ExecuteEntrypoint(t.Context(), compiled, "main")
+	require.NoError(t, err, "the init function's arena collects while it runs instead of growing")
 }

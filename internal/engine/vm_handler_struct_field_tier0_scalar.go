@@ -25,7 +25,7 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-// handleGetStructFieldIntT0 reads an int-kind struct field via the tier-0 path.
+// handleGetStructFieldInt64 reads an int-kind struct field via the tier-0 path.
 //
 // Operand A=int destination, B=general source, C=structLayoutTable index. Uses
 // unsafe.Pointer arithmetic via the pre-resolved structLayoutTable entry, falling back to
@@ -37,7 +37,7 @@ import (
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleGetStructFieldIntT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldInt64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	base, ok := structFieldUnsafeBase(registers, instruction.B)
 	if !ok {
@@ -65,11 +65,7 @@ func handleGetStructFieldIntT0(vm *VM, frame *CallFrame, registers *Registers, i
 	return opContinue
 }
 
-// handleGetStructFieldUintT0 reads a uint-kind struct field via the tier-0 path.
-//
-// Operand A=uint destination, B=general source, C=structLayoutTable index. Uses
-// unsafe.Pointer arithmetic via the pre-resolved structLayoutTable entry, falling back to
-// a reflect.Field walk when the unsafe base is unavailable.
+// handleGetStructFieldUint64 reads a uint-kind struct field via the tier-0 path.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -77,7 +73,7 @@ func handleGetStructFieldIntT0(vm *VM, frame *CallFrame, registers *Registers, i
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleGetStructFieldUintT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldUint64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	base, ok := structFieldUnsafeBase(registers, instruction.B)
 	if !ok {
@@ -88,26 +84,35 @@ func handleGetStructFieldUintT0(vm *VM, frame *CallFrame, registers *Registers, 
 		registers.Uints[instruction.A] = field.Uint()
 		return opContinue
 	}
-	fieldPointer := unsafe.Add(base, uintptr(layout.Offset))
-	switch reflect.Kind(layout.Kind) {
-	case reflect.Uint:
-		registers.Uints[instruction.A] = uint64(*(*uint)(fieldPointer))
-	case reflect.Uint8:
-		registers.Uints[instruction.A] = uint64(*(*uint8)(fieldPointer))
-	case reflect.Uint16:
-		registers.Uints[instruction.A] = uint64(*(*uint16)(fieldPointer))
-	case reflect.Uint32:
-		registers.Uints[instruction.A] = uint64(*(*uint32)(fieldPointer))
-	case reflect.Uint64:
-		registers.Uints[instruction.A] = *(*uint64)(fieldPointer)
-	case reflect.Uintptr:
-		registers.Uints[instruction.A] = uint64(*(*uintptr)(fieldPointer))
-	default:
-	}
+	loadUintField(&registers.Uints[instruction.A], unsafe.Add(base, uintptr(layout.Offset)), reflect.Kind(layout.Kind))
 	return opContinue
 }
 
-// handleGetStructFieldFloatT0 reads a float-kind struct field via tier-0.
+// loadUintField widens an unsigned struct field into a uint register. A field of any
+// other kind leaves the register as it was.
+//
+// Takes destination (*uint64) which is the register to load.
+// Takes fieldPointer (unsafe.Pointer) which addresses the field.
+// Takes kind (reflect.Kind) which is the field's kind.
+func loadUintField(destination *uint64, fieldPointer unsafe.Pointer, kind reflect.Kind) {
+	switch kind {
+	case reflect.Uint:
+		*destination = uint64(*(*uint)(fieldPointer))
+	case reflect.Uint8:
+		*destination = uint64(*(*uint8)(fieldPointer))
+	case reflect.Uint16:
+		*destination = uint64(*(*uint16)(fieldPointer))
+	case reflect.Uint32:
+		*destination = uint64(*(*uint32)(fieldPointer))
+	case reflect.Uint64:
+		*destination = *(*uint64)(fieldPointer)
+	case reflect.Uintptr:
+		*destination = uint64(*(*uintptr)(fieldPointer))
+	default:
+	}
+}
+
+// handleGetStructFieldFloat64 reads a float-kind struct field via tier-0.
 //
 // Operand A=float destination, B=general source, C=structLayoutTable index. Uses
 // unsafe.Pointer arithmetic via the pre-resolved structLayoutTable entry, falling back to
@@ -119,7 +124,7 @@ func handleGetStructFieldUintT0(vm *VM, frame *CallFrame, registers *Registers, 
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleGetStructFieldFloatT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldFloat64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	base, ok := structFieldUnsafeBase(registers, instruction.B)
 	if !ok {
@@ -141,11 +146,7 @@ func handleGetStructFieldFloatT0(vm *VM, frame *CallFrame, registers *Registers,
 	return opContinue
 }
 
-// handleGetStructFieldBoolT0 reads a bool-kind struct field via tier-0.
-//
-// Operand A=bool destination, B=general source, C=structLayoutTable index. Uses
-// unsafe.Pointer arithmetic via the pre-resolved structLayoutTable entry, falling back to
-// a reflect.Field walk when the unsafe base is unavailable.
+// handleGetStructFieldBool reads a bool-kind struct field via tier-0.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -153,7 +154,7 @@ func handleGetStructFieldFloatT0(vm *VM, frame *CallFrame, registers *Registers,
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleGetStructFieldBoolT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldBool(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	base, ok := structFieldUnsafeBase(registers, instruction.B)
 	if !ok {
@@ -169,7 +170,7 @@ func handleGetStructFieldBoolT0(vm *VM, frame *CallFrame, registers *Registers, 
 	return opContinue
 }
 
-// handleSetStructFieldIntT0 writes an int-kind struct field via tier-0.
+// handleSetStructFieldInt64 writes an int-kind struct field via tier-0.
 //
 // Operand A=general structReg, B=int valueReg, C=structLayoutTable index. Uses
 // unsafe.Pointer arithmetic via the pre-resolved structLayoutTable entry, falling back to
@@ -181,7 +182,7 @@ func handleGetStructFieldBoolT0(vm *VM, frame *CallFrame, registers *Registers, 
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleSetStructFieldIntT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldInt64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	base, ok := structFieldUnsafeBase(registers, instruction.A)
 	if !ok {
@@ -210,7 +211,7 @@ func handleSetStructFieldIntT0(vm *VM, frame *CallFrame, registers *Registers, i
 	return opContinue
 }
 
-// handleSetStructFieldUintT0 writes a uint-kind struct field via tier-0.
+// handleSetStructFieldUint64 writes a uint-kind struct field via tier-0.
 //
 // Operand A=general structReg, B=uint valueReg, C=structLayoutTable index. Uses
 // unsafe.Pointer arithmetic via the pre-resolved structLayoutTable entry, falling back to
@@ -222,7 +223,7 @@ func handleSetStructFieldIntT0(vm *VM, frame *CallFrame, registers *Registers, i
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleSetStructFieldUintT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldUint64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	base, ok := structFieldUnsafeBase(registers, instruction.A)
 	if !ok {
@@ -253,7 +254,7 @@ func handleSetStructFieldUintT0(vm *VM, frame *CallFrame, registers *Registers, 
 	return opContinue
 }
 
-// handleSetStructFieldFloatT0 writes a float-kind struct field via tier-0.
+// handleSetStructFieldFloat64 writes a float-kind struct field via tier-0.
 //
 // Operand A=general structReg, B=float valueReg, C=structLayoutTable index. Uses
 // unsafe.Pointer arithmetic via the pre-resolved structLayoutTable entry, falling back to
@@ -265,7 +266,7 @@ func handleSetStructFieldUintT0(vm *VM, frame *CallFrame, registers *Registers, 
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleSetStructFieldFloatT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldFloat64(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	base, ok := structFieldUnsafeBase(registers, instruction.A)
 	if !ok {
@@ -288,11 +289,7 @@ func handleSetStructFieldFloatT0(vm *VM, frame *CallFrame, registers *Registers,
 	return opContinue
 }
 
-// handleSetStructFieldBoolT0 writes a bool-kind struct field via tier-0.
-//
-// Operand A=general structReg, B=bool valueReg, C=structLayoutTable index. Uses
-// unsafe.Pointer arithmetic via the pre-resolved structLayoutTable entry, falling back to
-// a reflect.Field walk when the unsafe base is unavailable.
+// handleSetStructFieldBool writes a bool-kind struct field via tier-0.
 //
 // Takes vm (*VM) which is the virtual machine.
 // Takes frame (*CallFrame) which holds the program counter and layout tables.
@@ -300,7 +297,7 @@ func handleSetStructFieldFloatT0(vm *VM, frame *CallFrame, registers *Registers,
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleSetStructFieldBoolT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldBool(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	base, ok := structFieldUnsafeBase(registers, instruction.A)
 	if !ok {
@@ -316,7 +313,7 @@ func handleSetStructFieldBoolT0(vm *VM, frame *CallFrame, registers *Registers, 
 	return opContinue
 }
 
-// handleGetStructFieldSliceLen reads the length of a slice-kind struct field without
+// handleLengthStructField reads the length of a slice-kind struct field without
 // materialising a slice header value.
 //
 // Operand A=int destination, B=general source (receiver), C=structLayoutTable index.
@@ -329,10 +326,10 @@ func handleSetStructFieldBoolT0(vm *VM, frame *CallFrame, registers *Registers, 
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleGetStructFieldSliceLen(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleLengthStructField(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	if reflect.Kind(layout.Kind) != reflect.Slice {
-		panicTier0UnexpectedFieldKind(frame, "GET_STRUCT_FIELD_SLICE_LEN", reflect.Kind(layout.Kind))
+		panicTier0UnexpectedFieldKind(frame, "LENGTH_STRUCT_FIELD", reflect.Kind(layout.Kind))
 	}
 	base, ok := structFieldUnsafeBase(registers, instruction.B)
 	if !ok {
@@ -348,14 +345,13 @@ func handleGetStructFieldSliceLen(vm *VM, frame *CallFrame, registers *Registers
 	return opContinue
 }
 
-// handleGetStructFieldSliceIndexScalar reads one full-width scalar sub-field of one
-// element of a slice-typed struct field: bank(ext2.C)[A] =
-// receiver[B].field(layout[C])[ints[ext1.C]].subfield(ext2.wide).
+// handleGetStructFieldElementField reads one full-width scalar sub-field of one element
+// of a slice-typed struct field.
 //
 // The slice header is read in place through the receiver on every access -aliasing and
 // reslice-through-receiver semantics stay automatic, no header value is materialised, and
 // no element copy is boxed. Out-of-range indexes raise the interpreted panic. Names the
-// scalar element banks the fused slice-index read can service; any other element kind
+// scalar element banks the fused slice-index read can service. Any other element kind
 // declines through the default and takes the generic path.
 //
 // Takes vm (*VM) which supplies panic plumbing for the bounds check.
@@ -364,7 +360,7 @@ func handleGetStructFieldSliceLen(vm *VM, frame *CallFrame, registers *Registers
 // Takes instruction (instruction) which carries A=dest, B=receiver, C=layout index.
 //
 // Returns OpResult indicating the next execution step.
-func handleGetStructFieldSliceIndexScalar(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleGetStructFieldElementField(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	indexRegister, elementSize, subFieldOffset, subKind := readFusedSliceFieldExtensions(frame)
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	index := int(registers.Ints[indexRegister])
@@ -386,11 +382,11 @@ func handleGetStructFieldSliceIndexScalar(vm *VM, frame *CallFrame, registers *R
 	}
 	scalarPointer := unsafe.Add(header.Data, uintptr(index)*elementSize+subFieldOffset)
 	switch subKind {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		registers.Ints[instruction.A] = *(*int64)(scalarPointer)
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		registers.Floats[instruction.A] = *(*float64)(scalarPointer)
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		registers.Uints[instruction.A] = *(*uint64)(scalarPointer)
 	case isa.RegisterBool:
 		registers.Bools[instruction.A] = *(*bool)(scalarPointer)
@@ -399,11 +395,10 @@ func handleGetStructFieldSliceIndexScalar(vm *VM, frame *CallFrame, registers *R
 	return opContinue
 }
 
-// handleSetStructFieldIndexGeneral writes one element of an array-typed struct field:
-// receiver[A].field(layout[C]).elem[ints[ext1.C]] = general[B].
+// handleSetStructFieldElementGeneral writes one element of an array-typed struct field.
 //
 // The write goes through an addressable reflect view of the element so every arm keeps GC
-// write barriers, sharing isa.OpIndexSet's coercion pipeline via storeIndexedElement
+// write barriers, sharing isa.OpSetElement's coercion pipeline via storeIndexedElement
 // (including its direct any-slot fast path for eface elements).
 //
 // Takes vm (*VM) which supplies the arena and panic plumbing.
@@ -412,7 +407,7 @@ func handleGetStructFieldSliceIndexScalar(vm *VM, frame *CallFrame, registers *R
 // Takes instruction (instruction) which carries A=receiver, B=source, C=layout index.
 //
 // Returns OpResult indicating the next execution step.
-func handleSetStructFieldIndexGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSetStructFieldElementGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	indexRegister, arrayLength, elementSize, _ := readFusedArrayFieldExtensions(frame)
 	layout := readTier0StructFieldLayout(frame, instruction.C)
 	index := int(registers.Ints[indexRegister])

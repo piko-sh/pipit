@@ -21,8 +21,6 @@
 package harness
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -32,27 +30,6 @@ import (
 
 // decimalBase is the radix of the timing markers.
 const decimalBase = 10
-
-// NormaliseStdout produces the canonical byte form used for hash comparison. Line endings
-// collapse to LF, trailing whitespace on each line is dropped, and one trailing LF is
-// removed if present so an editor adding (or not adding) a final newline does not change
-// the hash.
-func NormaliseStdout(raw []byte) []byte {
-	text := string(raw)
-	text = strings.ReplaceAll(text, "\r\n", "\n")
-	text = strings.ReplaceAll(text, "\r", "\n")
-	lines := strings.Split(text, "\n")
-	for i := range lines {
-		lines[i] = strings.TrimRight(lines[i], " \t")
-	}
-	return []byte(strings.TrimSuffix(strings.Join(lines, "\n"), "\n"))
-}
-
-// SHA256Hex returns the lower-case hex digest of the given bytes.
-func SHA256Hex(data []byte) string {
-	digest := sha256.Sum256(data)
-	return hex.EncodeToString(digest[:])
-}
 
 // VerifySourceSHAs walks every entry in spec.SourceSHAs and checks that the file at that
 // relative path inside benchmarkDir hashes to the recorded digest. Returns nil on full

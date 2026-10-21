@@ -25,21 +25,14 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-// handleSwapStructFieldsGeneralT0 swaps two general-bank fields of the same struct in one
-// dispatch. Fuses the six-instruction GET-MOVE-GET-MOVE-SET-SET sequence the generic
-// tuple-assign lowerer emits for cross-paired field swaps such as `t.left, t.right =
-// t.right, t.left`.
+// handleSwapStructFieldsGeneral swaps two general-bank fields of the same struct in one
+// dispatch.
 //
-// Operand A=general structReg (the *Struct receiver), B=structLayoutTable index for field
-// A, C=structLayoutTable index for field B. The Compiler emits this op only when both
-// field layouts have the same kind and share the same FieldTypeIndex, so a single
-// typedmemmove type suffices for both halves of the swap.
-//
-// Interface-kind fields are 16-byte efaces; Pointer / Map / Chan / Func / UnsafePointer
-// are 8-byte direct-interface words. typedmemmove with the field's type pointer handles
-// the size correctly and emits the GC barriers in either case. Falls back to the
-// reflect-based helper when the unsafe build is unavailable, when the type table entry is
-// missing or mismatched, or when the receiver is not a pointer to an addressable struct.
+// The Compiler emits this op only when both field layouts have the same kind and share
+// the same FieldTypeIndex, so a single typedmemmove type suffices for both halves of the
+// swap. Falls back to the reflect-based helper when the unsafe build is unavailable, when
+// the type table entry is missing or mismatched, or when the receiver is not a pointer to
+// an addressable struct.
 //
 // Takes vm (*VM) which provides the reflect fallback path.
 // Takes frame (*CallFrame) which provides the layout and type tables.
@@ -47,7 +40,7 @@ import (
 // Takes instruction (instruction) which encodes the operand indices.
 //
 // Returns opContinue.
-func handleSwapStructFieldsGeneralT0(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
+func handleSwapStructFieldsGeneral(vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction) OpResult {
 	layoutA := readTier0StructFieldLayout(frame, instruction.B)
 	layoutB := readTier0StructFieldLayout(frame, instruction.C)
 	if !useMapFastLinkname() {

@@ -30,45 +30,45 @@ func handlerSetFieldExit()
 //go:noescape
 func handlerGetFieldExit()
 
-// handlerMapIndexExit is the ASM exit stub for isa.OpMapIndex.
+// handlerGetMapExit is the ASM exit stub for isa.OpGetMap.
 //
 //go:noescape
-func handlerMapIndexExit()
+func handlerGetMapExit()
 
 // handlerAppendExit is the ASM exit stub for isa.OpAppend.
 //
 //go:noescape
 func handlerAppendExit()
 
-// handlerAppendByteFastExit is the ASM exit stub for isa.OpAppendByteFast.
+// handlerAppendByteExit is the ASM exit stub for isa.OpAppendByte.
 //
 //go:noescape
-func handlerAppendByteFastExit()
+func handlerAppendByteExit()
 
-// handlerSubOpSliceSetStringDirectExit is the ASM exit stub for the tier-1 []string
-// element store. It is installed into the tier-1 jump table by initJumpTable (see
+// handlerSetSliceStringElementExit is the ASM exit stub for the tier-1 []string element
+// store. It is installed into the tier-1 jump table by initJumpTable (see
 // buildStaticJumpTableEntries) rather than by installPerOpDirectExits, because tier-1
 // slots are filled at code-generation time.
 //
 //go:noescape
-func handlerSubOpSliceSetStringDirectExit()
+func handlerSetSliceStringElementExit()
 
-// handlerAppendStructFastExit is the ASM exit stub for isa.OpAppendStructFast.
+// handlerAppendStructExit is the ASM exit stub for isa.OpAppendStruct.
 //
 //go:noescape
-func handlerAppendStructFastExit()
+func handlerAppendStructExit()
 
-// handlerAppendIntFastExit is the ASM exit stub for isa.OpAppendIntFast.
+// handlerAppendInt64Exit is the ASM exit stub for isa.OpAppendInt64.
 //
 //go:noescape
-func handlerAppendIntFastExit()
+func handlerAppendInt64Exit()
 
-// handlerAppendFloatFastExit is the ASM exit stub for isa.OpAppendFloatFast.
+// handlerAppendFloat64Exit is the ASM exit stub for isa.OpAppendFloat64.
 //
 //go:noescape
-func handlerAppendFloatFastExit()
+func handlerAppendFloat64Exit()
 
-// handlerAppendStringFastExit is the ASM exit stub for isa.OpAppendStringFast.
+// handlerAppendStringExit is the ASM exit stub for isa.OpAppendString.
 //
 //go:noescape
-func handlerAppendStringFastExit()
+func handlerAppendStringExit()

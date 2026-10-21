@@ -48,7 +48,7 @@ func run() int {
 	p := pair{a: 1, b: 2}
 	total := 0
 	for i := 0; i < 10; i++ {
-		total = total + sum(p)
+		total = total + sum(pair{a: i, b: p.b})
 	}
 	return total
 }
@@ -102,11 +102,11 @@ func TestSpliceRollbackRestoresSourceMap(t *testing.T) {
 	t.Parallel()
 	files := []string{"main.go"}
 	caller := &program.CompiledFunction{
-		Body:           []isa.Instruction{isa.NewInstruction(isa.OpNop, 0, 0, 0)},
+		Body:           []isa.Instruction{isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)},
 		DebugSourceMap: &program.SourceMap{Files: &files, Positions: []program.SourcePosition{{Line: 3}}},
 	}
 	snapshot := inline.CaptureSpliceSnapshot(caller)
-	caller.Body = append(caller.Body, isa.NewInstruction(isa.OpNop, 0, 0, 0))
+	caller.Body = append(caller.Body, isa.NewInstruction(isa.OpNoOperation, 0, 0, 0))
 	caller.DebugSourceMap.Positions = append(caller.DebugSourceMap.Positions, program.SourcePosition{Line: 9})
 	inline.RestoreSpliceSnapshot(caller, snapshot)
 	require.Len(t, caller.Body, 1)
@@ -118,7 +118,7 @@ func TestVerifySourceMapsParallelReportsDrift(t *testing.T) {
 	files := []string{"main.go"}
 	root := &program.CompiledFunction{
 		Name:           "root",
-		Body:           []isa.Instruction{isa.NewInstruction(isa.OpNop, 0, 0, 0), isa.NewInstruction(isa.OpNop, 0, 0, 0)},
+		Body:           []isa.Instruction{isa.NewInstruction(isa.OpNoOperation, 0, 0, 0), isa.NewInstruction(isa.OpNoOperation, 0, 0, 0)},
 		DebugSourceMap: &program.SourceMap{Files: &files, Positions: []program.SourcePosition{{Line: 1}}},
 	}
 	err := inline.VerifySourceMapsParallel(root, "probe")

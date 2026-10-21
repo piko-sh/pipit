@@ -16,7 +16,7 @@
 // oppression. We built this to empower people, not to enable those who would
 // strip others of their rights and dignity.
 
-//go:build safe || (js && wasm)
+//go:build safe
 
 package engine
 
@@ -27,9 +27,9 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-// runTinyLeafIncIntField implements the inlined body for the void `recv.fieldX++` shape
-// on an int-kind field through reflect; receivers whose field cannot be set fall back to
-// tinyLeafMutateFallback.
+// runTinyLeafIncrementIntField implements the inlined body for the void `recv.fieldX++`
+// shape on an int-kind field through reflect. Receivers whose field cannot be set fall
+// back to tinyLeafMutateFallback.
 //
 // Takes vm (*VM) which carries the panic machinery for nil-pointer receivers.
 // Takes registers (*Registers) which is the caller's register file.
@@ -37,7 +37,7 @@ import (
 // Takes callee (*CompiledFunction) which carries the layout selected by the classifier.
 //
 // Returns opContinue after the increment, or the fallback's result.
-func runTinyLeafIncIntField(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) OpResult {
+func runTinyLeafIncrementIntField(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) OpResult {
 	recv := registers.General[site.Arguments[0].Register]
 	if field, ok := tinyLeafSettableField(recv, callee.TinyLeafLayout); ok {
 		field.SetInt(field.Int() + 1)
@@ -46,7 +46,8 @@ func runTinyLeafIncIntField(vm *VM, registers *Registers, site *program.CallSite
 	return tinyLeafMutateFallback(vm, registers, site, callee, recv)
 }
 
-// runTinyLeafIncUintField is the uint-field sibling of runTinyLeafIncIntField.
+// runTinyLeafIncrementUintField is the uint-field sibling of
+// runTinyLeafIncrementIntField.
 //
 // Takes vm (*VM) which carries the panic machinery for nil-pointer receivers.
 // Takes registers (*Registers) which is the caller's register file.
@@ -54,7 +55,7 @@ func runTinyLeafIncIntField(vm *VM, registers *Registers, site *program.CallSite
 // Takes callee (*CompiledFunction) which carries the layout selected by the classifier.
 //
 // Returns opContinue after the increment, or the fallback's result.
-func runTinyLeafIncUintField(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) OpResult {
+func runTinyLeafIncrementUintField(vm *VM, registers *Registers, site *program.CallSite, callee *program.CompiledFunction) OpResult {
 	recv := registers.General[site.Arguments[0].Register]
 	if field, ok := tinyLeafSettableField(recv, callee.TinyLeafLayout); ok {
 		field.SetUint(field.Uint() + 1)
@@ -84,11 +85,11 @@ func runTinyLeafSetScalarFieldFromArg(vm *VM, registers *Registers, site *progra
 		return tinyLeafMutateFallback(vm, registers, site, callee, recv)
 	}
 	switch tinyLeafScalarFieldBank(kind) {
-	case isa.RegisterInt:
+	case isa.RegisterInt64:
 		field.SetInt(argument.intValue)
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		field.SetUint(argument.uintValue)
-	case isa.RegisterFloat:
+	case isa.RegisterFloat64:
 		field.SetFloat(argument.floatValue)
 	default:
 		field.SetBool(argument.boolValue)

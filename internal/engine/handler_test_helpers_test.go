@@ -27,10 +27,6 @@ import (
 	"pipit.sh/pipit/internal/isa"
 )
 
-func op(a, b, c uint8) isa.Instruction {
-	return isa.Instruction{A: a, B: b, C: c}
-}
-
 func newFramedVM(t *testing.T, compiledFunction *program.CompiledFunction) (*VM, *CallFrame, *Registers) {
 	t.Helper()
 	vm := newTestVM(t)
@@ -41,23 +37,6 @@ func newFramedVM(t *testing.T, compiledFunction *program.CompiledFunction) (*VM,
 	registers := &frame.Registers
 	clearRegisterBanks(registers)
 	return vm, frame, registers
-}
-
-func clearRegisterBanks(registers *Registers) {
-
-	clear(registers.Ints)
-	clear(registers.Floats)
-	clear(registers.Strings)
-	clear(registers.General)
-	clear(registers.Bools)
-	clear(registers.Uints)
-	clear(registers.Complex)
-	clear(registers.SlicesInt)
-	clear(registers.slicesFloat)
-	clear(registers.slicesString)
-	clear(registers.slicesBool)
-	clear(registers.slicesUint)
-	clear(registers.slicesByte)
 }
 
 func newBankedVM(t *testing.T, counts [isa.NumRegisterKinds]uint32) (*VM, *CallFrame, *Registers) {
@@ -86,22 +65,6 @@ func newExtWordFrame(t *testing.T, words ...isa.Instruction) (*VM, *CallFrame, *
 	return vm, frame, registers
 }
 
-func requireEvalError(t *testing.T, vm *VM, got OpResult, target error) {
-	t.Helper()
-	require.Equal(t, opPanicError, got, "the handler must route the fault through the dispatch loop")
-	require.Error(t, vm.evalError, "opPanicError must leave an error on the VM")
-	if target != nil {
-		require.ErrorIs(t, vm.evalError, target)
-	}
-}
-
-func requireRuntimePanic(t *testing.T, vm *VM, got OpResult, message string) {
-	t.Helper()
-	require.NotEqual(t, opContinue, got, "a runtime fault must abandon the fast path")
-	require.Error(t, vm.evalError, "the raised panic must surface as an error")
-	require.Contains(t, vm.evalError.Error(), message)
-}
-
 func newTestArena(t *testing.T) *RegisterArena {
 	t.Helper()
 	arena := GetRegisterArena()
@@ -120,6 +83,43 @@ func newBudgetedArena(t *testing.T, maxBytes uint64) *RegisterArena {
 	return arena
 }
 
+func op(a, b, c uint8) isa.Instruction {
+	return isa.Instruction{A: a, B: b, C: c}
+}
+
+func clearRegisterBanks(registers *Registers) {
+
+	clear(registers.Ints)
+	clear(registers.Floats)
+	clear(registers.Strings)
+	clear(registers.General)
+	clear(registers.Bools)
+	clear(registers.Uints)
+	clear(registers.Complex)
+	clear(registers.SlicesInt)
+	clear(registers.slicesFloat)
+	clear(registers.slicesString)
+	clear(registers.slicesBool)
+	clear(registers.slicesUint)
+	clear(registers.slicesByte)
+}
+
+func requireEvalError(t *testing.T, vm *VM, got OpResult, target error) {
+	t.Helper()
+	require.Equal(t, opPanicError, got, "the handler must route the fault through the dispatch loop")
+	require.Error(t, vm.evalError, "opPanicError must leave an error on the VM")
+	if target != nil {
+		require.ErrorIs(t, vm.evalError, target)
+	}
+}
+
+func requireRuntimePanic(t *testing.T, vm *VM, got OpResult, message string) {
+	t.Helper()
+	require.NotEqual(t, opContinue, got, "a runtime fault must abandon the fast path")
+	require.Error(t, vm.evalError, "the raised panic must surface as an error")
+	require.Contains(t, vm.evalError.Error(), message)
+}
+
 func standardRegisters() Registers {
 	return NewRegisters(wideRegCounts(8))
 }
@@ -130,4 +130,33 @@ func wideRegCounts(n uint32) [isa.NumRegisterKinds]uint32 {
 		counts[kind] = n
 	}
 	return counts
+}
+
+func jumpExtension(offset int16) isa.Instruction {
+	low, high := isa.SplitOffset(offset)
+	return isa.NewInstruction(isa.OpExtension, low, high, 0)
+}
+
+func dispatchRoutes() []bool {
+	if assemblyRouteAvailable {
+		return []bool{false, true}
+	}
+	return []bool{false}
+}
+
+func routeName(assembly bool) string {
+	if assembly {
+		return "assembly"
+	}
+	return "Go handler"
+}
+
+func runOneInstruction(t *testing.T, vm *VM, frame *CallFrame, registers *Registers, instruction isa.Instruction, assembly bool) {
+	t.Helper()
+	if assembly {
+		runInAssembly(t, vm)
+		return
+	}
+	frame.ProgramCounter = 1
+	require.Equal(t, opContinue, flatDispatchSwitch(vm, frame, registers, instruction))
 }

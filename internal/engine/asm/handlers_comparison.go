@@ -35,27 +35,57 @@ const (
 // and control flow opcodes.
 func comparisonHandlers() []asmgen.HandlerDefinition[BytecodeArchitecturePort] {
 	return []asmgen.HandlerDefinition[BytecodeArchitecturePort]{
-		integerComparisonHandler("handlerEqInt", "handlerEqInt sets ints[A] = (ints[B] == ints[C]) ? 1 : 0.", "EQ"),
-		integerComparisonHandler("handlerNeInt", "handlerNeInt sets ints[A] = (ints[B] != ints[C]) ? 1 : 0.", "NE"),
-		integerComparisonHandler("handlerLtInt", "handlerLtInt sets ints[A] = (ints[B] < ints[C]) ? 1 : 0.", "LT"),
-		integerComparisonHandler("handlerLeInt", "handlerLeInt sets ints[A] = (ints[B] <= ints[C]) ? 1 : 0.", "LE"),
-		integerComparisonHandler("handlerGtInt", "handlerGtInt sets ints[A] = (ints[B] > ints[C]) ? 1 : 0.", "GT"),
-		integerComparisonHandler("handlerGeInt", "handlerGeInt sets ints[A] = (ints[B] >= ints[C]) ? 1 : 0.", "GE"),
-		uintComparisonHandler("handlerEqUint", "handlerEqUint sets ints[A] = (uints[B] == uints[C]) ? 1 : 0.", "EQ"),
-		uintComparisonHandler("handlerNeUint", "handlerNeUint sets ints[A] = (uints[B] != uints[C]) ? 1 : 0.", "NE"),
-		uintComparisonHandler("handlerLtUint", "handlerLtUint sets ints[A] = (uints[B] < uints[C]) ? 1 : 0.", "LT"),
-		uintComparisonHandler("handlerLeUint", "handlerLeUint sets ints[A] = (uints[B] <= uints[C]) ? 1 : 0.", "LE"),
-		uintComparisonHandler("handlerGtUint", "handlerGtUint sets ints[A] = (uints[B] > uints[C]) ? 1 : 0.", "GT"),
-		uintComparisonHandler("handlerGeUint", "handlerGeUint sets ints[A] = (uints[B] >= uints[C]) ? 1 : 0.", "GE"),
-		floatComparisonHandler("handlerEqFloat", "handlerEqFloat sets ints[A] = (floats[B] == floats[C]) ? 1 : 0.", "EQ"),
-		floatComparisonHandler("handlerNeFloat", "handlerNeFloat sets ints[A] = (floats[B] != floats[C]) ? 1 : 0.", "NE"),
-		floatComparisonHandler("handlerLtFloat", "handlerLtFloat sets ints[A] = (floats[B] < floats[C]) ? 1 : 0.", "LT"),
-		floatComparisonHandler("handlerLeFloat", "handlerLeFloat sets ints[A] = (floats[B] <= floats[C]) ? 1 : 0.", "LE"),
-		floatComparisonHandler("handlerGtFloat", "handlerGtFloat sets ints[A] = (floats[B] > floats[C]) ? 1 : 0.", "GT"),
-		floatComparisonHandler("handlerGeFloat", "handlerGeFloat sets ints[A] = (floats[B] >= floats[C]) ? 1 : 0.", "GE"),
+		integerComparisonHandler("handlerEqualInt64", "handlerEqualInt64 sets ints[A] = (ints[B] == ints[C]) ? 1 : 0.", "EQ"),
+		integerComparisonHandler("handlerNotEqualInt64", "handlerNotEqualInt64 sets ints[A] = (ints[B] != ints[C]) ? 1 : 0.", "NE"),
+		integerComparisonHandler("handlerLessThanInt64", "handlerLessThanInt64 sets ints[A] = (ints[B] < ints[C]) ? 1 : 0.", "LT"),
+		integerComparisonHandler("handlerLessOrEqualInt64", "handlerLessOrEqualInt64 sets ints[A] = (ints[B] <= ints[C]) ? 1 : 0.", "LE"),
+		integerComparisonHandler("handlerGreaterThanInt64", "handlerGreaterThanInt64 sets ints[A] = (ints[B] > ints[C]) ? 1 : 0.", "GT"),
+		integerComparisonHandler("handlerGreaterOrEqualInt64", "handlerGreaterOrEqualInt64 sets ints[A] = (ints[B] >= ints[C]) ? 1 : 0.", "GE"),
+		uintComparisonHandler("handlerEqualUint64", "handlerEqualUint64 sets ints[A] = (uints[B] == uints[C]) ? 1 : 0.", "EQ"),
+		uintComparisonHandler("handlerNotEqualUint64", "handlerNotEqualUint64 sets ints[A] = (uints[B] != uints[C]) ? 1 : 0.", "NE"),
+		uintComparisonHandler("handlerLessThanUint64", "handlerLessThanUint64 sets ints[A] = (uints[B] < uints[C]) ? 1 : 0.", "LT"),
+		uintComparisonHandler("handlerLessOrEqualUint64", "handlerLessOrEqualUint64 sets ints[A] = (uints[B] <= uints[C]) ? 1 : 0.", "LE"),
+		uintComparisonHandler("handlerGreaterThanUint64", "handlerGreaterThanUint64 sets ints[A] = (uints[B] > uints[C]) ? 1 : 0.", "GT"),
+		uintComparisonHandler("handlerGreaterOrEqualUint64", "handlerGreaterOrEqualUint64 sets ints[A] = (uints[B] >= uints[C]) ? 1 : 0.", "GE"),
+		floatComparisonHandler("handlerEqualFloat64", "handlerEqualFloat64 sets ints[A] = (floats[B] == floats[C]) ? 1 : 0.", "EQ"),
+		floatComparisonHandler("handlerNotEqualFloat64", "handlerNotEqualFloat64 sets ints[A] = (floats[B] != floats[C]) ? 1 : 0.", "NE"),
+		floatComparisonHandler("handlerLessThanFloat64", "handlerLessThanFloat64 sets ints[A] = (floats[B] < floats[C]) ? 1 : 0.", "LT"),
+		floatComparisonHandler("handlerLessOrEqualFloat64", "handlerLessOrEqualFloat64 sets ints[A] = (floats[B] <= floats[C]) ? 1 : 0.", "LE"),
+		floatComparisonHandler("handlerGreaterThanFloat64", "handlerGreaterThanFloat64 sets ints[A] = (floats[B] > floats[C]) ? 1 : 0.", "GT"),
+		floatComparisonHandler("handlerGreaterOrEqualFloat64", "handlerGreaterOrEqualFloat64 sets ints[A] = (floats[B] >= floats[C]) ? 1 : 0.", "GE"),
 		handlerJump(),
 		handlerJumpIfTrue(),
 		handlerJumpIfFalse(),
+		boolRegisterJumpHandler("handlerJumpIfFalseBool", "handlerJumpIfFalseBool jumps by the extension word's offset if bools[C] is false.", "NONZERO"),
+		boolRegisterJumpHandler("handlerJumpIfTrueBool", "handlerJumpIfTrueBool jumps by the extension word's offset if bools[C] is true.", "ZERO"),
+	}
+}
+
+// boolRegisterJumpHandler builds a tier-2 handler that tests bools[C] and either jumps by
+// the offset in the extension word that follows or steps over that word.
+//
+// Takes name (string) which is the handler function name.
+// Takes comment (string) which is the handler's doc comment.
+// Takes stays (string) which is the test of the bool, ZERO or NONZERO, under which the
+// jump is not taken.
+//
+// Returns HandlerDefinition[BytecodeArchitecturePort] which is the handler definition.
+func boolRegisterJumpHandler(name, comment, stays string) asmgen.HandlerDefinition[BytecodeArchitecturePort] {
+	return asmgen.HandlerDefinition[BytecodeArchitecturePort]{
+		Name: name, Comment: comment,
+		FrameSize: frameSizeZero, Flags: flagsNoSplitNoFrame,
+		Emit: func(emitter *asmgen.Emitter, architecture BytecodeArchitecturePort) {
+			const (
+				scratchIndex = 0
+				scratchValue = 1
+				scratchBase  = 2
+			)
+			scratches := architecture.ScratchRegisters()
+			architecture.ExtractC(emitter, scratches[scratchIndex])
+			architecture.LoadFromBoolBank(emitter, scratches[scratchIndex], scratches[scratchValue], scratches[scratchBase])
+			architecture.TestAndBranch(emitter, scratches[scratchValue], stays, labelTaken)
+			jumpByExtensionOrSkipIt(emitter, architecture, scratches[scratchIndex])
+		},
 	}
 }
 

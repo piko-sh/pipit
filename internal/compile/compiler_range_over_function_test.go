@@ -23,6 +23,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"pipit.sh/pipit/internal/fault"
 	"pipit.sh/pipit/internal/isa"
 )
 
@@ -104,7 +105,7 @@ func TestRangingOverAFunctionCallsItWithASynthesisedYieldClosure(t *testing.T) {
 				"the loop body becomes a yield callback, so a closure over it has to be built")
 			require.True(t, bodyContainsTier1SubOp(compiled, isa.SubOpCallNative),
 				"the iterator is called once with that callback, through the native call path")
-			require.True(t, bodyContainsTier2SubOp(compiled, isa.SubOpTier2SyncClosureUpvalues),
+			require.True(t, bodyContainsTier2SubOp(compiled, isa.SubOpTier2SynchroniseClosureCapturedVariables),
 				"the callback writes to the caller's registers through upvalues, which have to be synced back on return")
 		})
 	}
@@ -142,7 +143,7 @@ func TestReturningFromARangeOverFunctionBodyIsStashedAndReplayed(t *testing.T) {
 
 			compiled := findCompiledFunction(t, root, "f")
 
-			require.True(t, bodyContainsTier2SubOp(compiled, isa.SubOpTier2SyncClosureUpvalues),
+			require.True(t, bodyContainsTier2SubOp(compiled, isa.SubOpTier2SynchroniseClosureCapturedVariables),
 				"the state flag the callback set lives in an upvalue and has to come back before it is read")
 			require.True(t, bodyContainsTier2SubOp(compiled, isa.SubOpTier2Return),
 				"a return inside the body has to be replayed as a real return once the iterator has unwound")
@@ -181,12 +182,71 @@ func TestLabelledJumpsOutOfARangeOverFunctionBodyDispatchOnTheStateFlag(t *testi
 			compiled := findCompiledFunction(t, compileSnippet(t, "package main\n"+iteratorFunctions+"\n"+tt.source+"\n"), "f")
 			control := findCompiledFunction(t, compileSnippet(t, "package main\n"+iteratorFunctions+"\n"+tt.control+"\n"), "f")
 
-			require.True(t, bodyContainsTier2SubOp(compiled, isa.SubOpTier2SyncClosureUpvalues),
+			require.True(t, bodyContainsTier2SubOp(compiled, isa.SubOpTier2SynchroniseClosureCapturedVariables),
 				"the flag is only readable in the caller once the callback's upvalues have been synced")
 			require.Greater(t,
-				countTier1SubOp(compiled, isa.SubOpEqIntConstJumpFalse),
-				countTier1SubOp(control, isa.SubOpEqIntConstJumpFalse),
+				countTier1SubOp(compiled, isa.SubOpEqualInt64ConstantThenJumpIfFalse),
+				countTier1SubOp(control, isa.SubOpEqualInt64ConstantThenJumpIfFalse),
 				"a jump that leaves the callback for a labelled outer loop needs its own flag check in the caller, which the unlabelled form does not")
 		})
 	}
+}
+
+func TestReturnsInsideRangeOverFunctionBodiesGoThroughTheNamedResults(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		source string
+	}{
+		{
+			name:   "named results",
+			source: "func f() (r int) { for v := range seq1 { if v == 1 { return v } }; return -1 }",
+		},
+		{
+			name:   "a defer, which gives unnamed results hidden names",
+			source: "func f() int { defer func() {}(); for v := range seq1 { if v == 1 { return v } }; return -1 }",
+		},
+		{
+			name:   "a bare return of named results",
+			source: "func f() (r int, s string) { for k, v := range seq2 { r, s = k, v; if k == 1 { return } }; return -1, \"\" }",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			compiled := findCompiledFunction(t, compileSnippet(t, "package main\n"+iteratorFunctions+"\n"+tt.source+"\n"), "f")
+
+			require.NotEmpty(t, compiled.NamedResultLocations)
+			require.True(t, bodyContainsTier2SubOp(compiled, isa.SubOpTier2Return),
+				"the replayed return stores the stashed values in the named results, so deferred calls see them")
+		})
+	}
+}
+
+func TestNestedRangeOverFunctionBodiesPassReturnsAndGotosOutwards(t *testing.T) {
+	t.Parallel()
+
+	sources := []string{
+		"func f() (int, string) { for a := range seq1 { for b, s := range seq2 { if a == b { return a, s } } }; return -1, \"\" }",
+		"func f() string { for a := range seq1 { for b := range seq1 { if a+b == 3 { goto done } } }; return \"missed\"\ndone:\n\treturn \"hit\" }",
+		"func f() (n int) { loop: for i := 0; i < 3; i++ { for a := range seq1 { for b := range seq1 { if a == b { continue loop }; n++ } } }; return n }",
+	}
+
+	for _, source := range sources {
+		_, err := tryCompileSnippet(t, "package main\n"+iteratorFunctions+"\n"+source+"\n")
+		require.NoError(t, err, source)
+	}
+}
+
+func TestADeferInsideARangeOverFunctionBodyIsRefused(t *testing.T) {
+	t.Parallel()
+
+	_, err := tryCompileSnippet(t, "package main\n"+iteratorFunctions+"\nfunc f() { for v := range seq1 { defer println(v) } }\n")
+	require.ErrorIs(t, err, fault.ErrCompileDeferInRangeOverFunctionBody,
+		"Go runs the call when the enclosing function returns; the body is a closure the iterator calls")
+
+	_, err = tryCompileSnippet(t, "package main\n"+iteratorFunctions+"\nfunc f() { for v := range seq1 { func() { defer println(v) }() } }\n")
+	require.NoError(t, err, "a defer inside a function literal in the body belongs to the literal")
 }

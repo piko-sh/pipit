@@ -20,6 +20,7 @@ package program
 
 import (
 	"reflect"
+	"sync/atomic"
 	"unsafe"
 
 	"pipit.sh/pipit/internal/isa"
@@ -96,4 +97,14 @@ type UpvalueCell struct {
 	// OriginalKind names the register bank the variable had before heap promotion.
 	// Meaningful only when IsIndirect is true.
 	OriginalKind isa.RegisterKind
+
+	// HandedOff is non-zero once a licence walk named the cell (cell walks).
+	//
+	// Every later store into it is a shared-store hand-off. Appended last so the offsets the
+	// assembly reads are unchanged.
+	HandedOff atomic.Uint32
+
+	// Maker names the arena epoch whose VM made the cell, or is zero when unknown. Written
+	// before the cell is published and never changed, so any goroutine may read it.
+	Maker uint64
 }

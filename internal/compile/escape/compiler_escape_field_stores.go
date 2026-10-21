@@ -61,6 +61,57 @@ func annotateArenaSafeFieldStores(compiledFunction *program.CompiledFunction) {
 	}
 }
 
+// RevalidateArenaSafeFieldStores re-checks every grant in
+// compiledFunction.FieldStoreArenaSafePCs against the function's current body and drops
+// the grants that no longer hold.
+//
+// Takes compiledFunction (*program.CompiledFunction) whose grants are re-checked.
+//
+// Returns int which is the number of grants dropped.
+func RevalidateArenaSafeFieldStores(compiledFunction *program.CompiledFunction) int {
+	if len(compiledFunction.FieldStoreArenaSafePCs) == 0 {
+		return 0
+	}
+	body := compiledFunction.Body
+	jumpTargets := program.JumpTargetsOf(body)
+	aliasFree := make(map[uint8]bool)
+	dropped := 0
+	for programCounter := range compiledFunction.FieldStoreArenaSafePCs {
+		if fieldStoreGrantHolds(compiledFunction, programCounter, jumpTargets, aliasFree) {
+			continue
+		}
+		delete(compiledFunction.FieldStoreArenaSafePCs, programCounter)
+		dropped++
+	}
+	return dropped
+}
+
+// fieldStoreGrantHolds reports whether the grant at programCounter still satisfies the
+// rules annotateArenaSafeFieldStores granted it under.
+//
+// Takes compiledFunction (*program.CompiledFunction) whose body is read.
+// Takes programCounter (int) which is the granted store's program counter.
+// Takes jumpTargets (map[int]bool) which marks branch destinations.
+// Takes aliasFree (map[uint8]bool) which caches the alias-free answer per receiver.
+//
+// Returns bool which is true when the grant holds.
+func fieldStoreGrantHolds(compiledFunction *program.CompiledFunction, programCounter int, jumpTargets map[int]bool, aliasFree map[uint8]bool) bool {
+	body := compiledFunction.Body
+	if programCounter < 0 || programCounter >= len(body) || !isAnnotatableFieldStore(body[programCounter]) {
+		return false
+	}
+	receiver := body[programCounter].A
+	if !receiverFromArenaSafeSite(compiledFunction, programCounter, receiver, jumpTargets) {
+		return false
+	}
+	free, seen := aliasFree[receiver]
+	if !seen {
+		free = fieldStoreReceiverAliasFree(compiledFunction, receiver)
+		aliasFree[receiver] = free
+	}
+	return free
+}
+
 // isAnnotatableFieldStore reports whether inst is a struct-field store whose handler
 // consults FieldStoreArenaSafePCs: the layout-table store and the reflect store with a
 // direct field index (the dereferencing form writes through a pointer whose target the
@@ -101,7 +152,7 @@ func receiverFromArenaSafeSite(compiledFunction *program.CompiledFunction, store
 			return false
 		}
 		inst := body[pc-1]
-		if inst.Op == isa.OpExt {
+		if inst.Op == isa.OpExtension {
 			continue
 		}
 		if outputSlot, ok := arenaCandidateSiteAt(compiledFunction, pc-1); ok && outputSlot == receiver {
@@ -134,7 +185,7 @@ func fieldStoreReceiverAliasFree(compiledFunction *program.CompiledFunction, slo
 	pc := 0
 	for pc < len(compiledFunction.Body) {
 		inst := compiledFunction.Body[pc]
-		addressOf := (inst.Op == isa.OpAllocIndirect || inst.Op == isa.OpAddr) && isArenaCandidateSite(inst) && inst.B == slot
+		addressOf := (inst.Op == isa.OpAllocateIndirect || inst.Op == isa.OpAddress) && isArenaCandidateSite(inst) && inst.B == slot
 		if addressOf {
 			if !compiledFunction.ArenaSafeAllocPCs[pc] {
 				return false

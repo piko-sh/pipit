@@ -25,8 +25,8 @@
 #include "asm_dispatch_offsets.h"
 #include "asm_dispatch_amd64.h"
 
-// handlerSubOpMoveInt copies the value at bank[C] into bank[B] for the tier-1 register-move sub-op.
-TEXT ·handlerSubOpMoveInt(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveInt64 copies the value at bank[C] into bank[B] for the tier-1 register-move sub-op.
+TEXT ·handlerMoveInt64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -36,8 +36,8 @@ TEXT ·handlerSubOpMoveInt(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    SI, (R8)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpMoveFloat copies floats[C] to floats[B] for the tier-1 register-move sub-op.
-TEXT ·handlerSubOpMoveFloat(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveFloat64 copies floats[C] to floats[B] for the tier-1 register-move sub-op.
+TEXT ·handlerMoveFloat64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -47,8 +47,8 @@ TEXT ·handlerSubOpMoveFloat(SB), NOSPLIT|NOFRAME, $0
 	MOVSD   X0, (R9)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpMoveBool copies bank[C] to bank[B] for a context-base-loaded register-move sub-op.
-TEXT ·handlerSubOpMoveBool(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveBool copies bank[C] to bank[B] for a context-base-loaded register-move sub-op.
+TEXT ·handlerMoveBool(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -60,8 +60,8 @@ TEXT ·handlerSubOpMoveBool(SB), NOSPLIT|NOFRAME, $0
 	MOVB    CL, (SI)(AX*1)
 	DISPATCH_NEXT()
 
-// handlerSubOpMoveUint copies bank[C] to bank[B] for a context-base-loaded register-move sub-op.
-TEXT ·handlerSubOpMoveUint(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveUint64 copies bank[C] to bank[B] for a context-base-loaded register-move sub-op.
+TEXT ·handlerMoveUint64(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    DX, AX
 	SHRQ    $16, AX
 	MOVBLZX AL, AX
@@ -73,8 +73,8 @@ TEXT ·handlerSubOpMoveUint(SB), NOSPLIT|NOFRAME, $0
 	MOVQ    CX, (SI)(AX*8)
 	DISPATCH_NEXT()
 
-// handlerSubOpMoveString copies strings[C] to strings[B] for the tier-1 register-move sub-op.
-TEXT ·handlerSubOpMoveString(SB), NOSPLIT|NOFRAME, $0
+// handlerMoveString copies strings[C] to strings[B] for the tier-1 register-move sub-op.
+TEXT ·handlerMoveString(SB), NOSPLIT|NOFRAME, $0
 	CMPB    runtime·writeBarrier(SB), $0
 	JNE     wb_fallback
 	MOVQ    DX, AX
@@ -92,3 +92,36 @@ TEXT ·handlerSubOpMoveString(SB), NOSPLIT|NOFRAME, $0
 	DISPATCH_NEXT()
 wb_fallback:
 	JMP     ·pathBFallback(SB)
+
+// handlerLoadZero zeroes register B of the int, uint, float or bool bank that C names.
+TEXT ·handlerLoadZero(SB), NOSPLIT|NOFRAME, $0
+	MOVQ    DX, AX
+	SHRQ    $16, AX
+	MOVBLZX AL, AX
+	MOVQ    DX, CX
+	SHRQ    $24, CX
+	MOVBLZX CL, CX
+	CMPQ    CX, $REGKIND_INT
+	JNE     zero_not_int
+	MOVQ    $0, (R8)(AX*8)
+	JMP     zero_done
+zero_not_int:
+	CMPQ    CX, $REGKIND_UINT
+	JNE     zero_not_uint
+	MOVQ    CTX_UINTS_BASE(R15), DI
+	MOVQ    $0, (DI)(AX*8)
+	JMP     zero_done
+zero_not_uint:
+	CMPQ    CX, $REGKIND_FLOAT
+	JNE     zero_not_float
+	MOVQ    $0, (R9)(AX*8)
+	JMP     zero_done
+zero_not_float:
+	CMPQ    CX, $REGKIND_BOOL
+	JNE     zero_shim
+	MOVQ    CTX_BOOLS_BASE(R15), DI
+	MOVB    $0, (DI)(AX*1)
+zero_done:
+	DISPATCH_NEXT()
+zero_shim:
+	JMP     ·handlerPathBShimLoadZero(SB)

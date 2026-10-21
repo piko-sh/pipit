@@ -21,6 +21,7 @@ package engine
 import (
 	"sync/atomic"
 	"time"
+	"weak"
 
 	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/engine/program"
@@ -66,6 +67,50 @@ type CallbackVMStats struct {
 	Idle bool
 }
 
+// callbackVMSpec captures the state needed to build or reuse a callback VM without
+// keeping the originating VM alive.
+type callbackVMSpec struct {
+	// link identifies the execution in which the callback wrapper was created.
+	link *executionLink
+
+	// globals is the parent's shared global store.
+	globals *GlobalStore
+
+	// symbols is the parent's symbol registry, shared by all callback VMs.
+	symbols *symtab.SymbolRegistry
+
+	// rootFunction is the parent's root at wrap time, used when the closure records none.
+	rootFunction *program.CompiledFunction
+
+	// cache is the parent's callback VM cache, or nil in safe mode, where every callback
+	// builds a fresh VM as before: safe mode forces Go dispatch and its pointer-provenance
+	// tables are reset only by Execute.
+	cache *callbackVMCache
+
+	// parkDone is the execution context's Done channel, so a callback VM parked in the
+	// debugger wakes when the execution is cancelled.
+	parkDone <-chan struct{}
+
+	// makerArena names the arena of the VM that made the wrappers, for its count of active
+	// callbacks (parked callers); a nil pointer in an arena without a licence.
+	makerArena weak.Pointer[RegisterArena]
+
+	// gates are the export gates each run of the wrapped closure holds, which are those the
+	// VM that made the wrappers had published when it made them (VM.exportedGates).
+	gates exportGateSet
+
+	// limits are the parent's limits at wrap time.
+	limits VMLimits
+
+	// goroutineID is the parent's goroutine identity, inherited by every callback VM.
+	goroutineID uint64
+
+	// retireBytes is the arena allocation volume past which a finished callback VM is
+	// discarded rather than cached: limits.CallbackArenaRetireBytes, or
+	// callbackArenaRetireBytes when that is zero.
+	retireBytes int64
+}
+
 // CallbackVMStats returns the VM's callback cache statistics.
 //
 // Returns the statistics; zero for a VM built without a cache.
@@ -99,12 +144,12 @@ func (c *callbackVMCache) acquire() *VM {
 // Takes vm (*VM) which must be idle (reusableAfterCallback).
 func (c *callbackVMCache) release(vm *VM) {
 	if !c.slot.CompareAndSwap(nil, vm) {
-		c.discard(vm)
+		c.retire(vm)
 		return
 	}
 	if c.released.Load() {
 		if taken := c.slot.Swap(nil); taken != nil {
-			c.discard(taken)
+			c.retire(taken)
 		}
 	}
 }
@@ -115,7 +160,7 @@ func (c *callbackVMCache) release(vm *VM) {
 func (c *callbackVMCache) drain() {
 	c.released.Store(true)
 	if taken := c.slot.Swap(nil); taken != nil {
-		c.discard(taken)
+		c.retire(taken)
 	}
 }
 
@@ -133,6 +178,16 @@ func (c *callbackVMCache) discard(vm *VM) {
 	discardCallbackVM(vm)
 }
 
+// retire releases a clean callback VM for good, as discard does, and then recycles its
+// shell for NewVM unless something outside its runs still holds it.
+//
+// Takes vm (*VM) which this goroutine owns exclusively and which finished cleanly
+// (reusableAfterCallback).
+func (c *callbackVMCache) retire(vm *VM) {
+	c.discard(vm)
+	vm.recycle()
+}
+
 // discardCallbackVM returns a callback VM's unspent cost chunk and releases its arena.
 //
 // Takes vm (*VM) which this goroutine owns exclusively.
@@ -141,13 +196,14 @@ func discardCallbackVM(vm *VM) {
 	vm.ReleaseArena()
 }
 
-// drainCallbackVMs ends the execution, discards its idle callback VM and closes the
-// cache until the next execution.
+// drainCallbackVMs ends the execution, discards its idle callback VM and closes the cache
+// until the next execution.
 func (vm *VM) drainCallbackVMs() {
 	vm.endExecution()
 	if vm.callbackVMs != nil {
 		vm.callbackVMs.drain()
 	}
+	vm.drainBoundArena()
 }
 
 // beginExecution starts or reuses the VM's execution and reopens its callback cache.
@@ -201,51 +257,16 @@ func (vm *VM) reopenCallbackVMCache() {
 }
 
 // reusableAfterCallback reports whether a callback VM finished cleanly enough to serve
-// the next callback without a rebuild: a normal return leaves no frame, defer, panic or
-// error behind, while stack overflow, cost exhaustion, an uncaught panic or a debugger
-// stop leave one of them set.
+// the next callback without a rebuild.
+//
+// An abort the callback recovered from leaves its arena marked aborted, which must be
+// released rather than reused.
 //
 // Returns bool which is true when the VM may go back to the cache.
 func (vm *VM) reusableAfterCallback() bool {
 	return vm.evalError == nil && vm.FramePointer == -1 && !vm.panicking && vm.panicValue == nil &&
 		len(vm.deferStack) == 0 && len(vm.panicDeferFrames) == 0 && vm.recoverEligibleFrame == -1 &&
-		!vm.goroutinesLeaked && vm.Arena != nil
-}
-
-// callbackVMSpec captures the state needed to build or reuse a callback VM without
-// keeping the originating VM alive.
-type callbackVMSpec struct {
-	// link identifies the execution in which the callback wrapper was created.
-	link *executionLink
-
-	// globals is the parent's shared global store.
-	globals *GlobalStore
-
-	// symbols is the parent's symbol registry, shared by all callback VMs.
-	symbols *symtab.SymbolRegistry
-
-	// rootFunction is the parent's root at wrap time, used when the closure records none.
-	rootFunction *program.CompiledFunction
-
-	// cache is the parent's callback VM cache, or nil in safe mode, where every callback
-	// builds a fresh VM as before: safe mode forces Go dispatch and its pointer-provenance
-	// tables are reset only by Execute.
-	cache *callbackVMCache
-
-	// parkDone is the execution context's Done channel, so a callback VM parked in the
-	// debugger wakes when the execution is cancelled.
-	parkDone <-chan struct{}
-
-	// limits are the parent's limits at wrap time.
-	limits VMLimits
-
-	// goroutineID is the parent's goroutine identity, inherited by every callback VM.
-	goroutineID uint64
-
-	// retireBytes is the arena allocation volume past which a finished callback VM is
-	// discarded rather than cached: limits.CallbackArenaRetireBytes, or
-	// callbackArenaRetireBytes when that is zero.
-	retireBytes int64
+		!vm.goroutinesLeaked && vm.Arena != nil && !vm.Arena.aborted && !vm.unwindLeaked.Load()
 }
 
 // newCallbackVMSpec captures vm for the wrappers made on it.
@@ -254,6 +275,7 @@ type callbackVMSpec struct {
 //
 // Returns the spec.
 func newCallbackVMSpec(vm *VM) *callbackVMSpec {
+	vm.pinIdentity()
 	link := vm.currentLink()
 	spec := &callbackVMSpec{
 		link:         link,
@@ -265,9 +287,14 @@ func newCallbackVMSpec(vm *VM) *callbackVMSpec {
 		parkDone:     link.ctx.Done(),
 		cache:        vm.callbackVMs,
 		retireBytes:  callbackArenaRetireBytes,
+		makerArena:   weak.Pointer[RegisterArena]{},
+		gates:        vm.exportedGates(),
 	}
 	if spec.limits.CallbackArenaRetireBytes != 0 {
 		spec.retireBytes = safeconv.Uint64ToInt64(spec.limits.CallbackArenaRetireBytes)
+	}
+	if vm.Arena != nil && vm.Arena.licensed {
+		spec.makerArena = weak.Make(vm.Arena)
 	}
 	if spec.limits.SafeMode {
 		spec.cache = nil
@@ -287,11 +314,13 @@ func (spec *callbackVMSpec) acquire(closure *RuntimeClosure) *VM {
 			cached.debugParkDone = spec.parkDone
 			cached.prepareForCallback(closure, spec.rootFunction, spec.limits)
 			cached.bindCallbackRun(spec.link, spec.limits.CallbackTimeout)
+			cached.runGates = spec.gates
 			return cached
 		}
 	}
 	built := spec.build(closure)
 	built.bindCallbackRun(spec.link, spec.limits.CallbackTimeout)
+	built.runGates = spec.gates
 	return built
 }
 
@@ -313,6 +342,9 @@ func (vm *VM) bindCallbackRun(link *executionLink, timeout time.Duration) {
 	vm.blockCtx = nil
 	vm.blockCancel = nil
 	vm.callbackDeadline = time.Time{}
+	if vm.Arena != nil {
+		vm.Arena.callbackRoot = vm.rootFunction
+	}
 	if timeout > 0 {
 		vm.callbackDeadline = time.Now().Add(timeout)
 	}
@@ -354,22 +386,48 @@ func (spec *callbackVMSpec) build(closure *RuntimeClosure) *VM {
 	return freshVM
 }
 
-// finish returns a callback VM once its callback has run: to the cache when it finished
-// cleanly and its arena is still below the retire threshold, otherwise through the
-// release path that abandons its escaped slabs.
+// finish returns a callback VM after its callback has run.
 //
 // Takes callbackVM (*VM) which acquire() returned.
-func (spec *callbackVMSpec) finish(callbackVM *VM) {
+// Takes registered (bool) which is true when the wrapper registered callbackVM on its
+// goroutine through enterServedChain. The VM stays registered during arena release so
+// blind hand-offs can name the served chain. It leaves the chain before being retired or
+// parked, after which another goroutine may take it.
+func (spec *callbackVMSpec) finish(callbackVM *VM, registered bool) {
+	leave := func() {
+		if registered {
+			registered = false
+			callbackVM.leaveServedChain()
+		}
+	}
+	defer leave()
 	callbackVM.finishRun()
 	if spec.cache == nil {
 		discardCallbackVM(callbackVM)
 		return
 	}
-	if !callbackVM.reusableAfterCallback() || callbackVM.Arena.bytesAllocated >= spec.retireBytes {
+	if !callbackVM.reusableAfterCallback() {
 		spec.cache.discard(callbackVM)
 		return
 	}
+	handedOff := callbackVM.Arena.reentrantHandedOff
+	if handedOff && !callbackReleaseRecycles(callbackVM.Arena) {
+		if licenceCounting {
+			callbackReleaseCounters.cachedArenaKeeps.Add(1)
+		}
+		handedOff = false
+	}
+	if spec.limits.abandonsArenas() || callbackVM.identityPinned.Load() ||
+		!handedOff && callbackVM.Arena.bytesAllocated >= spec.retireBytes {
+		leave()
+		spec.cache.retire(callbackVM)
+		return
+	}
+	if handedOff && callbackVM.Arena.holdsEscapableData() {
+		callbackVM.releaseCachedCallbackArena()
+	}
 	callbackVM.ReturnUnspentCostChunk()
+	leave()
 	spec.cache.release(callbackVM)
 }
 
@@ -385,15 +443,20 @@ func (vm *VM) prepareForCallback(closure *RuntimeClosure, wrapperRoot *program.C
 	vm.evalResult = nil
 	vm.evalError = nil
 	vm.EvalAllResults = nil
+	vm.evalSingle = false
 	vm.inlineDispatchUintResult = 0
 	vm.inlineDispatchExpectUintResult = false
 	vm.checkpointFlags = 0
 	vm.panicFrames = nil
 	vm.panicUnwound = nil
 	vm.callbackPanicStack = ""
+	clear(vm.methodValueClasses)
 	vm.baseFramePointer = 0
 	vm.deferStack = vm.deferStack[:0]
 	vm.debugKind = DebugThreadCallback
+	if vm.Arena == nil {
+		vm.reacquireCallbackArena(limits)
+	}
 	vm.applyCallbackLimits(limits)
 
 	root := closure.RootFunction
@@ -418,7 +481,7 @@ func (vm *VM) prepareForCallback(closure *RuntimeClosure, wrapperRoot *program.C
 func (vm *VM) applyCallbackLimits(limits VMLimits) {
 	vm.Limits = limits
 	arena := vm.Arena
-	arena.MaxArenaBytes = limits.MaxArenaBytes
+	arena.setRunBudget(limits.MaxArenaBytes)
 	arena.MaxAllocSize = limits.MaxAllocSize
 	arena.disableMinorGC = limits.DisableMinorGC || arena.holdsEscapableData()
 	if arena.budgetTracker != limits.Tracker {

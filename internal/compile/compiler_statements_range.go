@@ -34,6 +34,24 @@ import (
 	"pipit.sh/pipit/internal/policy"
 )
 
+// countedLoop names the registers and PCs the latch of a counted range loop needs.
+type countedLoop struct {
+	// position is the range statement's for keyword, where loop breakpoints are set.
+	position token.Pos
+
+	// loopStart is the PC of the test at the top.
+	loopStart int
+
+	// bodyStart is the PC the test at the top falls into.
+	bodyStart int
+
+	// indexRegister is the int register counting the iterations.
+	indexRegister uint8
+
+	// limitRegister is the int register holding the count to stop at.
+	limitRegister uint8
+}
+
 // snapshotArrayRangeCollection takes a defensive snapshot of the underlying array when
 // the range subject is an array (rather than a slice), so subsequent indexing reads from
 // the snapshot's general register.
@@ -48,7 +66,7 @@ func (c *Compiler) snapshotArrayRangeCollection(statement *ast.RangeStmt, collec
 		return collectionLocation
 	}
 	snapshotRegister := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpDeref, snapshotRegister, collectionLocation.Register, engine.DerefSnapshot)
+	program.Emit(c.Function, isa.OpDereference, snapshotRegister, collectionLocation.Register, engine.DerefSnapshot)
 	return program.VarLocation{Register: snapshotRegister, Kind: isa.RegisterGeneral}
 }
 
@@ -60,11 +78,11 @@ func (c *Compiler) snapshotArrayRangeCollection(statement *ast.RangeStmt, collec
 //
 // Returns the int-bank register holding the collection length.
 func (c *Compiler) emitSliceRangeLength(collectionLocation program.VarLocation) uint8 {
-	lengthRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt)
+	lengthRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
 	if directLenSubOp, ok := isaselect.TypedSliceDirectLenSubOp(collectionLocation.Kind); ok {
 		program.Emit(c.Function, isa.OpDrillTier1, uint8(directLenSubOp), lengthRegister, collectionLocation.Register)
 	} else {
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLen), lengthRegister, collectionLocation.Register)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpLengthGeneral), lengthRegister, collectionLocation.Register)
 	}
 	return lengthRegister
 }
@@ -74,13 +92,34 @@ func (c *Compiler) emitSliceRangeLength(collectionLocation program.VarLocation) 
 // Returns the index register and any error from registering the zero constant in the
 // int-pool.
 func (c *Compiler) emitSliceRangeZeroIndex() (uint8, error) {
-	indexRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt)
+	indexRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
 	zeroIndex, err := program.AddIntConstant(c.Function, 0)
 	if err != nil {
 		return 0, err
 	}
-	program.EmitWide(c.Function, isa.OpLoadIntConst, indexRegister, zeroIndex)
+	program.EmitWide(c.Function, isa.OpLoadInt64Constant, indexRegister, zeroIndex)
 	return indexRegister, nil
+}
+
+// emitSliceRangeLatch emits the index increment and the way back into a range loop over a
+// slice, an array or a byte view.
+//
+// The words carry the position of the for keyword, so a breakpoint on the loop's line
+// stops in every iteration though its test at the top runs once.
+//
+// Takes loop (countedLoop) which names the loop's registers and PCs.
+//
+// Returns any error encountered when registering the increment constant.
+func (c *Compiler) emitSliceRangeLatch(ctx context.Context, loop countedLoop) error {
+	if !c.loopTestsAtBottom() {
+		return c.emitSliceRangeIncrementAndJump(loop.indexRegister, loop.loopStart)
+	}
+	c.setDebugPosition(ctx, loop.position)
+	program.EmitTier2(c.Function, isa.SubOpTier2IncrementInt64, loop.indexRegister)
+	comparisonRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+	program.Emit(c.Function, isa.OpLessThanInt64, comparisonRegister, loop.indexRegister, loop.limitRegister)
+	c.emitJumpBackIfTrue(comparisonRegister, loop.bodyStart)
+	return nil
 }
 
 // emitSliceRangeIncrementAndJump emits the index increment and the unconditional jump
@@ -95,14 +134,31 @@ func (c *Compiler) emitSliceRangeIncrementAndJump(indexRegister uint8, loopStart
 	if oneErr != nil {
 		return oneErr
 	}
-	temporaryRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-	program.EmitWide(c.Function, isa.OpLoadIntConst, temporaryRegister, oneIndex)
-	program.Emit(c.Function, isa.OpAddInt, indexRegister, indexRegister, temporaryRegister)
+	temporaryRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+	program.EmitWide(c.Function, isa.OpLoadInt64Constant, temporaryRegister, oneIndex)
+	program.Emit(c.Function, isa.OpAddInt64, indexRegister, indexRegister, temporaryRegister)
 
 	backOffset := loopStart - program.CurrentPC(c.Function) - 1
 	lo, hi := program.EncodeJumpOffset(c.Function, backOffset)
 	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpJump), lo, hi)
 	return nil
+}
+
+// checkRangeLoopAllowed refuses a range loop the feature policy disables, or whose
+// declared variables the file's Go version would share across iterations
+// (checkLoopVariableLanguageVersion).
+//
+// Takes statement (*ast.RangeStmt) which is the loop.
+//
+// Returns the refusal, or nil.
+func (c *Compiler) checkRangeLoopAllowed(statement *ast.RangeStmt) error {
+	if err := c.checkFeature(policy.InterpFeatureRangeLoops, statement.For); err != nil {
+		return err
+	}
+	if statement.Tok != token.DEFINE {
+		return nil
+	}
+	return c.checkLoopVariableLanguageVersion(statement.For, statement.Key, statement.Value)
 }
 
 // compileForRange compiles a for-range statement.
@@ -112,7 +168,7 @@ func (c *Compiler) emitSliceRangeIncrementAndJump(indexRegister uint8, loopStart
 // Returns a zero VarLocation and an error if compilation of any part of the range loop
 // fails.
 func (c *Compiler) compileForRange(ctx context.Context, statement *ast.RangeStmt) (program.VarLocation, error) {
-	if err := c.checkFeature(policy.InterpFeatureRangeLoops, statement.For); err != nil {
+	if err := c.checkRangeLoopAllowed(statement); err != nil {
 		return program.VarLocation{}, err
 	}
 	if c.rangeTargetsNeedTemps(statement) {
@@ -134,6 +190,10 @@ func (c *Compiler) compileForRange(ctx context.Context, statement *ast.RangeStmt
 	}
 	if basic, ok := rangeType.(*types.Basic); ok && isIntegerBasicKind(basic.Kind()) {
 		return c.compileIntRange(ctx, statement, collectionLocation)
+	}
+
+	if _, isSlice := rangeType.(*types.Slice); isSlice && collectionLocation.Kind == isa.RegisterString {
+		return c.compileByteViewRange(ctx, statement, collectionLocation)
 	}
 
 	if signature, ok := rangeType.(*types.Signature); ok {
@@ -159,7 +219,7 @@ func (c *Compiler) compileForRange(ctx context.Context, statement *ast.RangeStmt
 }
 
 // compileGenericRange compiles a for-range over maps, channels, and strings using the
-// isa.SubOpRangeInit/isa.SubOpRangeNext generic path.
+// isa.SubOpRangeInitialise/isa.SubOpRangeNext generic path.
 //
 // Takes statement (*ast.RangeStmt) which is the AST range statement to compile.
 // Takes collectionLocation (VarLocation) which is the register location of the collection
@@ -168,14 +228,14 @@ func (c *Compiler) compileForRange(ctx context.Context, statement *ast.RangeStmt
 // Returns a zero VarLocation and an error if compilation fails.
 func (c *Compiler) compileGenericRange(ctx context.Context, statement *ast.RangeStmt, collectionLocation program.VarLocation) (program.VarLocation, error) {
 	iteratorRegister := c.Scopes.Alloc.Alloc(isa.RegisterGeneral)
-	program.EmitTier1(c.Function, isa.SubOpRangeInit, iteratorRegister, collectionLocation.Register)
+	program.EmitTier1(c.Function, isa.SubOpRangeInitialise, iteratorRegister, collectionLocation.Register)
 
 	c.breakables = append(c.breakables, breakableContext{
 		isLoop: true,
 		label:  c.consumePendingLabel(ctx),
 	})
 
-	doneRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt)
+	doneRegister := c.Scopes.Alloc.Alloc(isa.RegisterInt64)
 	keyLocation, valueLocation, err := c.declareRangeKeyVal(ctx, statement)
 	if err != nil {
 		return program.VarLocation{}, err
@@ -211,11 +271,11 @@ func (c *Compiler) compileGenericRange(ctx context.Context, statement *ast.Range
 	return program.VarLocation{}, nil
 }
 
-// rangeNextDestination returns the range variable's register or a temporary for a
-// spilled variable, since isa.SubOpRangeNext only addresses registers.
+// rangeNextDestination returns the range variable's register or a temporary for a spilled
+// variable, since isa.SubOpRangeNext only addresses registers.
 //
-// Takes location (program.VarLocation) which is the range variable, or the zero
-// location when the variable is absent or blank.
+// Takes location (program.VarLocation) which is the range variable, or the zero location
+// when the variable is absent or blank.
 //
 // Returns program.VarLocation which is the destination register.
 func (c *Compiler) rangeNextDestination(location program.VarLocation) program.VarLocation {
@@ -356,8 +416,8 @@ func (c *Compiler) emitRangeNextExt(_ context.Context, statement *ast.RangeStmt,
 	if hasValue {
 		flags |= rangeValueFlag
 	}
-	program.Emit(c.Function, isa.OpExt, flags, keyRegister, keyKind)
-	program.Emit(c.Function, isa.OpExt, 0, valueRegister, valueKind)
+	program.Emit(c.Function, isa.OpExtension, flags, keyRegister, keyKind)
+	program.Emit(c.Function, isa.OpExtension, 0, valueRegister, valueKind)
 }
 
 // patchBreakJumpsAndPop patches all break jumps in the current breakable context and pops
@@ -370,17 +430,14 @@ func (c *Compiler) patchBreakJumpsAndPop(_ context.Context) {
 	c.breakables = c.breakables[:len(c.breakables)-1]
 }
 
-// compileSliceRange compiles a for-range over a slice or array as a C-style for loop,
-// avoiding the RangeIterator heap allocation.
+// compileSliceRange compiles a range over a slice or array.
 //
 // Takes statement (*ast.RangeStmt) which is the AST range statement to compile.
 // Takes collectionLocation (VarLocation) which is the register location of the slice or
 // array collection.
 //
-// Returns a zero VarLocation and an error if compilation fails.
-//
-// len := isa.SubOpLen(collection) index := 0 LOOP: if index >= len -> EXIT [key = index]
-// [value = collection[index]] body index++ -> LOOP EXIT:
+// Returns program.VarLocation which is zero.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileSliceRange(ctx context.Context, statement *ast.RangeStmt, collectionLocation program.VarLocation) (program.VarLocation, error) {
 	collectionLocation = c.snapshotArrayRangeCollection(statement, collectionLocation)
 	lengthRegister := c.emitSliceRangeLength(collectionLocation)
@@ -397,9 +454,10 @@ func (c *Compiler) compileSliceRange(ctx context.Context, statement *ast.RangeSt
 
 	loopStart := program.CurrentPC(c.Function)
 
-	comparisonRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-	program.Emit(c.Function, isa.OpLtInt, comparisonRegister, indexRegister, lengthRegister)
+	comparisonRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+	program.Emit(c.Function, isa.OpLessThanInt64, comparisonRegister, indexRegister, lengthRegister)
 	jumpToEnd := program.EmitJump(c.Function, isa.OpJumpIfFalse, comparisonRegister)
+	bodyStart := program.CurrentPC(c.Function)
 
 	needsReset := bodyContainsFunctionLit(statement.Body)
 	if err := c.emitSliceRangeKey(ctx, statement, indexRegister, needsReset); err != nil {
@@ -415,7 +473,8 @@ func (c *Compiler) compileSliceRange(ctx context.Context, statement *ast.RangeSt
 
 	c.patchContinueJumps(ctx)
 
-	if err := c.emitSliceRangeIncrementAndJump(indexRegister, loopStart); err != nil {
+	latch := countedLoop{position: statement.For, loopStart: loopStart, bodyStart: bodyStart, indexRegister: indexRegister, limitRegister: lengthRegister}
+	if err := c.emitSliceRangeLatch(ctx, latch); err != nil {
 		return program.VarLocation{}, err
 	}
 
@@ -441,20 +500,20 @@ func (c *Compiler) emitSliceRangeKey(ctx context.Context, statement *ast.RangeSt
 		return nil
 	}
 	if statement.Tok != token.DEFINE {
-		return c.emitRangeKeyAssign(ctx, statement, indexRegister, isa.RegisterInt)
+		return c.emitRangeKeyAssign(ctx, statement, indexRegister, isa.RegisterInt64)
 	}
 	keyIdent, ok := statement.Key.(*ast.Ident)
 	if !ok {
 		return fmt.Errorf("range key is not an identifier: %T", statement.Key)
 	}
-	keyLocation := c.Scopes.DeclareVar(keyIdent.Name, isa.RegisterInt)
+	keyLocation := c.Scopes.DeclareVar(keyIdent.Name, isa.RegisterInt64)
 	if needsResetSharedCell && !keyLocation.IsSpilled && c.closureCapturedNames[keyIdent.Name] {
 		program.EmitTier1(c.Function, isa.SubOpResetSharedCell, keyLocation.Register, uint8(keyLocation.Kind))
 	}
 	if keyLocation.IsSpilled {
-		c.emitSpillStore(ctx, indexRegister, isa.RegisterInt, keyLocation.SpillSlot)
+		c.emitSpillStore(ctx, indexRegister, isa.RegisterInt64, keyLocation.SpillSlot)
 	} else {
-		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveInt), keyLocation.Register, indexRegister)
+		program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveInt64), keyLocation.Register, indexRegister)
 	}
 	return nil
 }
@@ -511,7 +570,7 @@ func (c *Compiler) emitSliceRangeValue(ctx context.Context, statement *ast.Range
 	}
 
 	generalRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
-	program.Emit(c.Function, isa.OpIndex, generalRegister, collectionLocation.Register, indexRegister)
+	program.Emit(c.Function, isa.OpGetElement, generalRegister, collectionLocation.Register, indexRegister)
 	c.storeGeneralRangeValue(ctx, generalRegister, valueLocation, valueKind, typeObject.Type())
 	c.Scopes.Alloc.FreeTemp(isa.RegisterGeneral, generalRegister)
 	return nil
@@ -564,7 +623,7 @@ func (c *Compiler) emitDirectSliceRangeValue(ctx context.Context,
 func (c *Compiler) emitGeneralRangeValueInPlace(statement *ast.RangeStmt, valueIdentifier *ast.Ident, valueLocation program.VarLocation,
 	collectionRegister, indexRegister uint8, valueType types.Type) {
 	register := valueLocation.Register
-	program.Emit(c.Function, isa.OpIndex, register, collectionRegister, indexRegister)
+	program.Emit(c.Function, isa.OpGetElement, register, collectionRegister, indexRegister)
 	mode := generalMoveModeFor(valueType)
 	if mode == engine.MoveGeneralModeAlias {
 		return
@@ -575,8 +634,8 @@ func (c *Compiler) emitGeneralRangeValueInPlace(statement *ast.RangeStmt, valueI
 	program.Emit(c.Function, isa.OpMoveGeneral, register, register, mode)
 }
 
-// storeGeneralRangeValue moves a general-bank range element produced by isa.OpIndex into
-// the range value variable, unpacking it into a typed bank or spill slot as the
+// storeGeneralRangeValue moves a general-bank range element produced by isa.OpGetElement
+// into the range value variable, unpacking it into a typed bank or spill slot as the
 // variable's location requires.
 //
 // Takes generalRegister (uint8) which holds the indexed element.
@@ -588,7 +647,7 @@ func (c *Compiler) storeGeneralRangeValue(ctx context.Context, generalRegister u
 	if valueLocation.IsSpilled {
 		if valueKind != isa.RegisterGeneral {
 			scratch := c.Scopes.Alloc.AllocTemp(valueKind)
-			program.Emit(c.Function, isa.OpUnpackInterface, scratch, generalRegister, uint8(valueKind))
+			program.Emit(c.Function, isa.OpUnboxFromInterface, scratch, generalRegister, uint8(valueKind))
 			c.emitSpillStore(ctx, scratch, valueKind, valueLocation.SpillSlot)
 			c.Scopes.Alloc.FreeTemp(valueKind, scratch)
 		} else {
@@ -597,7 +656,7 @@ func (c *Compiler) storeGeneralRangeValue(ctx context.Context, generalRegister u
 		return
 	}
 	if valueKind != isa.RegisterGeneral {
-		program.Emit(c.Function, isa.OpUnpackInterface, valueLocation.Register, generalRegister, uint8(valueKind))
+		program.Emit(c.Function, isa.OpUnboxFromInterface, valueLocation.Register, generalRegister, uint8(valueKind))
 		return
 	}
 	program.Emit(c.Function, isa.OpMoveGeneral, valueLocation.Register, generalRegister, generalMoveModeFor(valueType))
@@ -623,22 +682,20 @@ func (c *Compiler) emitTypedSliceGet(ctx context.Context, valueLocation, collect
 	if !ok {
 		return false
 	}
-	c.emitSliceGet(ctx, plan, valueLocation, collectionLocation, program.VarLocation{Register: indexRegister, Kind: isa.RegisterInt})
+	c.emitSliceGet(ctx, plan, valueLocation, collectionLocation, program.VarLocation{Register: indexRegister, Kind: isa.RegisterInt64})
 	return true
 }
 
-// compileIntRange compiles a for-range over an integer (Go 1.22+) as a C-style counted
-// loop: for i := range n produces indices 0..n-1.
+// compileIntRange compiles a range over an integer.
 //
 // Takes statement (*ast.RangeStmt) which is the AST range statement to compile.
 // Takes limitLocation (VarLocation) which is the register location holding the upper
 // bound integer.
 //
-// Returns a zero VarLocation and an error if compilation fails.
-//
-// index := 0 LOOP: if index >= limit -> EXIT [key = index] body index++ -> LOOP EXIT:
+// Returns program.VarLocation which is zero.
+// Returns error which reports a compilation failure.
 func (c *Compiler) compileIntRange(ctx context.Context, statement *ast.RangeStmt, limitLocation program.VarLocation) (program.VarLocation, error) {
-	indexRegister := c.emitIntRangeInit(ctx, limitLocation)
+	indexRegister := c.emitIntRangeInitialise(ctx, limitLocation)
 
 	c.breakables = append(c.breakables, breakableContext{
 		isLoop: true,
@@ -648,6 +705,7 @@ func (c *Compiler) compileIntRange(ctx context.Context, statement *ast.RangeStmt
 	loopStart := program.CurrentPC(c.Function)
 
 	jumpToEnd := c.emitIntRangeCondition(ctx, indexRegister, limitLocation)
+	bodyStart := program.CurrentPC(c.Function)
 
 	needsReset := bodyContainsFunctionLit(statement.Body)
 	if err := c.emitIntRangeKey(ctx, statement, indexRegister, limitLocation.Kind, needsReset); err != nil {
@@ -660,11 +718,7 @@ func (c *Compiler) compileIntRange(ctx context.Context, statement *ast.RangeStmt
 
 	c.patchContinueJumps(ctx)
 
-	c.emitIntRangeIncrement(ctx, indexRegister, limitLocation.Kind)
-
-	backOffset := loopStart - program.CurrentPC(c.Function) - 1
-	lo, hi := program.EncodeJumpOffset(c.Function, backOffset)
-	program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpJump), lo, hi)
+	c.emitIntRangeLatch(ctx, statement, indexRegister, limitLocation, loopStart, bodyStart)
 
 	program.PatchJump(c.Function, jumpToEnd)
 	c.patchBreakJumpsAndPop(ctx)
@@ -672,29 +726,55 @@ func (c *Compiler) compileIntRange(ctx context.Context, statement *ast.RangeStmt
 	return program.VarLocation{}, nil
 }
 
-// emitIntRangeInit allocates and zero-initialises the index counter register for an
+// emitIntRangeLatch emits the index increment and the way back into an integer range
+// loop.
+//
+// Takes statement (*ast.RangeStmt) which is the loop.
+// Takes indexRegister (uint8) which holds the index.
+// Takes limitLocation (program.VarLocation) which holds the upper bound.
+// Takes loopStart (int) which is the PC of the test at the top.
+// Takes bodyStart (int) which is the PC the test at the top falls into.
+func (c *Compiler) emitIntRangeLatch(ctx context.Context, statement *ast.RangeStmt, indexRegister uint8, limitLocation program.VarLocation, loopStart, bodyStart int) {
+	if !c.loopTestsAtBottom() {
+		c.emitIntRangeIncrement(ctx, indexRegister, limitLocation.Kind)
+		c.emitJumpBack(loopStart)
+		return
+	}
+	c.setDebugPosition(ctx, statement.For)
+	comparisonRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+	if limitLocation.Kind == isa.RegisterUint64 {
+		c.emitIntRangeIncrement(ctx, indexRegister, limitLocation.Kind)
+		program.Emit(c.Function, isa.OpLessThanUint64, comparisonRegister, indexRegister, limitLocation.Register)
+	} else {
+		program.EmitTier2(c.Function, isa.SubOpTier2IncrementInt64, indexRegister)
+		program.Emit(c.Function, isa.OpLessThanInt64, comparisonRegister, indexRegister, limitLocation.Register)
+	}
+	c.emitJumpBackIfTrue(comparisonRegister, bodyStart)
+}
+
+// emitIntRangeInitialise allocates and zero-initialises the index counter register for an
 // integer range loop.
 //
 // Takes limitLocation (VarLocation) whose Kind selects the register bank.
 //
 // Returns the allocated index register number.
-func (c *Compiler) emitIntRangeInit(_ context.Context, limitLocation program.VarLocation) uint8 {
+func (c *Compiler) emitIntRangeInitialise(_ context.Context, limitLocation program.VarLocation) uint8 {
 	indexRegister := c.Scopes.Alloc.Alloc(limitLocation.Kind)
 	switch limitLocation.Kind {
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		zeroIndex, err := program.AddUintConstant(c.Function, 0)
 		if err != nil {
 			c.recordStickyError(err)
 			return indexRegister
 		}
-		program.EmitWide(c.Function, isa.OpLoadUintConst, indexRegister, zeroIndex)
+		program.EmitWide(c.Function, isa.OpLoadUint64Constant, indexRegister, zeroIndex)
 	default:
 		zeroIndex, err := program.AddIntConstant(c.Function, 0)
 		if err != nil {
 			c.recordStickyError(err)
 			return indexRegister
 		}
-		program.EmitWide(c.Function, isa.OpLoadIntConst, indexRegister, zeroIndex)
+		program.EmitWide(c.Function, isa.OpLoadInt64Constant, indexRegister, zeroIndex)
 	}
 	return indexRegister
 }
@@ -707,12 +787,12 @@ func (c *Compiler) emitIntRangeInit(_ context.Context, limitLocation program.Var
 //
 // Returns the jump instruction PC to patch when the loop exits.
 func (c *Compiler) emitIntRangeCondition(_ context.Context, indexRegister uint8, limitLocation program.VarLocation) int {
-	comparisonRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
+	comparisonRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
 	switch limitLocation.Kind {
-	case isa.RegisterUint:
-		program.Emit(c.Function, isa.OpLtUint, comparisonRegister, indexRegister, limitLocation.Register)
+	case isa.RegisterUint64:
+		program.Emit(c.Function, isa.OpLessThanUint64, comparisonRegister, indexRegister, limitLocation.Register)
 	default:
-		program.Emit(c.Function, isa.OpLtInt, comparisonRegister, indexRegister, limitLocation.Register)
+		program.Emit(c.Function, isa.OpLessThanInt64, comparisonRegister, indexRegister, limitLocation.Register)
 	}
 	return program.EmitJump(c.Function, isa.OpJumpIfFalse, comparisonRegister)
 }
@@ -749,10 +829,10 @@ func (c *Compiler) emitIntRangeKey(ctx context.Context, statement *ast.RangeStmt
 		c.emitSpillStore(ctx, indexRegister, kind, keyLocation.SpillSlot)
 	} else {
 		switch kind {
-		case isa.RegisterUint:
-			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveUint), keyLocation.Register, indexRegister)
+		case isa.RegisterUint64:
+			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveUint64), keyLocation.Register, indexRegister)
 		default:
-			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveInt), keyLocation.Register, indexRegister)
+			program.Emit(c.Function, isa.OpDrillTier1, uint8(isa.SubOpMoveInt64), keyLocation.Register, indexRegister)
 		}
 	}
 	return nil
@@ -765,24 +845,24 @@ func (c *Compiler) emitIntRangeKey(ctx context.Context, statement *ast.RangeStmt
 // Takes kind (isa.RegisterKind) which selects the typed add opcode.
 func (c *Compiler) emitIntRangeIncrement(_ context.Context, indexRegister uint8, kind isa.RegisterKind) {
 	switch kind {
-	case isa.RegisterUint:
+	case isa.RegisterUint64:
 		oneIndex, err := program.AddUintConstant(c.Function, 1)
 		if err != nil {
 			c.recordStickyError(err)
 			return
 		}
-		temporaryRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterUint)
-		program.EmitWide(c.Function, isa.OpLoadUintConst, temporaryRegister, oneIndex)
-		program.Emit(c.Function, isa.OpAddUint, indexRegister, indexRegister, temporaryRegister)
+		temporaryRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterUint64)
+		program.EmitWide(c.Function, isa.OpLoadUint64Constant, temporaryRegister, oneIndex)
+		program.Emit(c.Function, isa.OpAddUint64, indexRegister, indexRegister, temporaryRegister)
 	default:
 		oneIndex, err := program.AddIntConstant(c.Function, 1)
 		if err != nil {
 			c.recordStickyError(err)
 			return
 		}
-		temporaryRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt)
-		program.EmitWide(c.Function, isa.OpLoadIntConst, temporaryRegister, oneIndex)
-		program.Emit(c.Function, isa.OpAddInt, indexRegister, indexRegister, temporaryRegister)
+		temporaryRegister := c.Scopes.Alloc.AllocTemp(isa.RegisterInt64)
+		program.EmitWide(c.Function, isa.OpLoadInt64Constant, temporaryRegister, oneIndex)
+		program.Emit(c.Function, isa.OpAddInt64, indexRegister, indexRegister, temporaryRegister)
 	}
 }
 
@@ -819,16 +899,16 @@ func (c *Compiler) emitSliceRangeValueAssign(ctx context.Context, statement *ast
 		return fmt.Errorf("%w: missing type information for range value at %s", fault.ErrCompilation, c.positionString(statement.Value.Pos()))
 	}
 	valueKind := c.kindFor(valueType)
-	temp := program.VarLocation{Register: c.Scopes.Alloc.AllocTemp(valueKind), Kind: valueKind, SourceType: c.exactReflectTypeForBoxing(valueType)}
+	temp := program.VarLocation{Register: c.Scopes.Alloc.AllocTemp(valueKind), Kind: valueKind, SourceType: c.exactReflectTypeForBoxing(ctx, valueType)}
 	if !c.emitTypedSliceGet(ctx, temp, collectionLocation, indexRegister, rangeType, true) {
 		if valueKind == isa.RegisterGeneral {
-			program.Emit(c.Function, isa.OpIndex, temp.Register, collectionLocation.Register, indexRegister)
+			program.Emit(c.Function, isa.OpGetElement, temp.Register, collectionLocation.Register, indexRegister)
 			if mode := generalMoveModeFor(valueType); mode != engine.MoveGeneralModeAlias {
 				program.Emit(c.Function, isa.OpMoveGeneral, temp.Register, temp.Register, mode)
 			}
 		} else {
 			general := c.Scopes.Alloc.AllocTemp(isa.RegisterGeneral)
-			program.Emit(c.Function, isa.OpIndex, general, collectionLocation.Register, indexRegister)
+			program.Emit(c.Function, isa.OpGetElement, general, collectionLocation.Register, indexRegister)
 			c.storeGeneralRangeValue(ctx, general, temp, valueKind, valueType)
 			c.Scopes.Alloc.FreeTemp(isa.RegisterGeneral, general)
 		}

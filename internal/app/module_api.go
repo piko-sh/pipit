@@ -37,7 +37,6 @@ import (
 
 	"piko.sh/safeconv"
 	"pipit.sh/pipit/internal/isa"
-	"pipit.sh/pipit/internal/logging"
 	"pipit.sh/pipit/internal/module"
 	"pipit.sh/pipit/internal/verify"
 )
@@ -45,11 +44,11 @@ import (
 // PackageModule compiles a multi-package Go program and packages it as a module bundle.
 //
 // Takes moduleDescriptor (module.Descriptor) which declares the module's identity and
-// capability set. Required fields: SchemaVersion, Ref.Path.
+// capability set. SchemaVersion and Ref.Path are required.
 // Takes modulePath (string) which is the Go module path passed to CompileProgram.
 // Takes packages (map[string]map[string]string) which maps package to file to source.
-// Takes bytecodePacker (func(*CompiledFileSet) ([]byte, error)) which serialises the
-// compiled output, or reports why it cannot.
+// Takes bytecodePacker (func(context.Context, *CompiledFileSet) ([]byte, error)) which
+// serialises the compiled output, or reports why it cannot.
 //
 // Returns *module.Bundle which is the packaged module.
 // Returns error when compilation, packing, or fingerprinting fails.
@@ -58,7 +57,7 @@ func (s *Service) PackageModule(
 	moduleDescriptor module.Descriptor,
 	modulePath string,
 	packages map[string]map[string]string,
-	bytecodePacker func(*program.CompiledFileSet) ([]byte, error),
+	bytecodePacker func(context.Context, *program.CompiledFileSet) ([]byte, error),
 ) (*module.Bundle, error) {
 	if bytecodePacker == nil {
 		return nil, errors.New("app: PackageModule requires a non-nil bytecodePacker")
@@ -66,27 +65,36 @@ func (s *Service) PackageModule(
 	if err := moduleDescriptor.Validate(); err != nil {
 		return nil, err
 	}
-	ctx = logging.ContextWithLogger(ctx, s.config.logger)
+	var bindErr error
+	if ctx, bindErr = s.bindLogger(ctx); bindErr != nil {
+		return nil, bindErr
+	}
 
 	bridgesAtStart := len(s.pendingVarBridges)
-	baseAtStart := s.globals.Lengths()
+	baseAtStart, err := storeLengths(s.globals)
+	if err != nil {
+		return nil, fmt.Errorf("app: PackageModule: %w", err)
+	}
 
 	compiled, err := s.CompileProgram(ctx, modulePath, packages)
 	if err != nil {
 		return nil, fmt.Errorf("app: PackageModule compile: %w", err)
 	}
 
-	baseAtEnd := s.globals.Lengths()
+	baseAtEnd, err := storeLengths(s.globals)
+	if err != nil {
+		return nil, fmt.Errorf("app: PackageModule: %w", err)
+	}
 	if err := s.stampBundleMetadata(compiled, baseAtStart, baseAtEnd, s.pendingVarBridges[bridgesAtStart:]); err != nil {
 		return nil, err
 	}
 
-	bytecode, err := bytecodePacker(compiled)
+	bytecode, err := bytecodePacker(ctx, compiled)
 	if err != nil {
 		return nil, fmt.Errorf("app: PackageModule pack: %w", err)
 	}
 
-	typesExport, err := s.encodeTypesExportForPackages(modulePath, packages)
+	typesExport, err := s.encodeTypesExportForPackages(ctx, modulePath, packages)
 	if err != nil {
 		return nil, fmt.Errorf("app: PackageModule type-export: %w", err)
 	}
@@ -112,8 +120,8 @@ func (s *Service) PackageModule(
 // Takes reference (module.Ref) which carries the expected pin. An empty pin is rejected
 // unless WithAllowUnpinnedModules is set.
 // Takes _ (module.Provider) reserved for transitive dependencies.
-// Takes bytecodeUnpacker (func([]byte, *symtab.SymbolRegistry) (*CompiledFileSet, error))
-// which deserialises the bytecode.
+// Takes bytecodeUnpacker (func) which deserialises the bytecode against the service's
+// symbol registry, under ctx.
 //
 // Returns *module.Loaded which is the loaded module handle.
 // Returns error when verification, unpacking, or capability checks fail.
@@ -122,14 +130,17 @@ func (s *Service) LoadModule(
 	bundle *module.Bundle,
 	reference module.Ref,
 	_ module.Provider,
-	bytecodeUnpacker func([]byte, *symtab.SymbolRegistry) (*program.CompiledFileSet, error),
+	bytecodeUnpacker func(context.Context, []byte, *symtab.SymbolRegistry) (*program.CompiledFileSet, error),
 ) (*module.Loaded, error) {
 	if err := s.validateLoadModuleInputs(ctx, bundle, reference, bytecodeUnpacker); err != nil {
 		return nil, err
 	}
-	ctx = logging.ContextWithLogger(ctx, s.config.logger)
+	var bindErr error
+	if ctx, bindErr = s.bindLogger(ctx); bindErr != nil {
+		return nil, bindErr
+	}
 
-	cfs, err := bytecodeUnpacker(bundle.Bytecode, s.symbols)
+	cfs, err := bytecodeUnpacker(ctx, bundle.Bytecode, s.symbols)
 	if err != nil {
 		return nil, fmt.Errorf("app: LoadModule unpack: %w", err)
 	}
@@ -152,10 +163,6 @@ func (s *Service) LoadModule(
 }
 
 // stampBundleMetadata relativises operands and records bundle metadata.
-//
-// Relativises the compiled bundle's global operands against baseAtStart and records slot
-// allocation and exported-var metadata on the CompiledFileSet so the unpack path can
-// rebuild storage and registry entries without source access.
 //
 // Takes compiled (*CompiledFileSet) which receives the metadata stamps.
 // Takes baseAtStart (SlotAllocation) which is the slot count before compilation began.
@@ -234,7 +241,7 @@ func (*Service) collectPackageVariables(pending []pendingVarBridge, baseAtStart 
 // Returns []byte which is the TLV-encoded TypesExport payload, or nil bytes when no
 // non-main packages are present.
 // Returns error when a gcexportdata serialisation step fails.
-func (s *Service) encodeTypesExportForPackages(modulePath string, packages map[string]map[string]string) ([]byte, error) {
+func (s *Service) encodeTypesExportForPackages(ctx context.Context, modulePath string, packages map[string]map[string]string) ([]byte, error) {
 	relPaths := make([]string, 0, len(packages))
 	for relPath := range packages {
 		relPaths = append(relPaths, relPath)
@@ -247,7 +254,7 @@ func (s *Service) encodeTypesExportForPackages(modulePath string, packages map[s
 		if relPath != "" {
 			importPath = modulePath + "/" + relPath
 		}
-		pkg, err := s.symbols.Import(importPath)
+		pkg, err := s.symbols.Import(ctx, importPath)
 		if err != nil {
 			continue
 		}
@@ -312,7 +319,7 @@ func (s *Service) deriveFunctionTableForPackage(importPath string) map[string]ui
 // Takes bases (SlotAllocation) which is the load-time slot base table.
 //
 // Returns error when a type descriptor decode fails or a kind is out of range.
-func (s *Service) appendLoadedVarBridges(vars []program.PackageVariableMetadata, bases program.SlotAllocation) error {
+func (s *Service) appendLoadedVarBridges(ctx context.Context, vars []program.PackageVariableMetadata, bases program.SlotAllocation) error {
 	if len(vars) == 0 {
 		return nil
 	}
@@ -324,7 +331,7 @@ func (s *Service) appendLoadedVarBridges(vars []program.PackageVariableMetadata,
 		if int(v.RegisterKind) >= program.NumGlobalRegisterKinds {
 			return fmt.Errorf("var %s.%s register-kind %d out of range", v.PackagePath, v.Name, v.RegisterKind)
 		}
-		reflectType, err := s.importTypeDescriptorAsReflectType(*v.Type)
+		reflectType, err := s.importTypeDescriptorAsReflectType(ctx, *v.Type)
 		if err != nil {
 			return fmt.Errorf("var %s.%s reflect type: %w", v.PackagePath, v.Name, err)
 		}
@@ -408,28 +415,24 @@ func (s *Service) snapshotLoadedVarBridges(startIndex int) {
 //
 // Returns reflect.Type which is the resolved native type.
 // Returns error when the descriptor cannot be resolved.
-func (s *Service) importTypeDescriptorAsReflectType(data descriptor.TypeDescriptorData) (reflect.Type, error) {
+func (s *Service) importTypeDescriptorAsReflectType(ctx context.Context, data descriptor.TypeDescriptorData) (reflect.Type, error) {
 	typeDescriptor := codec.ImportTypeDescriptor(data)
-	return symtab.ReflectTypeFor(typeDescriptor, s.symbols)
+	return symtab.ReflectTypeFor(ctx, typeDescriptor, s.symbols)
 }
 
 // validateLoadModuleInputs performs LoadModule() pre-flight checks.
 //
-// Checks context liveness, a non-nil unpacker, bundle self-validation, pin presence,
-// reference verification, and capability consultation.
-//
 // Takes bundle (*module.Bundle) which must self-validate.
 // Takes reference (module.Ref) which must carry a pin (unless the service allows unpinned
 // modules) and match the bundle fingerprint.
-// Takes bytecodeUnpacker (func([]byte, *symtab.SymbolRegistry) (*CompiledFileSet, error))
-// which must be non-nil.
+// Takes bytecodeUnpacker (func) which must be non-nil.
 //
 // Returns error when any pre-flight check fails.
 func (s *Service) validateLoadModuleInputs(
 	ctx context.Context,
 	bundle *module.Bundle,
 	reference module.Ref,
-	bytecodeUnpacker func([]byte, *symtab.SymbolRegistry) (*program.CompiledFileSet, error),
+	bytecodeUnpacker func(context.Context, []byte, *symtab.SymbolRegistry) (*program.CompiledFileSet, error),
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -459,23 +462,21 @@ func (s *Service) allowsUnpinnedModules() bool {
 
 // installLoadedBundle reserves slots and installs an unpacked bundle.
 //
-// Reserves global-store slots for the unpacked bundle and stamps per-kind bases onto its
-// functions, rebuilds the pendingVarBridge entries, bridges the bundle's TypesExport
-// packages into the registry, runs its variable initialisers, and snapshots the
-// initialised values into the registered storages. Each loaded bundle owns its own
-// variableInitFunction and is installed independently.
-//
 // Takes cfs (*CompiledFileSet) which is the unpacked bundle bytecode.
 // Takes bundle (*module.Bundle) which carries the TypesExport payload to bridge.
 //
 // Returns error when any installation step fails.
 func (s *Service) installLoadedBundle(ctx context.Context, cfs *program.CompiledFileSet, bundle *module.Bundle) error {
-	loadBases := s.globals.ReserveSlots(cfs.SlotAllocation())
+	pretouchCompileTimeDerivedState(cfs.Root())
+	loadBases, err := s.placeLoadedModule(ctx, cfs)
+	if err != nil {
+		return fmt.Errorf("app: LoadModule slots: %w", err)
+	}
 	program.SetGlobalBases(cfs.Root(), &loadBases)
 	program.SetGlobalBases(cfs.VariableInitFunction(), &loadBases)
 
 	bridgesAtLoad := len(s.pendingVarBridges)
-	if err := s.appendLoadedVarBridges(cfs.PackageVariables(), loadBases); err != nil {
+	if err := s.appendLoadedVarBridges(ctx, cfs.PackageVariables(), loadBases); err != nil {
 		return fmt.Errorf("app: LoadModule var bridges: %w", err)
 	}
 	if err := s.bridgeLoadedTypesExport(bundle, cfs); err != nil {

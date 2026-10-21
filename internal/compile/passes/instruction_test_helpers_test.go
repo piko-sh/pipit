@@ -28,3 +28,22 @@ func jumpOffset(offset int16) (uint8, uint8) {
 func mk(op isa.Opcode, a, b, c uint8) isa.Instruction {
 	return isa.NewInstruction(op, a, b, c)
 }
+
+func compareJumpBody(comparison, jump isa.Opcode, condition uint8, fallThrough, taken []isa.Instruction) []isa.Instruction {
+	low, high := jumpOffset(int16(len(fallThrough)))
+	body := []isa.Instruction{
+		mk(comparison, condition, 1, 2),
+		mk(jump, condition, low, high),
+	}
+	body = append(body, fallThrough...)
+	return append(body, taken...)
+}
+
+func returnVoid() isa.Instruction {
+	return isa.NewTier3Instruction(isa.SubOpTier3ReturnVoid)
+}
+
+func jumpForward(words int16) isa.Instruction {
+	low, high := jumpOffset(words)
+	return isa.NewTier1Instruction(isa.SubOpJump, low, high)
+}
